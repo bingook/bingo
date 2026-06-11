@@ -80,6 +80,32 @@ install_deps() {
     ok "Dependencies installed"
 }
 
+pip_install() {
+    # pip / pip3 / python -m pip 순서로 시도
+    local pkg="$1"
+    if "$PY" -m pip install --quiet "$pkg" 2>/dev/null; then
+        return 0
+    fi
+    warn "pip install failed for $pkg — using vendor fallback"
+    return 1
+}
+
+install_security_tools() {
+    step "Installing security tools (sqlmap · wafw00f)"
+    # sqlmap
+    if ! command -v sqlmap &>/dev/null; then
+        pip_install sqlmap && ok "sqlmap installed" || ok "sqlmap — using vendor fallback"
+    else
+        ok "sqlmap already installed ($(sqlmap --version 2>/dev/null | head -1))"
+    fi
+    # wafw00f
+    if ! command -v wafw00f &>/dev/null; then
+        pip_install wafw00f && ok "wafw00f installed" || ok "wafw00f — using vendor fallback"
+    else
+        ok "wafw00f already installed"
+    fi
+}
+
 install_bingo() {
     step "Installing Bingo"
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo ".")"
@@ -150,6 +176,7 @@ check_python
 check_pip
 install_deps
 install_bingo
+install_security_tools
 setup_path
 verify
 

@@ -69,7 +69,7 @@ SLASH_COMMANDS = [
     ("/scan",    "빠른 레드팀 스캔  /scan <url>"),
     ("/waf",     "WAF 탐지 + 자동 우회  /waf <url>"),
     ("/crack",   "해시 크랙  /crack [hash]  (인자 없으면 자동 추출)"),
-    ("/tools",   "설치된 도구 목록"),
+    ("/tools",   "도구 목록 + 자동 설치  /tools [install <name>|all]"),
     ("/skill",   "스킬 검색  /skill <keyword>"),
     ("/stop",    "자동 크랙 중단"),
     ("/quit",    "종료"),
@@ -449,12 +449,13 @@ class BingoTerminal:
             "/lang":    self._cmd_lang,
             "/quit":    self._cmd_quit,
             "/exit":    self._cmd_quit,
-            "/tools":   self._cmd_tools,
             "/skill":   self._cmd_skill,
         }
         fn = dispatch.get(name)
         if fn:
             fn()
+        elif name == "/tools":
+            self._cmd_tools(arg)
         elif name == "/scan":
             if arg:
                 self._cmd_scan(arg)
@@ -884,21 +885,146 @@ class BingoTerminal:
             # 파이프라인 (온라인 → 오프라인)
             self._auto_crack_pipeline(hashes)
 
-    def _cmd_tools(self) -> None:
+    def _cmd_tools(self, arg: str = "") -> None:
         from ..tools.registry import ToolRegistry
+        from ..tools.executor import _GO_TOOLS, _PKG_TOOLS
+
+        # ── /tools install <name|all> ────────────────────────────────
+        tokens = arg.split()
+        if tokens and tokens[0].lower() in ("install", "add"):
+            targets = tokens[1:] if len(tokens) > 1 else []
+            if not targets:
+                self._warn("사용법: /tools install <도구명>  또는  /tools install all")
+                return
+            if targets == ["all"]:
+                missing = [t.name for t in ToolRegistry.missing_tools()]
+                targets = missing
+
+            self.console.print(f"\n[{THEME['warn']}]📦 도구 자동 설치: {', '.join(targets)}[/]\n")
+            for tool_name in targets:
+                self._install_tool_interactive(tool_name)
+            return
+
+        # ── 도구 현황 테이블 ────────────────────────────────────────
         self.console.print()
-        table = Table(title=f"[{THEME['primary']}]설치된 도구[/]",
-                      border_style=THEME["primary"])
+        all_tools = ToolRegistry.scan_all()
+        available_cnt = sum(1 for i in all_tools.values() if i.available)
+        missing_list = [(n, i) for n, i in all_tools.items() if not i.available]
+
+        table = Table(
+            title=f"[{THEME['primary']}]Bingo Tools  ({available_cnt}/{len(all_tools)} 설치됨)[/]",
+            border_style=THEME["primary"],
+        )
+        table.add_column("#", style=THEME["dim"], width=3)
         table.add_column("도구", style=THEME["secondary"])
+        table.add_column("유형", style=THEME["dim"])
         table.add_column("상태", justify="center")
         table.add_column("버전 / 설치 방법", style=THEME["dim"])
 
-        for name, info in ToolRegistry.scan_all().items():
+        _type_label = {
+            **{t: "Go Binary" for t in _GO_TOOLS},
+            **{t: "pkg-mgr" for t in _PKG_TOOLS},
+            "sqlmap": "Python", "wafw00f": "Python",
+            "curl": "builtin", "python3": "builtin",
+        }
+
+        for i, (name, info) in enumerate(all_tools.items(), 1):
+            typ = _type_label.get(name, "tool")
             if info.available:
-                table.add_row(name, f"[{THEME['success']}]✓[/]", info.version[:50])
+                table.add_row(
+                    str(i), name, typ,
+                    f"[{THEME['success']}]✓[/]",
+                    (info.version or "설치됨")[:55],
+                )
             else:
-                table.add_row(name, f"[{THEME['error']}]✗[/]", info.install_hint[:60])
+                table.add_row(
+                    str(i), name, typ,
+                    f"[{THEME['error']}]✗[/]",
+                    info.install_hint[:55],
+                )
         self.console.print(table)
+
+        # ── 없는 도구가 있으면 자동 설치 제안 ──────────────────────
+        if not missing_list:
+            self.console.print(
+                f"[{THEME['success']}]모든 도구가 설치되어 있습니다.[/]\n"
+            )
+            return
+
+        self.console.print(
+            f"\n[{THEME['warn']}]{len(missing_list)}개 도구 미설치.[/]  "
+            f"[{THEME['dim']}]자동 설치 옵션:[/]"
+        )
+        for i, (n, _) in enumerate(missing_list, 1):
+            typ = _type_label.get(n, "tool")
+            method = "GitHub Releases" if n in _GO_TOOLS else "brew/apt/pip"
+            self.console.print(
+                f"  [{THEME['secondary']}]{i}[/] — [{THEME['primary']}]{n}[/]"
+                f"  [{THEME['dim']}]({typ}, {method})[/]"
+            )
+        self.console.print(
+            f"\n  [{THEME['dim']}]설치: /tools install <도구명>  또는  /tools install all[/]\n"
+            f"  [{THEME['dim']}]예)  /tools install nmap nuclei ffuf[/]\n"
+            f"  [{THEME['dim']}]예)  /tools install all[/]\n"
+        )
+
+        # 바로 설치할지 물어보기
+        try:
+            ans = self._session.prompt(
+                HTML('<ansiyellow>지금 없는 도구를 모두 설치할까요? (y/N) </ansiyellow>'),
+                style=PT_STYLE,
+            ).strip().lower()
+        except (KeyboardInterrupt, EOFError):
+            return
+
+        if ans in ("y", "yes", "예"):
+            self.console.print(
+                f"\n[{THEME['warn']}]📦 {len(missing_list)}개 도구 자동 설치 시작...[/]\n"
+            )
+            for name, _ in missing_list:
+                self._install_tool_interactive(name)
+        else:
+            self.console.print(
+                f"[{THEME['dim']}]나중에 /tools install <이름> 으로 개별 설치 가능[/]"
+            )
+
+    def _install_tool_interactive(self, tool_name: str) -> None:
+        """단일 도구 자동 설치 with 진행 상황 출력"""
+        from ..tools.registry import ToolRegistry, _find_binary
+        from ..tools.executor import _GO_TOOLS, _PKG_TOOLS
+        import shutil
+
+        self.console.print(
+            f"[{THEME['secondary']}]  ▸ {tool_name}[/] 설치 시도...",
+            end=" "
+        )
+        log_lines: list[str] = []
+
+        def log(msg: str) -> None:
+            log_lines.append(msg)
+            self.console.print(f"\n    [{THEME['dim']}]{msg}[/]", end="")
+
+        success = False
+
+        try:
+            if tool_name in _GO_TOOLS:
+                from ..tools.downloader import download_tool
+                path = download_tool(tool_name, log)
+                success = path is not None and path.exists()
+            elif tool_name in _PKG_TOOLS:
+                from ..tools.installer import install_tool
+                success = install_tool(tool_name, log)
+            elif tool_name in ("sqlmap", "wafw00f"):
+                from ..tools.installer import install_tool
+                success = install_tool(tool_name, log)
+        except Exception as e:
+            log(f"오류: {e}")
+
+        if success:
+            ToolRegistry._cache.pop(tool_name, None)
+            self.console.print(f"\n  [{THEME['success']}]✓ {tool_name} 설치 완료[/]")
+        else:
+            self.console.print(f"\n  [{THEME['error']}]✗ {tool_name} 설치 실패 — Python 폴백 사용[/]")
 
     def _cmd_skill(self, keyword: str = "") -> None:
         from ..skills.engine import SkillEngine

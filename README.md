@@ -7,6 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-green?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-green)](https://github.com/bingook/bingo)
+[![PyPI](https://img.shields.io/badge/PyPI-bingo--ai-green?logo=pypi&logoColor=white)](https://pypi.org/project/bingo-ai)
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
@@ -50,7 +51,8 @@ cd bingo
 pip install bingo-ai
 ```
 
-> **Requirements:** Python 3.10+
+> **Requirements:** Python 3.10+  
+> `sqlmap` and `wafw00f` are automatically installed as dependencies.
 
 ---
 
@@ -75,7 +77,7 @@ When a URL is mentioned in chat, bingo automatically:
 1. Detects WAF type (Cloudflare, AWS, ModSecurity, etc.)
 2. Selects optimal bypass strategy
 3. Runs `WafBypassEngine` with real HTTP probes
-4. Injects real scan results into AI context — not just suggestions
+4. Converts bypass results into `sqlmap` arguments (tamper scripts, headers, prefix/suffix) — WAF bypass is **automatically applied to sqlmap**
 
 | WAF | Auto Bypass Strategy |
 |-----|---------------------|
@@ -104,6 +106,46 @@ Supported hash types: `bcrypt`, `MD5`, `SHA-1`, `SHA-256`, `SHA-512`, `NTLM`, `M
 
 Stop anytime: type `/stop` in chat.
 
+### External Tool Auto-Install & Python Fallback
+bingo manages all external tools automatically — no manual setup required.
+
+**4-step execution priority for every tool:**
+
+| Step | Action |
+|------|--------|
+| 1 | Use built-in vendor (sqlmap, wafw00f) |
+| 2 | Use `~/.bingo/tools/` or system PATH |
+| 3 | **Auto-install** (GitHub Releases / brew / apt / pip) |
+| 4 | **Python fallback** — pure Python alternative, workflow never stops |
+
+**Go binary tools** (auto-downloaded from GitHub Releases → `~/.bingo/tools/`):
+
+| Tool | Purpose |
+|------|---------|
+| `nuclei` | Vulnerability scanning |
+| `httpx` | HTTP probing & tech detection |
+| `ffuf` | Directory & parameter fuzzing |
+| `gobuster` | Directory brute-force |
+| `subfinder` | Subdomain enumeration |
+| `amass` | Attack surface mapping |
+
+**Package manager tools** (brew / apt / yum auto-install):
+
+| Tool | Purpose | Fallback |
+|------|---------|---------|
+| `nmap` | Port scan | Python `socket` port scan |
+| `nikto` | Web vuln scan | Python `requests` vuln check |
+| `whatweb` | Tech fingerprint | bingo http_probe |
+
+**Python tools** (pip auto-install):
+
+| Tool | Purpose |
+|------|---------|
+| `sqlmap` | SQL injection (also bundled in vendor/) |
+| `wafw00f` | WAF detection (also bundled in vendor/) |
+
+All Python fallbacks produce output in the same format as the original tool — **AI context is never interrupted**.
+
 ### Session Auto-Save
 Every chat session is automatically saved to:
 ```
@@ -116,7 +158,7 @@ Full AI responses, commands, and crack results are logged in real time.
 
 ### AI Refusal Bypass
 All models (DeepSeek, Claude, GPT, GLM) are guided by a proprietary universal system prompt that enforces:
-- Structured task execution with XML semantic delimiters
+- Structured task execution with semantic delimiters
 - OODA-loop based decision making (Observe → Orient → Decide → Act)
 - Anti-laziness enforcement — explicit evidence required for every step
 - 5-phase red team pipeline with intel accumulation and coverage tracking
@@ -133,6 +175,9 @@ Type `/` in chat to see an interactive command menu (arrow keys to navigate).
 | `/waf <url>` | WAF detection + auto bypass attempt |
 | `/crack [hash]` | Hash crack — online lookup → offline crack pipeline |
 | `/stop` | Stop running crack / scan |
+| `/tools` | Show all tools + auto-install missing ones |
+| `/tools install <name>` | Install a specific tool automatically |
+| `/tools install all` | Install all missing tools at once |
 | `/model` | Add or switch AI model |
 | `/skill <keyword>` | Search skill knowledge base |
 | `/history` | View conversation history |
@@ -140,8 +185,21 @@ Type `/` in chat to see an interactive command menu (arrow keys to navigate).
 | `/config` | View current settings |
 | `/lang` | Change language (ko / zh / en) |
 | `/clear` | Clear screen |
-| `/tools` | Show installed tools (sqlmap, john, hashcat, etc.) |
 | `/quit` | Exit |
+
+### `/tools` Usage
+
+```bash
+/tools                       # Show all tools — installed / missing / type
+/tools install nmap          # Auto-install nmap via brew/apt
+/tools install nuclei ffuf   # Auto-install multiple tools from GitHub Releases
+/tools install all           # Auto-install every missing tool
+```
+
+When running `/tools`, bingo also asks interactively:
+```
+지금 없는 도구를 모두 설치할까요? (y/N)
+```
 
 ### `/crack` Usage
 
@@ -201,6 +259,7 @@ Switch models anytime with `/model`.
 | Command history | `~/.config/bingo/history` | Auto |
 | Manual export | `./bingo_chat_<timestamp>.md` | `/export` command |
 | Config | `~/.config/bingo/config.json` | Auto |
+| Go tools | `~/.bingo/tools/` | Auto on first use |
 
 ---
 
@@ -226,9 +285,13 @@ bingo/
 │   │   ├── registry.py     # Provider registry
 │   │   └── system_prompt.py # Universal pentest prompt (all models)
 │   ├── tools/
+│   │   ├── registry.py     # Tool detection (~/.bingo/tools/ + PATH + vendor)
+│   │   ├── executor.py     # 4-step: vendor → PATH → auto-install → Python fallback
+│   │   ├── downloader.py   # Go binary auto-download from GitHub Releases
+│   │   ├── installer.py    # brew / apt / pip auto-install
 │   │   ├── http_probe.py   # HTTP fingerprinting
 │   │   ├── sqli.py         # SQLi detection & exploitation
-│   │   ├── waf_bypass.py   # WAF detection + auto bypass engine
+│   │   ├── waf_bypass.py   # WAF detection + bypass → sqlmap args
 │   │   ├── hash_crack.py   # Offline hash cracker (bcrypt/MD5/SHA/NTLM)
 │   │   └── hash_lookup.py  # Online hash lookup (CrackStation, hashes.com, etc.)
 │   ├── redteam/
@@ -236,9 +299,12 @@ bingo/
 │   ├── skills/
 │   │   └── engine.py       # 220+ skill knowledge base
 │   ├── ui/
-│   │   └── terminal.py     # Interactive terminal (slash autocomplete, auto-crack)
+│   │   └── terminal.py     # Interactive terminal (slash autocomplete, auto-crack, /tools)
 │   └── lang/
 │       └── strings.py      # Multi-language strings
+├── vendor/
+│   ├── sqlmap/             # Embedded sqlmap (git submodule)
+│   └── wafw00f/            # Embedded wafw00f (git submodule)
 ├── install.sh              # macOS/Linux installer
 ├── install.ps1             # Windows installer
 └── pyproject.toml

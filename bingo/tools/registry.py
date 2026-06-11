@@ -1,12 +1,57 @@
 """
 Tool Registry — 설치된 외부 도구를 자동 감지하고 경로를 반환
-외부 도구가 없어도 Python 내장 구현으로 fallback
+우선순위:
+  1. vendor/ 폴더 내장 버전 (sqlmap, wafw00f)
+  2. ~/.bingo/tools/ (Go 바이너리 자동 다운로드 위치)
+  3. 시스템 PATH에 설치된 버전
+  4. 없으면 설치 힌트 표시
 """
 from __future__ import annotations
 import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
+
+# bingo 패키지 루트 기준 vendor 폴더
+_VENDOR_DIR = Path(__file__).parent.parent.parent / "vendor"
+_SQLMAP_PY  = _VENDOR_DIR / "sqlmap" / "sqlmap.py"
+_WAFW00F_PY = _VENDOR_DIR / "wafw00f" / "wafw00f" / "main.py"
+
+# 자동 다운로드된 Go 바이너리 위치
+_BINGO_TOOLS_DIR = Path.home() / ".bingo" / "tools"
+
+
+def _find_binary(name: str) -> str | None:
+    """~/.bingo/tools/ → 시스템 PATH 순서로 바이너리 탐색"""
+    local = _BINGO_TOOLS_DIR / name
+    if local.exists():
+        return str(local)
+    # Windows
+    local_exe = _BINGO_TOOLS_DIR / f"{name}.exe"
+    if local_exe.exists():
+        return str(local_exe)
+    return shutil.which(name)
+
+
+def get_sqlmap_cmd() -> list[str]:
+    """sqlmap 실행 명령 반환 — vendor 내장 우선, 없으면 시스템 PATH"""
+    if _SQLMAP_PY.exists():
+        return [sys.executable, str(_SQLMAP_PY)]
+    path = shutil.which("sqlmap")
+    if path:
+        return [path]
+    return []
+
+
+def get_wafw00f_cmd() -> list[str]:
+    """wafw00f 실행 명령 반환 — vendor 내장 우선, 없으면 시스템 PATH"""
+    if _WAFW00F_PY.exists():
+        return [sys.executable, str(_WAFW00F_PY)]
+    path = shutil.which("wafw00f")
+    if path:
+        return [path]
+    return []
 
 
 @dataclass
@@ -88,26 +133,36 @@ class ToolRegistry:
             return cls._cache[name]
 
         info = _TOOLS.get(name, {"hint": "", "version_flag": "--version"})
-        path = shutil.which(name)
+
+        # vendor 내장 버전 우선 확인
+        vendor_cmd: list[str] = []
+        if name == "sqlmap" and _SQLMAP_PY.exists():
+            vendor_cmd = [sys.executable, str(_SQLMAP_PY)]
+        elif name == "wafw00f" and _WAFW00F_PY.exists():
+            vendor_cmd = [sys.executable, str(_WAFW00F_PY)]
+
+        # ~/.bingo/tools/ → 시스템 PATH 순서
+        path = str(vendor_cmd[1]) if vendor_cmd else _find_binary(name)
         version = ""
 
-        if path:
+        cmd = vendor_cmd if vendor_cmd else ([path] if path else [])
+        if cmd:
             try:
                 flag = info.get("version_flag", "--version")
                 out = subprocess.run(
-                    [path, flag],
+                    cmd + [flag],
                     capture_output=True, text=True, timeout=5
                 )
                 raw = (out.stdout or out.stderr or "").strip()
-                version = raw.split("\n")[0][:60]
+                version = ("vendor " if vendor_cmd else "") + raw.split("\n")[0][:50]
             except Exception:
-                version = "unknown"
+                version = "vendor (embedded)" if vendor_cmd else "unknown"
 
         result = ToolInfo(
             name=name,
             path=path,
             version=version,
-            available=path is not None,
+            available=bool(cmd),
             install_hint=info.get("hint", ""),
         )
         cls._cache[name] = result

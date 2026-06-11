@@ -49,9 +49,30 @@ function Check-Python {
     }
 }
 
+function Get-PipCmd {
+    # pip / pip3 / python -m pip 순서로 작동하는 명령 반환
+    foreach ($cmd in @("pip", "pip3")) {
+        if (Get-Command $cmd -ErrorAction SilentlyContinue) {
+            return $cmd
+        }
+    }
+    return $null  # python -m pip 폴백
+}
+
+function Invoke-Pip {
+    param([string[]]$Args)
+    $pip = Get-PipCmd
+    if ($pip) {
+        & $pip @Args
+    } else {
+        python -m pip @Args
+    }
+    return $LASTEXITCODE
+}
+
 function Install-Deps {
     Write-Step "Installing dependencies (rich, prompt_toolkit, httpx, pydantic)"
-    pip install --quiet rich prompt_toolkit httpx pydantic hatchling
+    Invoke-Pip @("install", "--quiet", "rich", "prompt_toolkit", "httpx", "pydantic", "hatchling")
     if ($LASTEXITCODE -ne 0) { Write-Err "Dependency installation failed" }
     Write-Ok "Dependencies installed"
 }
@@ -60,9 +81,29 @@ function Install-Bingo {
     Write-Step "Installing Bingo"
     $ScriptDir = Split-Path -Parent $MyInvocation.ScriptName
     if (-not $ScriptDir) { $ScriptDir = Get-Location }
-    pip install --quiet -e $ScriptDir
+    Invoke-Pip @("install", "--quiet", "-e", "$ScriptDir")
     if ($LASTEXITCODE -ne 0) { Write-Err "Bingo installation failed" }
     Write-Ok "Bingo installed successfully"
+}
+
+function Install-SecurityTools {
+    Write-Step "Installing security tools (sqlmap, wafw00f)"
+    # sqlmap
+    if (-not (Get-Command sqlmap -ErrorAction SilentlyContinue)) {
+        $rc = Invoke-Pip @("install", "--quiet", "sqlmap")
+        if ($rc -eq 0) { Write-Ok "sqlmap installed" }
+        else { Write-Warn "sqlmap install failed — using vendor fallback" }
+    } else {
+        Write-Ok "sqlmap already installed"
+    }
+    # wafw00f
+    if (-not (Get-Command wafw00f -ErrorAction SilentlyContinue)) {
+        $rc = Invoke-Pip @("install", "--quiet", "wafw00f")
+        if ($rc -eq 0) { Write-Ok "wafw00f installed" }
+        else { Write-Warn "wafw00f install failed — using vendor fallback" }
+    } else {
+        Write-Ok "wafw00f already installed"
+    }
 }
 
 function Check-Path {
@@ -91,6 +132,7 @@ Write-Host "$CYAN  Windows Installer$RESET`n"
 Check-Python
 Install-Deps
 Install-Bingo
+Install-SecurityTools
 Check-Path
 
 Write-Host ""

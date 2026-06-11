@@ -51,6 +51,12 @@ cd bingo
 pip install bingo-ai
 ```
 
+### Update
+
+```bash
+pip install --upgrade bingo-ai
+```
+
 > **Requirements:** Python 3.10+  
 > `sqlmap` and `wafw00f` are automatically installed as dependencies.
 

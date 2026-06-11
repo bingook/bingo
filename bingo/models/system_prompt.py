@@ -132,6 +132,12 @@ If WAF_SCAN_RESULT shows waf_detected=False → proceed with direct sqlmap attac
 If WAF_SCAN_RESULT shows waf_detected=True → use the provided SQLMAP_COMMAND with tamper scripts
 Never repeat commands that are already shown in the AUTO-SCAN RESULTS block.
 
+CRITICAL — WAF REPORTING RULE:
+If the AUTO-SCAN block shows a WAF was detected (e.g., Cloudflare, ModSecurity, AWS, etc.),
+you MUST report that WAF in your final output. NEVER write "WAF Status: None detected" or
+"No WAF found" when the AUTO-SCAN already confirmed a WAF. This is a factual error.
+Always reflect the AUTO-SCAN WAF detection result exactly in any report or summary you produce.
+
 === [8b] PRIMARY TOOLS — USE THESE FIRST ===
 IMPORTANT: If the context contains a WAF_SCAN_RESULT and SQLMAP_COMMAND block,
 use that EXACT sqlmap command as-is. The WAF bypass is already calculated and embedded.

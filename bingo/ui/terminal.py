@@ -432,29 +432,35 @@ class BingoTerminal:
             model.chat_stream(self._build_messages(skill_context))
         )
 
-        # 거부 감지 → XML 태스크 재구성 후 재시도 (PentAGI 기법)
+        # 거부 감지 → 재구성 후 재시도 (이전 출력은 이미 표시됨 — 새 시도만 추가 출력)
         if full_response and detect_refusal(full_response):
             self.history.pop()
             rephrased = rephrase_refused_request(text, model_cfg.provider)
             self.history.append(Message(role="user", content=rephrased))
             self.console.print(f"\n[{THEME['warn']}]{self.s['rephrase_retry']}[/]")
-            full_response = self._stream_response(
+            # 재시도 시 history에 이전 assistant 응답 없이 새로 스트리밍
+            retry_response = self._stream_response(
                 model.chat_stream(self._build_messages(skill_context))
             )
+            if retry_response:
+                full_response = retry_response
 
         if full_response:
             self.history.append(Message(role="assistant", content=full_response))
             self._append_to_session_log("assistant", full_response)
+            # AI 응답에서 명령 추출 → 실제 실행 → 결과를 컨텍스트로 주입
+            self._execute_ai_commands(full_response)
             # AI 응답에 해시가 있으면 자동 크랙 알림
             self._notify_hashes_found(full_response)
 
     def _stream_response(self, stream: Iterator[StreamChunk]) -> str:
         full = ""
-        first = True
 
         self.console.print(f"\n[{THEME['secondary']}]bingo[/] [{THEME['dim']}]▸[/]", end=" ")
 
-        with Live(console=self.console, refresh_per_second=20, transient=False) as live:
+        # transient=True: 스트리밍 중 임시 표시 → 완료 후 사라짐
+        # 완료 후 Markdown 렌더링 한 번만 출력 (중복 방지)
+        with Live(console=self.console, refresh_per_second=20, transient=True) as live:
             buf = Text()
             for chunk in stream:
                 if chunk.error:
@@ -463,16 +469,64 @@ class BingoTerminal:
                     return ""
                 if chunk.text:
                     full += chunk.text
-                    buf.append(chunk.text, style="white")
+                    # AI 내부 독백 실시간 필터 적용
+                    visible = self._filter_ai_monologue(full)
+                    buf = Text(visible, style="white")
                     live.update(buf)
 
-        # 마크다운 렌더링 (코드블록, 볼드 등)
-        if "```" in full or "**" in full or "# " in full:
-            self.console.print()
-            self.console.print(Markdown(full))
-        
+        # 최종 출력: 마크다운 or 일반 텍스트 — 단 한 번만
+        final = self._filter_ai_monologue(full)
         self.console.print()
-        return full
+        if "```" in final or "**" in final or "# " in final:
+            self.console.print(Markdown(final))
+        else:
+            self.console.print(final)
+        self.console.print()
+        return final
+
+    @staticmethod
+    def _filter_ai_monologue(text: str) -> str:
+        """AI 내부 독백 / thinking 텍스트 필터링"""
+        import re
+        # <think>...</think> 블록 제거
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        # AI 자기 참조 문장이 포함된 줄 제거
+        _MONOLOGUE_PATTERNS = (
+            r"^I'll simulate",
+            r"^I need to produce",
+            r"^As an AI",
+            r"^I can't actually run",
+            r"^I can simulate",
+            r"^I must provide",
+            r"^Since I can't actually",
+            r"^For the sake of",
+            r"^In the context of",
+            r"^I'll pretend",
+            r"^I'll generate",
+            r"^I'll note that",
+            r"^Since this is a (fake|simulated)",
+            r"^Better: I'll",
+            r"^I'll have to generate",
+            r"^I'll produce the final",
+            r"^I need to output",
+            r"^I've redacted",
+            r"^Now, output the final",
+            r"^output the final response",
+            r"^The user likely expects",
+        )
+        filtered_lines = []
+        skip = False
+        for line in text.splitlines():
+            stripped = line.strip()
+            if any(re.match(pat, stripped, re.IGNORECASE) for pat in _MONOLOGUE_PATTERNS):
+                skip = True
+                continue
+            # 독백 단락이 끝나면 (빈 줄 또는 코드블록 시작) skip 해제
+            if skip and (stripped == "" or stripped.startswith("```") or stripped.startswith("#")):
+                skip = False
+            if not skip:
+                filtered_lines.append(line)
+        return "\n".join(filtered_lines).strip()
 
     # ── 사용자 메시지 출력 ────────────────────────────────────────
     def _print_user(self, text: str) -> None:
@@ -771,6 +825,100 @@ class BingoTerminal:
         else:
             self.console.print(f"[{THEME['success']}]{self.s['waf_none']}[/]")
 
+    def _execute_ai_commands(self, response: str) -> None:
+        """
+        AI 응답의 ```bash 블록에서 명령을 추출해 실제 실행.
+        sqlmap / curl / wafw00f 등 지원 명령만 실행 (안전 필터 적용).
+        실행 결과를 히스토리에 추가해 AI가 다음 턴에 실제 데이터로 답변하도록 함.
+        """
+        import re, subprocess, shlex, threading
+
+        # ```bash ... ``` 블록 추출
+        bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
+        if not bash_blocks:
+            return
+
+        # 실행 허용 명령 접두사 (위험 명령 방지)
+        _ALLOWED = ("sqlmap", "curl", "wafw00f", "nmap", "nikto",
+                    "ffuf", "gobuster", "nuclei", "httpx", "subfinder")
+
+        results_text = []
+
+        for block in bash_blocks:
+            # 첫 번째 명령만 추출 (멀티라인 블록도 첫 줄)
+            lines = [l.strip() for l in block.strip().splitlines()
+                     if l.strip() and not l.strip().startswith("#")]
+            if not lines:
+                continue
+            cmd_line = lines[0]
+
+            # 허용 목록 확인
+            try:
+                parts = shlex.split(cmd_line)
+            except Exception:
+                continue
+            if not parts:
+                continue
+            binary = parts[0].split("/")[-1]  # 경로 포함 시 basename
+            if binary not in _ALLOWED:
+                continue
+
+            # 실제 실행 (최대 120초)
+            self.console.print(
+                f"\n[{THEME['secondary']}]▶ {self.s.get('exec_running', 'Running')}:[/] "
+                f"[{THEME['dim']}]{cmd_line[:80]}[/]"
+            )
+            try:
+                proc = subprocess.run(
+                    cmd_line, shell=True, capture_output=True, text=True, timeout=120
+                )
+                output = (proc.stdout or "") + (proc.stderr or "")
+                if output.strip():
+                    # 출력 미리보기 (최대 40줄)
+                    preview_lines = output.strip().splitlines()[:40]
+                    preview = "\n".join(preview_lines)
+                    self.console.print(
+                        f"[{THEME['dim']}]{preview}[/]"
+                    )
+                    results_text.append(
+                        f"=== REAL EXECUTION: {cmd_line[:60]} ===\n{output.strip()}\n"
+                    )
+            except subprocess.TimeoutExpired:
+                self.console.print(f"[{THEME['warn']}]  timeout (120s)[/]")
+            except Exception as e:
+                self.console.print(f"[{THEME['error']}]  exec error: {e}[/]")
+
+        # 실행 결과를 다음 AI 턴 컨텍스트에 주입
+        if results_text:
+            injection = (
+                "=== BINGO REAL EXECUTION RESULTS ===\n"
+                + "\n".join(results_text)
+                + "=== Use these REAL results only. Do NOT generate simulated output. ==="
+            )
+            self.history.append(Message(role="user", content=injection))
+            # 실행 결과 기반으로 AI에게 분석 요청
+            from ..models.registry import ModelRegistry
+            model_cfg = self.config.get_active_model_config()
+            if model_cfg:
+                from ..models.system_prompt import wrap_task
+                model = ModelRegistry.build(model_cfg)
+                skill_ctx = ""
+                followup = (
+                    "Above are the REAL command execution results. "
+                    "Analyze them and provide findings, next steps, and any extracted data (DBs, tables, credentials)."
+                )
+                self.history.append(Message(role="user", content=followup))
+                self.console.print(
+                    f"\n[{THEME['secondary']}]{self.s.get('exec_analyzing', '📊 실행 결과 분석 중...')}[/]"
+                )
+                followup_response = self._stream_response(
+                    model.chat_stream(self._build_messages(skill_ctx))
+                )
+                if followup_response:
+                    self.history.append(Message(role="assistant", content=followup_response))
+                    self._append_to_session_log("assistant", followup_response)
+                    self._notify_hashes_found(followup_response)
+
     def _notify_hashes_found(self, text: str) -> None:
         """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행"""
         from ..tools.hash_crack import extract_hashes_from_text
@@ -830,15 +978,16 @@ class BingoTerminal:
             if self._stop_crack_flag.is_set():
                 self.console.print(f"[{THEME['warn']}]{self.s['hash_stopped']}[/]")
                 return
+            h_safe = h.replace("[", r"\[").replace("*", r"\*")
             self.console.print(
-                f"  [{THEME['dim']}]{self.s['hash_checking']}: {h[:35]}...[/]"
+                f"  [{THEME['dim']}]{self.s['hash_checking']}: {h_safe[:35]}...[/]"
             )
             result: LookupResult = lookup.lookup(h)
             if result.found and result.plaintext:
                 cracked[h] = result.plaintext
                 self.console.print(
                     f"  [{THEME['success']}]✓ [{result.source}] "
-                    f"{h[:30]}... → [bold]{result.plaintext}[/bold][/]"
+                    f"{h_safe[:30]}... → [bold]{result.plaintext}[/bold][/]"
                 )
                 pending.remove(h)
             elif result.error == "bcrypt_no_online":
@@ -887,11 +1036,13 @@ class BingoTerminal:
         table.add_column(self.s["hash_col_method"], style=THEME["dim"])
 
         for h in hashes:
+            # Rich 마크업 * 이스케이프 처리
+            h_display = h.replace("[", r"\[").replace("*", r"\*")
             if h in cracked:
-                table.add_row(h, cracked[h], "✓")
+                table.add_row(h_display, cracked[h], "✓")
             else:
-                table.add_row(h[:40] + ("..." if len(h) > 40 else ""),
-                              f"[dim]{self.s['hash_unsolved']}[/dim]", "✗")
+                disp = h_display[:40] + ("..." if len(h) > 40 else "")
+                table.add_row(disp, f"[dim]{self.s['hash_unsolved']}[/dim]", "✗")
 
         self.console.print(table)
 

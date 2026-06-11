@@ -331,6 +331,9 @@ _STRINGS = {
     "cli_help_version": {"ko": "버전 표시",     "zh": "显示版本",     "en": "Show version"},
     "cli_help_output":  {"ko": "보고서 저장 위치", "zh": "报告保存位置","en": "Report save path"},
     "cli_help_phase":   {"ko": "실행할 단계 선택", "zh": "选择执行阶段","en": "Select phases to run"},
+    "exec_running":        {"ko": "실행 중",       "zh": "执行中",       "en": "Running"},
+    "exec_analyzing":      {"ko": "📊 실행 결과 분석 중...", "zh": "📊 分析执行结果...", "en": "📊 Analyzing results..."},
+
     "cli_skill_integrated":{"ko": "CyberSecurity-Skills 39 모듈 + SecSkills 로컬 통합",
                             "zh": "CyberSecurity-Skills 39 模块 + SecSkills 本地集成",
                             "en": "CyberSecurity-Skills 39 modules + SecSkills local integration"},

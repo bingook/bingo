@@ -93,6 +93,41 @@ def _find_wordlist() -> Path | None:
     return None
 
 
+def _crack_mysql41(hash_info: HashInfo, wordlist_path: Path | None,
+                   log: Callable[[str], None]) -> CrackResult:
+    """MySQL 4.1 크랙 — *SHA1(SHA1(password)) 형식"""
+    start = time.time()
+    # 앞의 * 제거 후 대문자 비교
+    target = hash_info.raw.lstrip("*").upper()
+
+    def compute(pwd: str) -> str:
+        inner = hashlib.sha1(pwd.encode()).digest()
+        return hashlib.sha1(inner).hexdigest().upper()
+
+    for pwd in _BUILTIN_PASSWORDS:
+        if compute(pwd) == target:
+            return CrackResult(hash_info.raw, "mysql41", True,
+                               pwd, "builtin_list", time.time() - start)
+
+    if wordlist_path:
+        log(f"  [crack] Loading wordlist for mysql41: {wordlist_path} ...")
+        try:
+            with open(wordlist_path, "r", encoding="latin-1", errors="ignore") as f:
+                for i, line in enumerate(f):
+                    pwd = line.rstrip("\n")
+                    if compute(pwd) == target:
+                        return CrackResult(hash_info.raw, "mysql41", True,
+                                           pwd, "wordlist", time.time() - start)
+                    if i % 500_000 == 0 and i > 0:
+                        log(f"  [crack] mysql41 {i:,} tried...")
+        except Exception as e:
+            return CrackResult(hash_info.raw, "mysql41", False,
+                               error=str(e), elapsed=time.time() - start)
+
+    return CrackResult(hash_info.raw, "mysql41", False,
+                       method="exhausted", elapsed=time.time() - start)
+
+
 def _crack_simple(hash_info: HashInfo, wordlist_path: Path | None,
                   log: Callable[[str], None]) -> CrackResult:
     """Python 레벨 크랙 (MD5 / SHA-1 / SHA-256 / SHA-512 / NTLM)"""
@@ -111,7 +146,6 @@ def _crack_simple(hash_info: HashInfo, wordlist_path: Path | None,
         if algo == "sha512":
             return hashlib.sha512(p).hexdigest()
         if algo == "ntlm":
-            import hmac as _hmac
             return hashlib.new("md4", pwd.encode("utf-16-le")).hexdigest().upper()
         return ""
 
@@ -264,6 +298,8 @@ class HashCracker:
         # 타입별 크랙
         if info.hash_type == "bcrypt":
             return _crack_bcrypt(info, self.wordlist, self.log)
+        elif info.hash_type == "mysql41":
+            return _crack_mysql41(info, self.wordlist, self.log)
         elif info.hash_type in ("md5", "sha1", "sha256", "sha512", "ntlm", "md5crypt"):
             return _crack_simple(info, self.wordlist, self.log)
         else:

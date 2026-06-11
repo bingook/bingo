@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+*.whl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 테스트
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Bingo 설정 (개인정보 포함)
+# ~/.config/bingo/config.json 은 홈 디렉토리에 있으므로 자동 제외
+*.local.json
+
+# 내보낸 대화
+bingo_chat_*.md

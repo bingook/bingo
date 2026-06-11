@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bingo-ai"
+version = "0.1.0"
+description = "Hacker-style AI terminal — DeepSeek · Claude · GPT · GLM"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["ai", "cli", "terminal", "llm", "hacker"]
+dependencies = [
+    "rich>=13.0",
+    "prompt_toolkit>=3.0",
+    "httpx>=0.27",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+bingo = "bingo.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["bingo"]

@@ -4,12 +4,26 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bingo-ai"
-version = "0.1.0"
-description = "Hacker-style AI terminal — DeepSeek · Claude · GPT · GLM"
+version = "1.0.0"
+description = "Hacker-style AI red team terminal — WAF bypass, hash crack, multi-model"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["ai", "cli", "terminal", "llm", "hacker"]
+keywords = ["ai", "cli", "terminal", "llm", "pentest", "red-team", "hacker", "waf", "security"]
+authors = [{ name = "bingook", email = "bingook@users.noreply.github.com" }]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Terminals",
+]
 dependencies = [
     "rich>=13.0",
     "prompt_toolkit>=3.0",

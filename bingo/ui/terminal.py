@@ -360,6 +360,21 @@ class BingoTerminal:
         injectable_urls: list[str] = []
         try:
             import httpx as _httpx, re as _re
+            from urllib.parse import urlparse, parse_qs
+
+            # 정적 파일 확장자 — SQLi 후보 아님
+            _STATIC_EXT = {
+                ".css", ".js", ".ts", ".jsx", ".tsx", ".map",
+                ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".avif",
+                ".woff", ".woff2", ".ttf", ".eot", ".otf",
+                ".pdf", ".zip", ".gz", ".tar", ".rar",
+                ".mp3", ".mp4", ".webm", ".ogg", ".wav",
+                ".xml", ".rss", ".atom",
+            }
+            # 캐시 버스팅용 파라미터 이름 — SQLi 대상 아님
+            _CACHE_PARAMS = {"ver", "v", "version", "_", "t", "ts", "time",
+                             "cb", "cachebuster", "bust", "rev", "build", "hash"}
+
             headers = {"User-Agent": "Mozilla/5.0 (compatible; bingo-scanner/1.0)"}
             resp = _httpx.get(url, follow_redirects=True, timeout=10, headers=headers)
             page = resp.text
@@ -368,16 +383,43 @@ class BingoTerminal:
                 r'(?:href|action)=["\']([^"\'<>\s]+)["\']', page, _re.IGNORECASE
             )
             base = url.rstrip("/")
+            base_domain = base.split("/")[0] + "//" + base.split("/")[2]
+
             for fu in found_urls:
                 if fu.startswith("http"):
                     full = fu
                 elif fu.startswith("/"):
-                    full = base.split("/")[0] + "//" + base.split("/")[2] + fu
+                    full = base_domain + fu
+                elif fu.startswith("?"):
+                    full = base + fu
                 else:
                     full = base + "/" + fu
-                # 쿼리 파라미터가 있는 URL만 SQLi 후보
-                if "?" in full and "=" in full:
-                    injectable_urls.append(full)
+
+                # 쿼리 파라미터가 없으면 건너뜀
+                if "?" not in full or "=" not in full:
+                    continue
+
+                parsed = urlparse(full)
+                path_lower = parsed.path.lower()
+
+                # 1) 정적 파일 확장자 필터
+                path_no_qs = path_lower.split("?")[0]
+                ext = "." + path_no_qs.rsplit(".", 1)[-1] if "." in path_no_qs.split("/")[-1] else ""
+                if ext in _STATIC_EXT:
+                    continue
+
+                # 2) 캐시 버스팅 전용 파라미터만 있는 URL 필터
+                qs = parse_qs(parsed.query)
+                real_params = {k for k in qs if k.lower() not in _CACHE_PARAMS}
+                if not real_params:
+                    continue
+
+                # 3) 동일 도메인만 (외부 링크 제외)
+                if base_domain not in full:
+                    continue
+
+                injectable_urls.append(full)
+
             injectable_urls = list(dict.fromkeys(injectable_urls))[:10]  # 중복 제거, 최대 10개
         except Exception as e:
             results.append(f"CRAWL_ERROR: {e}")

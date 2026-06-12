@@ -87,6 +87,12 @@ class BingoTerminal:
     def __init__(self, config, strings: dict):
         self.config = config
         self.s = strings
+        # 전역 i18n 언어 동기화
+        try:
+            from ..i18n import set_lang
+            set_lang(getattr(config, "lang", "en"))
+        except Exception:
+            pass
         self.console = Console(highlight=False)
         self.history: list[Message] = []
         self._session: PromptSession | None = None
@@ -118,7 +124,7 @@ class BingoTerminal:
         def _sigint_handler(sig, frame):
             if self._agent_stop_flag.is_set():
                 # 두 번 누르면 완전 종료
-                self.console.print(f"\n[{THEME['error']}]강제 종료[/]")
+                self.console.print(f"\n[{THEME['error']}]{self.s.get('force_quit', 'Force quit')}[/]")
                 raise SystemExit(0)
             self._agent_stop_flag.set()
             self._stop_crack_flag.set()
@@ -533,8 +539,9 @@ class BingoTerminal:
         """AWAITING_BINGO_EXECUTION 등 내부 제어 키워드를 화면에서 제거."""
         import re
         text = re.sub(r"\n?AWAITING_BINGO_EXECUTION\n?", "", text)
-        text = re.sub(r"\n?TASK_COMPLETE\n?", "\n✅ 작업 완료\n", text)
-        text = re.sub(r"\n?MISSION_COMPLETE\n?", "\n✅ 미션 완료\n", text)
+        from ..i18n import t as _t
+        text = re.sub(r"\n?TASK_COMPLETE\n?", f"\n✅ {_t('task_complete', 'Task complete')}\n", text)
+        text = re.sub(r"\n?MISSION_COMPLETE\n?", f"\n✅ {_t('mission_complete', 'Mission complete')}\n", text)
         return text
 
     def _collapse_code_blocks(self, text: str) -> str:
@@ -833,6 +840,12 @@ class BingoTerminal:
         self.config.lang = lang
         self.config.save()
         self.s = get_strings(lang)
+        # 전역 i18n 동기화
+        try:
+            from ..i18n import set_lang as _set_lang
+            _set_lang(lang)
+        except Exception:
+            pass
         self._success(self.s["lang_saved"])
         self.console.print(
             f"  [{THEME['dim']}]{self.s['lang_changed'].format(lang=SUPPORTED_LANGS[lang])}[/]"
@@ -1469,8 +1482,8 @@ class BingoTerminal:
         _state = self._agent_state
         _lang = getattr(self.config, "lang", "en")
         _lang_label = {"ko": "Korean", "zh": "Chinese (Simplified)", "en": "English"}.get(_lang, "English")
-        _summary_label = {"ko": "현황 요약", "zh": "进展摘要", "en": "Summary"}.get(_lang, "Summary")
-        _options_label = {"ko": "다음 선택지", "zh": "下一步选项", "en": "Next Options"}.get(_lang, "Next Options")
+        _summary_label = self.s.get("progress_summary", "Summary")
+        _options_label = self.s.get("next_steps_title", "Next Options")
 
         prompt = (
             "[AGENT PAUSED — NEXT STEPS ANALYSIS]\n"

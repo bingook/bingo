@@ -19,6 +19,13 @@ from typing import Any
 
 from .parallel_runner import ParallelRunner, Task
 
+def _get_t(key: str, default: str = "") -> str:
+    try:
+        from ..i18n import t
+        return t(key, default)
+    except Exception:
+        return default or key
+
 
 def _ensure_tools_installed() -> None:
     """~/.bingo/ 에 모든 툴 파일 자동 설치."""
@@ -229,7 +236,7 @@ class MultiAgent:
 
         if self.console:
             self.console.print(
-                f"\n[dim cyan]⚡ Phase 2: Recon 결과로 {len(extra_targets)}개 추가 타겟 스캔 중...[/dim cyan]"
+                f"\n[dim cyan]⚡ Phase 2: {len(extra_targets)} {_get_t('dir_found', 'targets')} — {_get_t('scanning', 'Scanning')}...[/dim cyan]"
             )
 
         # 추가 타겟에 SQLi + WebVuln 병렬 실행

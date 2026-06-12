@@ -386,6 +386,59 @@ _STRINGS = {
     "agent_phase2":        {"ko": "Phase 2: Recon 결과로 추가 타겟 스캔 중...",
                             "zh": "Phase 2: 基于 Recon 结果扫描额外目标...",
                             "en": "Phase 2: scanning additional targets from recon..."},
+
+    # ── 오류 / 연결 ──────────────────────────────────────────────
+    "conn_failed":         {"ko": "연결 실패",          "zh": "连接失败",         "en": "Connection failed"},
+    "timeout":             {"ko": "타임아웃",            "zh": "超时",             "en": "Timeout"},
+    "force_quit":          {"ko": "강제 종료",           "zh": "强制退出",         "en": "Force quit"},
+    "api_error":           {"ko": "API 오류",            "zh": "API 错误",         "en": "API error"},
+    "no_result":           {"ko": "결과 없음",           "zh": "无结果",           "en": "No result"},
+
+    # ── 작업 완료 메시지 ──────────────────────────────────────────
+    "task_complete":       {"ko": "작업 완료",           "zh": "任务完成",         "en": "Task complete"},
+    "mission_complete":    {"ko": "미션 완료",           "zh": "任务全部完成",     "en": "Mission complete"},
+
+    # ── WAF / SQLi 로그 ───────────────────────────────────────────
+    "waf_detected":        {"ko": "WAF 탐지됨",          "zh": "检测到 WAF",       "en": "WAF detected"},
+    "waf_none":            {"ko": "WAF 없음",            "zh": "无 WAF",           "en": "No WAF detected"},
+    "waf_bypass_try":      {"ko": "WAF 우회 시도 중",    "zh": "正在尝试绕过 WAF", "en": "Attempting WAF bypass"},
+    "sqli_found":          {"ko": "SQLi 취약점 발견",    "zh": "发现 SQLi 漏洞",   "en": "SQLi vulnerability found"},
+    "sqli_none":           {"ko": "SQLi 취약점 없음",    "zh": "无 SQLi 漏洞",     "en": "No SQLi found"},
+    "sqli_extracting":     {"ko": "DB 추출 중",          "zh": "正在提取数据库",   "en": "Extracting DB"},
+    "creds_found":         {"ko": "자격증명 발견",       "zh": "发现凭据",         "en": "Credentials found"},
+
+    # ── 멀티 에이전트 / Recon ─────────────────────────────────────
+    "recon_start":         {"ko": "정찰 시작",           "zh": "开始侦察",         "en": "Recon started"},
+    "port_open":           {"ko": "열린 포트",           "zh": "开放端口",         "en": "Open port"},
+    "tech_found":          {"ko": "기술스택 식별",       "zh": "技术栈识别",       "en": "Tech stack identified"},
+    "subdomain_found":     {"ko": "서브도메인 발견",     "zh": "发现子域名",       "en": "Subdomain found"},
+    "dir_found":           {"ko": "디렉터리 발견",       "zh": "发现目录",         "en": "Directory found"},
+
+    # ── 보고서 ───────────────────────────────────────────────────
+    "report_generating":   {"ko": "보고서 생성 중",      "zh": "正在生成报告",     "en": "Generating report"},
+    "report_saved":        {"ko": "보고서 저장됨",       "zh": "报告已保存",       "en": "Report saved"},
+    "severity_critical":   {"ko": "위험 (Critical)",     "zh": "严重 (Critical)",  "en": "Critical"},
+    "severity_high":       {"ko": "높음 (High)",         "zh": "高危 (High)",      "en": "High"},
+    "severity_medium":     {"ko": "중간 (Medium)",       "zh": "中危 (Medium)",    "en": "Medium"},
+    "severity_low":        {"ko": "낮음 (Low)",          "zh": "低危 (Low)",       "en": "Low"},
+    "severity_info":       {"ko": "정보 (Info)",         "zh": "信息 (Info)",      "en": "Info"},
+
+    # ── 인증 / 로그인 ─────────────────────────────────────────────
+    "login_success":       {"ko": "로그인 성공",         "zh": "登录成功",         "en": "Login success"},
+    "login_fail":          {"ko": "로그인 실패",         "zh": "登录失败",         "en": "Login failed"},
+    "default_cred_found":  {"ko": "기본 자격증명 발견",  "zh": "发现默认凭据",     "en": "Default credentials found"},
+
+    # ── 일반 진행 상태 ────────────────────────────────────────────
+    "scanning":            {"ko": "스캔 중",             "zh": "扫描中",           "en": "Scanning"},
+    "testing":             {"ko": "테스트 중",           "zh": "测试中",           "en": "Testing"},
+    "done":                {"ko": "완료",                "zh": "完成",             "en": "Done"},
+    "skip":                {"ko": "스킵",                "zh": "跳过",             "en": "Skip"},
+    "error":               {"ko": "오류",                "zh": "错误",             "en": "Error"},
+    "found":               {"ko": "발견",                "zh": "发现",             "en": "Found"},
+    "not_found":           {"ko": "없음",                "zh": "未找到",           "en": "Not found"},
+    "target":              {"ko": "타겟",                "zh": "目标",             "en": "Target"},
+    "next_steps_title":    {"ko": "다음 선택지",         "zh": "下一步选项",       "en": "Next Options"},
+    "progress_summary":    {"ko": "현황 요약",           "zh": "进展摘要",         "en": "Summary"},
 }
 
 

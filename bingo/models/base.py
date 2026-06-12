@@ -98,9 +98,19 @@ class BaseModel:
                             continue
 
         except httpx.ConnectError as e:
-            yield StreamChunk(text="", done=True, error=f"연결 실패: {e}")
+            try:
+                from ..i18n import t as _t
+                _msg = f"{_t('conn_failed', 'Connection failed')}: {e}"
+            except Exception:
+                _msg = f"Connection failed: {e}"
+            yield StreamChunk(text="", done=True, error=_msg)
         except httpx.TimeoutException:
-            yield StreamChunk(text="", done=True, error="타임아웃")
+            try:
+                from ..i18n import t as _t
+                _msg = _t("timeout", "Timeout")
+            except Exception:
+                _msg = "Timeout"
+            yield StreamChunk(text="", done=True, error=_msg)
         except Exception as e:
             yield StreamChunk(text="", done=True, error=str(e))
 

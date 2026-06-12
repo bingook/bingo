@@ -261,7 +261,7 @@ class BingoTerminal:
         results: list[str] = []
 
         self.console.print(
-            f"\n[{THEME['warn']}]🔍 사이트 정보 수집: {url}[/]"
+            f"\n[{THEME['warn']}]{self.s.get('site_recon', '🔍 Site recon')}: {url}[/]"
         )
 
         # ── 빠른 HTTP 정보 수집 (헤더 + 응답코드) ─────────────────────
@@ -297,7 +297,7 @@ class BingoTerminal:
             if "x-fw" in str(resp.headers).lower():
                 waf_hints.append("Wordfence")
             if waf_hints:
-                self.console.print(f"[{THEME['warn']}]  ⚡ WAF 힌트: {', '.join(waf_hints)}[/]")
+                self.console.print(f"[{THEME['warn']}]  {self.s.get('waf_hint', '⚡ WAF hint')}: {', '.join(waf_hints)}[/]")
                 results.append(f"WAF_HINTS: {', '.join(waf_hints)}")
             else:
                 results.append("WAF_HINTS: none detected from headers (AI should verify)")
@@ -306,7 +306,7 @@ class BingoTerminal:
             results.append(f"SITE_INFO_ERROR: {e}")
 
         # ── 사이트 크롤링 → 후보 URL 수집 (AI가 직접 탐지) ──────────
-        self.console.print(f"[{THEME['dim']}]🔍 페이지 크롤 중...[/]")
+        self.console.print(f"[{THEME['dim']}]{self.s.get('page_crawling', '🔍 Crawling page...')}[/]")
         candidate_urls: list[str] = []
         try:
             import httpx as _hx2, re as _re
@@ -887,7 +887,7 @@ class BingoTerminal:
             preview = " | ".join(l.strip() for l in preview_lines if l.strip())[:80]
 
             self.console.print(
-                f"\n[{THEME['secondary']}]▶ Python 실행:[/] "
+                f"\n[{THEME['secondary']}]▶ {self.s.get('python_exec', 'Python execution')}:[/] "
                 f"[{THEME['dim']}]{preview}...[/]"
             )
 
@@ -1391,13 +1391,13 @@ class BingoTerminal:
                     )
                 self.console.print(ref_table)
                 self.console.print(
-                    f"[{THEME['dim']}]💡 이 레퍼런스는 AI 메시지 전송 시 자동으로 컨텍스트에 주입됩니다.[/]"
+                    f"[{THEME['dim']}]{self.s.get('skill_ctx_injected', '💡 Reference auto-injected into AI context.')}[/]"
                 )
 
             # ── 내장 DB 검색 (보조) ────────────────────────────────────
             results = engine.search(keyword)
             if results:
-                self.console.print(f"\n[{THEME['dim']}]📚 내장 DB 스킬:[/]")
+                self.console.print(f"\n[{THEME['dim']}]📚 {self.s.get('skill_db_label', 'Built-in DB skills')}:[/]")
                 for r in results[:10]:
                     self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
 
@@ -1410,12 +1410,12 @@ class BingoTerminal:
             local_skills = engine.list_local_skills()
             if local_skills:
                 ls_table = Table(
-                    title=f"[{THEME['primary']}]📦 SecSkills 로컬 레퍼런스 팩[/]",
+                    title=f"[{THEME['primary']}]{self.s.get('skill_local_packs', '📦 SecSkills Local Reference Packs')}[/]",
                     border_style=THEME["primary"],
                 )
-                ls_table.add_column("스킬 팩", style=THEME["secondary"], width=22)
-                ls_table.add_column("레퍼런스 수", justify="right", width=10)
-                ls_table.add_column("주요 레퍼런스", style=THEME["dim"])
+                ls_table.add_column(self.s.get("skill_col_pack", "Skill Pack"), style=THEME["secondary"], width=22)
+                ls_table.add_column(self.s.get("skill_col_refs", "Refs"), justify="right", width=10)
+                ls_table.add_column(self.s.get("skill_col_main", "Main References"), style=THEME["dim"])
                 for ls in local_skills:
                     refs_preview = ", ".join(ls["references"][:4])
                     if len(ls["references"]) > 4:
@@ -1423,7 +1423,7 @@ class BingoTerminal:
                     ls_table.add_row(ls["name"], str(ls["ref_count"]), refs_preview)
                 self.console.print(ls_table)
                 self.console.print(
-                    f"[{THEME['dim']}]💡 /skill <키워드> 로 특정 레퍼런스 검색 가능 (예: /skill sqlmap)[/]\n"
+                    f"[{THEME['dim']}]{self.s.get('skill_search_tip', '💡 Use /skill <keyword> to search references')}[/]\n"
                 )
 
             # ── 내장 DB 모듈 목록 ──────────────────────────────────────

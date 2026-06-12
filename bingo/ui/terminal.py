@@ -1142,28 +1142,39 @@ class BingoTerminal:
         else:
             self.console.print(f"[{THEME['success']}]{self.s['waf_none']}[/]")
 
-    def _execute_ai_commands(self, response: str, _depth: int = 0) -> None:
+    def _execute_ai_commands(
+        self,
+        response: str,
+        _depth: int = 0,
+        _loaded_skills: set | None = None,
+    ) -> None:
         """
         AI가 ```python 또는 ```bash 블록으로 코드를 제시하면 실제로 실행하고
         결과를 AI에게 피드백 → AI가 실제 데이터로 분석함.
 
         Full Agent 모드: Python 코드 우선, bash 명령도 지원.
         SKILL_LOAD: 선언을 감지하면 스킬 내용을 먼저 주입 후 계속 진행.
+        _loaded_skills: 이미 이번 체인에서 로드한 스킬 이름 집합 (재선언 방지)
         """
         import re, subprocess, tempfile, os
         from pathlib import Path
 
-        # exec_count로만 루프를 제어 — _depth 중단은 스킬 주입 체인에만 사용
-        if _depth > 50:
-            self.console.print(f"[{THEME['warn']}]⚠ {self.s.get('agent_depth_exceeded', 'Agent recursion depth exceeded')}[/]")
+        if _loaded_skills is None:
+            _loaded_skills = set()
+
+        # 스킬 주입 체인에서만 depth 사용 — 실질 한계는 exec_count < 15
+        if _depth > 30:
+            self._suggest_next_steps()
             return
 
         # ── SKILL_LOAD: 에이전트 자율 스킬 로드 ─────────────────────────
         skill_names = self._parse_skill_load_request(response)
-        if skill_names:
-            skill_content = self._load_skill_content(skill_names)
+        # 이미 이번 체인에서 로드한 스킬은 제외 (무한 재선언 방지)
+        new_skills = [s for s in skill_names if s not in _loaded_skills]
+        if new_skills:
+            _loaded_skills.update(new_skills)
+            skill_content = self._load_skill_content(new_skills)
             if skill_content:
-                # 스킬 내용을 user 메시지로 주입 → AI가 전문가 수준으로 업그레이드
                 self.history.append(Message(
                     role="user",
                     content=(
@@ -1171,24 +1182,23 @@ class BingoTerminal:
                         + skill_content
                         + "\n=== END SKILLS ===\n"
                         "Now continue with the task using this expert knowledge. "
-                        "Do NOT declare SKILL_LOAD again."
+                        "Do NOT declare SKILL_LOAD again for already-loaded skills: "
+                        + ", ".join(_loaded_skills)
                     )
                 ))
-                # 스킬 주입 후 AI 재호출 (전문 지식으로 이어서 작업)
                 from ..models.registry import ModelRegistry
                 model_cfg = self.config.get_active_model_config()
                 if model_cfg:
                     model = ModelRegistry.build(model_cfg)
                     self.console.print(
-                        f"\n[bold cyan]⚡ {self.s.get('skill_applying', 'Applying skill knowledge...')}[/bold cyan]"
+                        f"\n[bold cyan]⚡ {self.s.get('skill_applying', 'Applying skill knowledge...')} [{', '.join(new_skills)}][/bold cyan]"
                     )
                     new_response = self._stream_response(
                         model.chat_stream(self._build_messages(""))
                     )
                     self.history.append(Message(role="assistant", content=new_response))
-                    # 새 응답으로 계속 실행
                     if "```" in new_response:
-                        self._execute_ai_commands(new_response, _depth=_depth+1)
+                        self._execute_ai_commands(new_response, _depth=_depth+1, _loaded_skills=_loaded_skills)
                     return
 
         if "```" not in response:
@@ -1407,6 +1417,7 @@ class BingoTerminal:
         if self._agent_stop_flag.is_set():
             self._agent_stop_flag.clear()
             self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
+            self._suggest_next_steps()
             return
 
         model = ModelRegistry.build(model_cfg)
@@ -1426,6 +1437,7 @@ class BingoTerminal:
             if self._agent_stop_flag.is_set():
                 self._agent_stop_flag.clear()
                 self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
+                self._suggest_next_steps()
                 return
 
             exec_count = sum(
@@ -1438,9 +1450,55 @@ class BingoTerminal:
                     f"{exec_count + 1}/15  "
                     f"({_s.get('agent_ctrl_c', 'Ctrl+C to stop')})[/]"
                 )
-                self._execute_ai_commands(followup_response, _depth=_depth+1)
+                self._execute_ai_commands(followup_response, _depth=_depth+1, _loaded_skills=_loaded_skills)
             else:
                 self.console.print(f"[{THEME['warn']}]⚠ {_s.get('agent_max_loop', 'Agent max loops reached')}[/]")
+                self._suggest_next_steps()
+
+    def _suggest_next_steps(self) -> None:
+        """Agent 루프가 중단될 때 AI가 현재까지 진행 상황을 분석하고
+        다음에 할 수 있는 구체적인 선택지 3개를 자동으로 제시한다.
+        """
+        from ..models.registry import ModelRegistry
+        from rich.panel import Panel as _Panel
+
+        model_cfg = self.config.get_active_model_config()
+        if not model_cfg:
+            return
+
+        _state = self._agent_state
+        _lang = getattr(self.config, "lang", "en")
+        _lang_label = {"ko": "Korean", "zh": "Chinese (Simplified)", "en": "English"}.get(_lang, "English")
+        _summary_label = {"ko": "현황 요약", "zh": "进展摘要", "en": "Summary"}.get(_lang, "Summary")
+        _options_label = {"ko": "다음 선택지", "zh": "下一步选项", "en": "Next Options"}.get(_lang, "Next Options")
+
+        prompt = (
+            "[AGENT PAUSED — NEXT STEPS ANALYSIS]\n"
+            "The agent loop has stopped. Analyze everything done so far and provide:\n"
+            "1. A 2-sentence summary of what was found/accomplished\n"
+            "2. Exactly 3 concrete next action options the user can choose from, "
+            "each as a ready-to-paste command or instruction\n\n"
+            f"Current known state: {_state}\n\n"
+            f"IMPORTANT: Respond entirely in {_lang_label}. "
+            f"Format as:\n"
+            f"**{_summary_label}**\n"
+            "[summary]\n\n"
+            f"**{_options_label}**\n"
+            "① [option1 — exact command]\n"
+            "② [option2 — exact command]\n"
+            "③ [option3 — exact command]"
+        )
+
+        self.history.append(Message(role="user", content=prompt))
+        try:
+            model = ModelRegistry.build(model_cfg)
+            suggestion = self._stream_response(
+                model.chat_stream(self._build_messages(""))
+            )
+            if suggestion:
+                self.history.append(Message(role="assistant", content=suggestion))
+        except Exception:
+            pass
 
     def _load_agent_state(self) -> dict:
         """저장된 agent_state 로드. 없으면 빈 상태 반환."""

@@ -478,6 +478,15 @@ class BingoTerminal:
             self._notify_hashes_found(full_response)
 
     @staticmethod
+    def _filter_agent_noise(text: str) -> str:
+        """AWAITING_BINGO_EXECUTION 등 내부 제어 키워드를 화면에서 제거."""
+        import re
+        text = re.sub(r"\n?AWAITING_BINGO_EXECUTION\n?", "", text)
+        text = re.sub(r"\n?TASK_COMPLETE\n?", "\n✅ 작업 완료\n", text)
+        text = re.sub(r"\n?MISSION_COMPLETE\n?", "\n✅ 미션 완료\n", text)
+        return text
+
+    @staticmethod
     def _collapse_code_blocks(text: str) -> str:
         """Python/bash 코드 블록을 접어서 한 줄 요약으로 교체.
         Cursor처럼 '무엇을 하는지'만 보여주고 소스코드는 숨김.
@@ -545,20 +554,22 @@ class BingoTerminal:
                 if chunk.text:
                     full += chunk.text
                     visible = self._filter_ai_monologue(full)
-                    # 스트리밍 중에는 코드 블록 접어서 표시
+                    # 스트리밍 중: 코드 블록 접기 + 내부 키워드 제거
                     collapsed = self._collapse_code_blocks(visible)
+                    collapsed = self._filter_agent_noise(collapsed)
                     buf = Text.from_markup(collapsed) if "[dim]" in collapsed else Text(collapsed, style="white")
                     live.update(buf)
 
-        # 최종 출력: 텍스트 부분은 Markdown, 코드 블록은 접힌 요약으로 표시
+        # 최종 출력: 코드 블록 접기 + 내부 제어 키워드 제거
         final = self._filter_ai_monologue(full)
-        collapsed_final = self._collapse_code_blocks(final)
+        display = self._collapse_code_blocks(final)
+        display = self._filter_agent_noise(display)
 
         self.console.print()
         try:
-            self.console.print(Markdown(collapsed_final) if ("**" in collapsed_final or "# " in collapsed_final) else collapsed_final)
+            self.console.print(Markdown(display) if ("**" in display or "# " in display) else display)
         except Exception:
-            self.console.print(collapsed_final)
+            self.console.print(display)
         self.console.print()
         return final  # 실행에는 원본(full code) 반환
 
@@ -1127,7 +1138,14 @@ class BingoTerminal:
                 if m.role == "user" and "BINGO REAL EXECUTION RESULTS" in m.content
             )
             if exec_count < 15:
+                self.console.print(
+                    f"[{THEME['dim']}]🔄 Agent 루프 {exec_count + 1}/15[/]"
+                )
                 self._execute_ai_commands(followup_response)
+            else:
+                self.console.print(
+                    f"[{THEME['warn']}]⚠ Agent 최대 루프(15) 도달 — 직접 다음 명령을 입력하세요[/]"
+                )
 
     def _notify_hashes_found(self, text: str) -> None:
         """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행"""

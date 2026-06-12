@@ -65,54 +65,94 @@ class BaseModel:
         self.config = config
 
     def chat_stream(self, messages: list[Message]) -> Iterator[StreamChunk]:
-        """서버-센트 이벤트 스트리밍 — 서브클래스에서 override 가능"""
-        payload = self._build_payload(messages)
-        headers = self._build_headers()
+        """서버-센트 이벤트 스트리밍 — 자동 재시도 3회, 컨텍스트 압축 포함"""
+        import time as _time
 
-        try:
-            with httpx.Client(timeout=120) as client:
-                with client.stream(
-                    "POST",
-                    f"{self.config.base_url}/chat/completions",
-                    json=payload,
-                    headers=headers,
-                ) as resp:
-                    if resp.status_code != 200:
-                        body = resp.read().decode("utf-8", "replace")
-                        yield StreamChunk(text="", done=True,
-                                          error=f"HTTP {resp.status_code}: {body[:200]}")
+        MAX_RETRIES = 3
+        current_messages = list(messages)
+
+        for attempt in range(MAX_RETRIES):
+            payload = self._build_payload(current_messages)
+            headers = self._build_headers()
+            success = False
+            last_error = ""
+
+            try:
+                with httpx.Client(timeout=180) as client:
+                    with client.stream(
+                        "POST",
+                        f"{self.config.base_url}/chat/completions",
+                        json=payload,
+                        headers=headers,
+                    ) as resp:
+                        if resp.status_code == 413 or resp.status_code == 400:
+                            # 컨텍스트 너무 큼 → 절반으로 압축 후 재시도
+                            body = resp.read().decode("utf-8", "replace")
+                            non_sys = [m for m in current_messages if m.role != "system"]
+                            sys_msgs = [m for m in current_messages if m.role == "system"]
+                            if len(non_sys) > 4:
+                                current_messages = sys_msgs + non_sys[-(len(non_sys)//2):]
+                                _time.sleep(1)
+                                continue
+                            yield StreamChunk(text="", done=True,
+                                              error=f"HTTP {resp.status_code}: {body[:200]}")
+                            return
+                        if resp.status_code != 200:
+                            body = resp.read().decode("utf-8", "replace")
+                            yield StreamChunk(text="", done=True,
+                                              error=f"HTTP {resp.status_code}: {body[:200]}")
+                            return
+
+                        for line in resp.iter_lines():
+                            if not line or line == "data: [DONE]":
+                                continue
+                            if line.startswith("data: "):
+                                line = line[6:]
+                            try:
+                                obj = json.loads(line)
+                                delta = obj["choices"][0].get("delta", {})
+                                text = delta.get("content") or ""
+                                finish = obj["choices"][0].get("finish_reason")
+                                yield StreamChunk(text=text, done=finish is not None)
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+                        success = True
                         return
 
-                    for line in resp.iter_lines():
-                        if not line or line == "data: [DONE]":
-                            continue
-                        if line.startswith("data: "):
-                            line = line[6:]
-                        try:
-                            obj = json.loads(line)
-                            delta = obj["choices"][0].get("delta", {})
-                            text = delta.get("content") or ""
-                            finish = obj["choices"][0].get("finish_reason")
-                            yield StreamChunk(text=text, done=finish is not None)
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
+            except (httpx.RemoteProtocolError, httpx.ReadError) as e:
+                # "Server disconnected without sending a response" 등
+                last_error = str(e)
+                if attempt < MAX_RETRIES - 1:
+                    # 컨텍스트 압축 후 재시도
+                    non_sys = [m for m in current_messages if m.role != "system"]
+                    sys_msgs = [m for m in current_messages if m.role == "system"]
+                    if len(non_sys) > 4:
+                        current_messages = sys_msgs + non_sys[-(max(4, len(non_sys)-4)):]
+                    _time.sleep(2 * (attempt + 1))
+                    continue
+            except httpx.ConnectError as e:
+                last_error = str(e)
+                if attempt < MAX_RETRIES - 1:
+                    _time.sleep(2 * (attempt + 1))
+                    continue
+            except httpx.TimeoutException:
+                last_error = "timeout"
+                if attempt < MAX_RETRIES - 1:
+                    _time.sleep(3)
+                    continue
+            except Exception as e:
+                last_error = str(e)
+                if attempt < MAX_RETRIES - 1:
+                    _time.sleep(1)
+                    continue
 
-        except httpx.ConnectError as e:
-            try:
-                from ..i18n import t as _t
-                _msg = f"{_t('conn_failed', 'Connection failed')}: {e}"
-            except Exception:
-                _msg = f"Connection failed: {e}"
-            yield StreamChunk(text="", done=True, error=_msg)
-        except httpx.TimeoutException:
-            try:
-                from ..i18n import t as _t
-                _msg = _t("timeout", "Timeout")
-            except Exception:
-                _msg = "Timeout"
-            yield StreamChunk(text="", done=True, error=_msg)
-        except Exception as e:
-            yield StreamChunk(text="", done=True, error=str(e))
+        # 3회 모두 실패
+        try:
+            from ..i18n import t as _t
+            _msg = f"{_t('api_error', 'API 错误')}: {last_error}"
+        except Exception:
+            _msg = f"API Error: {last_error}"
+        yield StreamChunk(text="", done=True, error=_msg)
 
     def _build_payload(self, messages: list[Message]) -> dict:
         msgs = []

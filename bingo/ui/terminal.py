@@ -147,9 +147,33 @@ class BingoTerminal:
             self._cmd_model()
 
         # 이전 세션 이어하기 제안
-        self._offer_resume()
+        _resumed = self._offer_resume()
 
         self._inject_warmup_history()
+
+        if _resumed:
+            # 복원된 경우 → 자동으로 에이전트 재개 메시지 주입
+            _lang = getattr(self.config, "lang", "en")
+            _auto_continue = {
+                "ko": f"이전 작업을 이어서 계속 진행해 주세요. 타겟: {self._agent_state.get('target', '')}",
+                "zh": f"请继续上次未完成的工作。目标: {self._agent_state.get('target', '')}",
+                "en": f"Continue the previous task from where it was left off. Target: {self._agent_state.get('target', '')}",
+            }.get(_lang, "Continue previous task.")
+            # 자동 재개 — chat_loop 거치지 않고 직접 AI 호출
+            from ..models.registry import ModelRegistry
+            model_cfg = self.config.get_active_model_config()
+            if model_cfg:
+                self.history.append(Message(role="user", content=_auto_continue))
+                self._append_to_session_log("user", _auto_continue)
+                model = ModelRegistry.build(model_cfg)
+                response = self._stream_response(
+                    model.chat_stream(self._build_messages(""))
+                )
+                if response:
+                    self.history.append(Message(role="assistant", content=response))
+                    self._append_to_session_log("assistant", response)
+                    self._execute_ai_commands(response)
+
         self._chat_loop()
 
     # ── 배너 / 상태 표시 ──────────────────────────────────────────
@@ -1855,21 +1879,21 @@ class BingoTerminal:
         except Exception:
             pass
 
-    def _offer_resume(self) -> None:
-        """이전 세션이 있으면 이어하기 제안."""
+    def _offer_resume(self) -> bool:
+        """이전 세션이 있으면 이어하기 제안. 복원 성공 시 True 반환."""
         import json
         _path = self._history_path()
         if not _path.exists():
-            return
+            return False
         try:
             data = json.loads(_path.read_text())
             hist = data.get("history", [])
             state = data.get("agent_state", {})
             target = state.get("target") or ""
             if not hist or not target:
-                return
+                return False
         except Exception:
-            return
+            return False
 
         _lang = getattr(self.config, "lang", "en")
         _labels = {
@@ -1907,12 +1931,14 @@ class BingoTerminal:
                 "en": f"✅ Session restored — target: {target}",
             }.get(_lang, f"✅ Session restored: {target}")
             self.console.print(f"[bold green]{_resumed}[/bold green]\n")
+            return True   # 복원 성공 — 자동 재개 신호
         else:
             # 새 세션 시작 — 기존 히스토리 파일 삭제
             try:
                 _path.unlink()
             except Exception:
                 pass
+            return False
 
     def _load_agent_state(self) -> dict:
         """저장된 agent_state 로드. 없으면 빈 상태 반환."""

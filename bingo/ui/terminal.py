@@ -1479,49 +1479,85 @@ class BingoTerminal:
                 self._suggest_next_steps()
 
     def _suggest_next_steps(self) -> None:
-        """Agent 루프가 중단될 때 AI가 현재까지 진행 상황을 분석하고
-        다음에 할 수 있는 구체적인 선택지 3개를 자동으로 제시한다.
+        """Agent 루프 중단 시 AI가 현황 요약 + 다음 선택지 3개를 제시한다.
+        히스토리를 오염시키지 않고, 전용 패널로 시각적으로 구분해서 표시.
         """
         from ..models.registry import ModelRegistry
         from rich.panel import Panel as _Panel
+        from rich.rule import Rule
 
         model_cfg = self.config.get_active_model_config()
         if not model_cfg:
             return
 
-        _state = self._agent_state
         _lang = getattr(self.config, "lang", "en")
         _lang_label = {"ko": "Korean", "zh": "Chinese (Simplified)", "en": "English"}.get(_lang, "English")
-        _summary_label = self.s.get("progress_summary", "Summary")
-        _options_label = self.s.get("next_steps_title", "Next Options")
 
-        prompt = (
-            "[AGENT PAUSED — NEXT STEPS ANALYSIS]\n"
-            "The agent loop has stopped. Analyze everything done so far and provide:\n"
-            "1. A 2-sentence summary of what was found/accomplished\n"
-            "2. Exactly 3 concrete next action options the user can choose from, "
-            "each as a ready-to-paste command or instruction\n\n"
-            f"Current known state: {_state}\n\n"
-            f"IMPORTANT: Respond entirely in {_lang_label}. "
-            f"Format as:\n"
-            f"**{_summary_label}**\n"
-            "[summary]\n\n"
-            f"**{_options_label}**\n"
-            "① [option1 — exact command]\n"
-            "② [option2 — exact command]\n"
-            "③ [option3 — exact command]"
+        _state = self._agent_state
+        # 지금까지의 AI 대화 중 마지막 assistant 메시지만 발췌 (컨텍스트로 사용)
+        last_ai_msgs = [
+            m.content for m in self.history[-6:]
+            if m.role == "assistant"
+        ]
+        recent_context = "\n---\n".join(last_ai_msgs[-2:])[:2000] if last_ai_msgs else ""
+
+        prompt_msg = Message(
+            role="user",
+            content=(
+                "[AGENT PAUSED — PROVIDE NEXT STEPS]\n\n"
+                f"Known state so far: {_state}\n\n"
+                f"Recent activity:\n{recent_context}\n\n"
+                f"INSTRUCTIONS (CRITICAL):\n"
+                f"1. Write ONLY plain text. NO code blocks. NO markdown headers.\n"
+                f"2. Respond ENTIRELY in {_lang_label}.\n"
+                f"3. Output EXACTLY in this format:\n\n"
+                f"{'현황 요약' if _lang=='ko' else '进展摘要' if _lang=='zh' else 'Summary'}: [2 sentences]\n\n"
+                f"{'다음 선택지' if _lang=='ko' else '下一步选项' if _lang=='zh' else 'Next options'}:\n"
+                f"① [구체적인 입력 명령어 또는 지시]\n"
+                f"② [구체적인 입력 명령어 또는 지시]\n"
+                f"③ [구체적인 입력 명령어 또는 지시]"
+            )
         )
 
-        self.history.append(Message(role="user", content=prompt))
+        # 히스토리를 오염시키지 않고 임시 메시지 목록 구성
+        temp_messages = [self._get_system_message("")] + self.history[-10:] + [prompt_msg]
+
+        self.console.print(Rule(
+            f"[bold cyan]{'💡 다음 선택지' if _lang=='ko' else '💡 下一步选项' if _lang=='zh' else '💡 Next Steps'}[/bold cyan]",
+            style="cyan"
+        ))
+
         try:
             model = ModelRegistry.build(model_cfg)
-            suggestion = self._stream_response(
-                model.chat_stream(self._build_messages(""))
-            )
-            if suggestion:
-                self.history.append(Message(role="assistant", content=suggestion))
-        except Exception:
-            pass
+            full = ""
+            self.console.print(f"\n[{THEME['secondary']}]bingo[/] [{THEME['dim']}]▸[/]", end=" ")
+
+            with Live(console=self.console, refresh_per_second=15, transient=True) as live:
+                from rich.text import Text as _Text
+                buf = _Text()
+                for chunk in model.chat_stream(temp_messages):
+                    if chunk.error:
+                        live.stop()
+                        self._error(chunk.error)
+                        return
+                    if chunk.text:
+                        full += chunk.text
+                        buf = _Text(full, style="white")
+                        live.update(buf)
+
+            if full.strip():
+                self.console.print()
+                # 패널로 감싸서 시각적으로 구분
+                from rich.markup import escape as _esc
+                self.console.print(_Panel(
+                    _esc(full.strip()),
+                    border_style="cyan",
+                    padding=(1, 2),
+                ))
+                self.console.print()
+
+        except Exception as e:
+            self._error(f"next steps error: {e}")
 
     def _load_agent_state(self) -> dict:
         """저장된 agent_state 로드. 없으면 빈 상태 반환."""

@@ -304,8 +304,8 @@ class BingoTerminal:
         return "\n\n".join(parts)
 
     def _auto_waf_scan(self, text: str) -> str:
-        """URL 감지 시 기본 사이트 정보 수집 → AI가 직접 판단하게 컨텍스트 제공.
-        wafw00f / sqlmap 의존성 완전 제거. AI가 Python으로 직접 탐지.
+        """URL 감지 시 사이트 raw 데이터 수집 → AI가 전략 전부 결정.
+        고정 공격 지시 없음. AI가 수집된 데이터 기반으로 자율 판단.
         """
         import re
         urls = re.findall(r"https?://[^\s\"'<>]+", text)
@@ -319,140 +319,150 @@ class BingoTerminal:
             f"\n[{THEME['warn']}]{self.s.get('site_recon', '🔍 Site recon')}: {url}[/]"
         )
 
-        # ── 빠른 HTTP 정보 수집 (헤더 + 응답코드) ─────────────────────
         try:
-            import httpx as _hx
-            _hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120"}
-            resp = _hx.get(url, headers=_hdrs, follow_redirects=True,
-                           timeout=10, verify=False)
+            import httpx as _hx, re as _re
+            from urllib.parse import urlparse, urljoin
 
-            # 응답 헤더에서 서버 정보 추출
-            server   = resp.headers.get("server", "unknown")
-            powered  = resp.headers.get("x-powered-by", "")
-            cf_ray   = resp.headers.get("cf-ray", "")
-            x_cache  = resp.headers.get("x-cache", "")
-
-            results.append(
-                f"SITE_INFO:\n"
-                f"  url={url}\n"
-                f"  status={resp.status_code}\n"
-                f"  server={server}\n"
-                f"  x-powered-by={powered or 'none'}\n"
-                f"  cf-ray={cf_ray or 'none'}\n"
-                f"  x-cache={x_cache or 'none'}\n"
-                f"  content_length={len(resp.text)}"
-            )
-
-            # 헤더 기반 간이 WAF 힌트 (AI에게 참고로만 전달)
-            waf_hints = []
-            if cf_ray:
-                waf_hints.append("Cloudflare (cf-ray header)")
-            if "sucuri" in resp.text.lower()[:500] or "x-sucuri" in str(resp.headers).lower():
-                waf_hints.append("Sucuri")
-            if "x-fw" in str(resp.headers).lower():
-                waf_hints.append("Wordfence")
-            if waf_hints:
-                self.console.print(f"[{THEME['warn']}]  {self.s.get('waf_hint', '⚡ WAF hint')}: {', '.join(waf_hints)}[/]")
-                results.append(f"WAF_HINTS: {', '.join(waf_hints)}")
-            else:
-                results.append("WAF_HINTS: none detected from headers (AI should verify)")
-
-        except Exception as e:
-            results.append(f"SITE_INFO_ERROR: {e}")
-
-        # ── 사이트 크롤링 → 후보 URL 수집 (AI가 직접 탐지) ──────────
-        self.console.print(f"[{THEME['dim']}]{self.s.get('page_crawling', '🔍 Crawling page...')}[/]")
-        candidate_urls: list[str] = []
-        try:
-            import httpx as _hx2, re as _re
-            from urllib.parse import urlparse, parse_qs
-
-            _STATIC_EXT = {
-                ".css", ".js", ".ts", ".jsx", ".tsx", ".map",
-                ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".avif",
-                ".woff", ".woff2", ".ttf", ".eot", ".otf",
-                ".pdf", ".zip", ".gz", ".tar", ".rar",
-                ".mp3", ".mp4", ".webm", ".ogg", ".wav",
-                ".xml", ".rss", ".atom",
+            _hdrs = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
             }
-            _CACHE_PARAMS = {"ver", "v", "version", "_", "t", "ts", "time",
-                             "cb", "cachebuster", "bust", "rev", "build", "hash"}
 
-            headers2 = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120"}
-            resp2 = _hx2.get(url, follow_redirects=True, timeout=10,
-                              headers=headers2, verify=False)
-            page = resp2.text
-            found_urls = _re.findall(
-                r'(?:href|action)=["\']([^"\'<>\s]+)["\']', page, _re.IGNORECASE
+            # ── 1. 홈페이지 수집 ─────────────────────────────────────
+            resp = _hx.get(url, headers=_hdrs, follow_redirects=True, timeout=12, verify=False)
+            page = resp.text
+            base_domain = urlparse(resp.url).scheme + "://" + urlparse(resp.url).netloc
+
+            # 헤더 전체
+            all_headers = dict(resp.headers)
+            results.append(
+                f"=== HTTP_RESPONSE ===\n"
+                f"url: {resp.url}\n"
+                f"status: {resp.status_code}\n"
+                f"headers: {all_headers}\n"
+                f"content_length: {len(page)}"
             )
-            base = url.rstrip("/")
-            base_domain = base.split("/")[0] + "//" + base.split("/")[2]
 
-            for fu in found_urls:
-                if fu.startswith("http"):
-                    full = fu
-                elif fu.startswith("/"):
-                    full = base_domain + fu
-                elif fu.startswith("?"):
-                    full = base + fu
-                else:
-                    full = base + "/" + fu
+            # ── 2. 기술 스택 힌트 (헤더 기반) ───────────────────────
+            tech_hints = []
+            h = str(all_headers).lower()
+            p = page.lower()[:3000]
+            for sig, name in [
+                ("x-powered-by", all_headers.get("x-powered-by", "")),
+                ("cf-ray", "Cloudflare" if "cf-ray" in h else ""),
+                ("x-sucuri", "Sucuri WAF" if "x-sucuri" in h or "sucuri" in p else ""),
+                ("x-fw-", "Wordfence" if "x-fw-" in h else ""),
+                ("wordpress", "WordPress" if "wp-content" in p or "wp-json" in p else ""),
+                ("drupal", "Drupal" if "drupal" in p else ""),
+                ("joomla", "Joomla" if "joomla" in p else ""),
+                ("laravel", "Laravel" if "laravel_session" in h or "laravel" in p else ""),
+                ("django", "Django" if "csrfmiddlewaretoken" in p else ""),
+                ("asp.net", "ASP.NET" if "asp.net" in h or "__viewstate" in p else ""),
+            ]:
+                if name:
+                    tech_hints.append(name)
+            if tech_hints:
+                results.append(f"=== TECH_STACK ===\n{', '.join(t for t in tech_hints if t)}")
 
-                if "?" not in full or "=" not in full:
-                    continue
+            # ── 3. 전체 링크 수집 (파라미터 유무 무관) ───────────────
+            _STATIC_EXT = {".css",".js",".png",".jpg",".jpeg",".gif",".svg",
+                           ".ico",".woff",".woff2",".ttf",".eot",".pdf",
+                           ".zip",".mp4",".webm",".map"}
+            all_links: list[str] = []
+            for href in _re.findall(r'(?:href|action|src)=["\']([^"\'<>\s]+)["\']', page, _re.I):
+                full = urljoin(str(resp.url), href)
                 if base_domain not in full:
                     continue
-
-                parsed = urlparse(full)
-                path_no_qs = parsed.path.lower()
-                ext = ""
-                if "." in path_no_qs.split("/")[-1]:
-                    ext = "." + path_no_qs.rsplit(".", 1)[-1]
+                ext = "." + full.split("?")[0].rsplit(".", 1)[-1].lower() if "." in full.split("?")[0].split("/")[-1] else ""
                 if ext in _STATIC_EXT:
                     continue
+                all_links.append(full)
+            all_links = list(dict.fromkeys(all_links))[:40]
 
-                qs = parse_qs(parsed.query)
-                real_params = {k for k in qs if k.lower() not in _CACHE_PARAMS}
-                if not real_params:
-                    continue
+            param_links = [l for l in all_links if "?" in l and "=" in l]
+            no_param_links = [l for l in all_links if "?" not in l]
 
-                candidate_urls.append(full)
+            results.append(
+                f"=== ALL_LINKS ({len(all_links)} total) ===\n"
+                + "\n".join(f"  {l}" for l in all_links[:30])
+            )
+            if param_links:
+                results.append(
+                    f"=== PARAM_URLS ({len(param_links)}) ===\n"
+                    + "\n".join(f"  {l}" for l in param_links)
+                )
 
-            candidate_urls = list(dict.fromkeys(candidate_urls))[:15]
+            # ── 4. HTML 폼 전체 수집 ─────────────────────────────────
+            forms_raw = _re.findall(
+                r'<form[^>]*>(.*?)</form>', page, _re.DOTALL | _re.I
+            )
+            if forms_raw:
+                form_summary = []
+                for fi, frm in enumerate(forms_raw[:8]):
+                    action = (_re.search(r'action=["\']([^"\']+)["\']', frm, _re.I) or [None, ""])[1]
+                    method = (_re.search(r'method=["\']([^"\']+)["\']', frm, _re.I) or [None, "GET"])[1]
+                    inputs = _re.findall(r'<input[^>]+>', frm, _re.I)
+                    input_names = [
+                        (_re.search(r'name=["\']([^"\']+)["\']', inp, _re.I) or [None, "?"])[1]
+                        for inp in inputs
+                    ]
+                    form_action_full = urljoin(str(resp.url), action) if action else str(resp.url)
+                    form_summary.append(
+                        f"  form[{fi}]: action={form_action_full} method={method.upper()} "
+                        f"inputs={input_names}"
+                    )
+                results.append(
+                    f"=== HTML_FORMS ({len(forms_raw)}) ===\n" + "\n".join(form_summary)
+                )
+
+            # ── 5. API / JS 엔드포인트 힌트 ──────────────────────────
+            api_hints = _re.findall(
+                r'["\'](/(?:api|v\d|graphql|rest|ajax|json|data|auth|user|login|admin)[^"\'<>\s]*)["\']',
+                page, _re.I
+            )
+            api_hints = list(dict.fromkeys(api_hints))[:20]
+            if api_hints:
+                results.append(
+                    f"=== API_ENDPOINTS_HINT ({len(api_hints)}) ===\n"
+                    + "\n".join(f"  {base_domain}{p}" for p in api_hints)
+                )
+
+            # ── 6. HTML 주석 (정보 누출 가능성) ─────────────────────
+            comments = _re.findall(r'<!--(.*?)-->', page, _re.DOTALL)
+            useful_comments = [c.strip() for c in comments if len(c.strip()) > 10][:5]
+            if useful_comments:
+                results.append(
+                    "=== HTML_COMMENTS ===\n"
+                    + "\n".join(f"  {c[:200]}" for c in useful_comments)
+                )
+
+            # ── 7. robots.txt / sitemap ───────────────────────────────
+            for path in ["/robots.txt", "/sitemap.xml"]:
+                try:
+                    r2 = _hx.get(base_domain + path, headers=_hdrs, timeout=5, verify=False)
+                    if r2.status_code == 200 and r2.text.strip():
+                        results.append(
+                            f"=== {path.strip('/')} ===\n{r2.text[:800]}"
+                        )
+                except Exception:
+                    pass
+
+            # 화면 표시 요약
+            self.console.print(
+                f"[{THEME['success']}]  links={len(all_links)}  "
+                f"forms={len(forms_raw)}  "
+                f"param_urls={len(param_links)}  "
+                f"api_hints={len(api_hints)}[/]"
+            )
+            if tech_hints:
+                self.console.print(
+                    f"[{THEME['warn']}]  stack: {', '.join(t for t in tech_hints if t)}[/]"
+                )
 
         except Exception as e:
-            results.append(f"CRAWL_ERROR: {e}")
-
-        if candidate_urls:
-            self.console.print(
-                f"[{THEME['success']}]{self.s.get('params_found', '✓ 파라미터 발견')}: "
-                f"{len(candidate_urls)}개[/]"
-            )
-            for u in candidate_urls[:5]:
-                self.console.print(f"  [{THEME['dim']}]{u}[/]")
-
-            results.append(
-                "CANDIDATE_URLS (real backend pages with parameters — AI must probe these):\n"
-                + "\n".join(f"  - {u}" for u in candidate_urls)
-            )
-            results.append(
-                "AGENT_INSTRUCTION:\n"
-                "  These are candidate URLs. You must now:\n"
-                "  1. Write Python code to probe each URL for SQL injection\n"
-                "  2. Test: single-quote, boolean (1=1 vs 1=2), error patterns\n"
-                "  3. Only report confirmed or likely vulnerable targets\n"
-                "  4. Do NOT assume vulnerability — test with real HTTP requests\n"
-                "  5. If WAF blocking: adapt payload encoding in your Python code"
-            )
-        else:
-            results.append(
-                "CANDIDATE_URLS: none found on homepage\n"
-                "AGENT_INSTRUCTION:\n"
-                "  Write Python to crawl deeper:\n"
-                f"  - Fetch {url} and extract all href/action/src links\n"
-                "  - Look for .php/.asp/.aspx/.do pages with query params\n"
-                "  - Check sitemap.xml and robots.txt for more paths"
-            )
+            results.append(f"RECON_ERROR: {e}")
 
         return "\n\n".join(results)
 

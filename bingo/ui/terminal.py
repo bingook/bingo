@@ -1133,9 +1133,9 @@ class BingoTerminal:
         import re, subprocess, tempfile, os
         from pathlib import Path
 
-        # 무한 재귀 방지
-        if _depth > 5:
-            self.console.print(f"[{THEME['warn']}]⚠ Agent 재귀 깊이 초과 — 강제 중단[/]")
+        # 무한 재귀 방지 (15루프 * 깊이 3 = 45 최대)
+        if _depth > 15:
+            self.console.print(f"[{THEME['warn']}]⚠ Agent 재귀 깊이 초과(15) — 강제 중단[/]")
             return
 
         # ── SKILL_LOAD: 에이전트 자율 스킬 로드 ─────────────────────────

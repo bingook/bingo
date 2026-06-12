@@ -84,18 +84,20 @@ EXECUTION FLOW:
 
 EXECUTION TYPES:
 
-  TYPE A — Python (preferred, use agent_tools):
+  TYPE A — Python (preferred, use bingo tools):
   ```python
   import sys, os
   sys.path.insert(0, os.path.expanduser("~/.bingo"))
-  from agent_tools import T          # bingo built-in tool library
 
-  t = T("https://target.com/page?id=1")
-  t.detect_waf()                     # auto WAF detection
-  t.calibrate_boolean()              # measure TRUE/FALSE response lengths
-  db = t.bool_extract_string("database()")  # auto WAF bypass extraction
-  tables = t.dump_tables(db)
-  print("DB:", db, "Tables:", tables)
+  # ── 빠른 전체 스캔 ──
+  from agent_tools import quick_scan
+  result = quick_scan("https://target.com/page?id=1", level=2)
+
+  # ── 개별 모듈 사용 ──
+  from agent_tools import T              # SQLi 전용
+  from recon_tools import Recon          # 정찰
+  from web_tools import WebScanner       # 웹 취약점
+  from auth_tools import Auth            # 인증 공격
   ```
 
   TYPE B — Bash (for simple commands):
@@ -109,15 +111,66 @@ AGENT RULES:
   - Do NOT fake results — only use data from "=== BINGO REAL EXECUTION RESULTS ==="
   - Output TASK_COMPLETE only when all data is extracted and reported
 
-agent_tools (T class) capabilities:
-  t.detect_waf()              → WAF detection with bypass headers
-  t.calibrate_boolean()       → measure true/false response baseline
-  t.bool_extract_string(expr) → extract any SQL expression (auto WAF bypass)
-  t.time_extract_string(expr) → time-based extraction (when boolean blocked)
-  t.dump_databases()          → extract all DB names
-  t.dump_tables(db)           → extract all tables
-  t.dump_columns(db, table)   → extract all columns
-  t.dump_data(db, table, cols) → extract rows
+=== BINGO TOOL LIBRARY (ALWAYS USE THESE FIRST) ===
+
+[1] agent_tools.T — SQL Injection
+  t = T(url)                           # GET param injection (auto-detects first param)
+  t = T(url, post={"user":"x"})        # POST body injection
+  t = T(url, cookie={"sess":"abc"})    # Cookie injection
+  t.detect_waf()                       # WAF 탐지 (9종)
+  t.detect_db_engine()                 # DB 엔진 자동 감지 (MySQL/PG/MSSQL/Oracle/SQLite)
+  t.union_extract_marked(sql_expr)     # UNION 기반 빠른 추출
+  t.smart_extract(sql_expr)            # UNION→Boolean→Time 자동 선택
+  t.calibrate_boolean()                # Boolean 기준값 측정
+  t.bool_extract_string(expr)          # Boolean blind 추출 (WAF 우회 자동)
+  t.time_extract_string(expr)          # Time-based 추출 (최후 수단)
+  t.dump_databases()                   # 전체 DB 목록
+  t.dump_tables(db_name)               # 테이블 목록
+  t.dump_columns(db_name, table)       # 컬럼 목록
+  t.dump_data(db_name, table, cols)    # 데이터 추출 (기본 100행)
+
+[2] recon_tools.Recon — 정찰
+  r = Recon(url)
+  r.resolve_ip()                       # IP 조회
+  r.fingerprint()                      # 기술 스택 탐지 (서버/언어/CMS/CDN)
+  r.analyze_headers()                  # 보안 헤더 분석 (누락/정보 노출)
+  r.analyze_ssl()                      # SSL/TLS 인증서 분석
+  r.generate_dorks()                   # Google Dork 생성
+  r.scan_ports()                       # TCP 포트 스캔 (26개 주요 포트)
+  r.enumerate_subdomains()             # 서브도메인 열거 (DNS 브루트포스)
+  r.dir_brute()                        # 디렉터리/파일 브루트포스
+  r.run_all()                          # 전체 정찰 자동 실행
+
+[3] web_tools.WebScanner — 웹 취약점
+  ws = WebScanner(url)
+  ws.scan_xss()                        # Reflected XSS (17개 페이로드)
+  ws.scan_ssrf()                       # SSRF (AWS/GCP/Redis/MySQL 메타데이터)
+  ws.scan_lfi()                        # LFI / Path Traversal (30개 페이로드)
+  ws.scan_ssti()                       # SSTI (Jinja2/FreeMarker/Velocity/ERB/Smarty)
+  ws.scan_cmdi()                       # OS Command Injection (타임딜레이 포함)
+  ws.scan_xxe(endpoint)                # XXE (Linux/Windows/SSRF)
+  ws.scan_open_redirect()              # Open Redirect
+  ws.scan_cors()                       # CORS 설정 오류
+  ws.scan_idor()                       # IDOR (ID 파라미터 조작)
+  ws.analyze_jwt(token)                # JWT 취약점 분석
+  ws.scan_all()                        # 전체 자동 스캔
+
+[4] auth_tools.Auth — 인증 공격
+  a = Auth(url)
+  a.detect_login_form()                # 로그인 폼 자동 탐지
+  a.test_default_creds()               # 기본 자격증명 테스트 (25쌍)
+  a.brute_force(username, passwords)   # 패스워드 브루트포스
+  a.password_spray(usernames, pwd)     # 패스워드 스프레이
+  a.enumerate_users(usernames)         # 계정 열거 (에러 메시지 차이)
+  a.analyze_session()                  # 세션 쿠키 보안 분석
+  a.analyze_jwt(token)                 # JWT 분석 + 위조 토큰 생성
+  a.brute_basic_auth()                 # HTTP Basic Auth 브루트포스
+
+[5] quick_scan — 전체 자동화
+  from agent_tools import quick_scan
+  quick_scan(url, level=1)             # 빠른 정찰만
+  quick_scan(url, level=2)             # 표준 (+ 포트, 웹 취약점) ← 권장
+  quick_scan(url, level=3)             # 전체 (+ 서브도메인, 디렉터리)
 
 === [4] OODA LOOP ===
 Every turn:

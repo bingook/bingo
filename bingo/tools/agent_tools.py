@@ -661,14 +661,159 @@ class T:
 
 
 def install_tools():
-    """~/.bingo/agent_tools.py 에 복사해서 AI 스크립트에서 import 가능하게 함."""
+    """~/.bingo/ 에 모든 툴 모듈 복사 — AI 스크립트에서 import 가능하게 함."""
     import shutil, os
-    src = __file__
-    dst_dir = os.path.expanduser("~/.bingo")
-    os.makedirs(dst_dir, exist_ok=True)
-    dst = os.path.join(dst_dir, "agent_tools.py")
-    shutil.copy2(src, dst)
-    print(f"[OK] agent_tools installed → {dst}")
+    from pathlib import Path
+    tools_dir = Path(__file__).parent
+    dst_dir = Path.home() / ".bingo"
+    dst_dir.mkdir(exist_ok=True)
+
+    for module in ["agent_tools.py", "recon_tools.py", "web_tools.py", "auth_tools.py"]:
+        src = tools_dir / module
+        if src.exists():
+            shutil.copy2(src, dst_dir / module)
+            print(f"[OK] {module} → {dst_dir / module}")
+    print(f"[OK] All bingo tools installed in {dst_dir}")
+
+
+# ── 전체 자동 스캔 ────────────────────────────────────────────────
+def quick_scan(target_url: str, level: int = 2) -> dict:
+    """
+    bingo 풀 자동 스캔.
+
+    level:
+      1 = 빠른 정찰만 (기술 스택, 헤더, SSL)
+      2 = 표준 (+ 포트 스캔, 웹 취약점) [기본]
+      3 = 전체 (+ 서브도메인, 디렉터리 브루트)
+
+    사용법:
+        from agent_tools import quick_scan
+        result = quick_scan("https://target.com/page?id=1")
+    """
+    import sys, os
+    sys.path.insert(0, os.path.expanduser("~/.bingo"))
+
+    report: dict = {"target": target_url, "level": level, "findings": {}}
+
+    # 1) 정찰
+    try:
+        from recon_tools import Recon
+        r = Recon(target_url)
+        r.resolve_ip()
+        r.fingerprint()
+        r.analyze_headers()
+        r.analyze_ssl()
+        r.generate_dorks()
+        if level >= 2:
+            r.scan_ports()
+        if level >= 3:
+            r.enumerate_subdomains()
+            r.dir_brute()
+        report["findings"]["recon"] = r.findings
+    except ImportError:
+        print("[WARN] recon_tools not found — skipping recon")
+
+    # 2) SQLi
+    t = T(target_url)
+    sqli_results = {"waf": t.detect_waf(), "injectable": False}
+    if t.detect_db_engine():
+        # UNION 시도
+        db_name = t.union_extract_marked("database()")
+        if db_name:
+            sqli_results["injectable"] = True
+            sqli_results["method"] = "UNION"
+            sqli_results["database"] = db_name
+        else:
+            # Boolean 시도
+            if t.calibrate_boolean():
+                db_name = t.bool_extract_string("database()")
+                sqli_results["injectable"] = True
+                sqli_results["method"] = "Boolean Blind"
+                sqli_results["database"] = db_name
+    report["findings"]["sqli"] = sqli_results
+
+    # 3) 웹 취약점
+    if level >= 2:
+        try:
+            from web_tools import WebScanner
+            ws = WebScanner(target_url)
+            ws.scan_cors()
+            ws.scan_open_redirect()
+            if ws.params:
+                ws.scan_xss()
+                ws.scan_ssrf()
+                ws.scan_lfi()
+                ws.scan_ssti()
+                ws.scan_cmdi()
+            report["findings"]["web"] = ws.findings
+        except ImportError:
+            print("[WARN] web_tools not found — skipping web scan")
+
+    # 4) 인증
+    try:
+        from auth_tools import Auth
+        a = Auth(target_url)
+        form = a.detect_login_form()
+        if form:
+            a.test_default_creds(form)
+            a.analyze_session()
+            report["findings"]["auth"] = a.findings
+    except ImportError:
+        print("[WARN] auth_tools not found — skipping auth scan")
+
+    # 요약 출력
+    _print_report(report)
+    return report
+
+
+def _print_report(report: dict) -> None:
+    """스캔 결과 요약 출력."""
+    print(f"\n{'='*60}")
+    print(f"  BINGO SCAN REPORT — {report['target']}")
+    print(f"{'='*60}")
+
+    findings = report.get("findings", {})
+
+    # Recon
+    recon = findings.get("recon", {})
+    if recon:
+        print(f"\n📡 RECON")
+        print(f"  IP:      {recon.get('ip', 'N/A')}")
+        print(f"  Techs:   {', '.join(recon.get('technologies', []))}")
+        print(f"  Ports:   {recon.get('open_ports', [])}")
+        subs = recon.get("subdomains", [])
+        if subs:
+            print(f"  Subdomains ({len(subs)}): {', '.join(subs[:5])}")
+
+    # SQLi
+    sqli = findings.get("sqli", {})
+    if sqli:
+        print(f"\n💉 SQL INJECTION")
+        if sqli.get("injectable"):
+            print(f"  🔴 VULNERABLE — Method: {sqli.get('method')}")
+            print(f"  Database: {sqli.get('database', 'N/A')}")
+        else:
+            print(f"  ✅ Not injectable (or not detected)")
+        if sqli.get("waf"):
+            print(f"  WAF: {sqli['waf']}")
+
+    # Web vulns
+    web = findings.get("web", [])
+    if web:
+        print(f"\n🌐 WEB VULNERABILITIES ({len(web)} found)")
+        for f in web:
+            icon = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🔵"}.get(f["severity"], "⚪")
+            print(f"  {icon} {f['type']}: {f['detail'][:80]}")
+
+    # Auth
+    auth = findings.get("auth", [])
+    if auth:
+        print(f"\n🔑 AUTH ISSUES ({len(auth)} found)")
+        for f in auth:
+            icon = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🔵"}.get(f["severity"], "⚪")
+            print(f"  {icon} {f['type']}: {f['detail'][:80]}")
+
+    print(f"\n{'='*60}\n")
 
 
 if __name__ == "__main__":

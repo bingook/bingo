@@ -1196,14 +1196,15 @@ class BingoTerminal:
             self.console.print(f"[{THEME['success']}]{self.s['waf_none']}[/]")
 
     def _run_code_blocks(self, response: str, _loaded_skills: set) -> list[str]:
-        """AI 응답에서 Python/Bash 블록 추출 후 실행, 결과 텍스트 리스트 반환."""
-        import re, subprocess, tempfile, os
+        """AI 응답에서 Python/Bash 블록 추출 후 병렬 실행.
+        타임아웃 없음 — 성공할 때까지 실행. 모든 블록 동시 실행 후 결과 수집.
+        """
+        import re, subprocess, tempfile, os, threading
         from pathlib import Path
         from rich.markup import escape as _resc
 
-        results_text: list[str] = []
         if "```" not in response:
-            return results_text
+            return []
 
         # ── agent_tools 자동 설치 (최초 1회) ─────────────────────────
         _tools_dst = Path.home() / ".bingo" / "agent_tools.py"
@@ -1217,7 +1218,12 @@ class BingoTerminal:
             except Exception:
                 pass
 
-        # ── Python 블록 실행 ───────────────────────────────────────────
+        tmp_dir = Path(tempfile.gettempdir()) / "bingo_agent"
+        tmp_dir.mkdir(exist_ok=True)
+
+        # ── 실행할 작업 목록 수집 ─────────────────────────────────────
+        tasks: list[dict] = []
+
         python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
         for i, block in enumerate(python_blocks):
             code = block.strip()
@@ -1229,55 +1235,18 @@ class BingoTerminal:
             )
             if "agent_tools" not in code and "from agent_tools" not in code:
                 code = tools_header + code
-            tmp_dir = Path(tempfile.gettempdir()) / "bingo_agent"
-            tmp_dir.mkdir(exist_ok=True)
             script_path = tmp_dir / f"agent_script_{i}.py"
             script_path.write_text(code, encoding="utf-8")
-            preview = " | ".join(
-                l.strip() for l in code.splitlines()[:3] if l.strip()
-            )[:80]
-            self.console.print(
-                f"\n[{THEME['secondary']}]▶ {self.s.get('python_exec', 'Python execution')}:[/] "
-                f"[{THEME['dim']}]{preview}...[/]"
-            )
-            try:
-                proc = subprocess.run(
-                    ["python3", str(script_path)],
-                    capture_output=True, text=True, timeout=120,
-                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-                )
-                output = (proc.stdout or "") + (proc.stderr or "")
-                if output.strip():
-                    preview_out = "\n".join(output.strip().splitlines()[:60])
-                    try:
-                        self.console.print(f"[{THEME['dim']}]{_resc(preview_out)}[/]")
-                    except Exception:
-                        self.console.out(preview_out)
-                    results_text.append(
-                        f"=== PYTHON EXECUTION (script_{i}) ===\n{output.strip()}\n"
-                        f"=== EXIT: {proc.returncode} ==="
-                    )
-                else:
-                    results_text.append(
-                        f"=== PYTHON EXECUTION (script_{i}) ===\n"
-                        f"(no output, exit={proc.returncode})"
-                    )
-            except subprocess.TimeoutExpired:
-                self.console.print(f"[{THEME['warn']}]  ⏱ timeout (120s)[/]")
-                results_text.append(
-                    f"=== PYTHON EXECUTION (script_{i}) ===\n"
-                    "(timed out after 120s — AI should write a faster/smaller script)"
-                )
-            except Exception as e:
-                self.console.print(f"[{THEME['error']}]  python exec error:[/] {_resc(str(e))}")
+            preview = " | ".join(l.strip() for l in code.splitlines()[:3] if l.strip())[:80]
+            tasks.append({"type": "python", "idx": i, "path": str(script_path), "preview": preview})
 
-        # ── Bash 블록 실행 ─────────────────────────────────────────────
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
         _BASH_ALLOWED = {
             "curl", "nmap", "nikto", "ffuf", "gobuster", "nuclei",
             "httpx", "subfinder", "amass", "whatweb", "john", "hashcat",
             "python3", "python",
         }
+        history_text = " ".join(m.content for m in self.history if m.role == "user")
         for block in bash_blocks:
             import shlex
             joined = block.strip().replace("\\\n", " ")
@@ -1290,42 +1259,98 @@ class BingoTerminal:
                 parts = shlex.split(cmd_line)
             except Exception:
                 continue
-            if not parts:
+            if not parts or parts[0].split("/")[-1] not in _BASH_ALLOWED:
                 continue
-            if parts[0].split("/")[-1] not in _BASH_ALLOWED:
-                continue
-            history_text = " ".join(m.content for m in self.history if m.role == "user")
             if f"REAL EXECUTION: {cmd_line[:40]}" in history_text:
                 continue
-            self.console.print(
-                f"\n[{THEME['secondary']}]▶ {self.s['exec_running']}:[/] "
-                f"[{THEME['dim']}]{cmd_line[:100]}[/]"
-            )
-            try:
-                proc = subprocess.run(
-                    cmd_line, shell=True, capture_output=True,
-                    text=True, timeout=180
-                )
-                output = (proc.stdout or "") + (proc.stderr or "")
-                if output.strip():
-                    preview = "\n".join(output.strip().splitlines()[:50])
-                    self.console.print(f"[{THEME['dim']}]{_resc(preview)}[/]")
-                    results_text.append(
-                        f"=== REAL EXECUTION: {cmd_line[:80]} ===\n{output.strip()}\n"
-                        f"=== EXIT CODE: {proc.returncode} ==="
-                    )
-                else:
-                    results_text.append(
-                        f"=== REAL EXECUTION: {cmd_line[:80]} ===\n"
-                        f"(no output, exit code {proc.returncode})"
-                    )
-            except subprocess.TimeoutExpired:
-                self.console.print(f"[{THEME['warn']}]  ⏱ timeout (180s)[/]")
-                results_text.append(f"=== REAL EXECUTION: {cmd_line[:80]} ===\n(timed out)")
-            except Exception as e:
-                self.console.print(f"[{THEME['error']}]  exec error:[/] {_resc(str(e))}")
+            tasks.append({"type": "bash", "cmd": cmd_line})
 
-        return results_text
+        if not tasks:
+            return []
+
+        # ── 병렬 실행 ────────────────────────────────────────────────
+        results_text: list[str] = [""] * len(tasks)
+        _lock = threading.Lock()
+
+        def _run_task(task: dict, slot: int) -> None:
+            try:
+                if task["type"] == "python":
+                    with _lock:
+                        self.console.print(
+                            f"\n[{THEME['secondary']}]▶ {self.s.get('python_exec', 'Python execution')} "
+                            f"[#{task['idx']+1}]:[/] [{THEME['dim']}]{task['preview']}...[/]"
+                        )
+                    proc = subprocess.Popen(
+                        ["python3", task["path"]],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                    )
+                    stdout, stderr = proc.communicate()
+                    output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
+                    if output.strip():
+                        preview_out = "\n".join(output.strip().splitlines()[:60])
+                        with _lock:
+                            try:
+                                self.console.print(f"[{THEME['dim']}]{_resc(preview_out)}[/]")
+                            except Exception:
+                                self.console.out(preview_out)
+                        results_text[slot] = (
+                            f"=== PYTHON EXECUTION (script_{task['idx']}) ===\n"
+                            f"{output.strip()}\n=== EXIT: {proc.returncode} ==="
+                        )
+                    else:
+                        results_text[slot] = (
+                            f"=== PYTHON EXECUTION (script_{task['idx']}) ===\n"
+                            f"(no output, exit={proc.returncode})"
+                        )
+
+                else:  # bash
+                    with _lock:
+                        self.console.print(
+                            f"\n[{THEME['secondary']}]▶ {self.s['exec_running']}:[/] "
+                            f"[{THEME['dim']}]{task['cmd'][:100]}[/]"
+                        )
+                    proc = subprocess.Popen(
+                        task["cmd"], shell=True,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    )
+                    stdout, stderr = proc.communicate()
+                    output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
+                    if output.strip():
+                        preview_out = "\n".join(output.strip().splitlines()[:50])
+                        with _lock:
+                            self.console.print(f"[{THEME['dim']}]{_resc(preview_out)}[/]")
+                        results_text[slot] = (
+                            f"=== REAL EXECUTION: {task['cmd'][:80]} ===\n"
+                            f"{output.strip()}\n=== EXIT CODE: {proc.returncode} ==="
+                        )
+                    else:
+                        results_text[slot] = (
+                            f"=== REAL EXECUTION: {task['cmd'][:80]} ===\n"
+                            f"(no output, exit code {proc.returncode})"
+                        )
+            except Exception as e:
+                with _lock:
+                    self.console.print(f"[{THEME['error']}]  exec error:[/] {_resc(str(e))}")
+                results_text[slot] = f"=== EXEC ERROR: {e} ==="
+
+        threads = [
+            threading.Thread(target=_run_task, args=(task, i), daemon=True)
+            for i, task in enumerate(tasks)
+        ]
+        for t in threads:
+            t.start()
+
+        # 모든 스크립트 완료까지 대기 (타임아웃 없음)
+        _s = self.s
+        self.console.print(
+            f"[{THEME['dim']}]⏳ {_s.get('exec_parallel', 'Running')} "
+            f"{len(threads)} {_s.get('exec_scripts', 'scripts in parallel')}...[/]"
+        )
+        for t in threads:
+            t.join()
+
+        return [r for r in results_text if r]
 
     def _execute_ai_commands(
         self,

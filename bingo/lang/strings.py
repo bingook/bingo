@@ -448,6 +448,8 @@ _STRINGS = {
                             "zh": "链接={links}  表单={forms}  参数URL={params}  API={api}",
                             "en": "links={links}  forms={forms}  param_urls={params}  api={api}"},
     "recon_stack":         {"ko": "기술 스택",                "zh": "技术栈",               "en": "tech stack"},
+    "exec_parallel":       {"ko": "병렬 실행 중",             "zh": "并行执行中",            "en": "Running"},
+    "exec_scripts":        {"ko": "개 스크립트 동시 실행",    "zh": "个脚本并行",            "en": "scripts in parallel"},
 }
 
 

@@ -1477,55 +1477,48 @@ class BingoTerminal:
                 self._suggest_next_steps()
                 break
 
-            # Stuck 감지
+            # Stuck 감지 — 최근 5루프 중 3개 동일하면 전략 전환, 5개 전부 동일하면 보고서 후 종료
             _result_hash = str(hash(followup_response[:500]))
             self._recent_results.append(_result_hash)
             if len(self._recent_results) > 5:
                 self._recent_results.pop(0)
 
-            _is_stuck = (
-                len(self._recent_results) >= 3
-                and len(set(self._recent_results[-3:])) == 1
-            )
-            if _is_stuck:
+            _last5 = self._recent_results
+            _is_hard_stuck = len(_last5) >= 5 and len(set(_last5)) == 1
+            _is_soft_stuck = len(_last5) >= 3 and len(set(_last5[-3:])) == 1
+
+            if _is_hard_stuck:
+                # 5루프 전부 동일 → 더 이상 진전 불가, 보고서 생성 후 종료
+                self.console.print(
+                    f"\n[{THEME['warn']}]⚠ {_s.get('agent_stuck', 'Agent stuck — generating report')}...[/]\n"
+                )
+                self._auto_generate_report()
+                self._suggest_next_steps()
+                self._stuck_count = 0
+                self._recent_results.clear()
+                break
+            elif _is_soft_stuck:
                 self._stuck_count += 1
-                if self._stuck_count >= 2:
-                    self.console.print(
-                        f"\n[{THEME['warn']}]⚠ {_s.get('agent_stuck', 'Agent stuck — generating report')}...[/]\n"
+                # 전략 전환 요청 — 루프는 계속
+                self.history.append(Message(
+                    role="user",
+                    content=(
+                        "[STRATEGY CHANGE REQUIRED]\n"
+                        "The last 3 loops produced identical results — you are STUCK.\n"
+                        "You MUST switch to a completely different attack vector:\n"
+                        "- If WAF blocked all SQL: try Time-based, different param, or header injection\n"
+                        "- If no SQLi: pivot to XSS, LFI, IDOR, or auth bypass\n"
+                        "- If stuck on extraction: try a shorter query or different encoding\n"
+                        "Make a decisive pivot NOW. Do NOT repeat the same payload."
                     )
-                    self._auto_generate_report()
-                    self._suggest_next_steps()
-                    self._stuck_count = 0
-                    self._exec_loop_count = 0
-                    break
-                else:
-                    self.history.append(Message(
-                        role="user",
-                        content=(
-                            "[STRATEGY CHANGE REQUIRED]\n"
-                            "The last 3 loops produced identical results — you are STUCK.\n"
-                            "You MUST switch to a completely different attack vector:\n"
-                            "- If WAF blocked all SQL: try Time-based, different param, or header injection\n"
-                            "- If no SQLi: pivot to XSS, LFI, IDOR, or auth bypass\n"
-                            "- If stuck on extraction: try a shorter query or different encoding\n"
-                            "Make a decisive pivot NOW. Do NOT repeat the same payload."
-                        )
-                    ))
+                ))
             else:
                 self._stuck_count = 0
 
-            # 최대 루프 체크
-            if self._exec_loop_count >= 30:
-                self._exec_loop_count = 0
-                self.console.print(f"[{THEME['warn']}]⚠ {_s.get('agent_max_loop', 'Agent max loops reached')}[/]")
-                self._auto_generate_report()
-                self._suggest_next_steps()
-                break
-
-            # 루프 상태 표시
+            # 루프 상태 표시 (횟수 제한 없음 — AI 자율 완료 판단)
             self.console.print(
                 f"[{THEME['dim']}]🔄 {_s.get('agent_loop', 'Agent loop')} "
-                f"{self._exec_loop_count}/30  "
+                f"#{self._exec_loop_count}  "
                 f"({_s.get('agent_ctrl_c', 'Ctrl+C to stop')})[/]"
             )
 

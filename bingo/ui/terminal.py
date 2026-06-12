@@ -1501,6 +1501,15 @@ class BingoTerminal:
         ]
         recent_context = "\n---\n".join(last_ai_msgs[-2:])[:2000] if last_ai_msgs else ""
 
+        _s = self.s
+        _summary_label = _s.get("progress_summary", "Summary")
+        _options_label  = _s.get("next_steps_title", "Next Options")
+        _option_hint = {
+            "ko": "구체적인 bingo 입력 명령어",
+            "zh": "具体的 bingo 输入指令",
+            "en": "exact bingo input command",
+        }.get(_lang, "exact command")
+
         prompt_msg = Message(
             role="user",
             content=(
@@ -1511,11 +1520,11 @@ class BingoTerminal:
                 f"1. Write ONLY plain text. NO code blocks. NO markdown headers.\n"
                 f"2. Respond ENTIRELY in {_lang_label}.\n"
                 f"3. Output EXACTLY in this format:\n\n"
-                f"{'현황 요약' if _lang=='ko' else '进展摘要' if _lang=='zh' else 'Summary'}: [2 sentences]\n\n"
-                f"{'다음 선택지' if _lang=='ko' else '下一步选项' if _lang=='zh' else 'Next options'}:\n"
-                f"① [구체적인 입력 명령어 또는 지시]\n"
-                f"② [구체적인 입력 명령어 또는 지시]\n"
-                f"③ [구체적인 입력 명령어 또는 지시]"
+                f"{_summary_label}: [2 sentences max]\n\n"
+                f"{_options_label}:\n"
+                f"① [{_option_hint}]\n"
+                f"② [{_option_hint}]\n"
+                f"③ [{_option_hint}]"
             )
         )
 
@@ -1523,7 +1532,7 @@ class BingoTerminal:
         temp_messages = [self._get_system_message("")] + self.history[-10:] + [prompt_msg]
 
         self.console.print(Rule(
-            f"[bold cyan]{'💡 다음 선택지' if _lang=='ko' else '💡 下一步选项' if _lang=='zh' else '💡 Next Steps'}[/bold cyan]",
+            f"[bold cyan]💡 {_options_label}[/bold cyan]",
             style="cyan"
         ))
 

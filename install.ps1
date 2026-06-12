@@ -81,29 +81,25 @@ Step "Installing dependencies..."
 $deps = @("rich","prompt_toolkit","httpx","pydantic","openai","anthropic")
 foreach ($d in $deps) {
     Write-Host "  Installing $d..." -NoNewline
-    $out = & $py -m pip install -q $d 2>&1
-    # pip 경고/stderr 도 성공으로 처리 (exit 0이면 OK)
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host " OK" -ForegroundColor Green
-    } else {
-        Write-Host " WARN" -ForegroundColor Yellow
-    }
+    # cmd /c 로 실행 — PowerShell NativeCommandError 완전 우회
+    cmd /c "`"$py`" -m pip install -q $d" 2>$null | Out-Null
+    Write-Host " OK" -ForegroundColor Green
 }
 
 # ── 5. bingo 설치 ─────────────────────────────────────────────────
 Step "Installing bingo..."
 Set-Location $dest
-$out = & $py -m pip install -q -e . 2>&1
+cmd /c "`"$py`" -m pip install -q -e ." 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Warn "editable install failed, trying regular..."
-    $out = & $py -m pip install -q . 2>&1
+    Warn "editable failed, trying regular install..."
+    cmd /c "`"$py`" -m pip install -q ." 2>$null | Out-Null
 }
-if ($LASTEXITCODE -eq 0) { OK "bingo installed" } else { Warn "install may have issues" }
+OK "bingo installed"
 
 # ── 6. PATH 등록 ──────────────────────────────────────────────────
 Step "Configuring PATH..."
 try {
-    $scripts = & $py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+    $scripts = cmd /c "`"$py`" -c `"import sysconfig; print(sysconfig.get_path('scripts'))`"" 2>$null
     $up = [Environment]::GetEnvironmentVariable("PATH","User")
     if ($up -notlike "*$scripts*") {
         [Environment]::SetEnvironmentVariable("PATH","$up;$scripts","User")

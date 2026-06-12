@@ -477,13 +477,64 @@ class BingoTerminal:
             # AI 응답에 해시가 있으면 자동 크랙 알림
             self._notify_hashes_found(full_response)
 
+    @staticmethod
+    def _collapse_code_blocks(text: str) -> str:
+        """Python/bash 코드 블록을 접어서 한 줄 요약으로 교체.
+        Cursor처럼 '무엇을 하는지'만 보여주고 소스코드는 숨김.
+        """
+        import re
+
+        def _summarize_code(lang: str, code: str) -> str:
+            lines = [l.strip() for l in code.splitlines() if l.strip() and not l.strip().startswith("#")]
+            total = len(code.splitlines())
+
+            # 코드 의도 파악 (주요 키워드 기반)
+            code_lower = code.lower()
+            intent = ""
+            if "sql" in code_lower or "sqli" in code_lower or "injection" in code_lower:
+                intent = "SQLi 탐지"
+            elif "waf" in code_lower or "cloudflare" in code_lower or "firewall" in code_lower:
+                intent = "WAF 탐지"
+            elif "union" in code_lower or "information_schema" in code_lower:
+                intent = "DB 추출"
+            elif "database()" in code_lower or "table_name" in code_lower:
+                intent = "테이블/DB 열거"
+            elif "password" in code_lower or "passwd" in code_lower or "credential" in code_lower:
+                intent = "자격증명 추출"
+            elif "crawl" in code_lower or "href" in code_lower or "sitemap" in code_lower:
+                intent = "사이트 크롤링"
+            elif "httpx" in code_lower or "requests" in code_lower:
+                intent = "HTTP 요청"
+            elif "nmap" in code_lower or "socket" in code_lower or "port" in code_lower:
+                intent = "포트 스캔"
+            else:
+                # 첫 번째 의미있는 줄로 요약
+                intent = lines[0][:50] if lines else "스크립트"
+
+            icon = "🐍" if lang == "python" else "⚡"
+            return (
+                f"\n[dim]┌─ {icon} {lang.upper()} 스크립트 [{intent}] — {total}줄[/dim]\n"
+                f"[dim]│  {lines[0][:70] if lines else ''}[/dim]\n"
+                f"[dim]│  {lines[1][:70] if len(lines) > 1 else ''}[/dim]\n"
+                f"[dim]└─ ... (실행 대기 중)[/dim]\n"
+            )
+
+        # ```python ... ``` 또는 ```bash ... ``` 블록 치환
+        def replacer(m: re.Match) -> str:
+            lang = (m.group(1) or "").strip().lower() or "code"
+            code = m.group(2)
+            if lang in ("python", "py", "bash", "sh"):
+                return _summarize_code(lang if lang in ("python", "bash") else "python", code)
+            return m.group(0)  # 다른 언어는 그대로
+
+        return re.sub(r"```(\w*)\n(.*?)```", replacer, text, flags=re.DOTALL)
+
     def _stream_response(self, stream: Iterator[StreamChunk]) -> str:
         full = ""
 
         self.console.print(f"\n[{THEME['secondary']}]bingo[/] [{THEME['dim']}]▸[/]", end=" ")
 
-        # transient=True: 스트리밍 중 임시 표시 → 완료 후 사라짐
-        # 완료 후 Markdown 렌더링 한 번만 출력 (중복 방지)
+        # 스트리밍 중: 코드 블록 접힌 상태로 실시간 표시
         with Live(console=self.console, refresh_per_second=20, transient=True) as live:
             buf = Text()
             for chunk in stream:
@@ -493,20 +544,23 @@ class BingoTerminal:
                     return ""
                 if chunk.text:
                     full += chunk.text
-                    # AI 내부 독백 실시간 필터 적용
                     visible = self._filter_ai_monologue(full)
-                    buf = Text(visible, style="white")
+                    # 스트리밍 중에는 코드 블록 접어서 표시
+                    collapsed = self._collapse_code_blocks(visible)
+                    buf = Text.from_markup(collapsed) if "[dim]" in collapsed else Text(collapsed, style="white")
                     live.update(buf)
 
-        # 최종 출력: 마크다운 or 일반 텍스트 — 단 한 번만
+        # 최종 출력: 텍스트 부분은 Markdown, 코드 블록은 접힌 요약으로 표시
         final = self._filter_ai_monologue(full)
+        collapsed_final = self._collapse_code_blocks(final)
+
         self.console.print()
-        if "```" in final or "**" in final or "# " in final:
-            self.console.print(Markdown(final))
-        else:
-            self.console.print(final)
+        try:
+            self.console.print(Markdown(collapsed_final) if ("**" in collapsed_final or "# " in collapsed_final) else collapsed_final)
+        except Exception:
+            self.console.print(collapsed_final)
         self.console.print()
-        return final
+        return final  # 실행에는 원본(full code) 반환
 
     @staticmethod
     def _filter_ai_monologue(text: str) -> str:
@@ -863,10 +917,22 @@ class BingoTerminal:
         import re, subprocess, tempfile, os
         from pathlib import Path
 
-        if "AWAITING_BINGO_EXECUTION" not in response and "```" not in response:
+        if "```" not in response:
             return
 
         results_text: list[str] = []
+
+        # ── agent_tools 자동 설치 (최초 1회) ─────────────────────────
+        _tools_dst = Path.home() / ".bingo" / "agent_tools.py"
+        if not _tools_dst.exists():
+            try:
+                import shutil as _sh
+                _tools_src = Path(__file__).parent.parent / "tools" / "agent_tools.py"
+                if _tools_src.exists():
+                    _tools_dst.parent.mkdir(parents=True, exist_ok=True)
+                    _sh.copy2(str(_tools_src), str(_tools_dst))
+            except Exception:
+                pass
 
         # ── Python 블록 실행 (우선) ────────────────────────────────────
         python_blocks = re.findall(
@@ -876,6 +942,14 @@ class BingoTerminal:
             code = block.strip()
             if not code:
                 continue
+
+            # agent_tools import 경로 주입 (AI 코드에 없으면 자동 추가)
+            tools_header = (
+                "import sys as _sys, os as _os\n"
+                "_sys.path.insert(0, _os.path.expanduser('~/.bingo'))\n"
+            )
+            if "agent_tools" not in code and "from agent_tools" not in code:
+                code = tools_header + code
 
             # 임시 파일에 저장 후 실행
             tmp_dir = Path(tempfile.gettempdir()) / "bingo_agent"
@@ -1016,12 +1090,12 @@ class BingoTerminal:
             "=== BINGO REAL EXECUTION RESULTS ===\n"
             + trimmed
             + "\n=== END REAL RESULTS ===\n\n"
-            "Analyze the REAL results above.\n"
+            "Analyze the REAL results above and continue autonomously.\n"
             "- Extract all findings (vulnerabilities, DBs, tables, credentials, hashes)\n"
-            "- If SQLi confirmed: write next Python script to extract data\n"
-            "- If blocked by WAF: adapt payload encoding in Python code\n"
-            "- NEVER generate simulated output\n"
-            "- Output next ```python or ```bash block + AWAITING_BINGO_EXECUTION"
+            "- Write and execute the NEXT script immediately\n"
+            "- If WAF blocks SQL functions: use obfuscation variants automatically\n"
+            "- Output TASK_COMPLETE when all objectives are achieved\n"
+            "- NEVER generate simulated output"
         )
         self.history.append(Message(role="user", content=injection))
 
@@ -1041,12 +1115,18 @@ class BingoTerminal:
             self.history.append(Message(role="assistant", content=followup_response))
             self._append_to_session_log("assistant", followup_response)
             self._notify_hashes_found(followup_response)
-            # 연쇄 실행: AI가 또 다음 명령을 제시했으면 재귀 실행 (최대 5턴)
+
+            # TASK_COMPLETE 감지 → 루프 종료
+            if "TASK_COMPLETE" in followup_response or "MISSION_COMPLETE" in followup_response:
+                self.console.print(f"\n[{THEME['success']}]✅ Agent 작업 완료[/]\n")
+                return
+
+            # Agent 루프: 최대 15턴까지 자율 실행
             exec_count = sum(
                 1 for m in self.history
                 if m.role == "user" and "BINGO REAL EXECUTION RESULTS" in m.content
             )
-            if exec_count < 5:
+            if exec_count < 15:
                 self._execute_ai_commands(followup_response)
 
     def _notify_hashes_found(self, text: str) -> None:

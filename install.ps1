@@ -76,30 +76,49 @@ if (Test-Path "$dest\pyproject.toml") {
     OK "Downloaded to $dest"
 }
 
-# ── 4. 의존성 설치 ────────────────────────────────────────────────
-Step "Installing dependencies..."
-$deps = @("rich","prompt_toolkit","httpx","pydantic","openai","anthropic")
-foreach ($d in $deps) {
-    Write-Host "  Installing $d..." -NoNewline
-    # cmd /c 로 실행 — PowerShell NativeCommandError 완전 우회
-    cmd /c "`"$py`" -m pip install -q $d" 2>$null | Out-Null
-    Write-Host " OK" -ForegroundColor Green
-}
+# ── 4+5. Python으로 직접 설치 (PowerShell pip 오류 완전 우회) ─────
+Step "Installing bingo and dependencies..."
 
-# ── 5. bingo 설치 ─────────────────────────────────────────────────
-Step "Installing bingo..."
-Set-Location $dest
-cmd /c "`"$py`" -m pip install -q -e ." 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
-    Warn "editable failed, trying regular install..."
-    cmd /c "`"$py`" -m pip install -q ." 2>$null | Out-Null
-}
-OK "bingo installed"
+# Python 스크립트로 pip 실행 — NativeCommandError 발생 안 함
+$installPy = @"
+import subprocess, sys, os
+
+deps = ['rich', 'prompt_toolkit', 'httpx', 'pydantic', 'openai', 'anthropic']
+dest = r'$dest'
+
+for d in deps:
+    print(f'  {d}...', end='', flush=True)
+    r = subprocess.run(
+        [sys.executable, '-m', 'pip', 'install', '-q', d],
+        capture_output=True, text=True
+    )
+    print(' OK' if r.returncode == 0 else ' (warn)')
+
+print('  bingo...', end='', flush=True)
+r = subprocess.run(
+    [sys.executable, '-m', 'pip', 'install', '-q', '-e', dest],
+    capture_output=True, text=True
+)
+if r.returncode != 0:
+    r = subprocess.run(
+        [sys.executable, '-m', 'pip', 'install', '-q', dest],
+        capture_output=True, text=True
+    )
+print(' OK' if r.returncode == 0 else ' (warn)')
+"@
+
+# 임시 파일로 저장 후 실행
+$tmpPy = "$env:TEMP\bingo_install_deps.py"
+$installPy | Out-File -FilePath $tmpPy -Encoding UTF8
+& $py $tmpPy
+Remove-Item $tmpPy -Force -ErrorAction SilentlyContinue
+OK "Installation complete"
 
 # ── 6. PATH 등록 ──────────────────────────────────────────────────
 Step "Configuring PATH..."
 try {
-    $scripts = cmd /c "`"$py`" -c `"import sysconfig; print(sysconfig.get_path('scripts'))`"" 2>$null
+    $scripts = (& $py -c "import sysconfig; print(sysconfig.get_path('scripts'))") | Out-String
+    $scripts = $scripts.Trim()
     $up = [Environment]::GetEnvironmentVariable("PATH","User")
     if ($up -notlike "*$scripts*") {
         [Environment]::SetEnvironmentVariable("PATH","$up;$scripts","User")

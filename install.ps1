@@ -86,25 +86,6 @@ function Install-Bingo {
     Write-Ok "Bingo installed successfully"
 }
 
-function Install-SecurityTools {
-    Write-Step "Installing security tools (sqlmap, wafw00f)"
-    # sqlmap
-    if (-not (Get-Command sqlmap -ErrorAction SilentlyContinue)) {
-        $rc = Invoke-Pip @("install", "--quiet", "sqlmap")
-        if ($rc -eq 0) { Write-Ok "sqlmap installed" }
-        else { Write-Warn "sqlmap install failed — using vendor fallback" }
-    } else {
-        Write-Ok "sqlmap already installed"
-    }
-    # wafw00f
-    if (-not (Get-Command wafw00f -ErrorAction SilentlyContinue)) {
-        $rc = Invoke-Pip @("install", "--quiet", "wafw00f")
-        if ($rc -eq 0) { Write-Ok "wafw00f installed" }
-        else { Write-Warn "wafw00f install failed — using vendor fallback" }
-    } else {
-        Write-Ok "wafw00f already installed"
-    }
-}
 
 function Check-Path {
     Write-Step "Setting up PATH"
@@ -132,7 +113,6 @@ Write-Host "$CYAN  Windows Installer$RESET`n"
 Check-Python
 Install-Deps
 Install-Bingo
-Install-SecurityTools
 Check-Path
 
 Write-Host ""

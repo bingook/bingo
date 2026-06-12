@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bingo-ai"
-version = "1.0.9"
+version = "2.0.0"
 description = "Hacker-style AI red team terminal — WAF bypass, hash crack, multi-model"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,8 +29,6 @@ dependencies = [
     "prompt_toolkit>=3.0",
     "httpx>=0.27",
     "pydantic>=2.0",
-    "sqlmap",
-    "wafw00f",
 ]
 
 [project.scripts]

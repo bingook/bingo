@@ -249,11 +249,8 @@ class BingoTerminal:
         return "\n\n".join(parts)
 
     def _auto_waf_scan(self, text: str) -> str:
-        """
-        메시지에서 URL을 감지하면:
-          1) 실제 wafw00f 바이너리 실행 (가장 정확)
-          2) 실패 시 내부 Python WafDetector 폴백
-          3) WAF 탐지 결과 + sqlmap 명령을 AI 컨텍스트로 반환
+        """URL 감지 시 기본 사이트 정보 수집 → AI가 직접 판단하게 컨텍스트 제공.
+        wafw00f / sqlmap 의존성 완전 제거. AI가 Python으로 직접 탐지.
         """
         import re
         urls = re.findall(r"https?://[^\s\"'<>]+", text)
@@ -261,108 +258,60 @@ class BingoTerminal:
             return ""
 
         url = urls[0].rstrip("/?,")
-        results = []
+        results: list[str] = []
 
         self.console.print(
-            f"\n[{THEME['warn']}]{self.s['waf_auto_scan']}: {url}[/]"
+            f"\n[{THEME['warn']}]🔍 사이트 정보 수집: {url}[/]"
         )
 
-        # ── Step 1: 실제 wafw00f 바이너리 실행 (가장 신뢰도 높음) ───
-        waf_type = None
-        waf_detected = False
-        raw_output = ""
-
+        # ── 빠른 HTTP 정보 수집 (헤더 + 응답코드) ─────────────────────
         try:
-            from ..tools.executor import ToolExecutor
-            executor = ToolExecutor(timeout=30)
+            import httpx as _hx
+            _hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120"}
+            resp = _hx.get(url, headers=_hdrs, follow_redirects=True,
+                           timeout=10, verify=False)
 
-            with self.console.status(f"[{THEME['warn']}]{self.s['waf_running']}[/]"):
-                tool_result = executor.wafw00f(url)
+            # 응답 헤더에서 서버 정보 추출
+            server   = resp.headers.get("server", "unknown")
+            powered  = resp.headers.get("x-powered-by", "")
+            cf_ray   = resp.headers.get("cf-ray", "")
+            x_cache  = resp.headers.get("x-cache", "")
 
-            raw_output = tool_result.stdout.strip()
+            results.append(
+                f"SITE_INFO:\n"
+                f"  url={url}\n"
+                f"  status={resp.status_code}\n"
+                f"  server={server}\n"
+                f"  x-powered-by={powered or 'none'}\n"
+                f"  cf-ray={cf_ray or 'none'}\n"
+                f"  x-cache={x_cache or 'none'}\n"
+                f"  content_length={len(resp.text)}"
+            )
 
-            if raw_output:
-                self.console.print(
-                    f"[{THEME['dim']}]{raw_output[:200]}[/]"
-                )
+            # 헤더 기반 간이 WAF 힌트 (AI에게 참고로만 전달)
+            waf_hints = []
+            if cf_ray:
+                waf_hints.append("Cloudflare (cf-ray header)")
+            if "sucuri" in resp.text.lower()[:500] or "x-sucuri" in str(resp.headers).lower():
+                waf_hints.append("Sucuri")
+            if "x-fw" in str(resp.headers).lower():
+                waf_hints.append("Wordfence")
+            if waf_hints:
+                self.console.print(f"[{THEME['warn']}]  ⚡ WAF 힌트: {', '.join(waf_hints)}[/]")
+                results.append(f"WAF_HINTS: {', '.join(waf_hints)}")
+            else:
+                results.append("WAF_HINTS: none detected from headers (AI should verify)")
 
-            # wafw00f 출력 파싱
-            lower = raw_output.lower()
-            if "is behind" in lower or "is protected by" in lower:
-                waf_detected = True
-                # "The site X is behind Cloudflare (Cloudflare Inc.) WAF."
-                # "The site X is protected by Cloudflare WAF."
-                import re as _re
-                m = _re.search(
-                    r"is (?:behind|protected by)\s+(.+?)(?:\s+\(|\.?\s*WAF|$)",
-                    raw_output, _re.IGNORECASE
-                )
-                waf_type = m.group(1).strip() if m else "Unknown"
-            elif "no waf" in lower or "does not seem to be" in lower:
-                waf_detected = False
-            elif tool_result.used_fallback:
-                # 폴백 사용된 경우 내부 탐지기로 보완
-                raise RuntimeError("fallback — try internal detector")
+        except Exception as e:
+            results.append(f"SITE_INFO_ERROR: {e}")
 
-        except Exception:
-            # ── Step 2: 내부 Python WafDetector 폴백 ─────────────────
-            try:
-                from ..tools.http_probe import HttpProbe
-                from ..tools.waf_bypass import WafDetector
-
-                with self.console.status(f"[{THEME['warn']}]{self.s['waf_internal']}[/]"):
-                    probe = HttpProbe(url, timeout=8)
-                    detector = WafDetector(probe)
-                    internal = detector.detect(url)
-
-                waf_detected = internal.detected
-                waf_type = internal.waf_type if internal.detected else None
-                raw_output = (
-                    f"Internal detector: waf_detected={internal.detected}, "
-                    f"waf_type={internal.waf_type}, confidence={internal.confidence}"
-                )
-                self.console.print(f"[{THEME['dim']}]{raw_output}[/]")
-            except Exception as e2:
-                results.append(f"WAF_SCAN_ERROR: {e2}")
-                return "\n".join(results)
-
-        # ── WAF 결과 출력 ─────────────────────────────────────────────
-        tamper_map = {
-            "cloudflare":  "space2comment,between,charencode,randomcase",
-            "aws":         "space2mysqlblank,equaltolike,greatest",
-            "modsecurity": "space2comment,between,modsecurityversioned",
-            "wordfence":   "space2comment,between,charencode",
-            "sucuri":      "space2comment,randomcase,charencode",
-            "akamai":      "space2comment,between,charencode,randomcase",
-        }
-        if waf_detected and waf_type:
-            self.console.print(f"[{THEME['error']}]{self.s['waf_detected']}: {waf_type}[/]")
-            key = waf_type.lower().split()[0] if waf_type else ""
-            tamper = next((v for k, v in tamper_map.items() if k in key),
-                          "space2comment,between,charencode")
-        else:
-            self.console.print(f"[{THEME['success']}]{self.s['waf_none']}[/]")
-            tamper = None
-
-        results.append(
-            f"WAF_SCAN_RESULT:\n"
-            f"  url={url}\n"
-            f"  waf_detected={waf_detected}\n"
-            f"  waf_type={waf_type or 'None'}\n"
-            f"  tamper={tamper or 'None'}\n"
-            f"  raw_output={raw_output[:300]}"
-        )
-
-        # ── Step 2: 사이트 크롤링 → 실제 파라미터 수집 ──────────────
-        self.console.print(
-            f"[{THEME['dim']}]{self.s.get('crawling', '🔍 사이트 크롤 중...')}[/]"
-        )
-        injectable_urls: list[str] = []
+        # ── 사이트 크롤링 → 후보 URL 수집 (AI가 직접 탐지) ──────────
+        self.console.print(f"[{THEME['dim']}]🔍 페이지 크롤 중...[/]")
+        candidate_urls: list[str] = []
         try:
-            import httpx as _httpx, re as _re
+            import httpx as _hx2, re as _re
             from urllib.parse import urlparse, parse_qs
 
-            # 정적 파일 확장자 — SQLi 후보 아님
             _STATIC_EXT = {
                 ".css", ".js", ".ts", ".jsx", ".tsx", ".map",
                 ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".webp", ".avif",
@@ -371,14 +320,13 @@ class BingoTerminal:
                 ".mp3", ".mp4", ".webm", ".ogg", ".wav",
                 ".xml", ".rss", ".atom",
             }
-            # 캐시 버스팅용 파라미터 이름 — SQLi 대상 아님
             _CACHE_PARAMS = {"ver", "v", "version", "_", "t", "ts", "time",
                              "cb", "cachebuster", "bust", "rev", "build", "hash"}
 
-            headers = {"User-Agent": "Mozilla/5.0 (compatible; bingo-scanner/1.0)"}
-            resp = _httpx.get(url, follow_redirects=True, timeout=10, headers=headers)
-            page = resp.text
-            # href, action에서 URL 추출
+            headers2 = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120"}
+            resp2 = _hx2.get(url, follow_redirects=True, timeout=10,
+                              headers=headers2, verify=False)
+            page = resp2.text
             found_urls = _re.findall(
                 r'(?:href|action)=["\']([^"\'<>\s]+)["\']', page, _re.IGNORECASE
             )
@@ -395,89 +343,61 @@ class BingoTerminal:
                 else:
                     full = base + "/" + fu
 
-                # 쿼리 파라미터가 없으면 건너뜀
                 if "?" not in full or "=" not in full:
+                    continue
+                if base_domain not in full:
                     continue
 
                 parsed = urlparse(full)
-                path_lower = parsed.path.lower()
-
-                # 1) 정적 파일 확장자 필터
-                path_no_qs = path_lower.split("?")[0]
-                ext = "." + path_no_qs.rsplit(".", 1)[-1] if "." in path_no_qs.split("/")[-1] else ""
+                path_no_qs = parsed.path.lower()
+                ext = ""
+                if "." in path_no_qs.split("/")[-1]:
+                    ext = "." + path_no_qs.rsplit(".", 1)[-1]
                 if ext in _STATIC_EXT:
                     continue
 
-                # 2) 캐시 버스팅 전용 파라미터만 있는 URL 필터
                 qs = parse_qs(parsed.query)
                 real_params = {k for k in qs if k.lower() not in _CACHE_PARAMS}
                 if not real_params:
                     continue
 
-                # 3) 동일 도메인만 (외부 링크 제외)
-                if base_domain not in full:
-                    continue
+                candidate_urls.append(full)
 
-                injectable_urls.append(full)
+            candidate_urls = list(dict.fromkeys(candidate_urls))[:15]
 
-            injectable_urls = list(dict.fromkeys(injectable_urls))[:10]  # 중복 제거, 최대 10개
         except Exception as e:
             results.append(f"CRAWL_ERROR: {e}")
 
-        if injectable_urls:
+        if candidate_urls:
             self.console.print(
-                f"[{THEME['success']}]{self.s.get('params_found', '✓ 파라미터 발견')}:"
+                f"[{THEME['success']}]{self.s.get('params_found', '✓ 파라미터 발견')}: "
+                f"{len(candidate_urls)}개[/]"
             )
-            for u in injectable_urls[:5]:
+            for u in candidate_urls[:5]:
                 self.console.print(f"  [{THEME['dim']}]{u}[/]")
 
             results.append(
-                f"CRAWL_RESULT:\n"
-                + "\n".join(f"  injectable_url={u}" for u in injectable_urls)
+                "CANDIDATE_URLS (real backend pages with parameters — AI must probe these):\n"
+                + "\n".join(f"  - {u}" for u in candidate_urls)
             )
-
-            # 첫 번째 파라미터 URL로 sqlmap 명령 생성
-            target_url = injectable_urls[0]
-            if tamper:
-                sqlmap_cmd = (
-                    f'sqlmap -u "{target_url}" '
-                    f'--tamper={tamper} '
-                    f'--delay=2 --random-agent --level=3 --risk=2 --batch --dbs'
-                )
-            else:
-                sqlmap_cmd = (
-                    f'sqlmap -u "{target_url}" '
-                    f'--batch --random-agent --level=3 --dbs'
-                )
             results.append(
-                f"SQLMAP_COMMAND (real parameter URL — use as-is):\n"
-                f"  {sqlmap_cmd}"
+                "AGENT_INSTRUCTION:\n"
+                "  These are candidate URLs. You must now:\n"
+                "  1. Write Python code to probe each URL for SQL injection\n"
+                "  2. Test: single-quote, boolean (1=1 vs 1=2), error patterns\n"
+                "  3. Only report confirmed or likely vulnerable targets\n"
+                "  4. Do NOT assume vulnerability — test with real HTTP requests\n"
+                "  5. If WAF blocking: adapt payload encoding in your Python code"
             )
-            self.console.print(f"[{THEME['dim']}]  → {sqlmap_cmd[:100]}[/]")
         else:
-            # 파라미터를 못 찾은 경우 → AI에게 직접 크롤 지시
             results.append(
-                "CRAWL_RESULT: No GET parameters found on homepage.\n"
-                "INSTRUCTION FOR AI: Do NOT use ?id=1. Instead:\n"
-                "  1. Run: curl -s -L -A 'Mozilla/5.0' " + url + "/ | grep -Po 'href=\"\\K[^\"]*(?=\")' | sort -u\n"
-                "  2. Find URLs with query parameters (e.g. ?idx=1, ?cate=0001)\n"
-                "  3. Run sqlmap on those REAL parameter URLs only"
+                "CANDIDATE_URLS: none found on homepage\n"
+                "AGENT_INSTRUCTION:\n"
+                "  Write Python to crawl deeper:\n"
+                f"  - Fetch {url} and extract all href/action/src links\n"
+                "  - Look for .php/.asp/.aspx/.do pages with query params\n"
+                "  - Check sitemap.xml and robots.txt for more paths"
             )
-
-        # ── 빠른 핑거프린트 ──────────────────────────────────────────
-        try:
-            from ..tools.http_probe import HttpProbe
-            with self.console.status(f"[{THEME['dim']}]{self.s['waf_fingerprint']}[/]"):
-                fp = HttpProbe(url, timeout=6).fingerprint()
-            tech = ", ".join(fp.get("tech", [])) or "unknown"
-            results.append(
-                f"FINGERPRINT:\n"
-                f"  tech_stack={tech}\n"
-                f"  cms={fp.get('cms', 'unknown')}\n"
-                f"  server={fp.get('server', 'unknown')}"
-            )
-        except Exception:
-            pass
 
         return "\n\n".join(results)
 
@@ -669,10 +589,12 @@ class BingoTerminal:
             else:
                 self._warn("Usage: /scan <url>  예) /scan https://target.co.kr")
         elif name == "/waf":
-            if arg:
-                self._cmd_waf(arg)
-            else:
-                self._warn("Usage: /waf <url>  예) /waf https://target.co.kr")
+            # /waf 명령은 제거됨 → AI에게 직접 탐지 코드 작성 위임
+            target = arg or "https://target.com"
+            self._send_message(
+                f"{target} 사이트의 WAF와 보안 장치를 탐지해줘. "
+                f"Python httpx로 직접 헤더, 응답 패턴 분석해서 식별해."
+            )
         elif name == "/crack":
             self._cmd_crack(arg)
         elif name == "/stop":
@@ -932,40 +854,93 @@ class BingoTerminal:
 
     def _execute_ai_commands(self, response: str) -> None:
         """
-        AI가 ```bash 블록에 명령을 제시하면 실제로 실행하고
+        AI가 ```python 또는 ```bash 블록으로 코드를 제시하면 실제로 실행하고
         결과를 AI에게 피드백 → AI가 실제 데이터로 분석함.
 
-        AWAITING_BINGO_EXECUTION 키워드가 있을 때 또는
-        bash 블록 + 보안 명령이 있을 때 실행.
+        Full Agent 모드: Python 코드 우선, bash 명령도 지원.
+        AWAITING_BINGO_EXECUTION 키워드가 있을 때 실행.
         """
-        import re, subprocess, shlex
+        import re, subprocess, tempfile, os
+        from pathlib import Path
 
-        # ```bash/sh 블록 전부 추출 (```없는 일반 블록도 포함)
-        bash_blocks = re.findall(
-            r"```(?:bash|sh)?\s*(.*?)```", response, re.DOTALL
-        )
-        if not bash_blocks:
+        if "AWAITING_BINGO_EXECUTION" not in response and "```" not in response:
             return
 
-        # 실행 허용 명령 (안전 목록)
-        _ALLOWED = {
-            "sqlmap", "curl", "wafw00f", "nmap", "nikto",
-            "ffuf", "gobuster", "nuclei", "httpx", "subfinder",
-            "amass", "whatweb", "john", "hashcat",
+        results_text: list[str] = []
+
+        # ── Python 블록 실행 (우선) ────────────────────────────────────
+        python_blocks = re.findall(
+            r"```python\s*(.*?)```", response, re.DOTALL
+        )
+        for i, block in enumerate(python_blocks):
+            code = block.strip()
+            if not code:
+                continue
+
+            # 임시 파일에 저장 후 실행
+            tmp_dir = Path(tempfile.gettempdir()) / "bingo_agent"
+            tmp_dir.mkdir(exist_ok=True)
+            script_path = tmp_dir / f"agent_script_{i}.py"
+            script_path.write_text(code, encoding="utf-8")
+
+            preview_lines = code.splitlines()[:3]
+            preview = " | ".join(l.strip() for l in preview_lines if l.strip())[:80]
+
+            self.console.print(
+                f"\n[{THEME['secondary']}]▶ Python 실행:[/] "
+                f"[{THEME['dim']}]{preview}...[/]"
+            )
+
+            try:
+                proc = subprocess.run(
+                    ["python3", str(script_path)],
+                    capture_output=True, text=True, timeout=60,
+                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                )
+                output = (proc.stdout or "") + (proc.stderr or "")
+                if output.strip():
+                    preview_out = "\n".join(output.strip().splitlines()[:60])
+                    self.console.print(f"[{THEME['dim']}]{preview_out}[/]")
+                    results_text.append(
+                        f"=== PYTHON EXECUTION (script_{i}) ===\n"
+                        f"{output.strip()}\n"
+                        f"=== EXIT: {proc.returncode} ==="
+                    )
+                else:
+                    results_text.append(
+                        f"=== PYTHON EXECUTION (script_{i}) ===\n"
+                        f"(no output, exit={proc.returncode})"
+                    )
+            except subprocess.TimeoutExpired:
+                self.console.print(f"[{THEME['warn']}]  ⏱ timeout (60s)[/]")
+                results_text.append(
+                    f"=== PYTHON EXECUTION (script_{i}) ===\n(timed out after 60s)"
+                )
+            except Exception as e:
+                self.console.print(f"[{THEME['error']}]  python exec error: {e}[/]")
+
+        # ── Bash 블록 실행 (보조) ──────────────────────────────────────
+        # bash는 curl, nmap 등 단순 명령에만 사용
+        bash_blocks = re.findall(
+            r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL
+        )
+
+        # bash 실행 허용 목록 (Python으로 못하는 것들)
+        _BASH_ALLOWED = {
+            "curl", "nmap", "nikto", "ffuf", "gobuster", "nuclei",
+            "httpx", "subfinder", "amass", "whatweb", "john", "hashcat",
+            "python3", "python",
         }
 
-        results_text = []
-
         for block in bash_blocks:
-            # 줄 이어붙이기 (백슬래시 라인 이어붙임)
+            import shlex
             joined = block.strip().replace("\\\n", " ")
             lines = [l.strip() for l in joined.splitlines()
                      if l.strip() and not l.strip().startswith("#")]
             if not lines:
                 continue
-            cmd_line = " ".join(lines)  # 멀티라인 명령 합치기
+            cmd_line = " ".join(lines)
 
-            # 허용 목록 확인
             try:
                 parts = shlex.split(cmd_line)
             except Exception:
@@ -973,17 +948,14 @@ class BingoTerminal:
             if not parts:
                 continue
             binary = parts[0].split("/")[-1]
-            if binary not in _ALLOWED:
+            if binary not in _BASH_ALLOWED:
                 continue
 
-            # 이미 실행된 명령이면 스킵 (BINGO REAL EXECUTION RESULTS에 있으면)
-            history_text = " ".join(
-                m.content for m in self.history if m.role == "user"
-            )
+            # 이미 실행된 명령이면 스킵
+            history_text = " ".join(m.content for m in self.history if m.role == "user")
             if f"REAL EXECUTION: {cmd_line[:40]}" in history_text:
                 continue
 
-            # 실제 실행
             self.console.print(
                 f"\n[{THEME['secondary']}]▶ {self.s['exec_running']}:[/] "
                 f"[{THEME['dim']}]{cmd_line[:100]}[/]"
@@ -1000,17 +972,17 @@ class BingoTerminal:
                     results_text.append(
                         f"=== REAL EXECUTION: {cmd_line[:80]} ===\n"
                         f"{output.strip()}\n"
-                        f"=== EXIT CODE: {proc.returncode} ===\n"
+                        f"=== EXIT CODE: {proc.returncode} ==="
                     )
                 else:
                     results_text.append(
                         f"=== REAL EXECUTION: {cmd_line[:80]} ===\n"
-                        f"(no output, exit code {proc.returncode})\n"
+                        f"(no output, exit code {proc.returncode})"
                     )
             except subprocess.TimeoutExpired:
                 self.console.print(f"[{THEME['warn']}]  ⏱ timeout (180s)[/]")
                 results_text.append(
-                    f"=== REAL EXECUTION: {cmd_line[:80]} ===\n(timed out after 180s)\n"
+                    f"=== REAL EXECUTION: {cmd_line[:80]} ===\n(timed out)"
                 )
             except Exception as e:
                 self.console.print(f"[{THEME['error']}]  exec error: {e}[/]")
@@ -1023,10 +995,12 @@ class BingoTerminal:
             "=== BINGO REAL EXECUTION RESULTS ===\n"
             + "\n".join(results_text)
             + "\n=== END REAL RESULTS ===\n\n"
-            "Analyze the REAL results above. "
-            "Extract all findings (DBs, tables, credentials, hashes). "
-            "Decide and output the NEXT command in ```bash``` format. "
-            "NEVER generate simulated output."
+            "Analyze the REAL results above.\n"
+            "- Extract all findings (vulnerabilities, DBs, tables, credentials, hashes)\n"
+            "- If SQLi confirmed: write next Python script to extract data\n"
+            "- If blocked by WAF: adapt payload encoding in Python code\n"
+            "- NEVER generate simulated output\n"
+            "- Output next ```python or ```bash block + AWAITING_BINGO_EXECUTION"
         )
         self.history.append(Message(role="user", content=injection))
 

@@ -7,7 +7,6 @@
 [![Python](https://img.shields.io/badge/python-3.10%2B-green?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-green)](https://github.com/bingook/bingo)
-[![PyPI](https://img.shields.io/badge/PyPI-bingo--ai-green?logo=pypi&logoColor=white)](https://pypi.org/project/bingo-ai)
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
@@ -45,20 +44,7 @@ cd bingo
 .\install.ps1
 ```
 
-### pip
-
-```bash
-pip install bingo-ai
-```
-
-### Update
-
-```bash
-pip install --upgrade bingo-ai
-```
-
-> **Requirements:** Python 3.10+  
-> `sqlmap` and `wafw00f` are automatically installed as dependencies.
+> **Requirements:** Python 3.10+
 
 ---
 
@@ -78,18 +64,18 @@ Settings are saved automatically.
 
 ## Core Features
 
-### Automated WAF Bypass
+### Automated WAF Detection & Bypass
 When a URL is mentioned in chat, bingo automatically:
-1. Detects WAF type (Cloudflare, AWS, ModSecurity, etc.)
-2. Selects optimal bypass strategy
-3. Runs `WafBypassEngine` with real HTTP probes
-4. Converts bypass results into `sqlmap` arguments (tamper scripts, headers, prefix/suffix) — WAF bypass is **automatically applied to sqlmap**
+1. AI writes Python code to detect WAF from HTTP headers and response patterns
+2. Identifies WAF type (Cloudflare, AWS WAF, ModSecurity, Wordfence, etc.)
+3. Adapts injection payloads with encoding/obfuscation to bypass the WAF
+4. All steps are executed as real Python scripts — no external tool required
 
-| WAF | Auto Bypass Strategy |
-|-----|---------------------|
-| Cloudflare | newline encoding → MySQL comment → UA rotation |
-| AWS WAF | tab encoding → keyword bypass → header injection |
-| ModSecurity | space bypass → double encoding → keyword obfuscation |
+| WAF | Detection Method |
+|-----|-----------------|
+| Cloudflare | `cf-ray` header, block page signature |
+| AWS WAF | `x-amzn-requestid` header, 403 pattern |
+| ModSecurity | Server header, error page content |
 
 ### Hash Cracking — Fully Automated
 When password hashes appear in AI responses, bingo automatically:
@@ -115,14 +101,13 @@ Stop anytime: type `/stop` in chat.
 ### External Tool Auto-Install & Python Fallback
 bingo manages all external tools automatically — no manual setup required.
 
-**4-step execution priority for every tool:**
+**Tool execution priority:**
 
 | Step | Action |
 |------|--------|
-| 1 | Use built-in vendor (sqlmap, wafw00f) |
-| 2 | Use `~/.bingo/tools/` or system PATH |
-| 3 | **Auto-install** (GitHub Releases / brew / apt / pip) |
-| 4 | **Python fallback** — pure Python alternative, workflow never stops |
+| 1 | Use `~/.bingo/tools/` or system PATH |
+| 2 | **Auto-install** (GitHub Releases / brew / apt) |
+| 3 | **AI-generated Python** — AI writes the tool itself, workflow never stops |
 
 **Go binary tools** (auto-downloaded from GitHub Releases → `~/.bingo/tools/`):
 
@@ -139,18 +124,11 @@ bingo manages all external tools automatically — no manual setup required.
 
 | Tool | Purpose | Fallback |
 |------|---------|---------|
-| `nmap` | Port scan | Python `socket` port scan |
-| `nikto` | Web vuln scan | Python `requests` vuln check |
+| `nmap` | Port scan | AI writes Python socket scan |
+| `nikto` | Web vuln scan | AI writes Python vuln check |
 | `whatweb` | Tech fingerprint | bingo http_probe |
 
-**Python tools** (pip auto-install):
-
-| Tool | Purpose |
-|------|---------|
-| `sqlmap` | SQL injection (also bundled in vendor/) |
-| `wafw00f` | WAF detection (also bundled in vendor/) |
-
-All Python fallbacks produce output in the same format as the original tool — **AI context is never interrupted**.
+AI-generated Python tools run directly — **no external binary required**.
 
 ### Session Auto-Save
 Every chat session is automatically saved to:
@@ -178,7 +156,7 @@ Type `/` in chat to see an interactive command menu (arrow keys to navigate).
 | Command | Description |
 |---------|-------------|
 | `/scan <url>` | Quick recon: WAF + fingerprint + sensitive files |
-| `/waf <url>` | WAF detection + auto bypass attempt |
+| `/waf <url>` | AI-driven WAF detection + bypass |
 | `/crack [hash]` | Hash crack — online lookup → offline crack pipeline |
 | `/stop` | Stop running crack / scan |
 | `/tools` | Show all tools + auto-install missing ones |
@@ -224,8 +202,8 @@ bingo scan https://target.com
 Runs the full 5-phase red team pipeline:
 1. **Recon** — tech fingerprint, WAF detection, endpoint mapping
 2. **Collect** — sensitive files, admin panels, parameter discovery
-3. **Test** — SQLi, LFI, XSS, SSRF probing
-4. **Exploit** — WAF bypass + SQLi extraction + credential dump
+3. **Test** — SQLi, LFI, XSS, SSRF probing (AI writes Python probes)
+4. **Exploit** — WAF bypass + data extraction + credential dump
 5. **Report** — auto-generated markdown report in `targets/`
 
 ---
@@ -296,8 +274,6 @@ bingo/
 │   │   ├── downloader.py   # Go binary auto-download from GitHub Releases
 │   │   ├── installer.py    # brew / apt / pip auto-install
 │   │   ├── http_probe.py   # HTTP fingerprinting
-│   │   ├── sqli.py         # SQLi detection & exploitation
-│   │   ├── waf_bypass.py   # WAF detection + bypass → sqlmap args
 │   │   ├── hash_crack.py   # Offline hash cracker (bcrypt/MD5/SHA/NTLM)
 │   │   └── hash_lookup.py  # Online hash lookup (CrackStation, hashes.com, etc.)
 │   ├── redteam/
@@ -308,9 +284,6 @@ bingo/
 │   │   └── terminal.py     # Interactive terminal (slash autocomplete, auto-crack, /tools)
 │   └── lang/
 │       └── strings.py      # Multi-language strings
-├── vendor/
-│   ├── sqlmap/             # Embedded sqlmap (git submodule)
-│   └── wafw00f/            # Embedded wafw00f (git submodule)
 ├── install.sh              # macOS/Linux installer
 ├── install.ps1             # Windows installer
 └── pyproject.toml
@@ -323,7 +296,7 @@ bingo/
 ```bash
 git clone https://github.com/bingook/bingo.git
 cd bingo
-pip install -e ".[dev]"
+bash install.sh
 ```
 
 Pull requests are welcome.

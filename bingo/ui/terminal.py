@@ -537,42 +537,55 @@ class BingoTerminal:
         text = re.sub(r"\n?MISSION_COMPLETE\n?", "\n✅ 미션 완료\n", text)
         return text
 
-    @staticmethod
-    def _collapse_code_blocks(text: str) -> str:
+    def _collapse_code_blocks(self, text: str) -> str:
         """Python/bash 코드 블록을 접어서 한 줄 요약으로 교체.
         Cursor처럼 '무엇을 하는지'만 보여주고 소스코드는 숨김.
         """
         import re
+        _s = self.s
+        _lang = getattr(self.config, "lang", "en")
+
+        # 코드 의도 레이블 — 언어별
+        _intent_map = {
+            "sqli":  {"ko": "SQLi 탐지",    "zh": "SQLi 检测",     "en": "SQLi detect"},
+            "waf":   {"ko": "WAF 탐지",     "zh": "WAF 检测",      "en": "WAF detect"},
+            "union": {"ko": "DB 추출",      "zh": "DB 提取",       "en": "DB extract"},
+            "table": {"ko": "테이블/DB 열거","zh": "表/DB 枚举",    "en": "Table/DB enum"},
+            "cred":  {"ko": "자격증명 추출", "zh": "凭据提取",      "en": "Cred extract"},
+            "crawl": {"ko": "사이트 크롤링", "zh": "站点爬取",      "en": "Site crawl"},
+            "http":  {"ko": "HTTP 요청",    "zh": "HTTP 请求",     "en": "HTTP request"},
+            "port":  {"ko": "포트 스캔",    "zh": "端口扫描",      "en": "Port scan"},
+        }
+
+        def _get_intent(key: str) -> str:
+            return _intent_map.get(key, {}).get(_lang, _intent_map.get(key, {}).get("en", key))
 
         def _summarize_code(lang: str, code: str) -> str:
             lines = [l.strip() for l in code.splitlines() if l.strip() and not l.strip().startswith("#")]
             total = len(code.splitlines())
 
-            # 코드 의도 파악 (주요 키워드 기반)
             code_lower = code.lower()
-            intent = ""
             if "sql" in code_lower or "sqli" in code_lower or "injection" in code_lower:
-                intent = "SQLi 탐지"
+                intent = _get_intent("sqli")
             elif "waf" in code_lower or "cloudflare" in code_lower or "firewall" in code_lower:
-                intent = "WAF 탐지"
+                intent = _get_intent("waf")
             elif "union" in code_lower or "information_schema" in code_lower:
-                intent = "DB 추출"
+                intent = _get_intent("union")
             elif "database()" in code_lower or "table_name" in code_lower:
-                intent = "테이블/DB 열거"
+                intent = _get_intent("table")
             elif "password" in code_lower or "passwd" in code_lower or "credential" in code_lower:
-                intent = "자격증명 추출"
+                intent = _get_intent("cred")
             elif "crawl" in code_lower or "href" in code_lower or "sitemap" in code_lower:
-                intent = "사이트 크롤링"
+                intent = _get_intent("crawl")
             elif "httpx" in code_lower or "requests" in code_lower:
-                intent = "HTTP 요청"
+                intent = _get_intent("http")
             elif "nmap" in code_lower or "socket" in code_lower or "port" in code_lower:
-                intent = "포트 스캔"
+                intent = _get_intent("port")
             else:
-                # 첫 번째 의미있는 줄로 요약
-                intent = lines[0][:50] if lines else "스크립트"
+                intent = lines[0][:50] if lines else "script"
 
             icon = "🐍" if lang == "python" else "⚡"
-            _wait_label = self.s.get("exec_waiting", "Waiting to execute")
+            _wait_label = _s.get("exec_waiting", "Waiting to execute")
             return (
                 f"\n[dim]┌─ {icon} {lang.upper()} [{intent}] — {total}L[/dim]\n"
                 f"[dim]│  {lines[0][:70] if lines else ''}[/dim]\n"
@@ -580,13 +593,12 @@ class BingoTerminal:
                 f"[dim]└─ ... ({_wait_label})[/dim]\n"
             )
 
-        # ```python ... ``` 또는 ```bash ... ``` 블록 치환
         def replacer(m: re.Match) -> str:
             lang = (m.group(1) or "").strip().lower() or "code"
             code = m.group(2)
             if lang in ("python", "py", "bash", "sh"):
                 return _summarize_code(lang if lang in ("python", "bash") else "python", code)
-            return m.group(0)  # 다른 언어는 그대로
+            return m.group(0)
 
         return re.sub(r"```(\w*)\n(.*?)```", replacer, text, flags=re.DOTALL)
 

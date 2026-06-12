@@ -94,6 +94,10 @@ class BingoTerminal:
         self._session_log_path: Path | None = None
         # 자동 크랙 중단 플래그
         self._stop_crack_flag = threading.Event()
+        # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
+        # 파일에 저장해서 세션 재시작해도 유지
+        self._agent_state_path = Path.home() / ".config" / "bingo" / "agent_state.json"
+        self._agent_state: dict = self._load_agent_state()
 
     # ── 공개 진입점 ───────────────────────────────────────────────
     def run(self) -> None:
@@ -422,7 +426,14 @@ class BingoTerminal:
         skill_context = self._get_skill_context(text)
 
         # URL 감지 시 실제 WAF 스캔 실행
-        # → 결과를 유저 메시지 앞에 직접 붙임 (AI가 "이미 실행됨"을 명확히 인식)
+        # 새 타겟 URL이면 agent_state 초기화
+        import re as _re
+        _urls = _re.findall(r"https?://[^\s\"'<>]+", text)
+        if _urls:
+            new_target = _urls[0].rstrip("/?,")
+            if self._agent_state.get("target") != new_target:
+                self._reset_agent_state()
+                self._agent_state["target"] = new_target
         waf_context = self._auto_waf_scan(text)
 
         # PentAGI식 XML 태스크 래핑 (보안 관련 요청만)
@@ -645,7 +656,10 @@ class BingoTerminal:
         if fn:
             fn()
         elif name == "/skill":
-            self._cmd_skill(arg)
+            if arg.startswith("install "):
+                self._cmd_skill_install(arg[8:].strip())
+            else:
+                self._cmd_skill(arg)
         elif name == "/tools":
             self._cmd_tools(arg)
         elif name == "/scan":
@@ -1096,16 +1110,23 @@ class BingoTerminal:
             recent = non_system[-16:]
             self.history = system_msgs + recent
 
+        # 실행 결과에서 주요 사실 자동 파싱 → agent_state 누적
+        self._parse_agent_state(raw_results)
+
+        # agent_state 요약 생성 (AI가 이미 아는 것 명시)
+        state_summary = self._format_agent_state()
+
         # 실행 결과 AI에게 피드백
         injection = (
             "=== BINGO REAL EXECUTION RESULTS ===\n"
             + trimmed
             + "\n=== END REAL RESULTS ===\n\n"
-            "Analyze the REAL results above and continue autonomously.\n"
-            "- Extract all findings (vulnerabilities, DBs, tables, credentials, hashes)\n"
-            "- Write and execute the NEXT script immediately\n"
-            "- If WAF blocks SQL functions: use obfuscation variants automatically\n"
-            "- Output TASK_COMPLETE when all objectives are achieved\n"
+            + state_summary
+            + "NEXT ACTION: Continue from where you left off. "
+            "DO NOT re-extract already known facts above. "
+            "Proceed to the next unknown step.\n"
+            "- If WAF blocks: use obfuscation variants\n"
+            "- Output TASK_COMPLETE when all credentials are extracted\n"
             "- NEVER generate simulated output"
         )
         self.history.append(Message(role="user", content=injection))
@@ -1146,6 +1167,142 @@ class BingoTerminal:
                 self.console.print(
                     f"[{THEME['warn']}]⚠ Agent 최대 루프(15) 도달 — 직접 다음 명령을 입력하세요[/]"
                 )
+
+    def _load_agent_state(self) -> dict:
+        """저장된 agent_state 로드. 없으면 빈 상태 반환."""
+        import json
+        default = {
+            "target": None, "waf": None,
+            "bool_true_len": None, "bool_false_len": None,
+            "db_name": None, "tables": [], "columns": {},
+            "credentials": [], "confirmed_sqli": False, "notes": [],
+        }
+        try:
+            if self._agent_state_path.exists():
+                return {**default, **json.loads(self._agent_state_path.read_text())}
+        except Exception:
+            pass
+        return default
+
+    def _save_agent_state(self) -> None:
+        """agent_state를 파일에 저장."""
+        import json
+        try:
+            self._agent_state_path.parent.mkdir(parents=True, exist_ok=True)
+            self._agent_state_path.write_text(
+                json.dumps(self._agent_state, ensure_ascii=False, indent=2)
+            )
+        except Exception:
+            pass
+
+    def _reset_agent_state(self) -> None:
+        """새 타겟 시작 시 agent_state 초기화."""
+        self._agent_state = {
+            "target": None, "waf": None,
+            "bool_true_len": None, "bool_false_len": None,
+            "db_name": None, "tables": [], "columns": {},
+            "credentials": [], "confirmed_sqli": False, "notes": [],
+        }
+        self._save_agent_state()
+
+    def _parse_agent_state(self, text: str) -> None:
+        """실행 결과 텍스트에서 주요 사실 파싱 → _agent_state에 누적."""
+        import re
+
+        # Boolean 기준값
+        m = re.search(r"[Tt]rue[:\s=]+(\d+).*?[Ff]alse[:\s=]+(\d+)", text)
+        if m and not self._agent_state["bool_true_len"]:
+            self._agent_state["bool_true_len"] = int(m.group(1))
+            self._agent_state["bool_false_len"] = int(m.group(2))
+
+        # DB 이름
+        m = re.search(r"[Dd]atabase(?:\s+name|:)?\s*[:\-=]?\s*([a-zA-Z0-9_]+)", text)
+        if m and not self._agent_state["db_name"] and len(m.group(1)) > 1:
+            self._agent_state["db_name"] = m.group(1)
+        # "dbbarun" 패턴 직접 탐지
+        m2 = re.search(r"(?:Database confirmed|DB name):\s*([a-zA-Z0-9_]+)", text)
+        if m2:
+            self._agent_state["db_name"] = m2.group(1)
+
+        # Boolean SQLi 확인
+        if re.search(r"[Bb]oolean.{0,30}[Ll]ikely|[Ss]QLi.{0,20}[Cc]onfirmed", text):
+            self._agent_state["confirmed_sqli"] = True
+
+        # 테이블 목록
+        m = re.search(r"[Ff]ound tables?:\s*\[([^\]]+)\]", text)
+        if m:
+            tables = [t.strip().strip("'\"") for t in m.group(1).split(",") if t.strip().strip("'\"")]
+            for t in tables:
+                if t and t not in self._agent_state["tables"]:
+                    self._agent_state["tables"].append(t)
+
+        # 개별 테이블 존재 확인
+        for t in re.findall(r"\[\+\] Table exists(?:: |\()([a-zA-Z0-9_]+)", text):
+            if t not in self._agent_state["tables"]:
+                self._agent_state["tables"].append(t)
+
+        # 컬럼 목록
+        m = re.search(r"[Vv]alid columns?:\s*\[([^\]]+)\]", text)
+        if m:
+            cols = [c.strip().strip("'\"") for c in m.group(1).split(",")]
+            db = self._agent_state["db_name"] or "unknown"
+            if "g5_member" not in self._agent_state["columns"]:
+                self._agent_state["columns"]["g5_member"] = []
+            for c in cols:
+                if c and c not in self._agent_state["columns"]["g5_member"]:
+                    self._agent_state["columns"]["g5_member"].append(c)
+
+        # 자격증명
+        cred_match = re.findall(
+            r"(mb_id|mb_password|username|password)[:\s=]+([^\n\r,\]]{3,80})", text, re.IGNORECASE
+        )
+        if cred_match:
+            cred = {k.lower(): v.strip() for k, v in cred_match
+                    if v.strip() and "~" not in v and "?" not in v and len(v.strip()) > 2}
+            if cred:
+                self._agent_state["credentials"].append(cred)
+
+        # WAF
+        m = re.search(r"WAF.*?detected.*?([Cc]loudflare|[Aa]WS|[Mm]od[Ss]ecurity|[Ww]ordfence)", text)
+        if m:
+            self._agent_state["waf"] = m.group(1)
+
+        # 변경 시 자동 저장
+        self._save_agent_state()
+
+    def _format_agent_state(self) -> str:
+        """agent_state를 AI에게 주입할 요약 문자열로 변환."""
+        s = self._agent_state
+        lines = ["=== AGENT ACCUMULATED KNOWLEDGE (DO NOT RE-EXTRACT) ==="]
+
+        if s["confirmed_sqli"]:
+            lines.append("✅ SQLi: CONFIRMED (boolean blind)")
+        if s["bool_true_len"]:
+            lines.append(f"✅ Boolean baseline: TRUE={s['bool_true_len']}B, FALSE={s['bool_false_len']}B (use this, do NOT re-calibrate)")
+        if s["waf"]:
+            lines.append(f"✅ WAF: {s['waf']}")
+        if s["db_name"]:
+            lines.append(f"✅ Database: {s['db_name']} (confirmed, do NOT extract again)")
+        if s["tables"]:
+            lines.append(f"✅ Tables: {', '.join(s['tables'])} (confirmed, do NOT re-enumerate)")
+        if s["columns"]:
+            for tbl, cols in s["columns"].items():
+                lines.append(f"✅ Columns ({tbl}): {', '.join(cols)}")
+        if s["credentials"]:
+            lines.append(f"✅ Credentials found: {s['credentials']}")
+            lines.append("⚡ NEXT: crack/verify these credentials")
+        else:
+            if s["columns"]:
+                lines.append("⚡ NEXT: extract actual DATA from g5_member (mb_id, mb_password)")
+            elif s["tables"]:
+                lines.append("⚡ NEXT: enumerate columns in g5_member")
+            elif s["db_name"]:
+                lines.append("⚡ NEXT: enumerate tables in " + s["db_name"])
+            elif s["confirmed_sqli"]:
+                lines.append("⚡ NEXT: extract database name")
+
+        lines.append("=== END KNOWLEDGE ===\n")
+        return "\n".join(lines) + "\n"
 
     def _notify_hashes_found(self, text: str) -> None:
         """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행"""
@@ -1486,6 +1643,69 @@ class BingoTerminal:
             self.console.print(f"\n  [{THEME['success']}]{self.s['tools_install_ok'].format(name=tool_name)}[/]")
         else:
             self.console.print(f"\n  [{THEME['error']}]{self.s['tools_install_fail'].format(name=tool_name)}[/]")
+
+    def _cmd_skill_install(self, source: str) -> None:
+        """
+        스킬 설치:
+          /skill install https://github.com/user/repo   → git clone
+          /skill install /path/to/local/skill           → 로컬 폴더 복사
+          /skill install <preset>                       → 내장 프리셋
+        """
+        import shutil, subprocess, tempfile
+        from pathlib import Path
+
+        skills_dir = Path(__file__).parent.parent / "skills" / "local_skills"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+
+        self.console.print(f"\n[{THEME['warn']}]📦 스킬 설치: {source}[/]")
+
+        # ── GitHub URL ────────────────────────────────────────────
+        if source.startswith("http"):
+            repo_name = source.rstrip("/").split("/")[-1].replace(".git", "")
+            dst = skills_dir / repo_name
+            if dst.exists():
+                self.console.print(f"[{THEME['warn']}]  이미 설치됨: {repo_name}[/]")
+                return
+            with self.console.status(f"[{THEME['dim']}]git clone 중...[/]"):
+                try:
+                    result = subprocess.run(
+                        ["git", "clone", "--depth=1", source, str(dst)],
+                        capture_output=True, text=True, timeout=60
+                    )
+                    if result.returncode == 0:
+                        self.console.print(f"[{THEME['success']}]  ✔ {repo_name} 설치 완료 → {dst}[/]")
+                    else:
+                        self.console.print(f"[{THEME['error']}]  git clone 실패: {result.stderr[:200]}[/]")
+                        return
+                except Exception as e:
+                    self.console.print(f"[{THEME['error']}]  오류: {e}[/]")
+                    return
+
+        # ── 로컬 경로 ─────────────────────────────────────────────
+        elif source.startswith("/") or source.startswith("~") or source.startswith("."):
+            src_path = Path(source).expanduser().resolve()
+            if not src_path.exists():
+                self.console.print(f"[{THEME['error']}]  경로 없음: {src_path}[/]")
+                return
+            dst = skills_dir / src_path.name
+            if dst.exists():
+                self.console.print(f"[{THEME['warn']}]  이미 설치됨: {src_path.name} — 업데이트 중...[/]")
+                shutil.rmtree(dst)
+            shutil.copytree(str(src_path), str(dst))
+            self.console.print(f"[{THEME['success']}]  ✔ {src_path.name} 설치 완료[/]")
+
+        else:
+            self.console.print(f"[{THEME['error']}]  사용법:[/]")
+            self.console.print(f"[{THEME['dim']}]  /skill install https://github.com/user/skill-repo[/]")
+            self.console.print(f"[{THEME['dim']}]  /skill install /path/to/local/skill[/]")
+            return
+
+        # 설치 후 스킬 목록 새로 표시
+        from ..skills.engine import SkillEngine
+        installed = SkillEngine().list_local_skills()
+        self.console.print(f"\n[{THEME['success']}]설치된 스킬 팩: {len(installed)}개[/]")
+        for sk in installed:
+            self.console.print(f"  [{THEME['secondary']}]{sk['name']}[/] — {sk['ref_count']}개 레퍼런스")
 
     def _cmd_skill(self, keyword: str = "") -> None:
         from ..skills.engine import SkillEngine

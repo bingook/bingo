@@ -373,7 +373,12 @@ _SLASH_DESC = {
     "/tools":   {"ko": "도구 목록 + 자동 설치  /tools [install <name>|all]",
                  "zh": "工具列表+自动安装  /tools [install <名称>|all]",
                  "en": "Tool list + auto-install  /tools [install <name>|all]"},
-    "/skill":   {"ko": "스킬 검색  /skill <키워드>",   "zh": "技能搜索  /skill <关键词>","en": "Skill search  /skill <keyword>"},
+    "/skill":           {"ko": "스킬 검색/설치  /skill <키워드>  또는  /skill install <url>",
+                        "zh": "技能搜索/安装  /skill <关键词>  或  /skill install <url>",
+                        "en": "Skill search/install  /skill <kw>  or  /skill install <url>"},
+    "/skill install":  {"ko": "스킬 설치  /skill install <github_url 또는 로컬경로>",
+                        "zh": "安装技能  /skill install <github_url 或 本地路径>",
+                        "en": "Install skill  /skill install <github_url or local_path>"},
     "/stop":    {"ko": "자동 크랙 중단",               "zh": "停止自动破解",          "en": "Stop running crack"},
     "/quit":    {"ko": "종료",                        "zh": "退出",                "en": "Quit"},
 }

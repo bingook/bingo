@@ -678,17 +678,28 @@ class BingoTerminal:
 
         self.console.print()
         try:
-            if "**" in display or "# " in display:
-                self.console.print(Markdown(display))
-            elif "[dim]" in display or "[bold" in display or "[red" in display or "[green" in display:
-                # 코드 블록 요약 등 Rich 마크업 포함 — escape 없이 그대로 렌더링
+            _has_rich = "[dim]" in display or "[bold" in display
+            _has_md   = "**" in display or "\n# " in display or "\n## " in display
+
+            if _has_rich and _has_md:
+                # Rich 마크업과 Markdown 혼재 — Rich 태그 먼저 렌더링, 나머지 Markdown
+                # 코드 블록 요약([dim]...[/dim])을 Plain text로 변환 후 Markdown 렌더
+                import re as _re2
+                plain = _re2.sub(
+                    r"\[/?(?:dim|bold[^]]*|red[^]]*|green[^]]*|warn[^]]*)\]",
+                    "", display
+                )
+                self.console.print(Markdown(plain))
+            elif _has_rich:
+                # Rich 마크업만 있음 — markup=True로 렌더링
                 self.console.print(display)
+            elif _has_md:
+                self.console.print(Markdown(display))
             else:
-                # Rich 마크업 오류 방지 — URL/특수문자 escape
+                # 순수 텍스트 — URL/특수문자 escape
                 from rich.markup import escape as _resc
                 self.console.print(_resc(display))
         except Exception:
-            # 최후 수단 — 순수 텍스트 출력
             self.console.out(display)
         self.console.print()
         return final  # 실행에는 원본(full code) 반환

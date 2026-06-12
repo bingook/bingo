@@ -684,6 +684,11 @@ def get_pentest_system_prompt(provider: str) -> str:
         f"EXCLUSIVELY in {_lang_label}. "
         f"Do NOT output Korean unless the user's language is Korean. "
         f"Do NOT mix languages. Every single word of your output must be in {_lang_label}.\n"
+        f"THIS ALSO APPLIES TO PYTHON/BASH SCRIPTS YOU WRITE:\n"
+        f"- All print() statements inside your scripts MUST output in {_lang_label}\n"
+        f"- All string literals, comments, variable names used in print() MUST be in {_lang_label}\n"
+        f"- Example: if lang={_lang} and you print a status, write print('状态: 成功') NOT print('상태: 성공')\n"
+        f"- NEVER hardcode Korean strings in scripts when language is not Korean.\n"
     )
 
     p = provider.lower()

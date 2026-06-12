@@ -94,13 +94,41 @@ class BingoTerminal:
         self._session_log_path: Path | None = None
         # 자동 크랙 중단 플래그
         self._stop_crack_flag = threading.Event()
+        # Agent 루프 중단 플래그 (Ctrl+C)
+        self._agent_stop_flag = threading.Event()
         # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
-        # 파일에 저장해서 세션 재시작해도 유지
         self._agent_state_path = Path.home() / ".config" / "bingo" / "agent_state.json"
         self._agent_state: dict = self._load_agent_state()
+        # 롤백 매니저
+        from ..core.rollback import RollbackManager
+        self._rollback = RollbackManager()
+        # 파일시스템 감시
+        from ..core.file_watcher import AgentOutputWatcher
+        self._file_watcher = AgentOutputWatcher(console=self.console)
+        self._file_watcher.start()
+        # 토큰 / 비용 추적
+        self._token_usage: dict = {"prompt": 0, "completion": 0, "total": 0}
+        self._cost_usd: float = 0.0
 
     # ── 공개 진입점 ───────────────────────────────────────────────
     def run(self) -> None:
+        import signal
+
+        # Ctrl+C → 에이전트 루프 안전 중단 (프로그램 종료 아님)
+        def _sigint_handler(sig, frame):
+            if self._agent_stop_flag.is_set():
+                # 두 번 누르면 완전 종료
+                self.console.print(f"\n[{THEME['error']}]강제 종료[/]")
+                raise SystemExit(0)
+            self._agent_stop_flag.set()
+            self._stop_crack_flag.set()
+            self.console.print(
+                f"\n[{THEME['warn']}]⚠ Ctrl+C — Agent 루프 중단 중... "
+                f"(한 번 더 누르면 완전 종료)[/]"
+            )
+
+        signal.signal(signal.SIGINT, _sigint_handler)
+
         self._clear()
         self._print_banner()
         self._init_session()
@@ -110,10 +138,7 @@ class BingoTerminal:
             self._warn(self.s["no_model_configured"])
             self._cmd_model()
 
-        # 멀티턴 워밍업 히스토리 주입 (PentAGI 기법 — 세션 시작 시 AI가 이미
-        # 성공적으로 작업한 기록을 심어 거부율을 대폭 낮춤)
         self._inject_warmup_history()
-
         self._chat_loop()
 
     # ── 배너 / 상태 표시 ──────────────────────────────────────────
@@ -677,6 +702,11 @@ class BingoTerminal:
                 self._cmd_scan(arg)
             else:
                 self._warn("Usage: /scan <url>  예) /scan https://target.co.kr")
+        elif name == "/mscan":
+            if arg:
+                self._cmd_mscan(arg)
+            else:
+                self._warn("Usage: /mscan <url>  예) /mscan https://target.co.kr")
         elif name == "/waf":
             # /waf 명령은 제거됨 → AI에게 직접 탐지 코드 작성 위임
             target = arg or "https://target.com"
@@ -687,8 +717,16 @@ class BingoTerminal:
         elif name == "/crack":
             self._cmd_crack(arg)
         elif name == "/stop":
+            self._agent_stop_flag.set()
             self._stop_crack_flag.set()
             self.console.print(f"[{THEME['warn']}]{self.s['hash_stop_signal']}[/]")
+        elif name == "/undo":
+            steps = int(arg) if arg.isdigit() else 1
+            self._cmd_undo(steps)
+        elif name == "/snapshots":
+            self._cmd_snapshots()
+        elif name == "/cost":
+            self._cmd_cost()
         else:
             self._warn(self.s["cmd_unknown"].format(name=name))
 
@@ -842,7 +880,126 @@ class BingoTerminal:
             self.config.save()
             self._success(self.s["model_saved"])
 
+    # ── 롤백 / 비용 명령어 ────────────────────────────────────────
+
+    def _cmd_undo(self, steps: int = 1) -> None:
+        """N단계 전 상태로 롤백."""
+        snap = self._rollback.undo(steps)
+        if not snap:
+            self.console.print(f"[{THEME['warn']}]⚠ 롤백할 스냅샷이 없습니다[/]")
+            return
+        import copy
+        self._agent_state = copy.deepcopy(snap.agent_state)
+        self._save_agent_state()
+        # 히스토리를 스냅샷 시점으로 되돌리기
+        if snap.history_len < len(self.history):
+            self.history = self.history[:snap.history_len]
+        from rich.panel import Panel as _P
+        self.console.print(_P(
+            f"[green]✅ 롤백 완료[/green]\n"
+            f"복원 시점: [bold]{snap.label}[/bold]  ({snap.timestamp_str})\n"
+            f"DB: {snap.agent_state.get('db_name', 'N/A')}  "
+            f"Tables: {snap.agent_state.get('tables', [])}",
+            title="[bold]UNDO[/bold]",
+            border_style="green",
+            expand=False,
+        ))
+
+    def _cmd_snapshots(self) -> None:
+        """저장된 스냅샷 목록 출력."""
+        from rich.table import Table as _T
+        snaps = self._rollback.list_snapshots()
+        if not snaps:
+            self.console.print(f"[{THEME['dim']}]저장된 스냅샷 없음[/]")
+            return
+        t = _T(title="[bold]Snapshots[/bold]", border_style="cyan")
+        t.add_column("#",     width=3)
+        t.add_column("시각",  width=10)
+        t.add_column("레이블")
+        t.add_column("DB",    width=20)
+        for i, s in enumerate(snaps):
+            t.add_row(
+                str(i+1),
+                s.timestamp_str,
+                s.label,
+                s.agent_state.get("db_name") or "-",
+            )
+        self.console.print(t)
+        self.console.print(f"[{THEME['dim']}]/undo 1 — 1단계 전으로, /undo 3 — 3단계 전으로[/]")
+
+    def _cmd_cost(self) -> None:
+        """현재 세션 토큰/비용 출력."""
+        from rich.panel import Panel as _P
+        u = self._token_usage
+        self.console.print(_P(
+            f"[cyan]Prompt tokens:[/cyan]     {u['prompt']:,}\n"
+            f"[cyan]Completion tokens:[/cyan] {u['completion']:,}\n"
+            f"[cyan]Total tokens:[/cyan]      {u['total']:,}\n"
+            f"[bold yellow]Est. cost:[/bold yellow]         ${self._cost_usd:.4f}",
+            title="[bold]Token Usage[/bold]",
+            border_style="cyan",
+            expand=False,
+        ))
+
+    def _show_token_usage(self) -> None:
+        """루프마다 토큰 사용량 추정 + 상태바에 표시."""
+        # 히스토리에서 토큰 추정 (실제 API 응답의 usage 필드가 없으면 추정)
+        total_chars = sum(len(m.content) for m in self.history)
+        est_tokens  = total_chars // 4  # 대략 4자 = 1토큰
+        self._token_usage["total"] = est_tokens
+        # 모델별 가격 추정 (DeepSeek: $0.14/1M tokens)
+        self._cost_usd = est_tokens / 1_000_000 * 0.14
+        self.console.print(
+            f"[{THEME['dim']}]  💰 ~{est_tokens:,} tokens  ${self._cost_usd:.4f}[/]"
+        )
+
     # ── Red Team 명령어 ───────────────────────────────────────────
+
+    def _cmd_mscan(self, url: str = "") -> None:
+        """멀티 에이전트 병렬 스캔 — Cursor처럼 전문 에이전트 동시 실행."""
+        if not url:
+            from rich.prompt import Prompt
+            url = Prompt.ask(f"[{THEME['primary']}]타겟 URL[/]").strip()
+        if not url:
+            return
+
+        from rich.panel import Panel as _Panel
+        self.console.print(_Panel(
+            f"[bold cyan]🚀 MULTI-AGENT SCAN[/bold cyan]\n"
+            f"[dim]Recon + SQLi + WebVuln + Auth — 동시 실행[/dim]\n"
+            f"[bold]{url}[/bold]",
+            border_style="cyan",
+            expand=False,
+        ))
+
+        from ..core.multi_agent import MultiAgent
+        agent = MultiAgent(console=self.console)
+        results = agent.run(url)
+
+        # agent_state 업데이트 (SQLi 결과 반영)
+        sqli = results.get("💉 SQLi") or {}
+        if sqli.get("injectable"):
+            self._agent_state["confirmed_sqli"] = True
+            self._agent_state["db_name"]  = sqli.get("database")
+            self._agent_state["tables"]   = sqli.get("tables", [])
+            self._agent_state["waf"]      = sqli.get("waf")
+            self._agent_state["target"]   = url
+            self._save_agent_state()
+
+        # 결과를 대화 컨텍스트에 주입 (AI가 이어서 작업 가능하게)
+        import json
+        summary = json.dumps(results, ensure_ascii=False, default=str)[:2000]
+        self.history.append(Message(
+            role="user",
+            content=(
+                f"=== MULTI-AGENT SCAN RESULTS for {url} ===\n"
+                f"{summary}\n"
+                f"=== END SCAN RESULTS ===\n"
+                f"위 스캔 결과를 분석하고 발견된 취약점을 한국어로 요약해줘. "
+                f"가장 심각한 것부터 정리하고, 다음 공격 단계를 추천해줘."
+            )
+        ))
+        self._send_message("")
 
     def _cmd_scan(self, url: str = "") -> None:
         if not url:
@@ -1132,10 +1289,20 @@ class BingoTerminal:
         if not results_text:
             return
 
+        # ── 롤백 스냅샷 저장 (루프마다 자동) ─────────────────────────
+        exec_count_now = sum(
+            1 for m in self.history
+            if m.role == "user" and "BINGO REAL EXECUTION RESULTS" in m.content
+        )
+        self._rollback.save(
+            agent_state=self._agent_state,
+            history_len=len(self.history),
+            label=f"Loop #{exec_count_now + 1} — {self._agent_state.get('target','?')[:40]}",
+        )
+
         # 결과 압축: 최대 3000자만 주입 (컨텍스트 폭발 방지)
         raw_results = "\n".join(results_text)
         if len(raw_results) > 3000:
-            # 앞 1500자 + 뒤 1500자 유지 (중간 생략)
             trimmed = (
                 raw_results[:1500]
                 + f"\n\n[... {len(raw_results) - 3000} chars trimmed for context ...]\n\n"
@@ -1144,20 +1311,20 @@ class BingoTerminal:
         else:
             trimmed = raw_results
 
-        # 히스토리 슬라이딩 윈도우 — 시스템 메시지 제외하고 최근 10턴만 유지
-        # 컨텍스트가 너무 커지면 DeepSeek 서버가 연결을 끊음
+        # 히스토리 슬라이딩 윈도우
         non_system = [m for m in self.history if m.role != "system"]
         if len(non_system) > 20:
-            # 가장 오래된 user/assistant 쌍 4개 제거
             system_msgs = [m for m in self.history if m.role == "system"]
-            recent = non_system[-16:]
-            self.history = system_msgs + recent
+            self.history = system_msgs + non_system[-16:]
 
         # 실행 결과에서 주요 사실 자동 파싱 → agent_state 누적
         self._parse_agent_state(raw_results)
 
-        # agent_state 요약 생성 (AI가 이미 아는 것 명시)
+        # agent_state 요약 생성
         state_summary = self._format_agent_state()
+
+        # 토큰 비용 추적 표시
+        self._show_token_usage()
 
         # 실행 결과 AI에게 피드백
         injection = (
@@ -1179,6 +1346,12 @@ class BingoTerminal:
         if not model_cfg:
             return
 
+        # ── Ctrl+C 중단 체크 ──────────────────────────────────────
+        if self._agent_stop_flag.is_set():
+            self._agent_stop_flag.clear()
+            self.console.print(f"\n[{THEME['warn']}]⚠ Agent 루프 중단됨 (Ctrl+C)[/]\n")
+            return
+
         model = ModelRegistry.build(model_cfg)
         self.console.print(
             f"\n[{THEME['secondary']}]{self.s['exec_analyzing']}[/]"
@@ -1196,6 +1369,12 @@ class BingoTerminal:
                 self.console.print(f"\n[{THEME['success']}]✅ Agent 작업 완료[/]\n")
                 return
 
+            # ── Ctrl+C 중단 체크 ──────────────────────────────────
+            if self._agent_stop_flag.is_set():
+                self._agent_stop_flag.clear()
+                self.console.print(f"\n[{THEME['warn']}]⚠ Agent 루프 중단됨 (Ctrl+C)[/]\n")
+                return
+
             # Agent 루프: 최대 15턴까지 자율 실행
             exec_count = sum(
                 1 for m in self.history
@@ -1203,7 +1382,8 @@ class BingoTerminal:
             )
             if exec_count < 15:
                 self.console.print(
-                    f"[{THEME['dim']}]🔄 Agent 루프 {exec_count + 1}/15[/]"
+                    f"[{THEME['dim']}]🔄 Agent 루프 {exec_count + 1}/15  "
+                    f"[dim](Ctrl+C로 중단 가능)[/dim][/]"
                 )
                 self._execute_ai_commands(followup_response)
             else:

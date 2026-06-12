@@ -146,6 +146,9 @@ class BingoTerminal:
             self._warn(self.s["no_model_configured"])
             self._cmd_model()
 
+        # 이전 세션 이어하기 제안
+        self._offer_resume()
+
         self._inject_warmup_history()
         self._chat_loop()
 
@@ -1418,11 +1421,34 @@ class BingoTerminal:
 
         # ── 메인 에이전트 루프 (while — 재귀 없음) ────────────────────
         current_response = response
+        _no_code_retry = 0  # AI가 코드 없이 텍스트만 보낸 횟수
 
         while True:
-            # 코드 블록 없으면 종료
+            # 코드 블록 없으면 → AI에게 코드 작성 재촉 (최대 3회)
             if "```" not in current_response:
-                break
+                if _no_code_retry >= 3:
+                    # 3회 재촉해도 코드 없으면 진짜 완료로 판단
+                    self._auto_generate_report()
+                    break
+                _no_code_retry += 1
+                _lang = getattr(self.config, "lang", "en")
+                _nudge = {
+                    "ko": "분석을 계속하려면 반드시 ```python 코드 블록을 포함해야 합니다. 다음 공격 단계의 코드를 즉시 작성하세요.",
+                    "zh": "要继续分析，必须包含 ```python 代码块。请立即编写下一步攻击代码。",
+                    "en": "To continue, you MUST include a ```python code block. Write the next attack step code NOW.",
+                }.get(_lang, "Write the next ```python code block NOW to continue.")
+                self.history.append(Message(role="user", content=f"[CONTINUE REQUIRED]\n{_nudge}"))
+                from ..models.registry import ModelRegistry as _MR
+                _mc = self.config.get_active_model_config()
+                if not _mc:
+                    break
+                _m = _MR.build(_mc)
+                current_response = self._stream_response(_m.chat_stream(self._build_messages("")))
+                if current_response:
+                    self.history.append(Message(role="assistant", content=current_response))
+                continue
+
+            _no_code_retry = 0  # 코드 있으면 카운터 리셋
 
             # 코드 실행
             results_text = self._run_code_blocks(current_response, _loaded_skills)
@@ -1457,6 +1483,8 @@ class BingoTerminal:
             state_summary = self._format_agent_state()
             self._show_token_usage()
             self._exec_loop_count += 1
+            # 루프마다 세션 자동 저장 (이어하기용)
+            self._save_history()
 
             injection = (
                 "=== BINGO REAL EXECUTION RESULTS ===\n"
@@ -1778,6 +1806,85 @@ class BingoTerminal:
 
         except Exception as e:
             self._error(f"next steps error: {e}")
+
+    # ── 세션 이어하기 ────────────────────────────────────────────────
+
+    def _history_path(self) -> "Path":
+        return Path.home() / ".config" / "bingo" / "last_history.json"
+
+    def _save_history(self) -> None:
+        """현재 히스토리 + agent_state → 파일 저장 (이어하기용)."""
+        import json
+        _path = self._history_path()
+        try:
+            _path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "history": [{"role": m.role, "content": m.content} for m in self.history[-30:]],
+                "agent_state": self._agent_state,
+                "loop_count": self._exec_loop_count,
+            }
+            _path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        except Exception:
+            pass
+
+    def _offer_resume(self) -> None:
+        """이전 세션이 있으면 이어하기 제안."""
+        import json
+        _path = self._history_path()
+        if not _path.exists():
+            return
+        try:
+            data = json.loads(_path.read_text())
+            hist = data.get("history", [])
+            state = data.get("agent_state", {})
+            target = state.get("target") or ""
+            if not hist or not target:
+                return
+        except Exception:
+            return
+
+        _lang = getattr(self.config, "lang", "en")
+        _labels = {
+            "ko": ("이전 세션 발견", f"타겟: {target}", "이어서 작업하시겠습니까?", "계속 [Y/n]: "),
+            "zh": ("发现上次会话", f"目标: {target}", "是否继续上次的工作？", "继续 [Y/n]: "),
+            "en": ("Previous session found", f"Target: {target}", "Continue from where you left off?", "Resume [Y/n]: "),
+        }
+        title, tgt_label, question, prompt_str = _labels.get(_lang, _labels["en"])
+
+        from rich.panel import Panel
+        self.console.print(Panel(
+            f"[bold]{tgt_label}[/bold]\n{question}",
+            title=f"[bold cyan]🔄 {title}[/bold cyan]",
+            border_style="cyan",
+        ))
+
+        try:
+            ans = input(prompt_str).strip().lower()
+        except Exception:
+            ans = "n"
+
+        if ans in ("", "y", "yes"):
+            # 히스토리 복원
+            self.history = [
+                Message(role=m["role"], content=m["content"])
+                for m in hist
+                if m.get("role") in ("user", "assistant", "system")
+            ]
+            self._agent_state = {**self._agent_state, **data.get("agent_state", {})}
+            self._exec_loop_count = data.get("loop_count", 0)
+
+            _resumed = {
+                "ko": f"✅ 이전 세션 복원 완료 — 타겟: {target}",
+                "zh": f"✅ 已恢复上次会话 — 目标: {target}",
+                "en": f"✅ Session restored — target: {target}",
+            }.get(_lang, f"✅ Session restored: {target}")
+            self.console.print(f"[bold green]{_resumed}[/bold green]\n")
+        else:
+            # 새 세션 시작 — 기존 히스토리 파일 삭제
+            try:
+                _path.unlink()
+            except Exception:
+                pass
 
     def _load_agent_state(self) -> dict:
         """저장된 agent_state 로드. 없으면 빈 상태 반환."""

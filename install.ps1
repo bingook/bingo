@@ -1,7 +1,22 @@
 # ================================================================
 #  Bingo Installer for Windows (PowerShell)
-#  Usage: iwr -useb https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
+#
+#  ✅ PowerShell에서 실행:
+#     irm https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
+#
+#  ❌ CMD(명령 프롬프트)에서는 동작하지 않습니다.
+#     PowerShell을 열고 위 명령을 실행하세요.
+#
+#  실행 정책 오류 시:
+#     Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 # ================================================================
+
+# PowerShell 버전 확인
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    Write-Host "[ERROR] PowerShell 5.0 이상이 필요합니다. 현재: $($PSVersionTable.PSVersion)" -ForegroundColor Red
+    exit 1
+}
+
 $ErrorActionPreference = "Stop"
 
 $GREEN  = "`e[32m"

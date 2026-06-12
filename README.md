@@ -30,21 +30,39 @@ cd bingo
 bash install.sh
 ```
 
-### Windows (PowerShell)
+### Windows
 
+> ⚠️ **CMD(명령 프롬프트)가 아닌 PowerShell에서 실행해야 합니다.**
+> 시작 → `PowerShell` 검색 → **우클릭 → 관리자 권한으로 실행**
+
+**방법 1 — PowerShell 원클릭 설치:**
 ```powershell
 irm https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
 ```
 
-Or clone and install:
+**방법 2 — 실행 정책 오류가 나면:**
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+irm https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
+```
 
+**방법 3 — git clone 후 설치:**
 ```powershell
 git clone https://github.com/bingook/bingo.git
 cd bingo
 .\install.ps1
 ```
 
-> **Requirements:** Python 3.10+
+**방법 4 — Python이 있으면 pip로 직접:**
+```powershell
+pip install httpx rich prompt_toolkit
+git clone https://github.com/bingook/bingo.git
+cd bingo
+pip install -e .
+bingo
+```
+
+> **Requirements:** Python 3.10+, PowerShell 5.0+
 
 ---
 

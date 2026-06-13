@@ -15,9 +15,62 @@ from __future__ import annotations
 
 import hashlib
 import re
+import struct
 import subprocess
 import sys
 import time
+
+
+# ── 순수 Python MD4 구현 ──────────────────────────────────────────────
+# Python 3.12 + macOS OpenSSL 3.x 에서 MD4가 제거됨 → 직접 구현
+def _md4(data: bytes) -> bytes:
+    """RFC 1320 MD4 — OpenSSL 없이 동작하는 순수 Python 구현."""
+    def _f(x, y, z): return (x & y) | (~x & z)
+    def _g(x, y, z): return (x & y) | (x & z) | (y & z)
+    def _h(x, y, z): return x ^ y ^ z
+    def _lr(v, n): return ((v << n) | (v >> (32 - n))) & 0xFFFFFFFF
+
+    msg = bytearray(data)
+    orig_len = len(data) * 8
+    msg.append(0x80)
+    while len(msg) % 64 != 56:
+        msg.append(0)
+    msg += struct.pack("<Q", orig_len)
+
+    A, B, C, D = 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476
+
+    for i in range(0, len(msg), 64):
+        X = list(struct.unpack("<16I", msg[i:i+64]))
+        a, b, c, d = A, B, C, D
+
+        for k in [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]:
+            a = _lr(a + _f(b,c,d) + X[k], [3,7,11,19][k%4])
+            a, b, c, d = d, a, b, c
+
+        for k in [0,4,8,12,1,5,9,13,2,6,10,14,3,7,11,15]:
+            a = _lr(a + _g(b,c,d) + X[k] + 0x5A827999, [3,5,9,13][k%4])
+            a, b, c, d = d, a, b, c
+
+        for k in [0,8,4,12,2,10,6,14,1,9,5,13,3,11,7,15]:
+            a = _lr(a + _h(b,c,d) + X[k] + 0x6ED9EBA1, [3,9,11,15][k%4])
+            a, b, c, d = d, a, b, c
+
+        A = (A + a) & 0xFFFFFFFF
+        B = (B + b) & 0xFFFFFFFF
+        C = (C + c) & 0xFFFFFFFF
+        D = (D + d) & 0xFFFFFFFF
+
+    return struct.pack("<4I", A, B, C, D)
+
+
+def _ntlm_hash(password: str) -> str:
+    """NTLM 해시 — MD4(UTF-16-LE). OpenSSL 의존 없이 동작."""
+    try:
+        # 먼저 OpenSSL 방식 시도 (Linux 등 지원 환경)
+        return hashlib.new("md4", password.encode("utf-16-le")).hexdigest().upper()
+    except (ValueError, Exception):
+        # macOS Python 3.12+ 폴백: 순수 Python MD4
+        return _md4(password.encode("utf-16-le")).hex().upper()
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -146,7 +199,7 @@ def _crack_simple(hash_info: HashInfo, wordlist_path: Path | None,
         if algo == "sha512":
             return hashlib.sha512(p).hexdigest()
         if algo == "ntlm":
-            return hashlib.new("md4", pwd.encode("utf-16-le")).hexdigest().upper()
+            return _ntlm_hash(pwd)
         return ""
 
     # 내장 패스워드 먼저

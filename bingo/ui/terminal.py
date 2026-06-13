@@ -1467,7 +1467,7 @@ class BingoTerminal:
                 s.agent_state.get("db_name") or "-",
             )
         self.console.print(t)
-        self.console.print(f"[{THEME['dim']}]/undo 1 — 1단계 전으로, /undo 3 — 3단계 전으로[/]")
+        self.console.print(f"[{THEME['dim']}]{self.s.get('undo_hint', '/undo 1 — go back 1 step')}[/]")
 
     def _cmd_cost(self) -> None:
         """현재 세션 토큰/비용 출력."""
@@ -2062,7 +2062,7 @@ class BingoTerminal:
                 # 대기 중 카운트다운 표시
                 for _i in range(_wait_secs, 0, -5):
                     _time.sleep(min(5, _i))
-                    self.console.print(f"[{THEME['muted']}]  ⏱ {_i}s 남음...[/]")
+                    self.console.print(f"[{THEME['muted']}]  {self.s.get('countdown_remain', '⏱ {sec}s remaining...').format(sec=_i)}[/]")
                 _ip_block_hint = (
                     f"\n[IP_BLOCK_DETECTED: {', '.join(_detected_blocks)}]\n"
                     f"Waited {_wait_secs}s. Now retry with:\n"
@@ -3142,45 +3142,45 @@ class BingoTerminal:
         skills_dir = Path(__file__).parent.parent / "skills" / "local_skills"
         skills_dir.mkdir(parents=True, exist_ok=True)
 
-        self.console.print(f"\n[{THEME['warn']}]📦 스킬 설치: {source}[/]")
+        self.console.print(f"\n[{THEME['warn']}]{self.s.get('skill_install_start', '📦 Installing skill: {source}').format(source=source)}[/]")
 
         # ── GitHub URL ────────────────────────────────────────────
         if source.startswith("http"):
             repo_name = source.rstrip("/").split("/")[-1].replace(".git", "")
             dst = skills_dir / repo_name
             if dst.exists():
-                self.console.print(f"[{THEME['warn']}]  이미 설치됨: {repo_name}[/]")
+                self.console.print(f"[{THEME['warn']}]  {self.s.get('skill_already_installed', 'Already installed: {name}').format(name=repo_name)}[/]")
                 return
-            with self.console.status(f"[{THEME['dim']}]git clone 중...[/]"):
+            with self.console.status(f"[{THEME['dim']}]git clone...[/]"):
                 try:
                     result = subprocess.run(
                         ["git", "clone", "--depth=1", source, str(dst)],
                         capture_output=True, text=True, timeout=60
                     )
                     if result.returncode == 0:
-                        self.console.print(f"[{THEME['success']}]  ✔ {repo_name} 설치 완료 → {dst}[/]")
+                        self.console.print(f"[{THEME['success']}]  {self.s.get('skill_install_ok', '✔ {name} installed → {dst}').format(name=repo_name, dst=dst)}[/]")
                     else:
-                        self.console.print(f"[{THEME['error']}]  git clone 실패: {result.stderr[:200]}[/]")
+                        self.console.print(f"[{THEME['error']}]  {self.s.get('skill_clone_fail', 'git clone failed: {err}').format(err=result.stderr[:200])}[/]")
                         return
                 except Exception as e:
-                    self.console.print(f"[{THEME['error']}]  오류: {e}[/]")
+                    self.console.print(f"[{THEME['error']}]  {self.s.get('skill_install_err', 'Error: {err}').format(err=e)}[/]")
                     return
 
         # ── 로컬 경로 ─────────────────────────────────────────────
         elif source.startswith("/") or source.startswith("~") or source.startswith("."):
             src_path = Path(source).expanduser().resolve()
             if not src_path.exists():
-                self.console.print(f"[{THEME['error']}]  경로 없음: {src_path}[/]")
+                self.console.print(f"[{THEME['error']}]  {self.s.get('skill_path_notfound', 'Path not found: {path}').format(path=src_path)}[/]")
                 return
             dst = skills_dir / src_path.name
             if dst.exists():
-                self.console.print(f"[{THEME['warn']}]  이미 설치됨: {src_path.name} — 업데이트 중...[/]")
+                self.console.print(f"[{THEME['warn']}]  {self.s.get('skill_updating', 'Already installed: {name} — updating...').format(name=src_path.name)}[/]")
                 shutil.rmtree(dst)
             shutil.copytree(str(src_path), str(dst))
-            self.console.print(f"[{THEME['success']}]  ✔ {src_path.name} 설치 완료[/]")
+            self.console.print(f"[{THEME['success']}]  {self.s.get('skill_install_ok_local', '✔ {name} installed').format(name=src_path.name)}[/]")
 
         else:
-            self.console.print(f"[{THEME['error']}]  사용법:[/]")
+            self.console.print(f"[{THEME['error']}]  {self.s.get('skill_install_usage', 'Usage:')}[/]")
             self.console.print(f"[{THEME['dim']}]  /skill install https://github.com/user/skill-repo[/]")
             self.console.print(f"[{THEME['dim']}]  /skill install /path/to/local/skill[/]")
             return
@@ -3188,9 +3188,9 @@ class BingoTerminal:
         # 설치 후 스킬 목록 새로 표시
         from ..skills.engine import SkillEngine
         installed = SkillEngine().list_local_skills()
-        self.console.print(f"\n[{THEME['success']}]설치된 스킬 팩: {len(installed)}개[/]")
+        self.console.print(f"\n[{THEME['success']}]{self.s.get('skill_installed_count', 'Installed skill packs: {n}').format(n=len(installed))}[/]")
         for sk in installed:
-            self.console.print(f"  [{THEME['secondary']}]{sk['name']}[/] — {sk['ref_count']}개 레퍼런스")
+            self.console.print(f"  [{THEME['secondary']}]{sk['name']}[/] — {self.s.get('skill_ref_count', '{n} references').format(n=sk['ref_count'])}")
 
     def _list_hack_skills(self) -> list[dict]:
         """hack-skills 디렉토리 스캔 → 사용 가능한 스킬 목록 반환."""

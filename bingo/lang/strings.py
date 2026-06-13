@@ -482,6 +482,34 @@ _SLASH_DESC = {
     "/quit":    {"ko": "종료",                        "zh": "退出",                "en": "Quit"},
 }
 
+# ── 스킬 시스템 / WAF / 자동 분석 추가 문자열 ──────────────────────────────
+_STRINGS.update({
+    "url_404_fallback":     {"ko": "⚠ {url} → 404. 루트 사이트로 분석 전환: {root}",
+                             "zh": "⚠ {url} → 404。切换到根站点分析: {root}",
+                             "en": "⚠ {url} → 404. Switching to root site analysis: {root}"},
+    "skill_already_builtin":{"ko": "'{name}' 스킬이 이미 내장되어 있습니다. AI가 자동 사용합니다.",
+                             "zh": "技能 '{name}' 已内置，AI 将自动使用。",
+                             "en": "Skill '{name}' is already built-in. AI will use it automatically."},
+    "skill_not_found_tip":  {"ko": "스킬 '{name}'을 찾을 수 없습니다. /skill <키워드> 로 검색해보세요.",
+                             "zh": "未找到技能 '{name}'。请用 /skill <关键词> 搜索。",
+                             "en": "Skill '{name}' not found. Try /skill <keyword> to search."},
+    "hackskills_match":     {"ko": "hack-skills 매칭 ({n}개) — AI가 자동 로드:",
+                             "zh": "hack-skills 匹配 ({n} 个) — AI 将自动加载:",
+                             "en": "hack-skills match ({n}) — AI will auto-load:"},
+    "hackskills_auto_note": {"ko": "AI가 공격 상황에 맞게 자동 선택합니다. 수동 설치 불필요.",
+                             "zh": "AI 将根据攻击情况自动选择，无需手动安装。",
+                             "en": "AI auto-selects based on attack context. No manual install needed."},
+    "hackskills_all_ready": {"ko": "hack-skills — {n}개 자동 활성화됨 (설치 불필요)",
+                             "zh": "hack-skills — {n} 个已自动激活（无需安装）",
+                             "en": "hack-skills — {n} ready (no install needed)"},
+    "hackskills_auto_full": {"ko": "AI가 공격 상황에 맞게 자동 선택합니다. 수동 설치/활성화 불필요.",
+                             "zh": "AI 将根据攻击情况自动选择，无需手动安装/激活。",
+                             "en": "AI auto-selects based on attack context. No manual install/activation needed."},
+    "skill_db_load_example":{"ko": "예) SKILL_LOAD: Exploitation  →  9개 Exploitation 스킬 전체 주입",
+                             "zh": "例) SKILL_LOAD: Exploitation  →  注入全部 9 个 Exploitation 技能",
+                             "en": "e.g. SKILL_LOAD: Exploitation  →  injects all 9 Exploitation skills"},
+})
+
 
 def get_slash_commands(lang: str = "en") -> list[tuple[str, str]]:
     """슬래시 자동완성 명령어 목록 (현재 언어 기준)"""

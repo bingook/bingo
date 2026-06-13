@@ -390,7 +390,7 @@ class BingoTerminal:
                     f"IMPORTANT: Test parameters from original URL on pages that return 200."
                 )
                 self.console.print(
-                    f"[{THEME['warn']}]  ⚠ {url} → 404. 루트 사이트로 분석 전환: {root_url}[/]"
+                    f"[{THEME['warn']}]  {self.s.get('url_404_fallback', '⚠ {url} → 404').format(url=url, root=root_url)}[/]"
                 )
                 resp = _hx.get(root_url, headers=_hdrs, follow_redirects=True, timeout=12, verify=False)
                 page = resp.text
@@ -869,13 +869,11 @@ class BingoTerminal:
                 content = self._load_skill_content([skill_name])
                 if content:
                     self.console.print(
-                        f"[{THEME['success']}]⚡ '{skill_name}' 스킬이 이미 내장되어 있습니다. "
-                        f"AI가 자동으로 사용합니다.[/]"
+                        f"[{THEME['success']}]⚡ {self.s.get('skill_already_builtin', 'Skill already built-in').format(name=skill_name)}[/]"
                     )
                 else:
                     self.console.print(
-                        f"[{THEME['warn']}]스킬 '{skill_name}'을 찾을 수 없습니다. "
-                        f"/skill <키워드> 로 검색해보세요.[/]"
+                        f"[{THEME['warn']}]{self.s.get('skill_not_found_tip', 'Skill not found').format(name=skill_name)}[/]"
                     )
             else:
                 self._cmd_skill(arg)
@@ -2818,14 +2816,14 @@ class BingoTerminal:
             hs_matches = [s for s in hack_skills if kw in s["name"].lower()]
             if hs_matches:
                 self.console.print(
-                    f"\n[{THEME['success']}]⚡ hack-skills 매칭 ({len(hs_matches)}개) — AI가 자동 로드:[/]"
+                    f"\n[{THEME['success']}]⚡ {self.s.get('hackskills_match', 'hack-skills match ({n})').format(n=len(hs_matches))}[/]"
                 )
                 for s in hs_matches[:15]:
                     self.console.print(
                         f"  [{THEME['secondary']}]{s['name']}[/]  [{THEME['dim']}]{s['lines']} lines[/]"
                     )
                 self.console.print(
-                    f"\n  [{THEME['dim']}]AI가 공격 상황에 맞게 자동 선택합니다. 수동 설치 불필요.[/]"
+                    f"\n  [{THEME['dim']}]{self.s.get('hackskills_auto_note', 'AI auto-selects. No manual install needed.')}[/]"
                 )
 
             # ── 로컬 SecSkills references 검색 ────────────────────────
@@ -2860,7 +2858,7 @@ class BingoTerminal:
             # ── hack-skills 전체 목록 표시 ─────────────────────────────
             if hack_skills:
                 hs_table = Table(
-                    title=f"[{THEME['success']}]⚡ hack-skills — {len(hack_skills)}개 자동 활성화됨 (설치 불필요)[/]",
+                    title=f"[{THEME['success']}]⚡ {self.s.get('hackskills_all_ready', 'hack-skills — {n} ready').format(n=len(hack_skills))}[/]",
                     border_style=THEME["success"],
                     show_header=True,
                 )
@@ -2964,7 +2962,7 @@ class BingoTerminal:
                     hs_table.add_row(f"{s['name']}", str(s["lines"]))
                 self.console.print(hs_table)
                 self.console.print(
-                    f"[{THEME['dim']}]  💡 AI가 공격 상황에 맞게 자동 선택합니다. 수동 설치/활성화 불필요.[/]"
+                    f"[{THEME['dim']}]  💡 {self.s.get('hackskills_auto_full', 'AI auto-selects. No manual install/activation needed.')}[/]"
                 )
                 self.console.print(
                     f"[{THEME['dim']}]  💡 /skill <키워드>  — 특정 스킬 검색[/]\n"
@@ -3023,7 +3021,7 @@ class BingoTerminal:
                     db_table.add_row(mod_name, str(cnt))
                 self.console.print(db_table)
                 self.console.print(
-                    f"[{THEME['dim']}]  예) SKILL_LOAD: Exploitation  →  9개 Exploitation 스킬 전체 주입[/]\n"
+                    f"[{THEME['dim']}]  {self.s.get('skill_db_load_example', 'e.g. SKILL_LOAD: Exploitation')}[/]\n"
                 )
             except Exception:
                 pass

@@ -111,10 +111,20 @@ def _hashes_com(hash_val: str) -> str | None:
 
 # ── 3. md5decrypt.net ─────────────────────────────────────────────────────────
 def _md5decrypt(hash_val: str) -> str | None:
+    _ERROR_PATTERNS = [
+        "CODE ERREUR", "ERREUR", "ERROR", "INVALID",
+        "NOT FOUND", "NOTFOUND", "NO RESULT", "LIMIT",
+        "RATE", "QUOTA", "UNAUTHORIZED", "FORBIDDEN",
+    ]
     try:
         url = f"https://md5decrypt.net/Api/api.php?hash={hash_val}&hash_type=md5&email=bingook@proton.me&code=code1"
         resp = _get(url)
-        if resp and resp.strip() and "INVALID" not in resp.upper():
+        if resp and resp.strip():
+            resp_upper = resp.strip().upper()
+            if any(pat in resp_upper for pat in _ERROR_PATTERNS):
+                return None
+            if len(resp.strip()) > 128:
+                return None
             return resp.strip()
     except Exception:
         pass

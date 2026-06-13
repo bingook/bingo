@@ -687,6 +687,39 @@ class BingoTerminal:
                 _detected_lang = "ASP.NET"
                 _detected_cms = "ASP.NET"
 
+            # ── SPA catch-all 라우터 감지 ─────────────────────────
+            # 모든 경로가 같은 크기로 200 응답 → SPA/프론트엔드 라우터
+            _page_size = len(page)
+            _spa_catchall = False
+            if resp.status_code == 200 and _page_size > 1000:
+                try:
+                    import random as _rand
+                    _test_paths = [
+                        f"/nonexistent_page_{_rand.randint(10000,99999)}",
+                        f"/fakepath_abc123/xyz",
+                    ]
+                    _same_size_count = 0
+                    for _tp in _test_paths:
+                        _tr = _hx.get(base_domain + _tp, headers=_hdrs, timeout=4, verify=False)
+                        if abs(len(_tr.text) - _page_size) < 200:
+                            _same_size_count += 1
+                    if _same_size_count >= 2:
+                        _spa_catchall = True
+                        results.insert(0,
+                            f"=== ⚠ SPA_CATCHALL_ROUTER DETECTED ===\n"
+                            f"  All paths return same size (~{_page_size}B)\n"
+                            f"  → This is a SPA (React/Vue/Angular) with frontend routing\n"
+                            f"  → Path enumeration is USELESS — all 200s are fake\n"
+                            f"  → Strategy: analyze HTML/JS for API endpoints, not file paths\n"
+                            f"  → Look for: fetch('/api/...'), axios.get('/v1/...), GraphQL endpoints\n"
+                            f"  → DO NOT try /admin/, /login/, /wp-admin/ — they all 'exist'"
+                        )
+                        self.console.print(
+                            f"[{THEME['warn']}]  ⚠ SPA catch-all 라우터 감지 — 경로 탐색 무의미[/]"
+                        )
+                except Exception:
+                    pass
+
             results.insert(0,
                 f"=== ⚠ CONFIRMED_TECH_STACK (DO NOT ASSUME DIFFERENT) ===\n"
                 f"  Language: {_detected_lang}\n"
@@ -832,16 +865,25 @@ class BingoTerminal:
             param_links_verified: list[tuple[str, int]] = []
             param_links_404: list[str] = []
             param_links_redirect: list[tuple[str, int]] = []
+            _custom_waf_detected: list[tuple[str, int, str]] = []  # (url, code, body_snippet)
             for pl in param_links_raw[:20]:
                 try:
                     _vr = _hx.get(pl, headers=_hdrs_sess, follow_redirects=True, timeout=5, verify=False)
                     sc = _vr.status_code
-                    if sc == 404:
+                    _vr_body = _vr.text[:300]
+                    # HTTP 999 / 비표준 코드 → 커스텀 WAF 감지
+                    if sc not in range(100, 600):
+                        _custom_waf_detected.append((pl, sc, _vr_body[:100]))
+                    elif sc == 404:
                         param_links_404.append(pl)
                     elif sc in (301, 302, 307, 308):
                         param_links_redirect.append((pl, sc))
                     else:
-                        param_links_verified.append((pl, sc))
+                        # 정상 응답이어도 WAF 키워드 탐지
+                        if any(w in _vr_body for w in ["No Hacking", "WebKnight", "Firewall Alert", "Security Alert"]):
+                            _custom_waf_detected.append((pl, sc, _vr_body[:100]))
+                        else:
+                            param_links_verified.append((pl, sc))
                 except Exception:
                     pass
 
@@ -865,6 +907,17 @@ class BingoTerminal:
                     f"=== PARAM_URLS_404 ({len(param_links_404)}) — DO NOT ATTACK ===\n"
                     + "\n".join(f"  {l}" for l in param_links_404)
                 )
+            if _custom_waf_detected:
+                results.append(
+                    f"=== ⚠ CUSTOM_WAF_DETECTED ({len(_custom_waf_detected)}) ===\n"
+                    + "\n".join(f"  [HTTP {sc}] {url}\n    → {snippet}" for url, sc, snippet in _custom_waf_detected)
+                    + "\n  → Non-standard HTTP code = custom app-level WAF/filter\n"
+                    + "  → Bypass strategy: encode payloads, use comment injection /**/, "
+                    + "tab/newline whitespace, case mixing, chunked encoding"
+                )
+                self.console.print(
+                    f"[{THEME['warn']}]  ⚠ 커스텀 WAF 감지 (HTTP {[sc for _, sc, _ in _custom_waf_detected]})[/]"
+                )
             # 하위 호환용
             param_links = [l for l, _ in param_links_verified] + [l for l, _ in param_links_redirect]
 
@@ -874,6 +927,16 @@ class BingoTerminal:
             )
             if forms_raw:
                 form_summary = []
+                # 민감 필드 키워드 (개인정보/금융)
+                _SENSITIVE_FIELDS = {
+                    "banknum": "은행계좌번호", "bankaccount": "은행계좌번호",
+                    "blockcode": "주민등록번호/스팸코드", "ssn": "주민번호",
+                    "jumin": "주민번호", "rrn": "주민번호",
+                    "cardnum": "카드번호", "card_num": "카드번호",
+                    "passwd": "비밀번호", "password": "비밀번호",
+                    "pin": "PIN번호", "cvv": "CVV",
+                }
+                all_sensitive_found = []
                 for fi, frm in enumerate(forms_raw[:8]):
                     action = (_re.search(r'action=["\']([^"\']+)["\']', frm, _re.I) or [None, ""])[1]
                     method = (_re.search(r'method=["\']([^"\']+)["\']', frm, _re.I) or [None, "GET"])[1]
@@ -887,9 +950,62 @@ class BingoTerminal:
                         f"  form[{fi}]: action={form_action_full} method={method.upper()} "
                         f"inputs={input_names}"
                     )
+                    # 민감 필드 감지
+                    for inp_name in input_names:
+                        for key, label in _SENSITIVE_FIELDS.items():
+                            if key in inp_name.lower():
+                                all_sensitive_found.append(f"{inp_name}({label})")
                 results.append(
                     f"=== HTML_FORMS ({len(forms_raw)}) ===\n" + "\n".join(form_summary)
                 )
+                # 민감 필드 발견 시 별도 경고
+                if all_sensitive_found:
+                    results.append(
+                        f"=== ⚠ SENSITIVE_FORM_FIELDS DETECTED ===\n"
+                        f"  Fields: {list(set(all_sensitive_found))}\n"
+                        f"  → HIGH VALUE TARGET: This form collects PII/financial data\n"
+                        f"  → Priority: SQLi on these fields, check for missing auth, IDOR on user data"
+                    )
+                    self.console.print(
+                        f"[{THEME['warn']}]  ⚠ 민감 필드 감지: {list(set(all_sensitive_found))}[/]"
+                    )
+
+            # ── 4b. CAPTCHA 분석 (파일명=정답 패턴 감지) ───────────────
+            _captcha_imgs = _re.findall(
+                r'<img[^>]+src=["\']([^"\']+(?:blockcode|captcha|spam|code|verify)[^"\']*\.(?:jpg|png|gif))["\']',
+                page, _re.I
+            )
+            _enblockcode = _re.findall(
+                r'name=["\']enblockcode["\'][^>]+value=["\']([a-f0-9]{32})["\']'
+                r'|value=["\']([a-f0-9]{32})["\'][^>]*name=["\']enblockcode["\']',
+                page, _re.I
+            )
+            if _captcha_imgs:
+                import hashlib as _hl
+                captcha_notes = []
+                for img_src in _captcha_imgs:
+                    # 파일명에서 코드 추출 (예: blockcode_uvaxsw.jpg → uvaxsw)
+                    _m = _re.search(r'(?:blockcode|captcha|code)_([a-zA-Z0-9]+)\.', img_src)
+                    if _m:
+                        candidate = _m.group(1)
+                        note = f"  CAPTCHA img: {img_src}\n  → Filename-encoded answer: '{candidate}'"
+                        # enblockcode MD5 검증
+                        for eh1, eh2 in _enblockcode:
+                            eh = eh1 or eh2
+                            if eh and _hl.md5(candidate.encode()).hexdigest() == eh:
+                                note += f"\n  ✅ CONFIRMED: MD5('{candidate}') == enblockcode hash"
+                                note += f"\n  → CAPTCHA BYPASS: submit blockcode={candidate} + enblockcode={eh}"
+                        captcha_notes.append(note)
+                if captcha_notes:
+                    results.append(
+                        f"=== ⚠ CAPTCHA_BYPASS_FOUND ===\n"
+                        + "\n".join(captcha_notes)
+                        + "\n  → The CAPTCHA answer is encoded in the image filename!\n"
+                        + "  → Auto-bypass: read filename → extract answer → submit"
+                    )
+                    self.console.print(
+                        f"[{THEME['warn']}]  ⚠ CAPTCHA 우회 가능 감지! (파일명=정답)[/]"
+                    )
 
             # ── 5. API / JS 엔드포인트 힌트 ──────────────────────────
             api_hints = _re.findall(

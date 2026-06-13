@@ -161,7 +161,7 @@ echo -e "${DIM}  Enables recon on JavaScript-heavy / SPA sites${RESET}"
 echo -e "${DIM}  Requires ~150MB Chromium download${RESET}"
 echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
 echo ""
-read -r -p "  Install Playwright? [y/N] " _pw_answer || true
+read -r -p "  Install Playwright? [y/N] " _pw_answer </dev/tty || _pw_answer=""
 if [[ "${_pw_answer,,}" == "y" ]]; then
     step "Installing Playwright"
     if python3 -m pip install playwright -q; then

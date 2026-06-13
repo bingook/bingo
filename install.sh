@@ -161,22 +161,32 @@ echo -e "${DIM}  Enables recon on JavaScript-heavy / SPA sites${RESET}"
 echo -e "${DIM}  Requires ~150MB Chromium download${RESET}"
 echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
 echo ""
-read -r -p "  Install Playwright? [y/N] " _pw_answer </dev/tty || _pw_answer=""
-if [[ "${_pw_answer,,}" == "y" ]]; then
-    step "Installing Playwright"
-    if python3 -m pip install playwright -q; then
-        ok "playwright package installed"
-    else
-        warn "playwright pip install failed"
-    fi
-    if python3 -m playwright install chromium; then
-        ok "Chromium browser installed"
-    else
-        warn "chromium install failed"
-    fi
+# 이미 설치 여부 확인
+_pw_installed=false
+if python3 -c "import playwright" &>/dev/null 2>&1; then
+    _pw_installed=true
+fi
+
+if $_pw_installed; then
+    ok "Playwright already installed — skipping"
 else
-    info "Skipped. Bingo will auto-install Playwright when needed."
-    info "Or install manually: pip install playwright && playwright install chromium"
+    read -r -p "  Install Playwright? [y/N] " _pw_answer </dev/tty || _pw_answer=""
+    if [[ "${_pw_answer,,}" == "y" ]]; then
+        step "Installing Playwright"
+        if python3 -m pip install playwright -q; then
+            ok "playwright package installed"
+        else
+            warn "playwright pip install failed"
+        fi
+        if python3 -m playwright install chromium; then
+            ok "Chromium browser installed"
+        else
+            warn "chromium install failed"
+        fi
+    else
+        info "Skipped. Bingo will auto-install Playwright when needed."
+        info "Or install manually: pip install playwright && playwright install chromium"
+    fi
 fi
 
 echo ""

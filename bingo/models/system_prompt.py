@@ -504,6 +504,23 @@ BUG 4 — Reusing invalidated session after SQLi detection:
   After a SQLi payload returns error page (small body), assume session is dead.
   ALWAYS get_fresh_session() before the NEXT injection attempt.
 
+BUG 5 — Calling function with keyword args not defined in its signature:
+  WRONG:
+    def req_post(url, data): ...
+    req_post(search_url=TARGET, data=payload)   # 'search_url' not in def → TypeError
+  CORRECT:
+    def req_post(url, data): ...
+    req_post(url=TARGET, data=payload)           # use exact parameter names from def
+  RULE: Before calling any function you define, re-read its def line and use EXACT
+        parameter names. Never invent keyword argument names.
+
+BUG 6 — Ignoring response body encoding (getting b'' or garbled text):
+  WRONG:  body = resp.read()  then  print(body)     → shows b'...' bytes
+  CORRECT: body = resp.read()
+           text = body.decode('utf-8', errors='replace')
+           print(text[:500])
+  ALWAYS decode response bytes before string operations or length-based comparison.
+
 SCENARIO E — VPN environment (NETWORK_ENV section present in scan):
   bingo auto-detects VPN and reports in NETWORK_ENV section:
     - Exit IP: the real IP the target server sees

@@ -431,6 +431,21 @@ SCENARIO C — Java target (.do endpoints, JSESSIONID):
   4. Java SQL: Oracle or MySQL — test with ROWNUM (Oracle) vs LIMIT (MySQL)
   5. If menu_id=120 returns 307: find a menu_id that returns 200 first
 
+SCENARIO E — VPN environment (NETWORK_ENV section present in scan):
+  bingo auto-detects VPN and reports in NETWORK_ENV section:
+    - Exit IP: the real IP the target server sees
+    - VPN active: True/False
+  When VPN is ACTIVE:
+    - X-Forwarded-For should use the VPN exit IP (not random private IP)
+    - IP-based rate limiting is tied to the exit IP, NOT local IP
+    - If IP is blocked: means exit IP got banned → notify user to switch VPN server
+    - Use exit IP in Referer/origin headers for consistency
+    - Advantage: VPN exit IP rotates when user switches server → natural IP change
+  When VPN is NOT active:
+    - Be more conservative with requests (user's real IP is exposed)
+    - Randomize delays more aggressively
+    - Prefer header injection over raw IP requests
+
 SCENARIO D — Site temporarily unreachable / connection timeout / 429 / 503:
   bingo will automatically wait 15 seconds when it detects 429/503/block in results.
   After bingo's wait, YOU MUST:

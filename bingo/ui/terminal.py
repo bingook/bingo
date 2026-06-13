@@ -120,6 +120,143 @@ class BingoTerminal:
         # Stuck 감지 — 마지막 N개 결과의 해시값 (반복 시 자동 전략 전환)
         self._recent_results: list[str] = []
         self._stuck_count: int = 0
+        # 네트워크 환경 (VPN 감지 결과 캐싱)
+        self._net_env: dict = {}
+        self._detect_network_env()
+
+    # ── 네트워크 환경 감지 (VPN 자동 판단) ───────────────────────
+    def _detect_network_env(self) -> None:
+        """VPN 사용 여부를 자동 판단하고 실제 출구 IP를 조회."""
+        import socket, threading
+
+        def _probe():
+            result = {
+                "local_ip": "",
+                "public_ip": "",
+                "vpn_detected": False,
+                "vpn_interface": "",
+                "country": "",
+            }
+            try:
+                # 로컬 IP 조회 (DNS 쿼리 방식 — 실제 연결 없이)
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as _s:
+                    _s.connect(("8.8.8.8", 80))
+                    result["local_ip"] = _s.getsockname()[0]
+            except Exception:
+                result["local_ip"] = "unknown"
+
+            # VPN 판단: 로컬 IP가 tun/vpn 대역인지 확인
+            _lip = result["local_ip"]
+            _vpn_ranges = [
+                ("10.", "Private/VPN"),
+                ("172.16.", "VPN"),("172.17.", "VPN"),("172.18.", "VPN"),
+                ("172.19.", "VPN"),("172.20.", "VPN"),("172.30.", "VPN"),
+                ("172.31.", "VPN"),
+                ("100.64.", "Tailscale/VPN"),("100.65.", "Tailscale/VPN"),
+                ("100.100.", "Tailscale/VPN"),
+            ]
+            # 192.168.x.x 는 일반 공유기도 포함이므로 별도 체크
+            _is_192 = _lip.startswith("192.168.")
+
+            vpn_hint = ""
+            for prefix, label in _vpn_ranges:
+                if _lip.startswith(prefix):
+                    vpn_hint = label
+                    break
+
+            # 외부 API로 실제 출구 IP 조회 (여러 서비스 폴백)
+            _public_ip = ""
+            _country = ""
+            _ip_apis = [
+                "https://api.ipify.org",
+                "https://ipv4.icanhazip.com",
+                "https://api4.my-ip.io/ip",
+                "https://checkip.amazonaws.com",
+            ]
+            import ssl as _ssl, urllib.request as _ur
+            _ctx = _ssl.create_default_context()
+            _ctx.check_hostname = False
+            _ctx.verify_mode = _ssl.CERT_NONE
+            for _api in _ip_apis:
+                try:
+                    _req = _ur.Request(_api, headers={"User-Agent": "curl/7.88.1"})
+                    with _ur.urlopen(_req, timeout=4, context=_ctx) as _r:
+                        _public_ip = _r.read().decode().strip().split("\n")[0]
+                    if _public_ip:
+                        break
+                except Exception:
+                    continue
+
+            # 국가 정보 조회 (ip-api.com)
+            if _public_ip:
+                try:
+                    _cr = _ur.Request(
+                        f"http://ip-api.com/json/{_public_ip}?fields=country,countryCode,isp",
+                        headers={"User-Agent": "curl/7.88.1"}
+                    )
+                    import json as _json
+                    with _ur.urlopen(_cr, timeout=4) as _cr_resp:
+                        _geo = _json.loads(_cr_resp.read().decode())
+                    _country = f"{_geo.get('countryCode','?')} / {_geo.get('isp','')[:30]}"
+                except Exception:
+                    _country = ""
+
+            result["public_ip"] = _public_ip
+            result["country"] = _country
+
+            # VPN 최종 판단: 로컬 IP ≠ 공개 IP 이면서 VPN 대역 OR tun 인터페이스 존재
+            _is_vpn = False
+            _vpn_iface = ""
+            try:
+                import subprocess as _sp
+                _ifout = _sp.check_output(["ifconfig"], text=True, timeout=3)
+                for _iface_name in ("tun", "tap", "utun", "wg", "vpn", "ppp", "ipsec"):
+                    if _iface_name in _ifout.lower():
+                        _is_vpn = True
+                        _vpn_iface = _iface_name
+                        break
+            except Exception:
+                pass
+
+            if vpn_hint:
+                _is_vpn = True
+                _vpn_iface = vpn_hint
+
+            # 공개 IP가 로컬 IP와 다른 경우 (NAT/VPN)
+            if _public_ip and _public_ip != _lip and not _lip.startswith("192.168."):
+                _is_vpn = True
+
+            result["vpn_detected"] = _is_vpn
+            result["vpn_interface"] = _vpn_iface
+            self._net_env = result
+
+        # 백그라운드에서 조회 (시작 속도에 영향 없음)
+        threading.Thread(target=_probe, daemon=True).start()
+
+    def _get_net_env_line(self) -> str:
+        """배너/상태줄용 네트워크 환경 한 줄 요약"""
+        env = self._net_env
+        if not env:
+            return ""
+        pub = env.get("public_ip", "")
+        local = env.get("local_ip", "")
+        vpn = env.get("vpn_detected", False)
+        iface = env.get("vpn_interface", "")
+        country = env.get("country", "")
+
+        if vpn:
+            return (
+                f"[{THEME['warn']}]🔒 VPN ON[/]  "
+                f"[{THEME['dim']}]출구IP:[/] [{THEME['success']}]{pub}[/]  "
+                f"[{THEME['dim']}]{country}[/]  "
+                f"[{THEME['muted']}](local: {local})[/]"
+            )
+        elif pub:
+            return (
+                f"[{THEME['muted']}]🌐 IP:[/] [{THEME['success']}]{pub}[/]  "
+                f"[{THEME['dim']}]{country}[/]"
+            )
+        return ""
 
     # ── 공개 진입점 ───────────────────────────────────────────────
     def run(self) -> None:
@@ -198,6 +335,15 @@ class BingoTerminal:
             f"[{THEME['dim']}]model:[/] {status}   "
             f"[{THEME['dim']}]skills:[/] [{THEME['success']}]{_total} ready[/]\n"
         )
+        # 네트워크 환경 표시 (VPN 감지 결과 — 백그라운드 조회 완료 대기 최대 2s)
+        import time as _t
+        for _ in range(20):
+            if self._net_env:
+                break
+            _t.sleep(0.1)
+        _net_line = self._get_net_env_line()
+        if _net_line:
+            self.console.print(f"  {_net_line}\n")
 
     def _print_status_bar(self) -> None:
         model_cfg = self.config.get_active_model_config()
@@ -353,6 +499,34 @@ class BingoTerminal:
 
         url = urls[0].rstrip("/?,")
         results: list[str] = []
+
+        # 네트워크 환경 확인 및 표시
+        _env = self._net_env
+        _pub_ip = _env.get("public_ip", "")
+        _vpn_on = _env.get("vpn_detected", False)
+        _vpn_iface = _env.get("vpn_interface", "")
+        _country = _env.get("country", "")
+
+        _net_note = ""
+        if _vpn_on and _pub_ip:
+            _net_note = (
+                f"[NETWORK_ENV]\n"
+                f"  VPN: ACTIVE ({_vpn_iface})\n"
+                f"  Exit IP (what target sees): {_pub_ip}\n"
+                f"  Location: {_country}\n"
+                f"  Use X-Forwarded-For: {_pub_ip} to appear as real source\n"
+                f"  NOTE: Target blocks by exit IP, not local IP"
+            )
+            self.console.print(
+                f"\n[{THEME['warn']}]  🔒 VPN 감지: 출구 IP [{_pub_ip}] ({_country})[/]"
+            )
+        elif _pub_ip:
+            _net_note = (
+                f"[NETWORK_ENV]\n"
+                f"  VPN: NOT detected\n"
+                f"  Public IP: {_pub_ip}\n"
+                f"  Location: {_country}"
+            )
 
         self.console.print(
             f"\n[{THEME['warn']}]{self.s.get('site_recon', '🔍 Site recon')}: {url}[/]"
@@ -738,6 +912,10 @@ class BingoTerminal:
 
         except Exception as e:
             results.append(f"RECON_ERROR: {e}")
+
+        # 네트워크 환경 정보를 AI에게 전달 (VPN 여부, 실제 출구 IP)
+        if _net_note:
+            results.insert(0, _net_note)
 
         return "\n\n".join(results)
 

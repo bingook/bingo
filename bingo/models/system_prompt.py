@@ -481,10 +481,28 @@ SCENARIO C2 — Session invalidation after SQLi detection (status=-1 / 0B patter
   - If EVERY fresh session also returns -1: IP is blocked (not session)
 
 === [CRITICAL] SCRIPT BUG PREVENTION ===
-  list.append() takes EXACTLY ONE argument:
-    WRONG:  my_list.append(item1, item2, item3)
-    CORRECT: my_list.append((item1, item2, item3))  # use tuple
-  Always test append calls have exactly one argument.
+
+BUG 1 — list.append() takes EXACTLY ONE argument:
+  WRONG:  my_list.append(item1, item2, item3)
+  CORRECT: my_list.append((item1, item2, item3))  # wrap in tuple
+
+BUG 2 — urllib.request.Request() requires ABSOLUTE URL (https://...):
+  WRONG:  urllib.request.Request('/cms/com/index.do?menu_id=120')
+          → ValueError: unknown url type: '/cms/...'
+  CORRECT: BASE = "https://www.target.com"
+           urllib.request.Request(BASE + '/cms/com/index.do?menu_id=120')
+  ALWAYS use urljoin or BASE + path to build absolute URLs.
+  NEVER pass a path starting with '/' directly to urllib.request.Request().
+
+BUG 3 — Session expires → all responses become 1055B (error page):
+  If ALL responses return the same small size (e.g. 1055B) regardless of payload:
+  → Session has expired or been invalidated
+  → Call get_fresh_session() to get a new JSESSIONID before next test
+  → Do NOT interpret 1055B as "blocked by WAF" — it's a dead session
+
+BUG 4 — Reusing invalidated session after SQLi detection:
+  After a SQLi payload returns error page (small body), assume session is dead.
+  ALWAYS get_fresh_session() before the NEXT injection attempt.
 
 SCENARIO E — VPN environment (NETWORK_ENV section present in scan):
   bingo auto-detects VPN and reports in NETWORK_ENV section:

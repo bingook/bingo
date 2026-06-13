@@ -249,7 +249,7 @@ class BingoTerminal:
             return f"[{THEME['warn']}]{_txt.format(ip=pub, country=country, local=local)}[/]"
         elif pub:
             _txt = self.s.get("vpn_off_banner", "🌐 Public IP: {ip}  {country}")
-            return f"[{THEME['muted']}]{_txt.format(ip=pub, country=country)}[/]"
+            return f"[{THEME['dim']}]{_txt.format(ip=pub, country=country)}[/]"
         return ""
 
     # ── 공개 진입점 ───────────────────────────────────────────────
@@ -2062,7 +2062,7 @@ class BingoTerminal:
                 # 대기 중 카운트다운 표시
                 for _i in range(_wait_secs, 0, -5):
                     _time.sleep(min(5, _i))
-                    self.console.print(f"[{THEME['muted']}]  {self.s.get('countdown_remain', '⏱ {sec}s remaining...').format(sec=_i)}[/]")
+                    self.console.print(f"[{THEME['dim']}]  {self.s.get('countdown_remain', '⏱ {sec}s remaining...').format(sec=_i)}[/]")
                 _ip_block_hint = (
                     f"\n[IP_BLOCK_DETECTED: {', '.join(_detected_blocks)}]\n"
                     f"Waited {_wait_secs}s. Now retry with:\n"

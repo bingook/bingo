@@ -164,8 +164,8 @@ echo ""
 read -r -p "  Install Playwright? [y/N] " _pw_answer
 if [[ "${_pw_answer,,}" == "y" ]]; then
     step "Installing Playwright"
-    $PIP install playwright -q && ok "playwright package installed" || warn "playwright pip install failed"
-    $PYTHON -m playwright install chromium && ok "Chromium browser installed" || warn "chromium install failed"
+    python3 -m pip install playwright -q && ok "playwright package installed" || warn "playwright pip install failed"
+    python3 -m playwright install chromium && ok "Chromium browser installed" || warn "chromium install failed"
 else
     info "Skipped. Bingo will auto-install Playwright when needed."
     info "Or install manually: pip install playwright && playwright install chromium"

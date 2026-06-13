@@ -42,13 +42,16 @@ ALLOWED_SQL_KEYWORDS = [
 # bingo는 한국 사용자 전용 프로그램
 # .com .org .net .io .cc .kr 등 TLD 관계없이 동일한 체인 실행
 DEFAULT_ATTACK_CHAIN = [
-    "sqli_detect",        # SQL 인젝션 탐지
-    "sqli_extract_db",    # DB명/테이블명 추출
-    "sqli_extract_users", # 사용자/관리자 테이블 추출
-    "admin_panel_find",   # 관리자 패널 탐색
-    "admin_login",        # 관리자 로그인 시도
-    "webshell_upload",    # 웹셸 업로드 테스트
-    "report",             # 보고서 생성
+    "sqli_detect",          # SQL 인젝션 탐지
+    "sqli_extract_db",      # DB명/테이블명 추출
+    "sqli_extract_users",   # 사용자/관리자 테이블 추출
+    "otp_leak_check",       # OTP/auth_key 노출 확인 (한국 금융 사이트)
+    "admin_panel_find",     # 관리자 패널 탐색
+    "admin_login",          # 관리자 로그인 시도 (그누보드 특화 크리덴셜)
+    "csrf_bypass",          # CSRF 이중 토큰 우회 (그누보드5 ajax.token.php)
+    "webshell_upload",      # 웹쉘 업로드 (GIF polyglot + AntSword 호환)
+    "clean_shell_drop",     # 클린 PHP 쉘 드롭 (GIF 헤더 오염 제거)
+    "report",               # 보고서 생성
 ]
 
 # 하위 호환성 유지

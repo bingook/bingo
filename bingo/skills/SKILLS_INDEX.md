@@ -15,6 +15,7 @@ AI가 `SKILL_LOAD: <스킬명>` 을 선언하면 즉시 해당 전문 지식이 
 | API Security | `api_security` | API 취약점 점검 |
 | Auth Attack | `auth_attack` | 인증 우회/세션 공격 |
 | Recon | `recon` | 정찰/서브도메인/핑거프린팅 |
+| **Korean CMS** | **`gnuboard5-attack`** | **그누보드5 전체 공격 체인 (실전 검증)** |
 
 ---
 

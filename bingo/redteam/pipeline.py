@@ -14,13 +14,14 @@ from .verification import VerificationEngine
 
 
 PHASE_MODULES = {
-    "recon":   "01_recon",
-    "scan":    "02_scan",
-    "exploit": "03_exploit",
-    "report":  "09_report",
+    "recon":    "01_recon",
+    "scan":     "02_scan",
+    "exploit":  "03_exploit",
+    "webshell": "04_webshell",   # Gnuboard5/GIF polyglot/AntSword 자동화
+    "report":   "09_report",
 }
 
-DEFAULT_PHASES = ["recon", "scan", "exploit", "report"]
+DEFAULT_PHASES = ["recon", "scan", "exploit", "webshell", "report"]
 
 
 class RedTeamPipeline:
@@ -68,6 +69,20 @@ class RedTeamPipeline:
         for phase in phases:
             if phase == "report":
                 continue
+
+            # webshell phase는 exploit에서 관리자 로그인 성공 시에만 자동 실행
+            # (또는 phases에 명시적으로 포함된 경우)
+            if phase == "webshell":
+                exploit_result = self.session.get_phase_findings("exploit")
+                admin_logged_in = any(
+                    f.get("data", {}).get("admin_login")
+                    for f in exploit_result
+                    if isinstance(f.get("data"), dict)
+                )
+                if not admin_logged_in and "webshell" not in (phases or []):
+                    self.log("[dim]  웹쉘 phase: 관리자 로그인 실패로 스킵[/dim]")
+                    continue
+
             self._run_phase(phase)
 
         # AI 종합 분석

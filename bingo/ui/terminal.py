@@ -659,18 +659,57 @@ class BingoTerminal:
                     + "\n".join(f"  {k}={v}" for k, v in session_cookies.items())
                     + "\n  IMPORTANT: Include these cookies in ALL injection requests"
                 )
-            # Java/.do 사이트 감지
-            java_hints = []
-            if "jsessionid" in str(all_headers).lower() or ".do" in url or "jsessionid" in page.lower()[:1000]:
-                java_hints.append("Java/Spring/Struts detected (JSESSIONID or .do endpoints)")
-            if java_hints:
+            # ── CMS/기술스택 명시 감지 (AI 환각 방지) ───────────────
+            _page_low = page.lower()[:5000]
+            _hdr_low = str(all_headers).lower()
+            _detected_cms = "UNKNOWN"
+            _detected_lang = "UNKNOWN"
+
+            # Java 감지
+            if "jsessionid" in _hdr_low or ".do" in url or "jsessionid" in _page_low:
+                _detected_cms = "Java/Spring/Struts"
+                _detected_lang = "Java"
+            # PHP 감지
+            elif "phpsessid" in _hdr_low or ".php" in url or "phpsessid" in _page_low:
+                _detected_lang = "PHP"
+                if "gnuboard" in _page_low or "bo_table" in _page_low or "/bbs/" in _page_low:
+                    _detected_cms = "Gnuboard (PHP)"
+                elif "xe_" in _page_low or "xpressengine" in _page_low or "/xe/" in _page_low:
+                    _detected_cms = "XpressEngine/XE (PHP)"
+                elif "godo" in _page_low:
+                    _detected_cms = "Godo Mall (PHP)"
+                elif "wordpress" in _page_low or "wp-content" in _page_low:
+                    _detected_cms = "WordPress (PHP)"
+                else:
+                    _detected_cms = "PHP (CMS unknown)"
+            # ASP/ASPX 감지
+            elif ".asp" in url or "__viewstate" in _page_low or "asp.net" in _hdr_low:
+                _detected_lang = "ASP.NET"
+                _detected_cms = "ASP.NET"
+
+            results.insert(0,
+                f"=== ⚠ CONFIRMED_TECH_STACK (DO NOT ASSUME DIFFERENT) ===\n"
+                f"  Language: {_detected_lang}\n"
+                f"  CMS/Framework: {_detected_cms}\n"
+                f"  {'CRITICAL: Java confirmed. NEVER use PHP paths (/bbs/board.php, bo_table, PHPSESSID etc.)' if _detected_lang == 'Java' else ''}\n"
+                f"  {'CRITICAL: PHP/Gnuboard confirmed. NEVER use Java/.do endpoints.' if 'Gnuboard' in _detected_cms else ''}\n"
+                f"  {'NOTE: Custom/unknown stack — no CMS detected. Analyze actual page structure only.' if _detected_cms == 'UNKNOWN' else ''}\n"
+                f"\n"
+                f"  ⚠ ANTI-ASSUMPTION RULE:\n"
+                f"  If CMS=UNKNOWN → this may be a custom-built proprietary system.\n"
+                f"  DO NOT guess or assume CMS/framework not confirmed above.\n"
+                f"  Base attack strategy 100% on actual URLs, params, and responses found in recon.\n"
+                f"  Never invent paths like /bbs/, /admin/, /wp-admin/ without seeing them in actual responses."
+            )
+
+            if _detected_lang == "Java":
                 results.append(
                     f"=== JAVA_TARGET_NOTES ===\n"
-                    + "\n".join(java_hints)
-                    + "\n  JAVA INJECTION TIPS:\n"
-                    + "  - Use ?param=1' OR '1'='1 for Oracle/MySQL\n"
+                    f"  Java/Spring/Struts detected (JSESSIONID or .do endpoints)\n"
+                    + "  JAVA INJECTION TIPS:\n"
                     + "  - .do endpoints: menu_id, seq, idx, code params are common injection points\n"
                     + "  - Session required: include JSESSIONID cookie in all requests\n"
+                    + "  - Oracle DB likely: test with ROWNUM, dual table, ||concat\n"
                     + "  - Follow 307 redirects with cookies to reach actual content"
                 )
 
@@ -906,6 +945,59 @@ class BingoTerminal:
 
         except Exception as e:
             results.append(f"RECON_ERROR: {e}")
+
+        # ── Playwright 스마트 판단 ─────────────────────────────────────
+        # 조건: 링크가 거의 없거나 JS SPA 감지 시 Playwright로 재정찰
+        try:
+            from ..tools import playwright_recon as _pw
+            _pw_needed = _pw.needs_playwright(
+                status=orig_status,
+                body=page,
+                url=url,
+            )
+            # 링크 너무 적은데 정상 응답인 경우도 Playwright 시도
+            if not _pw_needed and orig_status == 200 and len(all_links) < 3:
+                _pw_needed = True
+
+            if _pw_needed:
+                _pw_lang = getattr(self.config, "lang", "en")
+                _pw_msg = {
+                    "ko": "🎭 JS 렌더링 감지 — Playwright로 재정찰 중...",
+                    "zh": "🎭 检测到JS渲染 — 使用Playwright重新侦察...",
+                    "en": "🎭 JS rendering detected — re-scanning with Playwright...",
+                }.get(_pw_lang, "🎭 Playwright re-scan...")
+                self.console.print(f"[{THEME['warn']}]  {_pw_msg}[/]")
+
+                if not _pw.is_available():
+                    _install_msg = {
+                        "ko": "  Playwright 설치 중 (~150MB, 최초 1회)...",
+                        "zh": "  正在安装Playwright (~150MB, 仅首次)...",
+                        "en": "  Installing Playwright (~150MB, first time only)...",
+                    }.get(_pw_lang, "  Installing Playwright...")
+                    self.console.print(f"[{THEME['dim']}]{_install_msg}[/]")
+                    _pw.install(self.console)
+
+                if _pw.is_available():
+                    _pw_result = _pw.recon(url, timeout_ms=20000)
+                    _pw_text = _pw.format_result(_pw_result, base_url=url)
+                    results.append(_pw_text)
+
+                    # Playwright에서 찾은 파라미터 URL 추가
+                    _pw_param_urls = _pw_result.get('param_urls', [])
+                    if _pw_param_urls:
+                        results.append(
+                            f"=== PLAYWRIGHT_PARAM_URLS ({len(_pw_param_urls)}) — attack these ===\n"
+                            + "\n".join(f"  {u}" for u in _pw_param_urls[:20])
+                        )
+                    # Playwright 쿠키 추가 (세션 포함)
+                    _pw_cookies = _pw_result.get('cookies', {})
+                    if _pw_cookies:
+                        results.append(
+                            f"=== PLAYWRIGHT_COOKIES (use in scripts) ===\n"
+                            + "\n".join(f"  {k}={v}" for k, v in _pw_cookies.items())
+                        )
+        except Exception as _pw_err:
+            pass  # Playwright 실패 시 무시하고 기존 결과 사용
 
         # 네트워크 환경 정보를 AI에게 전달 (VPN 여부, 실제 출구 IP)
         if _net_note:

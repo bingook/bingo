@@ -153,6 +153,24 @@ install_bingo
 setup_path
 verify
 
+# ── Playwright 선택 설치 ─────────────────────────────────────────
+echo ""
+echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
+echo -e "${CYAN}  Optional: Playwright (JS rendering)${RESET}"
+echo -e "${DIM}  Enables recon on JavaScript-heavy / SPA sites${RESET}"
+echo -e "${DIM}  Requires ~150MB Chromium download${RESET}"
+echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
+echo ""
+read -r -p "  Install Playwright? [y/N] " _pw_answer
+if [[ "${_pw_answer,,}" == "y" ]]; then
+    step "Installing Playwright"
+    $PIP install playwright -q && ok "playwright package installed" || warn "playwright pip install failed"
+    $PYTHON -m playwright install chromium && ok "Chromium browser installed" || warn "chromium install failed"
+else
+    info "Skipped. Bingo will auto-install Playwright when needed."
+    info "Or install manually: pip install playwright && playwright install chromium"
+fi
+
 echo ""
 echo -e "${GREEN}  ══════════════════════════════════════${RESET}"
 echo -e "${GREEN}  Installation complete!${RESET}"

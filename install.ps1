@@ -127,6 +127,39 @@ try {
     } else { OK "PATH already set" }
 } catch { Warn "PATH config failed — run: python -m bingo" }
 
+# ── Playwright 선택 설치 ──────────────────────────────────────────
+Write-Host ""
+Write-Host "  ===========================================" -ForegroundColor Cyan
+Write-Host "  Optional: Playwright (JS rendering recon)" -ForegroundColor Cyan
+Write-Host "  Enables recon on JavaScript-heavy / SPA sites" -ForegroundColor DarkGray
+Write-Host "  Requires ~150MB Chromium download" -ForegroundColor DarkGray
+Write-Host "  ===========================================" -ForegroundColor Cyan
+Write-Host ""
+$pwAnswer = Read-Host "  Install Playwright? [y/N]"
+if ($pwAnswer -match '^[yY]') {
+    Step "Installing Playwright..."
+    $pwPy = @"
+import subprocess, sys
+print('  Installing playwright package...')
+r1 = subprocess.run([sys.executable, '-m', 'pip', 'install', 'playwright', '-q'],
+    capture_output=True, text=True)
+print('  OK' if r1.returncode == 0 else f'  pip warn: {r1.stderr[:100]}')
+
+print('  Downloading Chromium (~150MB)...')
+r2 = subprocess.run([sys.executable, '-m', 'playwright', 'install', 'chromium'],
+    capture_output=True, text=True)
+print('  Chromium OK' if r2.returncode == 0 else f'  chromium warn: {r2.stderr[:100]}')
+"@
+    $tmpPw = "$env:TEMP\bingo_playwright.py"
+    $pwPy | Out-File -FilePath $tmpPw -Encoding UTF8
+    & $py $tmpPw
+    Remove-Item $tmpPw -Force -ErrorAction SilentlyContinue
+    OK "Playwright installed"
+} else {
+    Write-Host "  Skipped. Bingo will auto-install when needed." -ForegroundColor DarkGray
+    Write-Host "  Manual: pip install playwright && playwright install chromium" -ForegroundColor DarkGray
+}
+
 # ── 완료 ─────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "  ===========================================" -ForegroundColor Green

@@ -310,8 +310,12 @@ def _get_recommendation(vuln_type: str) -> str:
             "2. CVE-2026-10520, CVE-2026-10523 영향 여부 검토\n"
             "3. 외부 인터넷에서 Sentry 관리 포트 접근 차단"
         ),
-        # Next.js Cache Poisoning → 0-click SXSS 권고
-        nextjs_recs = {
+    }
+    if finding_type in recs:
+        return recs[finding_type]
+
+    # Next.js Cache Poisoning → 0-click SXSS 권고
+    nextjs_recs = {
             "header_reflection": (
                 "1. [긴급] 미들웨어에서 리퀘스트 헤더를 리스폰스 헤더에 그대로 전달하는 코드 제거\n"
                 "   middleware.ts의 headers() 전달 로직 감사 필요\n"
@@ -348,8 +352,8 @@ def _get_recommendation(vuln_type: str) -> str:
                 "3. 인증 필요 경로는 캐싱 완전 비활성화"
             ),
         }
-        if finding_type in nextjs_recs:
-            return nextjs_recs[finding_type]
+    if finding_type in nextjs_recs:
+        return nextjs_recs[finding_type]
 
         # CSWSH + EXE Exposure + WebSocket RCE 권고
         cswsh_recs = {
@@ -388,8 +392,8 @@ def _get_recommendation(vuln_type: str) -> str:
                 "5. 데스크톱 앱 코드 서명 및 ASLR/DEP 활성화 확인"
             ),
         }
-        if finding_type in cswsh_recs:
-            return cswsh_recs[finding_type]
+    if finding_type in cswsh_recs:
+        return cswsh_recs[finding_type]
 
         # Redis DarkReplica CVE-2026-23631 권고
         redis_recs = {
@@ -444,8 +448,8 @@ def _get_recommendation(vuln_type: str) -> str:
                 "4. 패치 완료 전까지 Redis 앞에 프록시 레이어 도입"
             ),
         }
-        if finding_type in redis_recs:
-            return redis_recs[finding_type]
+    if finding_type in redis_recs:
+        return redis_recs[finding_type]
 
         # HTML Autofill Steal 권고
         autofill_recs = {
@@ -487,8 +491,8 @@ def _get_recommendation(vuln_type: str) -> str:
                 "3. Chrome 사용자를 대상으로 한 비번 탈취 가능성 인식 교육"
             ),
         }
-        if finding_type in autofill_recs:
-            return autofill_recs[finding_type]
+    if finding_type in autofill_recs:
+        return autofill_recs[finding_type]
 
         # Web Cache Deception + SameSite Lax Bypass 권고
         wcd_recs = {
@@ -538,10 +542,55 @@ def _get_recommendation(vuln_type: str) -> str:
                 "3. 민감 경로 응답에서 JWT/토큰을 응답 Body 대신 HttpOnly 쿠키로 처리"
             ),
         }
-        if finding_type in wcd_recs:
-            return wcd_recs[finding_type]
+    if finding_type in wcd_recs:
+        return wcd_recs[finding_type]
 
-        # OAuth Chain Attack 권고
+        # Cloud Token Recon 권고
+        ctr_recs = {
+            "open_dev_tool": (
+                "1. Grafana / Prometheus / Kibana / Jenkins 등 내부 DevTool에 인증 필수 적용\n"
+                "2. 내부 모니터링 도구를 인터넷에 직접 노출 금지 — VPN / IP 화이트리스트 필수\n"
+                "3. 해당 IP의 TLS 인증서 SAN을 점검하여 노출된 섀도우 도메인 확인\n"
+                "4. 클라우드 메타데이터 서비스(169.254.169.254) 접근을 iptables/IMDSv2로 제한"
+            ),
+            "tls_san_wildcard": (
+                "1. 와일드카드 SAN 인증서 발급 범위를 최소화 — 필요한 서브도메인만 명시적 등록\n"
+                "2. Certificate Transparency 로그(crt.sh)를 정기적으로 모니터링하여 예상치 못한 서브도메인 발견\n"
+                "3. 사용하지 않는 섀도우 도메인/서브도메인 즉시 폐기 및 DNS 레코드 삭제\n"
+                "4. 내부 실험 환경(llm-playground, dev, staging)에 공개 TLS 인증서 발급 금지"
+            ),
+            "js_hidden_domain": (
+                "1. 프로덕션 JS 번들에서 내부 도메인/API 참조 제거 — 빌드 시 환경변수로 분리\n"
+                "2. JS 번들 난독화 및 민감한 엔드포인트 경로 하드코딩 금지\n"
+                "3. 정기적으로 자체 JS 번들을 파싱하여 예상치 못한 도메인 참조 감사\n"
+                "4. 내부 API 도메인은 CORS + 인증으로 외부 직접 접근 차단"
+            ),
+            "cloud_token_exposed": (
+                "1. 클라우드 토큰 반환 엔드포인트에 즉시 인증 추가 (API Key / IAM / OAuth2)\n"
+                "2. 노출된 GCP/AWS/Azure 토큰 즉시 폐기 및 재발급\n"
+                "3. Secret Manager / Secrets Manager에 저장된 모든 시크릿 순환(rotate)\n"
+                "4. IAM 최소 권한 원칙 적용 — 서비스 계정이 Secret Manager 전체 읽기 권한 보유 금지\n"
+                "5. Vercel / GitHub 토큰은 환경변수가 아닌 전용 시크릿 볼트에 저장\n"
+                "6. GitHub Organization에서 노출된 PAT 즉시 폐기 및 저장소 접근 감사 로그 확인"
+            ),
+            "shadow_domain_token_exposed": (
+                "1. 섀도우 도메인의 비인증 토큰 엔드포인트 즉시 인증 적용 또는 서비스 종료\n"
+                "2. 내부 AI/LLM 실험 환경(haloworld.xyz, metafb.cloud 류)을 공개 DNS에서 제거\n"
+                "3. JS 번들에서 발견된 내부 도메인 참조 즉시 제거 후 재배포\n"
+                "4. 노출된 모든 클라우드 크리덴셜 체인(GCP→Vercel→GitHub) 전체 순환"
+            ),
+            "likely_cloud_chain": (
+                "1. DevTool 인증 강화 및 TLS SAN 와일드카드 도메인 전수 점검\n"
+                "2. crt.sh에서 조직 도메인으로 발급된 인증서 목록 확인 및 불필요한 도메인 폐기\n"
+                "3. GCP/AWS 서비스 계정의 최소 권한 설정 검토\n"
+                "4. Secret Manager 접근 감사 로그 활성화 및 비정상 접근 알림 설정"
+            ),
+        }
+    if finding_type in ctr_recs:
+        return ctr_recs[finding_type]
+
+    # OAuth Chain Attack 권고
+    oauth_recs = {
         "email_trust_chain": (
             "1. 이메일 인증 없이 계정 생성 즉시 차단 — 검증 전 로그인/OAuth 토큰 발급 금지\n"
             "2. OAuth 응답에 email_verified 필드 명시 — 소비 사이트에서 반드시 검증 필수\n"
@@ -577,6 +626,9 @@ def _get_recommendation(vuln_type: str) -> str:
             "3. registration_endpoint를 인증된 요청으로만 제한"
         ),
     }
+    if finding_type in oauth_recs:
+        return oauth_recs[finding_type]
+
     return recs.get(vuln_type, "해당 취약점에 맞는 보안 패치 적용")
 
 

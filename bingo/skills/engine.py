@@ -225,6 +225,17 @@ BUILTIN_MODULES: list[dict] = [
          "SameSite Lax 우회 PoC HTML 자동 생성",
          "Cache buster(cb=UNIQUE)로 피해자 응답 캐싱 체인 시뮬레이션",
      ]},
+    {"id": "51", "name": "Grafana→GCP토큰→비공개저장소 체인 (클라우드토큰정찰)", "en": "CloudTokenRecon", "ko": "클라우드토큰정찰",
+     "skills": [
+         "오픈 DevTool(Grafana/Prometheus/Kibana/Jenkins) 자동 탐지",
+         "TLS 인증서 SAN 와일드카드 추출 → 숨겨진 섀도우 서브도메인 발굴",
+         "JS 번들 전체 파싱 — 공식 문서에 없는 내부 도메인/API 경로 추출",
+         "비인증 GCP/AWS/Azure 토큰 엔드포인트 자동 퍼징 (/_api/gcp-token 등)",
+         "섀도우 도메인에서도 토큰 엔드포인트 자동 퍼징 (JS 피벗)",
+         "토큰 타입 자동 식별 (GCP OAuth2 / AWS STS / GitHub PAT / JWT 등)",
+         "클라우드 크리덴셜 체인 홉 수 계산 (token→SecretManager→Vercel→GitHub)",
+         "AI 판단: DevTool + 클라우드 환경 = 체인 가능성 자동 경보",
+     ]},
     {"id": "46", "name": "CSWSH+EXE노출+로컬WebSocket RCE체인", "en": "CswshRceChain", "ko": "CSWSH_RCE체인탐지",
      "skills": [
          "JS 파일에서 EXE 다운로드 함수 자동 추출",

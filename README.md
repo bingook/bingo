@@ -737,6 +737,88 @@ http://target.com/?html=
 
 ---
 
+### Cloud Token Recon — Grafana → GCP Token → 507 Private Repos Chain (v2.1)
+
+> **Research basis:**  
+> [Sectricity Security Team — "From a Misconfigured Grafana to 507 Private Meta Repos: A Bug Worth $157K"](https://sectricity.com/blog/misconfigured-grafana-507-private-meta-repos/)  
+> Published: May 28, 2026 — **$157,000 bounty** awarded by Meta (filed March 21, mitigated March 23, 2026)  
+> **Skill module:** `CloudTokenRecon` (id: 51)
+
+**Key insight:**
+
+A boring open Grafana on a public Meta IP became a 5-hop chain into **507 private Meta repositories** with read/write access. The pivot was not the Grafana content itself — it was the anomaly of its existence. The TLS wildcard SAN on the same IP revealed a hidden shadow domain estate, JS bundles on those domains referenced an undocumented internal API domain, and AI-generated context-aware fuzzing against that domain hit an **unauthenticated GCP token endpoint** — handing out a cloud credential that cascaded through Secret Manager → Vercel → GitHub PATs.
+
+**Attack Chain:**
+
+```
+① Open dev tool (Grafana/Prometheus/Kibana) found on public IP
+② TLS certificate SAN wildcard → shadow subdomain estate (crt.sh)
+③ JS bundle parsing across shadow domains → hidden domain reference discovered
+④ Context-aware fuzzing → /_api/gcp-token returns GCP OAuth2 token (no auth)
+⑤ GCP token → Secret Manager → Vercel token → 85 env vars → GitHub PATs
+⑥ GitHub PATs → 507 private repos with read/write access
+```
+
+**Chain table:**
+
+| Hop | Asset Gained | Method |
+|-----|-------------|--------|
+| 1 | Open dev tool | Public IP scan |
+| 2 | Shadow subdomains | TLS SAN wildcard + crt.sh |
+| 3 | Hidden internal domain | JS bundle parsing |
+| 4 | GCP OAuth2 token | Unauthenticated endpoint fuzz |
+| 5 | GitHub PATs | GCP → Secret Manager → Vercel |
+| 6 | 507 private repos | GitHub token enumeration |
+
+**AI auto-trigger conditions:**
+
+| Condition | Trigger |
+|-----------|---------|
+| Target URL contains cloud keywords (aws/gcp/azure/k8s/llm/ai) | ✅ Auto |
+| Target URL contains dev tool keywords (grafana/prometheus/jenkins) | ✅ Auto |
+| HTTPS target (TLS SAN extraction always valuable) | ✅ Auto |
+| HTTP-only target with no cloud indicators | ⏭ Skip |
+
+**What bingo detects:**
+
+| Finding type | Evidence level | Severity |
+|-------------|---------------|---------|
+| `open_dev_tool` | VERIFIED | Medium |
+| `tls_san_wildcard` | VERIFIED | Info |
+| `js_hidden_domain` | INFERRED | Low |
+| `cloud_token_exposed` | VERIFIED | **Critical** |
+| `shadow_domain_token_exposed` | VERIFIED | **Critical** |
+| `likely_cloud_chain` | AI_ANALYSIS | High |
+
+**Supported unauthenticated token endpoint patterns:**
+
+```
+/_api/gcp-token          /api/gcp-token        /_api/token
+/_aws/credentials        /api/aws-token        /api/azure-token
+/api/env                 /api/config           /.env
+/config.json             /secrets              /debug/token
+```
+
+**Token type auto-identification:**
+
+- `gcp_access_token` — GCP OAuth2 `access_token` JSON field
+- `aws_access_key` — `ASIA` / `AKIA` prefix AWS credentials
+- `github_token` — `ghp_` / `github_pat_` prefix
+- `jwt_token` — 3-part dot-separated base64url
+- `api_key_generic` — JSON keys named `api_key`, `secret`, `token`
+
+**Remediation:**
+
+1. Require authentication on all internal dev tools (Grafana, Prometheus, Kibana, Jenkins)
+2. Never expose internal monitoring services to the public internet — enforce VPN / IP allowlist
+3. Minimize TLS wildcard SAN scope; monitor crt.sh for unexpected subdomains
+4. Remove internal domain references from production JS bundles — use environment variables
+5. Apply IMDSv2 / iptables to block direct cloud metadata access (169.254.169.254)
+6. Immediately rotate all exposed cloud credentials (GCP SA → Vercel → GitHub PATs)
+7. Enforce least-privilege on service accounts — no full Secret Manager read access
+
+---
+
 ### Web Cache Deception + SameSite Lax Bypass (v2.1)
 
 > **Research basis:**  
@@ -1198,7 +1280,7 @@ bingo/
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **50 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50)
+- **51 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51)
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

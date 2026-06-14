@@ -629,6 +629,42 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in oauth_recs:
         return oauth_recs[finding_type]
 
+    # Advanced SQLi (EXTRACTVALUE error-based + Second-Order) 권고
+    asqli_recs = {
+        "error_based_extractvalue": (
+            "1. 모든 SQL 쿼리에 Prepared Statement(Parameterized Query) 필수 적용\n"
+            "2. PDO/MySQLi의 bind_param 또는 ORM(Doctrine/Hibernate) 사용으로 직접 문자열 연결 금지\n"
+            "3. EXTRACTVALUE 함수 실행 권한 제한 — MySQL FILE/EXECUTE 권한 최소화\n"
+            "4. 에러 메시지 노출 차단: `display_errors=Off`, `log_errors=On`\n"
+            "5. WAF 규칙에 `EXTRACTVALUE`, `CONCAT(0x7e`, `XPATH syntax` 패턴 차단 추가\n"
+            "6. DB 계정에 최소 권한만 부여 (SELECT only for read, 쓰기 권한 분리)"
+        ),
+        "time_based": (
+            "1. Prepared Statement 적용으로 SLEEP()/WAITFOR DELAY 인젝션 원천 차단\n"
+            "2. 응답 시간 이상 감지 규칙 WAF/IDS에 추가 (동일 파라미터로 N초 이상 응답 = 차단)\n"
+            "3. DB 레벨에서 SLEEP() 함수 실행 권한 제한 (`REVOKE EXECUTE ON PROCEDURE mysql.sleep`)\n"
+            "4. 쿼리 실행 시간 제한 설정: `max_execution_time` (MySQL 5.7.8+)\n"
+            "5. 모든 사용자 입력 데이터 타입 검증 (숫자 파라미터는 intval() 처리)"
+        ),
+        "second_order": (
+            "1. 저장 시점과 사용 시점 모두에서 입력값 이스케이프/바인딩 적용\n"
+            "2. DB에서 읽어 온 데이터를 다시 SQL에 사용할 때도 Prepared Statement 필수\n"
+            "3. 이메일 알림/예약 작업/리포트 생성 등 비동기 처리 코드 보안 감사\n"
+            "4. 배치/크론 잡에서 사용하는 쿼리 코드 전수 검토 — 동적 쿼리 조합 제거\n"
+            "5. 입력 데이터 저장 시 허용 문자셋 검증 (화이트리스트 방식)\n"
+            "6. 비동기 처리 결과 로그에서 DB 에러 자동 알림 설정"
+        ),
+        "oob_dns": (
+            "1. MySQL의 LOAD_FILE() 함수 비활성화: `secure_file_priv=''` 금지, NULL 또는 빈 경로 설정\n"
+            "2. DB 서버의 아웃바운드 DNS/HTTP 요청을 방화벽으로 차단 (egress filtering)\n"
+            "3. DB 서버를 인터넷 접근 불가 내부 네트워크에 격리\n"
+            "4. `FILE` 권한을 DB 계정에서 제거: `REVOKE FILE ON *.* FROM 'user'@'host'`\n"
+            "5. DNS 쿼리 모니터링으로 DB 서버발 외부 DNS 요청 탐지 및 알림"
+        ),
+    }
+    if finding_type in asqli_recs:
+        return asqli_recs[finding_type]
+
     return recs.get(vuln_type, "해당 취약점에 맞는 보안 패치 적용")
 
 

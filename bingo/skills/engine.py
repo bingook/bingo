@@ -236,6 +236,17 @@ BUILTIN_MODULES: list[dict] = [
          "클라우드 크리덴셜 체인 홉 수 계산 (token→SecretManager→Vercel→GitHub)",
          "AI 판단: DevTool + 클라우드 환경 = 체인 가능성 자동 경보",
      ]},
+    {"id": "52", "name": "EXTRACTVALUE 에러 기반 + Second-Order SQLi 고급 익스플로잇", "en": "AdvancedSQLiExploit", "ko": "고급SQLi익스플로잇",
+     "skills": [
+         "EXTRACTVALUE(1,CONCAT(0x7e,subquery)) 에러 기반 데이터 추출 자동화",
+         "CAST()/EXP() overflow 기반 MySQL 에러 익스플로잇 변형",
+         "Time-based blind SQLi: SLEEP/pg_sleep/WAITFOR DELAY 멀티 DB 지원",
+         "Second-order SQLi 비동기 컨텍스트 탐지 (이메일 알림/예약 작업/리포트 생성)",
+         "Second-order 시간 간격 오라클: 예약 시간 vs 실제 실행 시간 측정",
+         "OOB DNS 익스필트레이션: LOAD_FILE + DNS 서버로 데이터 반출",
+         "한국 CMS(그누보드/영카트) board.php/item.php 파라미터 자동 퍼징",
+         "AI 판단: SQLi 확인 환경 → EXTRACTVALUE 고급 모드 자동 전환",
+     ]},
     {"id": "46", "name": "CSWSH+EXE노출+로컬WebSocket RCE체인", "en": "CswshRceChain", "ko": "CSWSH_RCE체인탐지",
      "skills": [
          "JS 파일에서 EXE 다운로드 함수 자동 추출",

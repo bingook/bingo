@@ -155,6 +155,39 @@ Enter a number to continue automatically — no need to think about what to do n
 
 ---
 
+### ACPV — Client-Side Authentication Bypass (v2.1)
+
+bingo automatically detects and exploits client-side authentication vulnerabilities — no password needed.
+
+**How it works:**
+
+Many sites store authentication state in the browser (`localStorage`, `sessionStorage`) and never verify it server-side. bingo finds and exploits this pattern automatically.
+
+| Step | What bingo does |
+|------|----------------|
+| 1 | Collects all JS files from the target and scans for auth-related patterns (`isLoggedIn`, `token`, `userRole`, etc.) |
+| 2 | Tests API endpoints without any cookies or tokens — if the server responds 200, it's an unauthenticated API |
+| 3 | Identifies Burp Suite response manipulation points (`"isActive":false`, `"role":"user"`, etc.) |
+| 4 | Auto-generates browser console PoC — paste and run, no tools needed |
+
+**Example PoC output:**
+```javascript
+// bingo auto-generated PoC — paste into browser DevTools console
+localStorage.setItem('isLoggedIn', 'true');
+localStorage.setItem('userRole', 'admin');
+localStorage.setItem('token', 'bypass_acpv');
+location.reload();
+```
+
+**AI auto-trigger conditions:**
+- Admin login fails (no password → try client-side bypass)
+- No SQLi vulnerability found (pivot to client-side attack)
+- React / Vue / Angular site detected (JS-heavy apps are most vulnerable)
+
+**Zero-Hallucination:** Actual HTTP responses are labeled `VERIFIED`. Pattern matches without server confirmation are labeled `LIKELY`. Nothing is fabricated.
+
+---
+
 ### IDOR / Authorization Bypass Phase
 
 Based on real-world exploitation experience:
@@ -236,9 +269,9 @@ Full AI responses, commands, and results are logged in real time.
 
 ### Skill Engine
 
-220+ red team skills across 39 modules — automatically injected into AI context based on your input. Use `/skill <keyword>` to search.
+220+ red team skills across 40 modules — automatically injected into AI context based on your input. Use `/skill <keyword>` to search.
 
-**Modules include:** Reconnaissance, Exploitation, Privilege Escalation, Post-Exploitation, Lateral Movement, Persistence, Cloud Security, Mobile Security, LLM/AI Security, Blockchain/Web3, Ransomware Defense, and more.
+**Modules include:** Reconnaissance, Exploitation, Privilege Escalation, Post-Exploitation, Lateral Movement, Persistence, Cloud Security, Mobile Security, LLM/AI Security, Blockchain/Web3, Ransomware Defense, **Client-Side Auth Bypass (ACPV)**, and more.
 
 ---
 
@@ -398,9 +431,11 @@ bingo/
 ### v2.1.0 — Official Release *(2026-06)*
 - **Zero-Hallucination System** — all findings labeled `VERIFIED` / `LIKELY` / `INFERRED` / `AI_ANALYSIS`; nothing discarded
 - **Interactive Post-Report Actions** — 3–5 numbered next steps auto-presented after every report; enter a number to continue
+- **ACPV — Client-Side Auth Bypass** — AI auto-detects JS-based auth (localStorage/sessionStorage), tests unauthenticated APIs, generates browser console PoC automatically
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
+- **40 skill modules** — added ClientSideAuthBypass (#40)
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

@@ -182,6 +182,16 @@ BUILTIN_MODULES: list[dict] = [
          "버전 정보 추출 시도",
          "CVSS 10.0 Critical curl PoC 자동 생성",
      ]},
+    {"id": "46", "name": "CSWSH+EXE노출+로컬WebSocket RCE체인", "en": "CswshRceChain", "ko": "CSWSH_RCE체인탐지",
+     "skills": [
+         "JS 파일에서 EXE 다운로드 함수 자동 추출",
+         "EXE 파일 미인증 다운로드 경로 퍼징",
+         "JS에서 localhost WebSocket 서버 패턴 탐지 (ws://127.0.0.1:PORT)",
+         "CSWSH — Origin 헤더 검증 없음 탐지",
+         "WebSocket 메서드 열거 (GET/VERSION, RUN/DRIVE 등)",
+         "RCE 가젯 탐지 — explorer.exe 폴백 패턴",
+         "제로클릭 CSWSH→RCE PoC HTML 자동 생성",
+     ]},
     {"id": "45", "name": "OAuth链式攻击检测 (开放注册+邮件信任)", "en": "OAuthChainAttack", "ko": "OAuth체인공격탐지",
      "skills": [
          "OAuth 서버 메타데이터 자동 발견 (/.well-known/oauth-authorization-server)",

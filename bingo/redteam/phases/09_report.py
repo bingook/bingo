@@ -838,6 +838,62 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in ai_code_sec_recs:
         return ai_code_sec_recs[finding_type]
 
+    # CSPT + Cloudflare WAF Bypass + Multi-ContentType Fuzzing 권고 (Skill #56)
+    cspt_waf_recs = {
+        "cspt": (
+            "1. 프론트엔드 JS에서 location.pathname/location.hash/router.query를 직접 API URL에 연결하지 않도록 리팩토링\n"
+            "2. 서버 측에서 경로 파라미터 화이트리스트 검증 (../ 시퀀스 및 URL 인코딩 변형 거부)\n"
+            "3. API Gateway에서 경로 순회 패턴 차단 규칙 추가\n"
+            "4. URL 정규화 미들웨어 도입 — 요청 전에 경로를 정규화 및 검증\n"
+            "5. CSPT 전용 통합 테스트 추가: React/Angular/Vue 라우터 파라미터가 API fetch에 전달되는 경로 검증\n"
+            "참고: @xssdoctor CSPT 연구 (Intigriti Bug Bytes #235, 2026년 4월)"
+        ),
+        "cf_bypass": (
+            "1. Cloudflare WAF 커스텀 규칙 추가: oncontentvisibilityautostatechange 이벤트 핸들러 필터링\n"
+            "2. Content Security Policy (CSP) 강화: script-src strict-dynamic + nonce 방식 적용\n"
+            "3. DOMPurify 등 클라이언트 사이드 HTML 새니타이저 도입\n"
+            "4. Cloudflare Managed Challenge + Bot Management 활성화\n"
+            "5. WAF 규칙을 정기적으로 업데이트 (신규 이벤트 핸들러 우회 기법 대응)\n"
+            "6. XSS 발생 시 즉각 영향받은 사용자 세션/토큰 무효화\n"
+            "참고: @YourFinalSin CF WAF bypass (Intigriti Bug Bytes #235, 2026년 4월)"
+        ),
+        "content_type": (
+            "1. API 엔드포인트에서 허용 Content-Type 화이트리스트 적용 (JSON만 허용 시 text/xml 등 거부)\n"
+            "2. XML 파서에 XXE 방지 설정: DOCTYPE 선언 비활성화, 외부 엔티티 처리 금지\n"
+            "   Java: DocumentBuilderFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)\n"
+            "   Python: defusedxml 라이브러리 사용\n"
+            "3. Content-Type별 입력 검증 미들웨어 분리 구현\n"
+            "4. API Gateway에서 허용되지 않는 Content-Type에 415 Unsupported Media Type 반환\n"
+            "참고: Intigriti Bug Bytes #235 다중 Content-Type 퍼징 (2026년 4월)"
+        ),
+        "oauth_chain": (
+            "1. 즉시: 영향받은 사용자의 OAuth 액세스 토큰 및 리프레시 토큰 전체 무효화\n"
+            "2. Authorization Code에 PKCE (Proof Key for Code Exchange) 필수 적용 (RFC 7636)\n"
+            "3. state 파라미터 CSRF 검증 강화 (랜덤 nonce + 세션 바인딩)\n"
+            "4. redirect_uri 엄격 검증 (정확한 문자열 매칭, 와일드카드/서브도메인 금지)\n"
+            "5. Authorization Code 단회 사용 보장 및 짧은 만료 시간 설정 (5분 이내)\n"
+            "6. XSS 취약점 우선 제거 (CF WAF 우회 차단) → OAuth 코드 탈취 경로 차단\n"
+            "참고: Intigriti Bug Bytes #235 CF WAF bypass → OAuth ATO 체인 (2026년 4월)"
+        ),
+        "cookie_xss": (
+            "1. 쿠키 값을 innerHTML/document.write/eval에 직접 삽입하지 않도록 코드 리팩토링\n"
+            "2. 쿠키 값을 DOM에 삽입 시 textContent 사용 (innerHTML 대신)\n"
+            "3. 모든 쿠키에 HttpOnly 플래그 설정 (JS에서 접근 불가)\n"
+            "4. SameSite=Strict 또는 SameSite=Lax 설정으로 CSRF 및 쿠키 주입 경로 차단\n"
+            "5. 쿠키 값 화이트리스트 검증 미들웨어 추가\n"
+            "참고: @RenwaX23 cookie injection DOM XSS (Intigriti Bug Bytes #235, 2026년 4월)"
+        ),
+        "auxclick": (
+            "1. X-Frame-Options: DENY 또는 SAMEORIGIN 헤더 추가 (미설정 시)\n"
+            "2. Content-Security-Policy: frame-ancestors 'none' 또는 'self' 추가\n"
+            "3. 중요 액션(결제/계정변경)에 재인증 또는 CSRF 토큰 추가 검증\n"
+            "4. onauxclick 이벤트 핸들러를 중요 UI 요소에서 제거 또는 확인 다이얼로그 추가\n"
+            "참고: Bug Bytes #235 auxclick clickjacking variant (2026년 4월)"
+        ),
+    }
+    if finding_type in cspt_waf_recs:
+        return cspt_waf_recs[finding_type]
+
     return recs.get(vuln_type, "해당 취약점에 맞는 보안 패치 적용")
 
 

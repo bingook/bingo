@@ -182,6 +182,16 @@ BUILTIN_MODULES: list[dict] = [
          "버전 정보 추출 시도",
          "CVSS 10.0 Critical curl PoC 자동 생성",
      ]},
+    {"id": "47", "name": "Next.js缓存投毒→0点击SXSS", "en": "NextJsCacheSxss", "ko": "NextJS캐시포이즈닝SXSS",
+     "skills": [
+         "Next.js App Router 및 버전 자동 탐지",
+         "Cloudflare/CDN 캐시 레이어 존재 확인",
+         "리퀘스트 헤더 → 리스폰스 헤더 반영 탐지 (미들웨어 설정 오류)",
+         "RSC 엔드포인트 동적 페이지 탐지 (x-nextjs-prerender 제외)",
+         "Content-Type: text/html 주입 → RSC 컨텍스트 전환 확인",
+         "URL 파라미터 → RSC body 반영 확인 → SXSS 가능성 검증",
+         "2단계 캐시 포이즈닝 PoC 자동 생성 (Refresh 헤더 활용)",
+     ]},
     {"id": "46", "name": "CSWSH+EXE노출+로컬WebSocket RCE체인", "en": "CswshRceChain", "ko": "CSWSH_RCE체인탐지",
      "skills": [
          "JS 파일에서 EXE 다운로드 함수 자동 추출",

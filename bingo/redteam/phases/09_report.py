@@ -894,6 +894,70 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in cspt_waf_recs:
         return cspt_waf_recs[finding_type]
 
+    # DOMPurify Prototype Pollution → XSS Bypass 권고 (Skill #57 — CVE-2026-41238)
+    dompurify_pp_recs = {
+        "dompurify_version": (
+            "1. DOMPurify를 즉시 3.4.0 이상으로 업그레이드 (CVE-2026-41238 패치 버전)\n"
+            "   npm install dompurify@latest  또는  yarn upgrade dompurify\n"
+            "   CDN 사용 시: https://cdn.jsdelivr.net/npm/dompurify@3.4.0/dist/purify.min.js\n"
+            "2. 버전 고정 및 의존성 감사: package.json에서 ^3.x 와일드카드 제거 → 3.4.0 고정\n"
+            "3. Subresource Integrity(SRI) 해시 적용으로 CDN 공급망 공격 방지\n"
+            "4. package.json / package-lock.json 외부 노출 차단 (웹서버 .gitignore / nginx deny 설정)"
+        ),
+        "pp_gadget": (
+            "1. Prototype Pollution 가젯 라이브러리 즉시 패치:\n"
+            "   lodash: npm install lodash@4.17.21 이상\n"
+            "   jQuery: npm install jquery@3.4.0 이상\n"
+            "   qs: npm install qs@6.7.3 이상\n"
+            "   merge/deepmerge: 최신 버전 업그레이드\n"
+            "2. Object.freeze(Object.prototype)로 프로토타입 오염 원천 차단\n"
+            "   (단, 일부 라이브러리 호환성 확인 필요)\n"
+            "3. null 프로토타입 객체 사용: Object.create(null) 으로 민감 설정 딕셔너리 생성\n"
+            "4. npm audit / yarn audit 주기적 실행 및 CI/CD 자동화 통합"
+        ),
+        "combined_chain": (
+            "1. [긴급] DOMPurify 3.4.0 이상 즉시 업그레이드 — 이 조합은 XSS 완전 우회\n"
+            "2. [긴급] Prototype Pollution 가젯 라이브러리(lodash/jQuery/qs 등) 동시 패치\n"
+            "3. DOMPurify.sanitize() 호출 시 명시적 CUSTOM_ELEMENT_HANDLING 설정:\n"
+            "   DOMPurify.sanitize(html, {\n"
+            "     CUSTOM_ELEMENT_HANDLING: {\n"
+            "       tagNameCheck: /^(b|i|u|em|strong)$/,  // 허용할 태그만 명시\n"
+            "       attributeNameCheck: /^(class|id)$/,   // 허용할 속성만 명시\n"
+            "       allowCustomizedBuiltInElements: false\n"
+            "     }\n"
+            "   })\n"
+            "4. Content Security Policy 강화: 'unsafe-inline' 제거, script-src nonce/hash 사용\n"
+            "5. 커스텀 HTML 엘리먼트 사용을 완전 금지하는 경우 FORBID_TAGS 옵션 활용"
+        ),
+        "default_config": (
+            "1. DOMPurify.sanitize() 기본 설정({}) 사용 코드 전면 감사 및 수정\n"
+            "2. CUSTOM_ELEMENT_HANDLING을 항상 명시적으로 지정:\n"
+            "   const PURIFY_CONFIG = {\n"
+            "     CUSTOM_ELEMENT_HANDLING: {\n"
+            "       tagNameCheck: null,  // 커스텀 엘리먼트 모두 차단\n"
+            "       attributeNameCheck: null,\n"
+            "       allowCustomizedBuiltInElements: false\n"
+            "     }\n"
+            "   };\n"
+            "   DOMPurify.sanitize(userInput, PURIFY_CONFIG);\n"
+            "3. DOMPurify.setConfig(PURIFY_CONFIG)로 전역 기본값 설정 후 모든 sanitize() 적용\n"
+            "4. ESLint 규칙 추가: DOMPurify.sanitize 인자 2개 강제 (설정 객체 누락 차단)"
+        ),
+        "postmessage_pp": (
+            "1. postMessage 핸들러에서 수신 데이터를 Object.assign/merge로 병합하지 않기\n"
+            "2. postMessage event.origin 화이트리스트 검증 강화:\n"
+            "   window.addEventListener('message', (e) => {\n"
+            "     if (e.origin !== 'https://trusted-origin.com') return;\n"
+            "   });\n"
+            "3. 수신 데이터를 null 프로토타입 객체에 복사: {...null, ...data} 패턴 사용 금지\n"
+            "   → JSON.parse() 후 필요한 필드만 명시적 추출\n"
+            "4. 서버 측 메시지 서명(HMAC) 적용으로 타 창에서의 임의 메시지 주입 차단\n"
+            "5. prototype-pollution-checker 라이브러리로 런타임 PP 탐지"
+        ),
+    }
+    if finding_type in dompurify_pp_recs:
+        return dompurify_pp_recs[finding_type]
+
     return recs.get(vuln_type, "해당 취약점에 맞는 보안 패치 적용")
 
 

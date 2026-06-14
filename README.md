@@ -1595,6 +1595,170 @@ bingo/
 
 ---
 
+### AI-Generated Code Security Surface Detection — AICodeSecSurface (v2.1)
+
+> **Research basis:**  
+> Rachel Benson (ProjectDiscovery)  
+> ["The Trust Gap Behind the AI Coding Boom: What 200 Security Practitioners Just Told Us"](https://projectdiscovery.io/blog/the-trust-gap-behind-the-ai-coding-boom-what-200-security-practitioners-just-told-us)  
+> Published: April 28, 2026 | 200 practitioners surveyed (North America + Western Europe)  
+> **Skill module:** `AICodeSecSurface` (id: 55)
+
+#### Survey Context: Why AI Code Creates Security Debt
+
+| Metric | Finding |
+|--------|---------|
+| % reporting faster delivery in 12 months | **100%** |
+| Credit most/all speed lift to AI coding | **49%** |
+| Security teams "comfortably keeping up" | **38%** |
+| Security work week spent on manual validation | **66%** |
+| Report secrets exposure increased | **78%** |
+| Report insecure dependency usage increased | **73%** |
+| Report business logic vulnerabilities increased | **72%** |
+
+**The core problem:** AI coding tools accelerate feature delivery by 49% but security validation
+capacity grows far slower. The result: **66% of security work is manual validation** rather than
+actual remediation — a "keep up" treadmill. bingo's AICodeSecSurface module addresses this by
+automating the most time-consuming validation categories with VERIFIED PoC evidence.
+
+#### Detection Categories
+
+**A. Secrets Exposure (78% of practitioners report AI coding increases this)**
+
+AI-assisted code frequently hard-codes credentials as placeholders that survive to production:
+
+```
+OpenAI / Anthropic / AWS / GCP / Stripe / GitHub / Twilio / SendGrid / Slack keys
+JWT secrets · Database connection strings · Private key PEM blocks
+AI-generated placeholder credentials (admin/test/changeme/your-key-here)
+Hardcoded Basic Auth / Bearer JWT in JS bundles
+```
+
+**Detection method:** bingo scans JS bundles (up to 15 bundles, 200KB each), HTML responses,
+and API responses using 22 secret patterns. Every match produces a VERIFIED curl PoC.
+
+```bash
+# Example VERIFIED PoC output:
+curl -sk "https://target.com/static/js/main.2a3f8c.js" | grep -oP "sk-[A-Za-z0-9]{20,50}"
+# Result: sk-proj-abc123...  ← live OpenAI key in production bundle
+```
+
+**B. Vulnerable Dependency Fingerprinting (73% report increase)**
+
+AI coding assistants frequently suggest outdated library versions that were in training data:
+
+```
+lodash@4.17.15  → CVE-2021-23337 (prototype pollution RCE)
+moment@2.29.1   → CVE-2022-24785 (path traversal + ReDoS)
+axios@0.21.0    → CVE-2020-28168 (SSRF)
+log4j@2.14.1    → CVE-2021-44228 (Log4Shell — CRITICAL)
+Spring@5.3.17   → CVE-2022-22965 (Spring4Shell RCE)
+jQuery@1.12.4   → CVE-2019-11358 (prototype pollution)
+next@14.1.0     → CVE-2024-56332 (SSRF via image optimization)
+```
+
+**Detection method:** Version extraction from HTTP headers, JS bundles, error pages.
+Correlation with CVE database. LIKELY evidence level for matched CVE versions.
+
+**C. AI Coding Artifact Detection (72% report business logic vulnerabilities increased)**
+
+Common patterns left by AI code generators that survive to production:
+
+| Artifact | Example | Severity |
+|----------|---------|----------|
+| CORS wildcard | `Access-Control-Allow-Origin: *` | High |
+| Debug route | `/debug`, `/test`, `/api/debug` | High |
+| Default creds | `password: "admin"` in response | Critical |
+| Unauthenticated admin | `"isAdmin": true` in 200 response | High |
+| TODO security comment | `// TODO: add auth here` | Medium |
+| Node.js stack trace | `at Object.<anonymous> (app.js:42)` | Medium |
+| Mass assignment | `"role": null` in public API | Medium |
+
+**D. Config/Credential File Exposure (30+ paths)**
+
+AI-scaffolded projects commonly expose configuration files that should be server-protected:
+
+```
+.env / .env.local / .env.production        ← environment variables
+credentials.json / service-account.json    ← GCP credentials
+.git/config / .git/HEAD                    ← git repository info
+/actuator/env / /actuator/heapdump         ← Spring Boot full env + heap dump
+config/database.yml / config/secrets.yml   ← Rails credentials
+docker-compose.yml / Dockerfile            ← infrastructure config
+```
+
+**E. Business Logic Surface Mapping (15 AI scaffold endpoint patterns)**
+
+```
+/api/price    → price manipulation (negative values, 0, overflow)
+/api/transfer → race condition (double spend)
+/api/balance  → IDOR + race condition
+/api/admin    → missing auth middleware (AI scaffold omission)
+/api/user     → mass assignment (role escalation via PUT/PATCH)
+/api/checkout → total price manipulation
+/api/coupon   → reuse + brute force
+/api/credit   → race condition + negative credit
+```
+
+#### AI Auto-Trigger Logic
+
+```python
+# Always triggers on all web targets (universal — no condition required)
+# AICodeSecSurface is activated as Phase 21 on every bingo scan
+result.ai_code_sec_triggered = True  # unconditional
+```
+
+Unlike other bingo skills that require specific fingerprints (Ruby headers, CVE patterns, etc.),
+AICodeSecSurface runs on **every web target** because:
+1. AI-generated code is ubiquitous — affects all languages and frameworks
+2. Secret scanning has near-zero false positive cost
+3. Config file exposure check is lightweight (30 HTTP GETs)
+
+#### Output Example
+
+```
+🤖 AI decision: AI-generated code security surface scan activated
+🔴 Secret exposed: openai_key at /static/js/main.3f2c.js | Preview: sk-proj-a*** [VERIFIED]
+🚨 .env file publicly accessible — full env vars / API keys exposed!
+⚠️  Vulnerable dependency: lodash@4.17.15 — CVE-2021-23337 (prototype pollution RCE) [LIKELY]
+🔍 AI coding artifact: CORS wildcard (*) — AI boilerplate default [VERIFIED]
+📊 Business logic surface: /api/transfer (200) — test for race condition [LIKELY]
+🔴 Spring Actuator exposed — full env vars / heap dump exposed (/actuator/env)
+
+🧩 AICodeSecSurface: 47 findings | secrets:3 | deps:5 | artifacts:12 | bizlogic:15 | config:12
+```
+
+#### Evidence Levels
+
+| Level | Meaning | Example |
+|-------|---------|---------|
+| `VERIFIED` | Secret found + accessible + real-looking value | `.env` returns 200 with `DB_PASSWORD=prod123` |
+| `LIKELY` | Pattern matched, value real but not confirmed exploitable | `lodash@4.17.15` in bundle, CVE exists |
+| `INFERRED` | Dependency version leaked, CVE exists but not confirmed | `next@14.0.0` header, version near-CVE |
+| `AI_ANALYSIS` | Pattern suggests AI artifact but needs manual verification | CORS * without credentials check |
+
+#### Quick Remediation
+
+```bash
+# 1. Rotate all exposed credentials IMMEDIATELY
+# 2. Add gitleaks to pre-commit:
+brew install gitleaks && gitleaks install
+
+# 3. Block .env in nginx:
+location ~ /\.env { deny all; return 404; }
+
+# 4. Fix CORS:
+# BAD:  res.header('Access-Control-Allow-Origin', '*')
+# GOOD: res.header('Access-Control-Allow-Origin', process.env.ALLOWED_ORIGIN)
+
+# 5. Disable Spring Actuator sensitive endpoints:
+# management.endpoints.web.exposure.include=health,info
+
+# 6. Update vulnerable dependencies:
+npm audit fix --force
+```
+
+---
+
 ## Changelog
 
 ### v2.1.0 — Official Release *(2026-06)*
@@ -1604,7 +1768,7 @@ bingo/
 - **IDOR Phase** — real-world IDOR enumeration, PII detection, and IDOR-based password reset with login verification
 - **Full i18n** — all UI strings (skill module names, commands, evidence labels) in Korean / Chinese / English
 - **9-phase pipeline** — extended from 5 to 9 phases (webshell acquisition, IDOR, login verification added)
-- **54 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54)
+- **55 skill modules** — added ClientSideAuthBypass (#40), ApiDiscoveryFuzzing (#41), MSSQL2025AIExploit (#42), ArubaOsXxeSsrf (#43), IvantiSentryRCE (#44), OAuthChainAttack (#45), CswshRceChain (#46), NextJsCacheSxss (#47), RedisDarkReplica (#48), HtmlAutofillSteal (#49), WebCacheDeception (#50), CloudTokenRecon (#51), AdvancedSQLiExploit (#52), CopyFailLPE (#53), RubyLibAFLFuzz (#54), AICodeSecSurface (#55)
 - Production-stable (`Development Status :: 5 - Production/Stable`)
 
 ### v2.0.x — Beta

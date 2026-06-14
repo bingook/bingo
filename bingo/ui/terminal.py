@@ -2367,7 +2367,7 @@ class BingoTerminal:
             if self._agent_stop_flag.is_set():
                 self._agent_stop_flag.clear()
                 self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
-                self._auto_generate_report()  # 내부에서 _suggest_next_steps() 호출
+                self._auto_generate_report()
                 break
 
             # Stuck 감지 — 최근 5루프 중 3개 동일하면 전략 전환, 5개 전부 동일하면 보고서 후 종료
@@ -2385,7 +2385,7 @@ class BingoTerminal:
                 self.console.print(
                     f"\n[{THEME['warn']}]⚠ {_s.get('agent_stuck', 'Agent stuck — generating report')}...[/]\n"
                 )
-                self._auto_generate_report()  # 내부에서 _suggest_next_steps() 호출
+                self._auto_generate_report()
                 self._stuck_count = 0
                 self._recent_results.clear()
                 break

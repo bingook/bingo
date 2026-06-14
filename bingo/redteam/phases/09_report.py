@@ -780,6 +780,64 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in ruby_libafl_recs:
         return ruby_libafl_recs[finding_type]
 
+    # AI-generated code security surface detection 권고
+    ai_code_sec_recs = {
+        "secret": (
+            "1. 즉시 노출된 자격증명 무효화 (API 키/토큰/비밀번호 즉시 교체)\n"
+            "2. 소스 코드/JS 번들에서 시크릿 제거 → 환경변수로 이동 (process.env / os.environ)\n"
+            "3. CI/CD 파이프라인에 gitleaks / truffleHog 시크릿 스캔 추가\n"
+            "4. AI 코딩 도구 출력물 배포 전 의무적 보안 코드리뷰 절차 수립\n"
+            "5. Git 히스토리 정리 (BFG Repo-Cleaner / git filter-repo)"
+        ),
+        "env_file": (
+            "1. .env 파일 즉시 웹 서버 접근 차단 (nginx: deny all; / apache: Require all denied)\n"
+            "2. .env 파일을 웹루트 밖으로 이동\n"
+            "3. .gitignore에 .env 파일 패턴 추가\n"
+            "4. 노출된 모든 환경변수 값 즉시 교체"
+        ),
+        "dependency": (
+            "1. 취약한 의존성 즉시 최신 버전으로 업데이트 (npm update / yarn upgrade)\n"
+            "2. CI/CD에 npm audit / snyk / OWASP Dependency-Check 통합\n"
+            "3. JS 번들에서 라이브러리 버전 정보 노출 최소화 (webpack banner plugin 제거)\n"
+            "4. Software Bill of Materials (SBOM) 정기 검토"
+        ),
+        "ai_artifact": (
+            "1. AI 생성 코드 프로덕션 배포 전 보안 리뷰 의무화\n"
+            "2. CORS 정책 강화: * 와일드카드 제거, 허용 origin 명시\n"
+            "3. 디버그/테스트 라우트 프로덕션 환경에서 비활성화\n"
+            "4. 기본/플레이스홀더 자격증명 탐지 자동화 (pre-commit hook 설정)\n"
+            "5. AI 코딩 도구 보안 가이드라인 수립 (what AI should NOT generate)"
+        ),
+        "config_exposure": (
+            "1. 설정/자격증명 파일 공개 접근 즉시 차단\n"
+            "2. 웹 서버 설정: 민감한 파일 접근 deny (*.env, *.json, .git/)\n"
+            "3. cloud credentials 즉시 교체 (credentials.json, service-account.json)\n"
+            "4. Spring Actuator 프로덕션 환경 비활성화 또는 인증 요구\n"
+            "5. Docker/K8s 보안 스캔으로 노출된 설정 파일 지속 탐지"
+        ),
+        "business_logic": (
+            "1. 가격/금액 관련 API 서버사이드 검증 강화 (음수/초과 값 거부)\n"
+            "2. 이체/출금 API 멱등성 키 구현 (race condition 방지)\n"
+            "3. 관리자/민감 엔드포인트 인증 미들웨어 확인 (AI 스캐폴드 누락 패턴)\n"
+            "4. IDOR 방지: 직접 객체 참조 대신 UUID + 권한 확인\n"
+            "5. 비즈니스 로직 취약점 대상 자동화 테스트 추가"
+        ),
+        "cors_wildcard": (
+            "1. Access-Control-Allow-Origin: * 제거\n"
+            "2. 허용 origin 화이트리스트 관리 (CORS_ALLOWED_ORIGINS 환경변수)\n"
+            "3. credentials: true 와 * origin 동시 사용 금지 (브라우저 차단되지만 코드 정리 필요)\n"
+            "4. AI 코딩 보일러플레이트 CORS 기본값 조직 내 보안 템플릿으로 교체"
+        ),
+        "actuator": (
+            "1. Spring Actuator /env /heapdump /configprops 엔드포인트 즉시 비활성화\n"
+            "   (application.properties: management.endpoints.web.exposure.include=health,info)\n"
+            "2. 내부 네트워크 접근만 허용하는 방화벽 규칙 적용\n"
+            "3. 노출된 환경변수 내 모든 자격증명 즉시 교체"
+        ),
+    }
+    if finding_type in ai_code_sec_recs:
+        return ai_code_sec_recs[finding_type]
+
     return recs.get(vuln_type, "해당 취약점에 맞는 보안 패치 적용")
 
 

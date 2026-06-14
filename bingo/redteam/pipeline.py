@@ -17,11 +17,12 @@ PHASE_MODULES = {
     "recon":    "01_recon",
     "scan":     "02_scan",
     "exploit":  "03_exploit",
-    "webshell": "04_webshell",   # Gnuboard5/GIF polyglot/AntSword 자동화
+    "webshell": "04_webshell",   # GIF polyglot/비인증 업로드/AntSword 자동화
+    "idor":     "05_idor",       # IDOR + 권한상승 (loan2 실전 패턴)
     "report":   "09_report",
 }
 
-DEFAULT_PHASES = ["recon", "scan", "exploit", "webshell", "report"]
+DEFAULT_PHASES = ["recon", "scan", "exploit", "webshell", "idor", "report"]
 
 
 class RedTeamPipeline:
@@ -79,9 +80,17 @@ class RedTeamPipeline:
                     for f in exploit_result
                     if isinstance(f.get("data"), dict)
                 )
-                if not admin_logged_in and "webshell" not in (phases or []):
-                    self.log("[dim]  웹쉘 phase: 관리자 로그인 실패로 스킵[/dim]")
+                # 비인증 업로드도 있으면 webshell 진행
+                unauth_upload = any(
+                    "unauth_upload:" in str(f.get("data", ""))
+                    for f in exploit_result
+                )
+                if not admin_logged_in and not unauth_upload and "webshell" not in (phases or []):
+                    self.log("[dim]  웹쉘 phase: 관리자 로그인/비인증 업로드 없음 — 스킵[/dim]")
                     continue
+
+            # idor phase는 항상 실행 (비인증 체크 포함)
+            # exploit 결과에 관계없이 phpinfo, IDOR 탐지 수행
 
             self._run_phase(phase)
 

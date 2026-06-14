@@ -2585,15 +2585,21 @@ class BingoTerminal:
         _untested_hint = {
             "ko": (
                 "아직 시도하지 않은 가능한 공격: 비밀번호 크랙, "
-                "웹쉘 업로드, IDOR 권한 상승, SQLi 심화, API 엔드포인트 퍼징"
+                "웹쉘 업로드, IDOR 권한 상승, SQLi 심화, API 엔드포인트 퍼징, "
+                "ACPV(클라이언트 사이드 인증 우회 — localStorage/sessionStorage 조작, "
+                "무인증 API 접근, Burp Suite 응답 변조)"
             ),
             "zh": (
                 "尚未尝试的潜在攻击：密码破解、Webshell上传、"
-                "IDOR权限提升、深度SQLi、API端点爆破"
+                "IDOR权限提升、深度SQLi、API端点爆破、"
+                "ACPV客户端认证绕过（localStorage/sessionStorage操控、"
+                "未授权API访问、Burp响应篡改）"
             ),
             "en": (
                 "Potentially untested: password cracking, webshell upload, "
-                "IDOR privilege escalation, deep SQLi, API endpoint fuzzing"
+                "IDOR privilege escalation, deep SQLi, API endpoint fuzzing, "
+                "ACPV client-side auth bypass (localStorage/sessionStorage manipulation, "
+                "unauthenticated API access, Burp Suite response manipulation)"
             ),
         }.get(_lang, "")
 

@@ -228,6 +228,25 @@ def _get_recommendation(vuln_type: str) -> str:
         "waf": "WAF 설정 확인 — 우회 시도 가능성 점검",
         "open_port": "불필요한 포트 방화벽으로 차단",
         "nuclei": "발견된 취약점에 해당하는 패치/업데이트 즉시 적용",
+        # ACPV 권고
+        "storage_auth": (
+            "1. 모든 인증 상태 검증을 서버 사이드에서 처리 (JWT 검증 서버에서)\n"
+            "2. localStorage/sessionStorage에 인증 판단 로직 절대 금지\n"
+            "3. API 요청마다 서버에서 토큰 유효성 검증\n"
+            "4. 인증 필요 페이지는 서버에서 302 리다이렉트 처리"
+        ),
+        "unauth_api": (
+            "1. 모든 API 엔드포인트에 인증 미들웨어 강제 적용\n"
+            "2. Authorization 헤더 없는 요청은 401 반환\n"
+            "3. 역할 기반 접근 제어(RBAC) 서버에서 검증\n"
+            "4. API 게이트웨이에서 인증 토큰 검증"
+        ),
+        "response_manip": (
+            "1. 클라이언트 응답 값으로 권한 판단 금지\n"
+            "2. 모든 권한 체크는 서버 사이드에서 독립적으로 수행\n"
+            "3. 민감 필드(is_active, role, groups)는 서버 세션 기반으로 관리\n"
+            "4. 응답 변조로 인한 우회 불가능한 서버 검증 구조 설계"
+        ),
     }
     return recs.get(vuln_type, "해당 취약점에 맞는 보안 패치 적용")
 

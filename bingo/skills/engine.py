@@ -131,6 +131,15 @@ BUILTIN_MODULES: list[dict] = [
      "skills": ["랜섬웨어공격체인분석/탐지", "랜섬웨어응급대응/복구", "랜섬웨어방어강화/백업전략"]},
     {"id": "39", "name": "安全治理合规", "en": "GovernanceCompliance",   "ko": "보안거버넌스/합규",
      "skills": ["보안프레임워크/합규감사", "위험관리/보안측정", "보안정책체계/보안의식"]},
+    {"id": "40", "name": "客户端认证绕过", "en": "ClientSideAuthBypass",  "ko": "클라이언트인증우회(ACPV)",
+     "skills": [
+         "localStorage/sessionStorage 토큰 조작",
+         "JS 인증 플래그 우회",
+         "무인증 API 엔드포인트 탐지",
+         "Burp Suite 응답 변조 인증 우회",
+         "authRequired/isLoggedIn 플래그 분석",
+         "JWT 위조 인증 우회 PoC",
+     ]},
 ]
 
 

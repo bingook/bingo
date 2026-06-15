@@ -94,6 +94,7 @@ _STRINGS = {
         "ko": """/login <url> <id> <pw>   🔑 실제 로그인 실행 + 세션 쿠키 자동 저장
 /cred <id> <pw> [쿠키]  🔑 자격증명 수동 저장 (쿠키 없어도 OK)
 /session                 현재 인증 세션 확인 | /session clear 초기화
+/hint <메시지>           💬 AI 실행 도중 힌트 주입 (재실행 없이 방향 전환)
 /scan <url>              빠른 정찰: WAF + 핑거프린트 + 민감파일
 /waf <url>               WAF 탐지 + 자동 우회 시도
 /crack [hash]            해시 크랙 — 온라인 조회 → 오프라인 크랙
@@ -108,10 +109,13 @@ _STRINGS = {
 /config                  현재 설정 보기
 /lang                    언어 변경 (ko / zh / en)
 /clear                   화면 지우기
-/quit                    종료""",
+/quit                    종료
+
+⚡ Ctrl+C → 힌트 입력창 → 텍스트 입력 시 루프 유지 / Enter 시 중단""",
         "zh": """/login <url> <id> <pw>   🔑 执行实际登录 + 自动保存会话 Cookie
 /cred <id> <pw> [Cookie] 🔑 手动保存凭据（无 Cookie 也可）
 /session                 查看当前认证会话 | /session clear 清除
+/hint <消息>             💬 执行中注入提示 (无需重启即可改变方向)
 /scan <url>              快速侦察：WAF + 指纹识别 + 敏感文件
 /waf <url>               WAF 检测 + 自动绕过尝试
 /crack [hash]            哈希破解 — 在线查询 → 离线破解
@@ -126,10 +130,13 @@ _STRINGS = {
 /config                  查看当前配置
 /lang                    切换语言 (ko / zh / en)
 /clear                   清屏
-/quit                    退出""",
+/quit                    退出
+
+⚡ Ctrl+C → 提示输入框 → 输入文字继续 / 直接回车停止""",
         "en": """/login <url> <id> <pw>   🔑 Perform real login + auto-save session cookies
 /cred <id> <pw> [cookie] 🔑 Manually store credentials (cookie optional)
 /session                 View auth session | /session clear to reset
+/hint <message>          💬 Inject hint mid-execution (redirect without restart)
 /scan <url>              Quick recon: WAF + fingerprint + sensitive files
 /waf <url>               WAF detection + auto bypass attempt
 /crack [hash]            Hash crack — online lookup → offline crack
@@ -144,7 +151,9 @@ _STRINGS = {
 /config                  View current settings
 /lang                    Change language (ko / zh / en)
 /clear                   Clear screen
-/quit                    Quit""",
+/quit                    Quit
+
+⚡ Ctrl+C → hint prompt → type to continue loop / Enter to stop""",
     },
     "login_usage": {
         "ko": "사용법: /login <url> <아이디> <비밀번호>\n예) /login https://target.com/manager/login.asp admin admin123",

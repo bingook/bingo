@@ -426,6 +426,38 @@ class BingoTerminal:
             style=PT_STYLE,
         )
 
+    # ────────────────────────────────────────────────────────────────
+    # 실행 루프 중 힌트 입력 — Ctrl+C 후 힌트 주면 루프 유지
+    # ────────────────────────────────────────────────────────────────
+    def _prompt_mid_task_hint(self) -> "str | None":
+        """Ctrl+C 눌렀을 때 힌트를 입력받고 반환.
+        빈 입력 → None (루프 중단), 텍스트 입력 → 힌트 주입 후 루프 계속.
+        """
+        _lang = getattr(self.config, "lang", "en")
+        _pause_msg = {
+            "ko": (
+                "⚡ [굵게]루프 일시정지[/굵게] — 힌트를 입력하면 중단 없이 계속 진행\n"
+                "   (그냥 Enter 또는 Ctrl+C 한 번 더 → 완전 중단)"
+            ),
+            "zh": (
+                "⚡ [粗体]循环暂停[/粗体] — 输入提示则继续执行\n"
+                "   (直接回车或再按Ctrl+C → 完全停止)"
+            ),
+            "en": (
+                "⚡ [bold]Loop paused[/bold] — type a hint to keep going\n"
+                "   (press Enter or Ctrl+C again → stop completely)"
+            ),
+        }.get(_lang, "⚡ Loop paused — type hint or Enter to stop")
+        self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]\n")
+        try:
+            hint = self._session.prompt(
+                HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
+                style=PT_STYLE,
+            )
+            return hint.strip() if hint.strip() else None
+        except (EOFError, KeyboardInterrupt):
+            return None
+
     # ── 메시지 전송 + 스트리밍 출력 ──────────────────────────────
     def _inject_warmup_history(self) -> None:
         """세션 시작 시 워밍업 대화를 히스토리에 주입 (멀티턴 에스컬레이션 기법)"""
@@ -1649,6 +1681,8 @@ class BingoTerminal:
                 self._cmd_session()
         elif name == "/crack":
             self._cmd_crack(arg)
+        elif name == "/hint":
+            self._cmd_hint(arg)
         elif name == "/stop":
             self._agent_stop_flag.set()
             self._stop_crack_flag.set()
@@ -1813,6 +1847,48 @@ class BingoTerminal:
             )
         else:
             self._info("활성 세션 없음. /login 또는 /cred 로 세션을 설정하세요.")
+
+    # ────────────────────────────────────────────────────────────────
+    # /hint 명령어 — 실행 루프 실행 중이 아닐 때도 다음 AI 호출에 힌트 삽입
+    # ────────────────────────────────────────────────────────────────
+    def _cmd_hint(self, hint_text: str) -> None:
+        """/hint <메시지> — 다음 AI 응답에 사용자 힌트를 즉시 주입한다.
+        실행 루프 중 Ctrl+C 없이도 방향 전환 가능.
+        """
+        _lang = getattr(self.config, "lang", "en")
+        if not hint_text.strip():
+            _usage = {
+                "ko": "사용법: /hint <메시지>  예) /hint 캡차 우회하지 말고 다른 경로 시도해",
+                "zh": "用法: /hint <消息>  例) /hint 不要绕过验证码，试试其他路径",
+                "en": "Usage: /hint <message>  e.g. /hint skip captcha, try other endpoints",
+            }.get(_lang, "Usage: /hint <message>")
+            self._warn(_usage)
+            return
+
+        _hint_label = {
+            "ko": f"[사용자 힌트 — 즉시 반영]: {hint_text}",
+            "zh": f"[用户提示 — 立即应用]: {hint_text}",
+            "en": f"[USER HINT — apply immediately]: {hint_text}",
+        }.get(_lang, f"[USER HINT]: {hint_text}")
+
+        self.history.append(Message(role="user", content=_hint_label))
+
+        _ok = {
+            "ko": f"💬 힌트가 다음 AI 호출에 주입됩니다: {hint_text[:50]}",
+            "zh": f"💬 提示已注入下一次AI调用: {hint_text[:50]}",
+            "en": f"💬 Hint injected into next AI call: {hint_text[:50]}",
+        }.get(_lang, f"💬 Hint injected: {hint_text[:50]}")
+        self._success(_ok)
+
+        # 즉시 AI에게 힌트를 전달하고 응답받기
+        model_cfg = self.config.get_active_model_config()
+        if model_cfg:
+            from ..models.registry import ModelRegistry as _MR
+            _m = _MR.build(model_cfg)
+            resp = self._stream_response(_m.chat_stream(self._build_messages("")))
+            if resp:
+                self.history.append(Message(role="assistant", content=resp))
+                self._append_to_session_log("assistant", resp)
 
     # ── 자연어 자격증명 자동 파싱 ────────────────────────────────────
     def _try_natural_language_login(self, text: str) -> None:
@@ -2702,12 +2778,38 @@ class BingoTerminal:
 
             _s = self.s
 
-            # Ctrl+C 체크
+            # Ctrl+C 체크 — 힌트 주입 후 계속 가능
             if self._agent_stop_flag.is_set():
                 self._agent_stop_flag.clear()
-                self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
-                self._suggest_next_steps()
-                break
+                _hint = self._prompt_mid_task_hint()
+                if _hint:
+                    # 힌트를 히스토리에 주입하고 루프 계속
+                    _lang = getattr(self.config, "lang", "en")
+                    _hint_injected = {
+                        "ko": f"[사용자 힌트 — 즉시 반영]: {_hint}",
+                        "zh": f"[用户提示 — 立即应用]: {_hint}",
+                        "en": f"[USER HINT — apply immediately]: {_hint}",
+                    }.get(_lang, f"[USER HINT]: {_hint}")
+                    self.history.append(Message(role="user", content=_hint_injected))
+                    _resume_msg = {
+                        "ko": f"💬 힌트 주입됨 — 루프 재개 (#{self._exec_loop_count})",
+                        "zh": f"💬 提示已注入 — 继续循环 (#{self._exec_loop_count})",
+                        "en": f"💬 Hint injected — resuming loop (#{self._exec_loop_count})",
+                    }.get(_lang, f"💬 Hint injected — resuming")
+                    self.console.print(f"[{THEME['success']}]{_resume_msg}[/]\n")
+                    # 다음 AI 호출 전까지 결과 주입 없이 바로 AI에게 힌트 전달
+                    model_hint = ModelRegistry.build(model_cfg)
+                    followup_response = self._stream_response(
+                        model_hint.chat_stream(self._build_messages(""))
+                    )
+                    if followup_response:
+                        self.history.append(Message(role="assistant", content=followup_response))
+                        self._append_to_session_log("assistant", followup_response)
+                    continue
+                else:
+                    self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
+                    self._suggest_next_steps()
+                    break
 
             # AI 피드백
             model = ModelRegistry.build(model_cfg)
@@ -2763,12 +2865,29 @@ class BingoTerminal:
                 self._auto_generate_report()
                 break
 
-            # Ctrl+C (응답 후)
+            # Ctrl+C (응답 후) — 힌트 주입 후 계속 가능
             if self._agent_stop_flag.is_set():
                 self._agent_stop_flag.clear()
-                self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
-                self._auto_generate_report()
-                break
+                _hint2 = self._prompt_mid_task_hint()
+                if _hint2:
+                    _lang = getattr(self.config, "lang", "en")
+                    _hint_injected2 = {
+                        "ko": f"[사용자 힌트 — 즉시 반영]: {_hint2}",
+                        "zh": f"[用户提示 — 立即应用]: {_hint2}",
+                        "en": f"[USER HINT — apply immediately]: {_hint2}",
+                    }.get(_lang, f"[USER HINT]: {_hint2}")
+                    self.history.append(Message(role="user", content=_hint_injected2))
+                    _resume_msg2 = {
+                        "ko": f"💬 힌트 주입됨 — 루프 재개 (#{self._exec_loop_count})",
+                        "zh": f"💬 提示已注入 — 继续循环 (#{self._exec_loop_count})",
+                        "en": f"💬 Hint injected — resuming loop (#{self._exec_loop_count})",
+                    }.get(_lang, f"💬 Hint injected — resuming")
+                    self.console.print(f"[{THEME['success']}]{_resume_msg2}[/]\n")
+                    continue
+                else:
+                    self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
+                    self._auto_generate_report()
+                    break
 
             # Stuck 감지 — 최근 5루프 중 3개 동일하면 전략 전환, 5개 전부 동일하면 보고서 후 종료
             _result_hash = str(hash(followup_response[:500]))

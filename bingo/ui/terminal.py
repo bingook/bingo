@@ -1299,18 +1299,27 @@ class BingoTerminal:
         }.get(_lang, "English")
 
         _model_name = model_cfg.model if model_cfg else "unknown"
-        _provider_display = model_cfg.provider if model_cfg else "unknown"
+        # provider label: use BUILTIN_PROVIDERS label if available, else capitalize
+        from ..models.registry import BUILTIN_PROVIDERS
+        _raw_provider = model_cfg.provider if model_cfg else "unknown"
+        _provider_info = BUILTIN_PROVIDERS.get(_raw_provider, {})
+        _provider_label = _provider_info.get("label", _raw_provider.capitalize())
+        # Clean display: strip extra descriptors from label (e.g. "DeepSeek V4 Pro  ★ 추천" → "DeepSeek")
+        _provider_short = _provider_label.split()[0] if _provider_label else _raw_provider.capitalize()
 
         system = (
             f"You are BINGO — an autonomous penetration testing engine.\n"
-            f"You are powered by the model: {_model_name} (provider: {_provider_display}).\n\n"
+            f"Your underlying AI model is: {_model_name}\n"
+            f"Your AI provider is: {_provider_short}\n\n"
             f"=== GENERAL CONVERSATION MODE ===\n"
             f"The user has asked a general (non-pentest) question.\n"
             f"Respond naturally, helpfully, and concisely as an AI assistant.\n\n"
             f"Rules:\n"
             f"- ALWAYS respond in {_lang_label}. Every single word must be in this language.\n"
-            f"- Introduce yourself as BINGO when asked.\n"
-            f"- If asked about your model/provider, state: '{_model_name}' by '{_provider_display}'.\n"
+            f"- Introduce yourself as BINGO when asked (not as {_model_name} or {_provider_short} directly).\n"
+            f"- If asked 'what model are you' or 'what AI are you', say: "
+            f"'저는 BINGO입니다. 기반 모델은 {_model_name}이며, 제공자는 {_provider_short}입니다.' (translate to {_lang_label})\n"
+            f"- NEVER say '??', 'unknown', or leave provider blank. Always use '{_provider_short}'.\n"
             f"- If asked about your capabilities, briefly describe BINGO's pentest features.\n"
             f"- If asked a general knowledge question (what is XSS, etc.), answer clearly.\n"
             f"- Keep responses concise (3-5 lines for simple questions).\n"

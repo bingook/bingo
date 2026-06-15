@@ -164,7 +164,7 @@ When a target URL is mentioned in chat, bingo automatically:
 | Sucuri / Akamai / F5 BIG-IP | Body pattern + status code |
 | Chinese WAF (Safe3 / D盾 / 云锁) | Body keyword matching |
 
-#### Advanced WAF Bypass Techniques (v2.1.8+)
+#### Advanced WAF Bypass Techniques (v2.1.9+)
 
 bingo now includes a **6-layer advanced bypass engine** that AI activates automatically when basic techniques fail:
 

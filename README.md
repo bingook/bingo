@@ -151,8 +151,8 @@ Every finding produced by bingo is assigned an evidence level:
 
 When a target URL is mentioned in chat, bingo automatically:
 1. Detects WAF type from HTTP headers and response patterns
-2. Identifies the WAF vendor (Cloudflare, AWS WAF, ModSecurity, Wordfence, etc.)
-3. Adapts injection payloads with encoding/obfuscation to bypass the WAF
+2. Identifies the WAF vendor (Cloudflare, AWS WAF, ModSecurity, Nginx/OpenResty, etc.)
+3. **AI selects the optimal bypass technique automatically** based on WAF type
 4. Executes all steps as real Python scripts — no external tool required
 
 | WAF | Detection Method |
@@ -160,6 +160,44 @@ When a target URL is mentioned in chat, bingo automatically:
 | Cloudflare | `cf-ray` header, block page signature |
 | AWS WAF | `x-amzn-requestid` header, 403 pattern |
 | ModSecurity | Server header, error page content |
+| Nginx/OpenResty | 406 Not Acceptable, server banner |
+| Sucuri / Akamai / F5 BIG-IP | Body pattern + status code |
+| Chinese WAF (Safe3 / D盾 / 云锁) | Body keyword matching |
+
+#### Advanced WAF Bypass Techniques (v2.1.8+)
+
+bingo now includes a **6-layer advanced bypass engine** that AI activates automatically when basic techniques fail:
+
+| Layer | Technique | When Used |
+|-------|-----------|-----------|
+| **SQL Function Replacement** | `IF(a,b,c)` → `CASE WHEN a THEN b ELSE c END` | WAF blocks `IF` keyword |
+| **Timing via Heavy Subquery** | `SLEEP(n)` → `information_schema` cross-join | WAF blocks `SLEEP` / `BENCHMARK` |
+| **GREATEST/LEAST** | Replace `=` comparison with `GREATEST(a,b)=b` | WAF detects equality operators |
+| **Logical Operator Alt** | `AND` → `&&`, `OR` → `\|\|` | WAF blocks literal `AND`/`OR` |
+| **Unicode / Overlong UTF-8** | `'` → `\uff07`, `/` → `%c0%af`, NULL byte injection | Legacy / regex-based WAF |
+| **HTTP Chunked Transfer** | POST body split into 3–7 byte chunks | WAF without body reassembly |
+
+##### AI Auto-Selection Logic
+
+bingo's AI reads the WAF type and automatically picks the right bypass order:
+
+```
+Cloudflare      → double URL encoding → unicode → ua spoofing → function replace
+Nginx/OpenResty → %0a newline → /**/ comment → keyword obfuscation
+ModSecurity     → space/**/ → IF→CASE WHEN → mixed case → encoding
+AWS WAF         → encoding → SLEEP→subquery → XFF header → space
+Chinese WAF     → null byte unicode → overlong UTF-8 → function replace
+Generic         → space → keyword → header spoof → encoding → function
+```
+
+When all single techniques fail, bingo automatically tries **3-layer combinations**:
+1. `function_replace + space + XFF header`
+2. `unicode encoding + function_replace`
+3. HTTP Chunked POST (last resort)
+
+##### Anti-IP-Ban Strategy
+
+bingo applies random delays (`1.0–3.5s`) between requests to avoid triggering WAF/IPS rate-limit bans. This is applied automatically during all WAF bypass attempts.
 
 ---
 

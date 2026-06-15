@@ -451,7 +451,7 @@ def main() -> None:
         return
 
     if args and args[0] == "--version":
-        console.print("[#00ff41]bingo[/] v2.1.3 — Official Release")
+        console.print("[#00ff41]bingo[/] v2.1.5 — Official Release")
         return
 
     if args and args[0] == "--update":

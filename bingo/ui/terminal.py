@@ -271,11 +271,17 @@ class BingoTerminal:
         def _sigint_handler(sig, frame):
             if self._agent_stop_flag.is_set():
                 # 두 번 누르면 완전 종료
-                self.console.print(f"\n[{THEME['error']}]{self.s.get('force_quit', 'Force quit')}[/]")
+                # (stderr 사용 — Live/Rich 컨텍스트와 충돌 없음)
+                import sys as _sys
+                _sys.stderr.write("\n⚡ Force quit\n")
+                _sys.stderr.flush()
                 raise SystemExit(0)
             self._agent_stop_flag.set()
             self._stop_crack_flag.set()
-            self.console.print(f"\n[{THEME['warn']}]⚠ {self.s.get('agent_stop_warn', 'Ctrl+C — stopping agent...')}[/]")
+            # ★ 메시지는 stderr로 — Live(transient=True) 컨텍스트에 의해 지워지지 않음
+            import sys as _sys
+            _sys.stderr.write("\n⚠  Ctrl+C — 스트림 중단 중...\n")
+            _sys.stderr.flush()
 
         signal.signal(signal.SIGINT, _sigint_handler)
 
@@ -1581,6 +1587,7 @@ class BingoTerminal:
 
     def _stream_response(self, stream: Iterator[StreamChunk]) -> str:
         full = ""
+        _interrupted = False  # Ctrl+C로 스트림이 중단됐는지 여부
 
         self.console.print(f"\n[{THEME['secondary']}]bingo[/] [{THEME['dim']}]▸[/]", end=" ")
 
@@ -1588,6 +1595,10 @@ class BingoTerminal:
         with Live(console=self.console, refresh_per_second=20, transient=True) as live:
             buf = Text()
             for chunk in stream:
+                # ★ Ctrl+C 감지 시 스트림 즉시 중단
+                if self._agent_stop_flag.is_set():
+                    _interrupted = True
+                    break
                 if chunk.error:
                     live.stop()
                     self._error(f"{self.s['api_error']}: {chunk.error}")
@@ -1600,6 +1611,16 @@ class BingoTerminal:
                     collapsed = self._filter_agent_noise(collapsed)
                     buf = Text.from_markup(collapsed) if "[dim]" in collapsed else Text(collapsed, style="white")
                     live.update(buf)
+
+        # ★ Live 컨텍스트 종료 후 중단 메시지 출력 (Live가 화면을 지우기 전에 출력하면 사라짐)
+        if _interrupted:
+            _lang = getattr(self.config, "lang", "en")
+            _stop_msg = {
+                "ko": "⏸ 스트리밍 중단됨 — 힌트를 입력하거나 Enter로 루프를 멈춥니다",
+                "zh": "⏸ 流式传输已中断 — 输入提示或按 Enter 停止循环",
+                "en": "⏸ Streaming interrupted — type a hint or press Enter to stop the loop",
+            }.get(_lang, "⏸ Interrupted")
+            self.console.print(f"[{THEME['warn']}]{_stop_msg}[/]")
 
         # 최종 출력: 코드 블록 접기 + 내부 제어 키워드 제거
         final = self._filter_ai_monologue(full)

@@ -27,6 +27,17 @@ bingo is a hacker-style AI terminal that automates real penetration testing work
 
 **Zero-Hallucination System** (new in v2.1): Every finding is labeled with an evidence level (`VERIFIED` / `LIKELY` / `INFERRED`). Nothing is discarded — unverified results are flagged separately rather than silently dropped.
 
+**Pentest Precision Engine** (new in v2.2): AI automatically applies high-precision analysis when a web target is given. Eliminates false positives from WAF silent-blocks, auto-solves CAPTCHA via ddddocr, accurately extracts session tokens and form fields, fingerprints tech stacks with version details, and auto-generates WAF bypass payload variants. Zero-interaction: the AI selects and applies it automatically based on context.
+
+| Feature | Description |
+|---|---|
+| False Positive Elimination | Validates SQLi via error keywords / time delay ≥2.5× baseline / UNION marker / length diff |
+| CAPTCHA OCR | ddddocr auto-solve; GnuBoard kcaptcha session order handled automatically |
+| Token Extraction | Correct `token` key from `write_token.php` JSON; all hidden fields auto-extracted |
+| Tech Fingerprinting | CMS / WAF / PHP version from headers+HTML; bypass strategy auto-recommended |
+| Login Attack | Accurate success detection; Korea-specific credentials; SQLi auth bypass payloads |
+| WAF Bypass Generator | Space substitution / case mix / URL encode / inline comment / HPP variants |
+
 ---
 
 ## Installation

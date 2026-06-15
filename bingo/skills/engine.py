@@ -18,7 +18,7 @@ from .skills_data3 import SKILLS_DB_3, MODULE_INDEX_3, TAG_INDEX_3
 from .skills_data4 import SKILLS_DB_4, MODULE_INDEX_4, TAG_INDEX_4
 from .skills_data5 import SKILLS_DB_5, MODULE_INDEX_5, TAG_INDEX_5
 
-# 통합 (CyberSecurity-Skills 195개 + SecSkills + PentestPrecision + BurpEngine)
+# 통합 (CyberSecurity-Skills 195개 + SecSkills + PentestPrecision + BurpEngine — v2.2.3)
 ALL_SKILLS: dict[str, dict] = {**SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3, **SKILLS_DB_4, **SKILLS_DB_5}
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}

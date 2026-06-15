@@ -1260,30 +1260,41 @@ class BingoTerminal:
     )
 
     def _is_general_question(self, text: str) -> bool:
-        """일반 대화성 질문이면 True — 침투테스트 작업이면 False."""
+        """일반 대화성 질문이면 True — 침투테스트 작업이면 False.
+        
+        원칙: pentest 증거가 명확할 때만 False. 나머지는 모두 general.
+        """
         import re as _re
         t = text.strip().lower()
-        # URL 포함 → 명확히 pentest
+
+        # 1) URL 포함 → 명확히 pentest
         if _re.search(r"https?://", t):
             return False
-        # 개념질문 접두사 포함 → general (보안 키워드 있어도)
-        if any(t.startswith(p) or p in t for p in self._CONCEPT_PREFIXES):
-            return True
-        # 일반 대화 트리거 → general (pentest 키워드 체크 전에)
-        if any(kw in t for kw in self._GENERAL_TRIGGERS):
-            return True
-        # 강한 pentest 키워드가 있고 URL도 없는 경우 →
-        # 짧은 문장이면 개념 질문으로, 긴 문장이면 pentest 작업으로
+
+        # 2) 강한 pentest 키워드 포함 → pentest
+        #    단, 짧고 물음표로 끝나면 개념 질문 (e.g. "XSS가 뭐야?")
         if any(kw in t for kw in self._PENTEST_STRONG):
-            # 짧고 물음표로 끝나면 개념 질문 (e.g. "XSS가 뭐야?")
             if len(t) <= 40 and (t.endswith("?") or t.endswith("？")):
                 return True
             return False
-        # 짧은 문장(50자 이하)이고 물음표 또는 느낌표로 끝나면 general로 취급
-        if len(t) <= 50 and (t.endswith("?") or t.endswith("!") or
-                              t.endswith("？") or t.endswith("！")):
-            return True
-        return False
+
+        # 3) 도메인처럼 생긴 패턴 포함 → pentest (e.g. "example.co.kr 해킹해줘")
+        if _re.search(r"\b[\w-]+\.(com|net|kr|jp|cn|io|org|co)\b", t):
+            return False
+
+        # 4) pentest 명령어 패턴 → pentest (e.g. "sqlmap으로 ~", "nmap 스캔")
+        _pentest_verbs = (
+            "스캔해", "공격해", "해킹해", "침투해", "테스트해", "검사해",
+            "인젝션", "취약점 찾", "익스플로잇", "웹쉘", "크랙",
+            "scan ", "attack ", "exploit ", "inject ", "enumerate ",
+            "扫描", "攻击", "渗透测试", "注入",
+        )
+        if any(kw in t for kw in _pentest_verbs):
+            return False
+
+        # 5) 나머지는 모두 일반 대화로 처리
+        #    (인사, 잡담, 감사, 개념 질문, 짧은 대화 등)
+        return True
 
     def _get_general_system_message(self) -> "Message":
         """일반 대화용 경량 시스템 프롬프트 반환 (침투테스트 강요 없음)."""

@@ -39,6 +39,3 @@ dev = ["pytest", "ruff"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["bingo"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"bingo/skills/local_skills" = "bingo/skills/local_skills"

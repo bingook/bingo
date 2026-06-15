@@ -1287,9 +1287,9 @@ class BingoTerminal:
 
     def _get_general_system_message(self) -> "Message":
         """일반 대화용 경량 시스템 프롬프트 반환 (침투테스트 강요 없음)."""
+        import datetime
         from ..models.registry import ModelRegistry
         model_cfg = self.config.get_active_model_config()
-        provider = (model_cfg.provider if model_cfg else "unknown").lower()
 
         _lang = getattr(self.config, "lang", "en")
         _lang_label = {
@@ -1299,18 +1299,31 @@ class BingoTerminal:
         }.get(_lang, "English")
 
         _model_name = model_cfg.model if model_cfg else "unknown"
-        # provider label: use BUILTIN_PROVIDERS label if available, else capitalize
         from ..models.registry import BUILTIN_PROVIDERS
         _raw_provider = model_cfg.provider if model_cfg else "unknown"
         _provider_info = BUILTIN_PROVIDERS.get(_raw_provider, {})
         _provider_label = _provider_info.get("label", _raw_provider.capitalize())
-        # Clean display: strip extra descriptors from label (e.g. "DeepSeek V4 Pro  ★ 추천" → "DeepSeek")
         _provider_short = _provider_label.split()[0] if _provider_label else _raw_provider.capitalize()
+
+        # 현재 날짜/시간 — 로컬 시스템 시간 사용
+        _now = datetime.datetime.now()
+        _weekday_ko = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"][_now.weekday()]
+        _weekday_zh = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][_now.weekday()]
+        _weekday_en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][_now.weekday()]
+        _date_str = _now.strftime("%Y년 %m월 %d일") + f" {_weekday_ko}"
+        _date_str_zh = _now.strftime("%Y年%m月%d日") + f" {_weekday_zh}"
+        _date_str_en = _now.strftime("%B %d, %Y") + f" ({_weekday_en})"
+        _time_str = _now.strftime("%H:%M")
 
         system = (
             f"You are BINGO — an autonomous penetration testing engine.\n"
             f"Your underlying AI model is: {_model_name}\n"
             f"Your AI provider is: {_provider_short}\n\n"
+            f"=== CURRENT DATE & TIME (SYSTEM CLOCK) ===\n"
+            f"Korean:  {_date_str} {_time_str}\n"
+            f"Chinese: {_date_str_zh} {_time_str}\n"
+            f"English: {_date_str_en} {_time_str}\n"
+            f"IMPORTANT: Use ONLY these values when answering date/time questions. NEVER guess or make up dates.\n\n"
             f"=== GENERAL CONVERSATION MODE ===\n"
             f"The user has asked a general (non-pentest) question.\n"
             f"Respond naturally, helpfully, and concisely as an AI assistant.\n\n"
@@ -1320,6 +1333,7 @@ class BingoTerminal:
             f"- If asked 'what model are you' or 'what AI are you', say: "
             f"'저는 BINGO입니다. 기반 모델은 {_model_name}이며, 제공자는 {_provider_short}입니다.' (translate to {_lang_label})\n"
             f"- NEVER say '??', 'unknown', or leave provider blank. Always use '{_provider_short}'.\n"
+            f"- If asked about date/time/day, use ONLY the system clock values above. Never invent dates.\n"
             f"- If asked about your capabilities, briefly describe BINGO's pentest features.\n"
             f"- If asked a general knowledge question (what is XSS, etc.), answer clearly.\n"
             f"- Keep responses concise (3-5 lines for simple questions).\n"

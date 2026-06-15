@@ -158,21 +158,26 @@ class SqliScanner:
                 self.log(f"[!] ERROR-BASED SQLi: {param} → {evidence}")
                 break
 
-        # Time-based (도구가 막혀있을 때)
+        # Time-based — 3회 측정 후 중앙값 기준 (단일 측정 오탐 방지)
         if not results:
             for payload in TIME_PAYLOADS[:3]:
-                t0 = time.time()
                 injected = url.replace(f"{param}=", f"{param}={urllib.parse.quote(payload)}")
-                self.probe.get(injected, timeout=10)
-                elapsed = time.time() - t0
-                if elapsed >= 2.5:
+                times = []
+                for _ in range(3):
+                    t0 = time.time()
+                    self.probe.get(injected, timeout=12)
+                    times.append(time.time() - t0)
+                    time.sleep(0.3)
+                times.sort()
+                median_t = times[1]  # 중앙값
+                if median_t >= 2.8:
                     results.append(SqliResult(
                         url=url, parameter=param, method="GET",
                         vuln_type="time", payload=payload,
-                        evidence=f"Response delayed {elapsed:.1f}s",
-                        confidence="medium",
+                        evidence=f"3회 중앙값 {median_t:.1f}s (측정: {[f'{t:.1f}s' for t in sorted(times)]})",
+                        confidence="high" if median_t >= 3.5 else "medium",
                     ))
-                    self.log(f"[!] TIME-BASED SQLi: {param} ({elapsed:.1f}s delay)")
+                    self.log(f"[!] TIME-BASED SQLi: {param} (3회 중앙값: {median_t:.1f}s)")
                     break
 
         # Boolean-based
@@ -211,22 +216,27 @@ class SqliScanner:
                 self.log(f"[!] ERROR-BASED POST SQLi: {param}")
                 break
 
-        # Time-based for POST
+        # Time-based for POST — 3회 측정 중앙값 기준
         if not results:
             for payload in TIME_PAYLOADS[:2]:
                 data = dict(data_template)
                 data[param] = payload
-                t0 = time.time()
-                self.probe.post(url, data, timeout=10)
-                elapsed = time.time() - t0
-                if elapsed >= 2.5:
+                times = []
+                for _ in range(3):
+                    t0 = time.time()
+                    self.probe.post(url, data, timeout=12)
+                    times.append(time.time() - t0)
+                    time.sleep(0.3)
+                times.sort()
+                median_t = times[1]
+                if median_t >= 2.8:
                     results.append(SqliResult(
                         url=url, parameter=param, method="POST",
                         vuln_type="time", payload=payload,
-                        evidence=f"Response delayed {elapsed:.1f}s",
-                        confidence="medium",
+                        evidence=f"3회 중앙값 {median_t:.1f}s",
+                        confidence="high" if median_t >= 3.5 else "medium",
                     ))
-                    self.log(f"[!] TIME-BASED POST SQLi: {param} ({elapsed:.1f}s)")
+                    self.log(f"[!] TIME-BASED POST SQLi: {param} (3회 중앙값: {median_t:.1f}s)")
                     break
 
         return results

@@ -211,6 +211,11 @@ AI automatically applies when standard techniques fail:
   • Rotate User-Agent per request
   • Add random junk GET params to change request fingerprint
 
+  CRITICAL: safe_delay MUST be defined in every script that uses it:
+    import random, time
+    def safe_delay(lo: float = 1.0, hi: float = 3.5):
+        time.sleep(random.uniform(lo, hi))
+
 === BYPASS ORDER (when WAF is stubborn) ===
 STEP 1: single technique (per WAF type above)
 STEP 2: combined — space + keyword + header
@@ -233,11 +238,62 @@ When recon shows CUSTOM_WAF_DETECTED or HTTP 999:
     8. [NEW] SLEEP→heavy subquery
     9. [NEW] Chunked Transfer Encoding
 
+=== GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
+When fingerprint shows gnuboard5 / g5_ variables in page:
+
+[STEP 0 — bo_table 반드시 먼저 발견]
+  NEVER test SQLi with guessed bo_table. Always find real ones first:
+  from bingo.tools.gnuboard import discover_bo_tables
+  tables = discover_bo_tables(TARGET)
+  # Only proceed if tables is non-empty
+
+  OR manually: fetch main page → grep 'bo_table=' from href links in HTML.
+  Validate each: GET /bbs/board.php?bo_table=XXX → must NOT contain "존재하지 않는 게시판"
+
+[STEP 1 — GnuBoard SQLi 테스트 대상 (우선순위)]
+  1. /bbs/board.php?bo_table=REAL_TABLE&stx=PAYLOAD  ← 검색어, 가장 취약
+  2. /bbs/view.php?bo_table=REAL_TABLE&wr_id=PAYLOAD ← 글번호
+  3. /bbs/search.php?stx=PAYLOAD                     ← 전체 검색
+  4. /bbs/board.php?bo_table=REAL_TABLE&sca=PAYLOAD  ← 카테고리
+
+[STEP 2 — 응답 분석 규칙 (오탐 방지)]
+  A. HTTP 200 + 한국어 오류 문자 ≠ SQLi!
+     다음은 GnuBoard 일반 응답 → 취약점 아님:
+       "존재하지 않는 게시판", "잘못된 접근", "정상적인 접근이 아닙니다"
+       "접근 권한이 없습니다", "로그인 후 이용하세요"
+  B. 진짜 SQL 에러만 취약점으로 보고:
+       "you have an error in your sql syntax"
+       "1064 .*sql syntax", "XPATH syntax error", "~데이터~" 패턴
+  C. Time-based: 반드시 3회 측정, 중앙값 ≥ 2.8초여야 취약점
+
+[STEP 3 — POST 요청 시 CSRF 토큰 처리]
+  from bingo.tools.gnuboard import GnuboardBotableDiscovery
+  d = GnuboardBotableDiscovery(TARGET)
+  fields = d.get_board_form_fields(bo_table)  # hidden 필드 자동 추출
+  # fields에 bo_table, token 등 포함됨 → POST 데이터에 함께 전송
+
+[STEP 4 — robots.txt 파싱]
+  CORRECT: fetch /robots.txt → read ALL "Disallow:" lines, include "/" entries
+  WRONG: show "No disallowed paths" when Disallow: / exists
+
+[사용 가능한 GnuBoard 도구]
+  from bingo.tools.gnuboard import (
+      scan_gnuboard_sqli,        # 전체 SQLi 스캔
+      discover_bo_tables,         # bo_table 목록 발견
+      GnuboardBotableDiscovery,   # bo_table 발견 + 폼 필드 추출
+      GnuboardSqliScanner,        # 게시판별 SQLi 스캐너
+      GnuboardAttacker,           # 관리자 로그인 + 웹쉘 업로드
+      check_gnuboard,             # 핑거프린팅만
+  )
+
 === SCRIPT BUG PREVENTION ===
   WRONG: list.append(a, b, c)          CORRECT: list.append((a, b, c))
   WRONG: urllib.request.Request('/path') CORRECT: urllib.request.Request('https://host/path')
   WRONG: body = resp.read()             CORRECT: body = resp.read().decode('utf-8','replace')
   WRONG: def f(url): ...  f(search_url=x) CORRECT: use exact param names from def
+  WRONG: call safe_delay() without defining it   CORRECT: always define:
+    import random, time
+    def safe_delay(lo=1.0, hi=3.5): time.sleep(random.uniform(lo, hi))
 
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>

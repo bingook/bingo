@@ -2926,6 +2926,48 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
+### v2.1.4 — `bingo --update` Self-Updater *(2026-06)*
+
+Update bingo to the latest version with a single command — works on **macOS, Windows, and Linux**.
+
+```bash
+bingo --update
+```
+
+**Auto-detects installation method:**
+
+| Installed via | Update method |
+|---------------|--------------|
+| `git clone` | `git pull origin main` |
+| `pip install bingo-ai` | `pip install --upgrade bingo-ai` (checks PyPI first) |
+
+**Example output (git clone):**
+```
+📂 Installed via git clone — updating with git pull
+⬆  Running git pull...
+
+From https://github.com/bingook/bingo
+ * branch    main -> FETCH_HEAD
+Already up to date.
+
+✅ Update complete! Restart bingo to apply changes.
+```
+
+**Example output (pip, new version available):**
+```
+📦 Installed via pip — updating from PyPI
+📡 Checking for latest version...
+🆕 New version available: v2.1.3 → v2.1.4
+⬆  Running pip upgrade...
+
+✅ Update complete! Restart bingo to apply changes.
+```
+
+- If network is unavailable, the manual command is printed for easy copy-paste.
+- Multilingual output: Korean / Chinese / English.
+
+---
+
 ### v2.1.3 — Session Resume + /retry + Notifications *(2026-06)*
 
 #### New Feature 1 — Session Auto-Save & Resume

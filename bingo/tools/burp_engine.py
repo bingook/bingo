@@ -730,18 +730,184 @@ class BurpProxy:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8. 통합 진입점 — AI 자동 선택
+# 8. FILE INPUT PATH TRAVERSAL — CVE style: HackerOne #3712279 (PortSwigger)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PATH_TRAVERSAL_PATTERNS = re.compile(
+    r"\.\.[/\\]|%2e%2e[%2f%5c]|%252e%252e|\.\.%2f|\.\.%5c|"
+    r"\.\.\/|\/etc\/|\/windows\/|startup|roaming",
+    re.IGNORECASE,
+)
+
+_FILE_INPUT_RE = re.compile(
+    r'<input[^>]+type=["\']?file["\']?[^>]*>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+_ACCEPT_RE = re.compile(r'accept=["\']?([^"\'>\s]+)', re.IGNORECASE)
+
+
+@dataclass
+class FileInputTraversalResult:
+    vulnerable: bool = False
+    findings: list[dict] = field(default_factory=list)
+    url: str = ""
+    raw_inputs: list[str] = field(default_factory=list)
+
+
+def scan_file_input_traversal(
+    url: str,
+    proxy: str | None = None,
+    timeout: int = 10,
+) -> FileInputTraversalResult:
+    """
+    파일 입력 Path Traversal 탐지 (HackerOne #3712279 / PortSwigger Burp RCE 기법 응용).
+
+    <input type="file" accept="./../../../../Startup/evil.bat"> 패턴 탐지.
+    페이지 내 모든 file input의 accept/value 속성에서 경로 탈출 시도 감지.
+    서버 측 파일 업로드 핸들러도 path traversal 취약한지 자동 검증.
+
+    EN: Detect path traversal in <input type="file"> accept/value attributes.
+        Based on HackerOne #3712279 (Burp Suite RCE via crawler file input handling).
+        Also tests server-side upload handler for path traversal.
+    ZH: 检测<input type="file">的accept/value属性中的路径穿越。
+        基于HackerOne #3712279（Burp爬虫文件输入处理RCE）。同时测试服务端上传处理器。
+
+    Args:
+        url:     대상 페이지 URL
+        proxy:   프록시 주소
+        timeout: 요청 타임아웃
+    Returns:
+        FileInputTraversalResult
+    """
+    result = FileInputTraversalResult(url=url)
+    res = repeater("GET", url, proxy=proxy, timeout=timeout)
+    if res.error:
+        return result
+
+    file_inputs = _FILE_INPUT_RE.findall(res.body)
+    result.raw_inputs = file_inputs
+
+    for inp in file_inputs:
+        # accept 속성 추출
+        m_accept = _ACCEPT_RE.search(inp)
+        accept_val = m_accept.group(1) if m_accept else ""
+
+        # value 속성 추출
+        m_value = re.search(r'value=["\']?([^"\'>\s]+)', inp, re.IGNORECASE)
+        value_val = m_value.group(1) if m_value else ""
+
+        for attr_name, attr_val in [("accept", accept_val), ("value", value_val)]:
+            if not attr_val:
+                continue
+            if _PATH_TRAVERSAL_PATTERNS.search(attr_val):
+                result.vulnerable = True
+                result.findings.append({
+                    "severity": "HIGH",
+                    "attribute": attr_name,
+                    "value": attr_val,
+                    "detail": (
+                        f"Path traversal in file input '{attr_name}' attribute: {attr_val!r}. "
+                        "Security tools (crawlers/scanners) processing this page may write "
+                        "attacker-controlled files to arbitrary local paths (ref: HackerOne #3712279)."
+                    ),
+                    "input_html": inp[:200],
+                })
+
+    # 서버 측 업로드 핸들러 path traversal 검증
+    # form action URL 추출
+    form_actions = re.findall(
+        r'<form[^>]+action=["\']?([^"\'>\s]+)["\']?[^>]*>',
+        res.body, re.IGNORECASE
+    )
+    traversal_payloads = [
+        "../../../evil.txt",
+        "..%2F..%2F..%2Fevil.txt",
+        "%2e%2e%2f%2e%2e%2fevil.txt",
+    ]
+
+    for action in form_actions[:3]:
+        if not action.startswith("http"):
+            parsed = urllib.parse.urlparse(url)
+            action = f"{parsed.scheme}://{parsed.netloc}{action}"
+
+        for payload in traversal_payloads:
+            # multipart/form-data 로 path traversal 파일명 전송
+            try:
+                sess = _session(proxy)
+                t0 = time.time()
+                resp = sess.post(
+                    action,
+                    files={"file": (payload, b"bingo-traversal-test", "text/plain")},
+                    data={"filename": payload},
+                    timeout=timeout,
+                    verify=False,
+                )
+                elapsed = time.time() - t0
+
+                # 업로드 성공 + 경로 노출 패턴 탐지
+                if resp.status_code in (200, 201) and (
+                    payload.replace("../", "").replace("%2F", "/") in resp.text
+                    or "evil.txt" in resp.text
+                ):
+                    result.vulnerable = True
+                    result.findings.append({
+                        "severity": "CRITICAL",
+                        "attribute": "upload_handler",
+                        "value": payload,
+                        "detail": (
+                            f"Server-side upload handler at {action!r} accepted path traversal "
+                            f"filename {payload!r}. May allow writing files outside upload directory."
+                        ),
+                        "input_html": action,
+                    })
+            except Exception:
+                pass
+
+    return result
+
+
+def file_input_traversal_report(r: FileInputTraversalResult) -> str:
+    """FileInputTraversal 결과 출력."""
+    lines = [
+        f"[FileInputTraversal] URL: {r.url}",
+        f"  file inputs found : {len(r.raw_inputs)}",
+        f"  VULNERABLE        : {r.vulnerable}",
+    ]
+    if r.findings:
+        lines.append("  --- Findings ---")
+        for f in r.findings:
+            lines.append(f"  [{f['severity']}] attr={f['attribute']}  val={f['value']}")
+            lines.append(f"           {f['detail'][:160]}")
+    else:
+        lines.append("  No path traversal patterns detected in file inputs.")
+    return "\n".join(lines)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. 통합 진입점 — AI 자동 선택
 # ─────────────────────────────────────────────────────────────────────────────
 
 def full_scan(url: str, proxy: str | None = None) -> str:
     """
-    URL을 받아 수동+능동 스캔 자동 실행 + 결과 요약.
+    URL을 받아 수동+능동+file input traversal 스캔 자동 실행 + 결과 요약.
     AI가 "스캔해줘", "취약점 찾아줘" 시 자동 호출.
 
-    EN: Run passive + active scan on URL. AI auto-calls on scan requests.
-    ZH: 对URL自动运行被动+主动扫描。AI自动调用。
+    EN: Run passive + active + file input traversal scan on URL. AI auto-calls on scan requests.
+    ZH: 对URL自动运行被动+主动+文件输入路径穿越扫描。AI自动调用。
     """
-    passive = scanner_passive(url, proxy=proxy)
-    active  = scanner_active(url, proxy=proxy)
-    all_findings = passive + active
+    passive  = scanner_passive(url, proxy=proxy)
+    active   = scanner_active(url, proxy=proxy)
+    fit      = scan_file_input_traversal(url, proxy=proxy)
+    fit_findings = [
+        ScanFinding(
+            severity=f["severity"],
+            name="File Input Path Traversal (HackerOne #3712279)",
+            detail=f["detail"],
+            evidence=f["input_html"],
+            url=url,
+        )
+        for f in fit.findings
+    ]
+    all_findings = passive + active + fit_findings
     return scanner_report(all_findings)

@@ -50,6 +50,7 @@ bingo is a hacker-style AI terminal that automates real penetration testing work
 | Comparer | `burp_engine.comparer()` | Diff two HTTP responses by length and content. Confirms boolean-based SQLi. |
 | Collaborator | `burp_engine.CollaboratorClient()` | Out-of-band detection via interactsh. SSRF / XXE / RCE / Log4Shell callbacks. No Burp Pro required. |
 | Proxy | `burp_engine.BurpProxy()` | Intercept and log HTTP traffic with optional request modifier. History dump included. |
+| File Input Traversal | `burp_engine.scan_file_input_traversal()` | Detect path traversal in `<input type="file">` accept/value attributes. Based on HackerOne #3712279 (Burp Suite RCE via crawler). Also tests server-side upload handlers. |
 
 ---
 

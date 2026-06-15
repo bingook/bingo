@@ -216,6 +216,55 @@ SKILLS_DB_5: dict[str, dict] = {
     ),
 },
 
+"burp-file-input-traversal": {
+    "name": "File Input Path Traversal 탐지 (HackerOne #3712279)",
+    "module": "BurpEngine",
+    "tags": [
+        "path-traversal", "file-upload", "file-input", "crawler", "scanner-rce",
+        "burp", "hackerone", "cve", "upload", "traversal",
+    ],
+    "desc": (
+        "HackerOne #3712279 (PortSwigger Burp RCE) 기법 응용. "
+        "<input type='file' accept='./../../../../Startup/evil.bat'> 패턴 탐지. "
+        "페이지 내 파일 입력 accept/value 속성 path traversal + 서버측 업로드 핸들러 검증.\n"
+        "EN: Detect path traversal in <input type='file'> accept/value attributes. "
+        "Based on HackerOne #3712279 — Burp Suite RCE via browser crawler file input handling. "
+        "Also validates server-side upload handler for directory escape.\n"
+        "ZH: 检测<input type='file'>的accept/value属性路径穿越。"
+        "基于HackerOne #3712279（Burp爬虫文件输入RCE）。同时验证服务端上传处理器目录逃逸。"
+    ),
+    "tools": [
+        "burp_engine.scan_file_input_traversal",
+        "burp_engine.file_input_traversal_report",
+    ],
+    "commands": [
+        # 단일 URL 탐지
+        "python3 -c \""
+        "from bingo.tools.burp_engine import scan_file_input_traversal, file_input_traversal_report; "
+        "print(file_input_traversal_report(scan_file_input_traversal('https://TARGET/upload')))\"",
+        # full_scan에 자동 포함
+        "python3 -c \"from bingo.tools.burp_engine import full_scan; print(full_scan('https://TARGET/'))\"",
+    ],
+    "payloads": [
+        "./../../../../Roaming/Microsoft/Windows/Start Menu/Programs/Startup/evil.bat",
+        "../../../etc/cron.d/evil",
+        "..%2F..%2F..%2Fetc%2Fpasswd",
+        "%2e%2e%2f%2e%2e%2f%2e%2e%2fwindows%2fsystem32%2fevil.dll",
+        "../evil.txt",
+    ],
+    "notes": (
+        "탐지 대상:\n"
+        "  1. <input type='file'> accept 속성의 ../  %2e%2e/ Startup Roaming 등 경로 탈출 패턴\n"
+        "  2. value 속성의 path traversal 문자열\n"
+        "  3. 서버측 업로드 핸들러에 ../evil.txt 파일명으로 multipart 업로드 시도\n"
+        "원리 (HackerOne #3712279):\n"
+        "  Burp 크롤러가 accept 속성값을 로컬 파일 경로로 Path.resolve() → Startup 폴더에 .bat 파일 생성 → 재로그인 시 RCE\n"
+        "bingo 적용:\n"
+        "  - 취약한 웹 앱이 파일 입력 accept/value 를 서버에서 그대로 사용하는 경우 탐지\n"
+        "  - 보안 도구(크롤러/스캐너)를 공격하는 악성 페이지 생성에도 활용 가능"
+    ),
+},
+
 }  # SKILLS_DB_5 end
 
 

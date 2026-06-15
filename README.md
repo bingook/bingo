@@ -2926,6 +2926,25 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
+### v2.1.1 — Hotfix *(2026-06)*
+
+#### Bug Fix — Login False Positive (ASP/IIS Session Cookie Misdetection)
+
+**Problem:** The brute-force login module incorrectly reported successful logins on ASP/IIS targets.
+
+- **Root cause 1 — `auth_tools.py`:** The `_is_login_success()` fallback condition was `status == 200 and len(body) > 500`. On ASP/IIS, every failed login returns HTTP 200 with a ~3,649-byte login page — so *all* attempts were falsely marked as successful.
+- **Root cause 2 — `anti_hallucination.py`:** The `add_credential()` method treated any session cookie as evidence of login success. ASP always issues `ASPSESSIONID` regardless of whether authentication succeeded or failed.
+
+**Fix:**
+| File | Change |
+|---|---|
+| `auth_tools.py` | Fallback changed from `status==200 and len(body)>500` → `False`. Added `baseline_len` parameter: probe one known-wrong credential first, then compare response length delta (`>200 bytes`) to detect real success. All three methods (`test_default_creds`, `brute_force`, `password_spray`) now capture a baseline response before testing. |
+| `anti_hallucination.py` | Generic session cookies (`ASPSESSIONID`, `PHPSESSID`, `JSESSIONID`) excluded from the "meaningful cookie" check. `VERIFIED` now requires both a success keyword *and* a non-generic cookie or off-page redirect. Fail keywords (`invalid`, `틀렸`, `인증실패`, etc.) immediately force `INFERRED` grade. `CredentialVerifier.verify()` patched with the same logic. |
+
+**Impact:** Zero breaking changes. All existing tests pass. False positives on ASP/IIS brute-force are eliminated.
+
+---
+
 ### v2.1.0 — Official Release *(2026-06)*
 - **Zero-Hallucination System** — all findings labeled `VERIFIED` / `LIKELY` / `INFERRED` / `AI_ANALYSIS`; nothing discarded
 - **Interactive Post-Report Actions** — 3–5 numbered next steps auto-presented after every report; enter a number to continue

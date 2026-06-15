@@ -49,7 +49,7 @@ BANNER = r"""
   ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║
   ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝
   ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ [/#00ff41]
-[#00d4aa]  AI Terminal  ·  v2.1.5  ·  Multi-Model[/#00d4aa]
+[#00d4aa]  AI Terminal  ·  v2.1.6  ·  Multi-Model[/#00d4aa]
 """
 
 PT_STYLE = PTStyle.from_dict({

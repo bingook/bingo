@@ -2926,6 +2926,53 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
+### v2.1.2 — Mid-Task Hint Injection + General Conversation Mode *(2026-06)*
+
+#### New Feature 1 — Mid-Task Hint Injection
+
+While the AI execution loop is running, you can now **inject a hint without restarting**.
+
+**Method A — Ctrl+C during loop:**
+```
+[Loop #7 running...]
+→ press Ctrl+C
+⚡ Loop paused — type a hint to keep going
+   (press Enter or Ctrl+C again → stop completely)
+💬 hint ❯ skip captcha, try other parameters
+💬 Hint injected — resuming loop (#7)
+→ AI applies hint immediately, loop continues
+```
+
+**Method B — `/hint` command (anytime):**
+```
+❯ /hint the login param might be mem_id not user
+```
+
+| | Ctrl+C method | /hint command |
+|--|--|--|
+| **When** | During loop | Anytime |
+| **Loop** | Pause → resume | Continues |
+| **Stop option** | Enter = full stop | No stop |
+
+Fully multilingual: `ko / zh / en`
+
+---
+
+#### New Feature 2 — General Conversation Mode (Dual-Mode AI)
+
+BINGO now switches automatically between pentest mode and general conversation mode.
+
+- Ask about models, say thank you, ask general questions → natural conversational response
+- Give a target URL or pentest task → full pentest mode
+- Responses always in the user's configured language (`/lang`)
+
+**Classification logic:**
+- URL detected → always pentest mode
+- "What is XSS?", "explain SSRF" → general mode (conceptual prefix detected)
+- "hack this site", target URLs → pentest mode
+
+---
+
 ### v2.1.1 — Hotfix *(2026-06)*
 
 #### Bug Fix — Login False Positive (ASP/IIS Session Cookie Misdetection)

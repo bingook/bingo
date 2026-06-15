@@ -223,54 +223,110 @@ PYPI_PACKAGE    = "bingo-ai"
 PYPI_JSON_URL   = f"https://pypi.org/pypi/{PYPI_PACKAGE}/json"
 
 
+def _detect_install_method() -> tuple[str, "Path | None"]:
+    """
+    설치 방법 자동 감지.
+    반환값: ('git' | 'pip', git_root_or_None)
+    - 패키지 파일 기준으로 .git 폴더가 있으면 git clone 설치로 판단
+    """
+    from pathlib import Path
+    pkg_dir = Path(__file__).resolve().parent          # bingo/bingo/
+    # 최대 3단계 위까지 .git 탐색 (bingo/bingo → bingo/ → 상위)
+    for candidate in [pkg_dir, pkg_dir.parent, pkg_dir.parent.parent]:
+        if (candidate / ".git").exists():
+            return ("git", candidate)
+    return ("pip", None)
+
+
 def _run_update(sl: dict, lang: str = "en") -> None:
     """
     bingo --update
-    1) PyPI에서 최신 버전 확인
-    2) 현재 버전과 비교
-    3) 업데이트가 있으면 pip install --upgrade 실행
+    설치 방법 자동 감지:
+      - git clone  → git pull origin main
+      - pip install → pip install --upgrade bingo-ai
     macOS / Windows / Linux 공통 동작
     """
     import sys, subprocess, json as _json
 
     _labels = {
         "ko": {
-            "checking":   "📡 최신 버전 확인 중...",
-            "latest":     "✅ 이미 최신 버전입니다",
-            "found":      "🆕 새 버전 발견",
-            "upgrading":  "⬆  업그레이드 중",
-            "done":       "✅ 업데이트 완료! 변경 사항을 적용하려면 bingo 를 재시작하세요.",
-            "fail_pip":   "❌ pip 업그레이드 실패 — 아래 명령어를 직접 실행하세요:",
-            "fail_pypi":  "⚠  PyPI 버전 확인 실패 — 수동으로 업그레이드하세요:",
-            "manual":     f"    pip install --upgrade {PYPI_PACKAGE}",
+            "checking":      "📡 최신 버전 확인 중...",
+            "method_git":    "📂 설치 방식: git clone — git pull 로 업데이트합니다",
+            "method_pip":    "📦 설치 방식: pip — PyPI 에서 업데이트합니다",
+            "latest":        "✅ 이미 최신 버전입니다",
+            "found":         "🆕 새 버전 발견",
+            "upgrading_git": "⬆  git pull 실행 중...",
+            "upgrading_pip": "⬆  pip 업그레이드 중...",
+            "done":          "✅ 업데이트 완료! 변경 사항을 적용하려면 bingo 를 재시작하세요.",
+            "fail_git":      "❌ git pull 실패 — 아래 명령어를 직접 실행하세요:",
+            "fail_pip":      "❌ pip 업그레이드 실패 — 아래 명령어를 직접 실행하세요:",
+            "fail_pypi":     "⚠  PyPI 버전 확인 실패 — 수동으로 업그레이드하세요:",
         },
         "zh": {
-            "checking":   "📡 正在检查最新版本...",
-            "latest":     "✅ 已是最新版本",
-            "found":      "🆕 发现新版本",
-            "upgrading":  "⬆  正在升级",
-            "done":       "✅ 更新完成！请重新启动 bingo 以应用更改。",
-            "fail_pip":   "❌ pip 升级失败 — 请手动运行以下命令:",
-            "fail_pypi":  "⚠  无法检查 PyPI 版本 — 请手动升级:",
-            "manual":     f"    pip install --upgrade {PYPI_PACKAGE}",
+            "checking":      "📡 正在检查最新版本...",
+            "method_git":    "📂 安装方式: git clone — 将使用 git pull 更新",
+            "method_pip":    "📦 安装方式: pip — 将从 PyPI 更新",
+            "latest":        "✅ 已是最新版本",
+            "found":         "🆕 发现新版本",
+            "upgrading_git": "⬆  正在执行 git pull...",
+            "upgrading_pip": "⬆  正在 pip 升级...",
+            "done":          "✅ 更新完成！请重新启动 bingo 以应用更改。",
+            "fail_git":      "❌ git pull 失败 — 请手动运行:",
+            "fail_pip":      "❌ pip 升级失败 — 请手动运行:",
+            "fail_pypi":     "⚠  无法检查 PyPI 版本 — 请手动升级:",
         },
         "en": {
-            "checking":   "📡 Checking for latest version...",
-            "latest":     "✅ Already up to date",
-            "found":      "🆕 New version available",
-            "upgrading":  "⬆  Upgrading",
-            "done":       "✅ Update complete! Restart bingo to apply changes.",
-            "fail_pip":   "❌ pip upgrade failed — run manually:",
-            "fail_pypi":  "⚠  Could not check PyPI — upgrade manually:",
-            "manual":     f"    pip install --upgrade {PYPI_PACKAGE}",
+            "checking":      "📡 Checking for latest version...",
+            "method_git":    "📂 Installed via git clone — updating with git pull",
+            "method_pip":    "📦 Installed via pip — updating from PyPI",
+            "latest":        "✅ Already up to date",
+            "found":         "🆕 New version available",
+            "upgrading_git": "⬆  Running git pull...",
+            "upgrading_pip": "⬆  Running pip upgrade...",
+            "done":          "✅ Update complete! Restart bingo to apply changes.",
+            "fail_git":      "❌ git pull failed — run manually:",
+            "fail_pip":      "❌ pip upgrade failed — run manually:",
+            "fail_pypi":     "⚠  Could not reach PyPI — upgrade manually:",
         },
     }
     lb = _labels.get(lang, _labels["en"])
 
-    # ── 1. PyPI에서 최신 버전 조회 ─────────────────────────────────
+    def _ver_tuple(v: str):
+        try:
+            return tuple(int(x) for x in v.split("."))
+        except ValueError:
+            return (0, 0, 0)
+
+    # ── 설치 방법 감지 ──────────────────────────────────────────────
+    method, git_root = _detect_install_method()
+
+    # ────────────────────────────────────────────────────────────────
+    # GIT CLONE 경로
+    # ────────────────────────────────────────────────────────────────
+    if method == "git" and git_root is not None:
+        console.print(f"[#00d4aa]{lb['method_git']}[/]")
+        console.print(f"[#00d4aa]{lb['upgrading_git']}[/]\n")
+        try:
+            subprocess.run(
+                ["git", "pull", "origin", "main"],
+                cwd=str(git_root),
+                check=True,
+            )
+            console.print(f"\n[#00ff41]{lb['done']}[/]")
+        except subprocess.CalledProcessError:
+            console.print(f"\n[#ff4444]{lb['fail_git']}[/]")
+            console.print(f"[#4a4a4a]  cd {git_root} && git pull origin main[/]")
+        return
+
+    # ────────────────────────────────────────────────────────────────
+    # PIP 경로
+    # ────────────────────────────────────────────────────────────────
+    console.print(f"[#00d4aa]{lb['method_pip']}[/]")
     console.print(f"[#00d4aa]{lb['checking']}[/]")
+
+    # 1) PyPI 최신 버전 조회
     try:
-        import urllib.request, urllib.error
+        import urllib.request
         req = urllib.request.Request(
             PYPI_JSON_URL,
             headers={"User-Agent": f"bingo-updater/{CURRENT_VERSION}"},
@@ -278,25 +334,15 @@ def _run_update(sl: dict, lang: str = "en") -> None:
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = _json.loads(resp.read())
         latest_ver = data["info"]["version"]
-    except Exception as exc:
+    except Exception:
         console.print(f"[#ff4444]{lb['fail_pypi']}[/]")
-        console.print(f"[#4a4a4a]{lb['manual']}[/]")
+        console.print(f"[#4a4a4a]  pip install --upgrade {PYPI_PACKAGE}[/]")
         return
 
-    # ── 2. 버전 비교 (packaging 없어도 동작하는 튜플 비교) ──────────
-    def _ver_tuple(v: str):
-        try:
-            return tuple(int(x) for x in v.split("."))
-        except ValueError:
-            return (0, 0, 0)
-
-    cur_t   = _ver_tuple(CURRENT_VERSION)
-    latest_t = _ver_tuple(latest_ver)
-
-    if latest_t <= cur_t:
+    # 2) 버전 비교
+    if _ver_tuple(latest_ver) <= _ver_tuple(CURRENT_VERSION):
         console.print(
-            f"[#00ff41]{lb['latest']}[/] "
-            f"[#4a4a4a](v{CURRENT_VERSION})[/]"
+            f"[#00ff41]{lb['latest']}[/] [#4a4a4a](v{CURRENT_VERSION})[/]"
         )
         return
 
@@ -304,23 +350,16 @@ def _run_update(sl: dict, lang: str = "en") -> None:
         f"[#ffaa00]{lb['found']}:[/] "
         f"[#4a4a4a]v{CURRENT_VERSION}[/] → [#00ff41]v{latest_ver}[/]"
     )
-    console.print(f"[#00d4aa]{lb['upgrading']} {PYPI_PACKAGE}=={latest_ver} ...[/]\n")
+    console.print(f"[#00d4aa]{lb['upgrading_pip']}[/]\n")
 
-    # ── 3. pip upgrade 실행 ─────────────────────────────────────────
-    # sys.executable 을 사용해야 현재 가상환경의 pip 이 실행됨
+    # 3) pip upgrade 실행
     pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", PYPI_PACKAGE]
-
     try:
-        result = subprocess.run(
-            pip_cmd,
-            check=True,
-        )
+        subprocess.run(pip_cmd, check=True)
         console.print(f"\n[#00ff41]{lb['done']}[/]")
     except subprocess.CalledProcessError:
         console.print(f"\n[#ff4444]{lb['fail_pip']}[/]")
-        # 사용자가 직접 복붙할 수 있는 명령어 출력
-        cmd_str = " ".join(pip_cmd)
-        console.print(f"[#4a4a4a]  {cmd_str}[/]")
+        console.print(f"[#4a4a4a]  {' '.join(pip_cmd)}[/]")
 
 
 def main() -> None:

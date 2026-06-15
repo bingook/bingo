@@ -395,10 +395,31 @@ class BingoTerminal:
 
     # ── 채팅 루프 ─────────────────────────────────────────────────
     def _chat_loop(self) -> None:
+        _ctrl_c_count = 0  # 연속 Ctrl+C 횟수 추적
         while True:
             try:
                 user_input = self._get_input()
-            except (KeyboardInterrupt, EOFError):
+                _ctrl_c_count = 0  # 입력 성공 시 카운터 초기화
+            except KeyboardInterrupt:
+                _ctrl_c_count += 1
+                if _ctrl_c_count >= 2:
+                    # 연속 2회 Ctrl+C → 진짜 종료
+                    self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
+                    if self._session_log_path:
+                        self.console.print(
+                            f"[{THEME['dim']}]{self.s['session_done']}: {self._session_log_path}[/]"
+                        )
+                    break
+                # 1회 Ctrl+C → 입력 취소, 루프 계속
+                _lang = getattr(self.config, "lang", "en")
+                _cancel_msg = {
+                    "ko": "(입력 취소 — 다시 입력하거나 Ctrl+C 한 번 더 누르면 종료)",
+                    "zh": "(输入已取消 — 重新输入或再按一次 Ctrl+C 退出)",
+                    "en": "(Input cancelled — type again or press Ctrl+C once more to quit)",
+                }.get(_lang, "(Ctrl+C again to quit)")
+                self.console.print(f"\n[{THEME['dim']}]{_cancel_msg}[/]")
+                continue
+            except EOFError:
                 self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
                 if self._session_log_path:
                     self.console.print(
@@ -2945,12 +2966,14 @@ class BingoTerminal:
                     self.console.print(f"[{THEME['success']}]{_resume_msg}[/]\n")
                     # 다음 AI 호출 전까지 결과 주입 없이 바로 AI에게 힌트 전달
                     model_hint = ModelRegistry.build(model_cfg)
-                    followup_response = self._stream_response(
+                    _hint_response = self._stream_response(
                         model_hint.chat_stream(self._build_messages(""))
                     )
-                    if followup_response:
-                        self.history.append(Message(role="assistant", content=followup_response))
-                        self._append_to_session_log("assistant", followup_response)
+                    if _hint_response:
+                        self.history.append(Message(role="assistant", content=_hint_response))
+                        self._append_to_session_log("assistant", _hint_response)
+                        # ★ current_response 업데이트 — 힌트 기반 AI 응답을 다음 루프에서 처리
+                        current_response = _hint_response
                     continue
                 else:
                     self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
@@ -3034,6 +3057,16 @@ class BingoTerminal:
                         "en": f"💬 Hint injected — resuming loop (#{self._exec_loop_count})",
                     }.get(_lang, f"💬 Hint injected — resuming")
                     self.console.print(f"[{THEME['success']}]{_resume_msg2}[/]\n")
+                    # ★ 힌트 기반 AI 호출 — 새 응답을 current_response로 설정해야 루프가 올바르게 진행됨
+                    model_hint2 = ModelRegistry.build(model_cfg)
+                    self.console.print(f"\n[{THEME['secondary']}]{_s['exec_analyzing']}[/]")
+                    _hint2_response = self._stream_response(
+                        model_hint2.chat_stream(self._build_messages(""))
+                    )
+                    if _hint2_response:
+                        self.history.append(Message(role="assistant", content=_hint2_response))
+                        self._append_to_session_log("assistant", _hint2_response)
+                        current_response = _hint2_response  # ★ current_response 업데이트 필수
                     continue
                 else:
                     self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")

@@ -95,6 +95,7 @@ _STRINGS = {
 /cred <id> <pw> [쿠키]  🔑 자격증명 수동 저장 (쿠키 없어도 OK)
 /session                 현재 인증 세션 확인 | /session clear 초기화
 /hint <메시지>           💬 AI 실행 도중 힌트 주입 (재실행 없이 방향 전환)
+/retry                   🔁 마지막 실패 단계만 재실행 (처음부터 재시작 불필요)
 /scan <url>              빠른 정찰: WAF + 핑거프린트 + 민감파일
 /waf <url>               WAF 탐지 + 자동 우회 시도
 /crack [hash]            해시 크랙 — 온라인 조회 → 오프라인 크랙
@@ -116,6 +117,7 @@ _STRINGS = {
 /cred <id> <pw> [Cookie] 🔑 手动保存凭据（无 Cookie 也可）
 /session                 查看当前认证会话 | /session clear 清除
 /hint <消息>             💬 执行中注入提示 (无需重启即可改变方向)
+/retry                   🔁 仅重试上次失败步骤 (无需从头重新启动)
 /scan <url>              快速侦察：WAF + 指纹识别 + 敏感文件
 /waf <url>               WAF 检测 + 自动绕过尝试
 /crack [hash]            哈希破解 — 在线查询 → 离线破解
@@ -137,6 +139,7 @@ _STRINGS = {
 /cred <id> <pw> [cookie] 🔑 Manually store credentials (cookie optional)
 /session                 View auth session | /session clear to reset
 /hint <message>          💬 Inject hint mid-execution (redirect without restart)
+/retry                   🔁 Retry only the last failed step (no full restart)
 /scan <url>              Quick recon: WAF + fingerprint + sensitive files
 /waf <url>               WAF detection + auto bypass attempt
 /crack [hash]            Hash crack — online lookup → offline crack

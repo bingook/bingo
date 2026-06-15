@@ -132,6 +132,8 @@ class BingoTerminal:
         # 네트워크 환경 (VPN 감지 결과 캐싱)
         self._net_env: dict = {}
         self._detect_network_env()
+        # /retry 용 마지막 실행 결과 캐시
+        self._last_exec_result: str = ""
 
     # ── 네트워크 환경 감지 (VPN 자동 판단) ───────────────────────
     def _detect_network_env(self) -> None:
@@ -1683,6 +1685,8 @@ class BingoTerminal:
             self._cmd_crack(arg)
         elif name == "/hint":
             self._cmd_hint(arg)
+        elif name == "/retry":
+            self._cmd_retry()
         elif name == "/stop":
             self._agent_stop_flag.set()
             self._stop_crack_flag.set()
@@ -1889,6 +1893,90 @@ class BingoTerminal:
             if resp:
                 self.history.append(Message(role="assistant", content=resp))
                 self._append_to_session_log("assistant", resp)
+
+    # ────────────────────────────────────────────────────────────────
+    # /retry — 마지막 실패 단계 재실행
+    # ────────────────────────────────────────────────────────────────
+    def _cmd_retry(self) -> None:
+        """/retry — 마지막 실행 결과를 AI에게 다시 보내 재시도 지시."""
+        _lang = getattr(self.config, "lang", "en")
+        last = getattr(self, "_last_exec_result", "")
+        if not last:
+            _no_result = {
+                "ko": "⚠ 재시도할 이전 실행 결과가 없습니다. 먼저 작업을 실행하세요.",
+                "zh": "⚠ 没有可重试的上次执行结果。请先运行任务。",
+                "en": "⚠ No previous execution result to retry. Run a task first.",
+            }.get(_lang, "⚠ No previous result to retry.")
+            self._warn(_no_result)
+            return
+
+        _retry_msg = {
+            "ko": (
+                "[RETRY 요청]\n"
+                "아래 실행 결과에서 실패한 부분을 분석하고, "
+                "다른 접근법으로 재시도하는 코드를 작성하세요.\n"
+                "처음부터 다시 시작하지 말고 실패 원인만 수정하세요.\n\n"
+                f"=== 마지막 실행 결과 ===\n{last[:2000]}\n=== END ==="
+            ),
+            "zh": (
+                "[重试请求]\n"
+                "分析以下执行结果中的失败部分，"
+                "编写使用不同方法重试的代码。\n"
+                "不要从头开始，只修复失败原因。\n\n"
+                f"=== 上次执行结果 ===\n{last[:2000]}\n=== END ==="
+            ),
+            "en": (
+                "[RETRY REQUEST]\n"
+                "Analyze the failure in the result below and write code "
+                "that retries with a different approach.\n"
+                "Do NOT restart from scratch — fix only what failed.\n\n"
+                f"=== Last Execution Result ===\n{last[:2000]}\n=== END ==="
+            ),
+        }.get(_lang, f"[RETRY] Fix what failed:\n{last[:2000]}")
+
+        self.history.append(Message(role="user", content=_retry_msg))
+
+        _banner = {
+            "ko": "🔁 마지막 실패 단계 재시도 중...",
+            "zh": "🔁 正在重试上次失败步骤...",
+            "en": "🔁 Retrying last failed step...",
+        }.get(_lang, "🔁 Retrying...")
+        self.console.print(f"[{THEME['warn']}]{_banner}[/]\n")
+
+        model_cfg = self.config.get_active_model_config()
+        if model_cfg:
+            from ..models.registry import ModelRegistry as _MR
+            _m = _MR.build(model_cfg)
+            resp = self._stream_response(_m.chat_stream(self._build_messages("")))
+            if resp:
+                self.history.append(Message(role="assistant", content=resp))
+                self._append_to_session_log("assistant", resp)
+                # 새 코드 블록이 있으면 바로 실행
+                self._execute_ai_commands(resp)
+
+    # ────────────────────────────────────────────────────────────────
+    # 알림 — 작업 완료 / 크리티컬 취약점 발견 시
+    # ────────────────────────────────────────────────────────────────
+    def _send_notification(self, title: str, message: str, critical: bool = False) -> None:
+        """macOS 시스템 알림 + 터미널 벨 소리."""
+        import subprocess, sys
+        # 터미널 벨
+        print("\a", end="", flush=True)
+        # macOS 알림
+        if sys.platform == "darwin":
+            try:
+                sound = "Basso" if critical else "Glass"
+                script = (
+                    f'display notification "{message}" '
+                    f'with title "{title}" '
+                    f'sound name "{sound}"'
+                )
+                subprocess.run(
+                    ["osascript", "-e", script],
+                    capture_output=True, timeout=3,
+                )
+            except Exception:
+                pass
 
     # ── 자연어 자격증명 자동 파싱 ────────────────────────────────────
     def _try_natural_language_login(self, text: str) -> None:
@@ -2691,6 +2779,8 @@ class BingoTerminal:
 
             # 결과 압축 (컨텍스트 폭발 방지)
             raw_results = "\n".join(results_text)
+            # /retry 를 위해 마지막 실행 결과 보존
+            self._last_exec_result = raw_results
             if len(raw_results) > 3000:
                 trimmed = (
                     raw_results[:1500]
@@ -2840,6 +2930,11 @@ class BingoTerminal:
             # 작업 완료
             if "TASK_COMPLETE" in followup_response or "MISSION_COMPLETE" in followup_response:
                 self.console.print(f"\n[{THEME['success']}]✅ {_s.get('agent_done', 'Agent task complete')}[/]\n")
+                _target = self._agent_state.get("target", "target")
+                _lang = getattr(self.config, "lang", "en")
+                _notif_title = {"ko": "BINGO — 작업 완료", "zh": "BINGO — 任务完成", "en": "BINGO — Task Complete"}.get(_lang, "BINGO — Done")
+                _notif_body = {"ko": f"침투 테스트 완료: {_target[:40]}", "zh": f"渗透测试完成: {_target[:40]}", "en": f"Pentest complete: {_target[:40]}"}.get(_lang, f"Done: {_target[:40]}")
+                self._send_notification(_notif_title, _notif_body, critical=False)
                 self._auto_generate_report()
                 break
 
@@ -3282,7 +3377,7 @@ class BingoTerminal:
         return Path.home() / ".config" / "bingo" / "last_history.json"
 
     def _save_history(self) -> None:
-        """현재 히스토리 + agent_state → 파일 저장 (이어하기용)."""
+        """현재 히스토리 + agent_state + auth_session → 파일 저장 (이어하기용)."""
         import json
         _path = self._history_path()
         try:
@@ -3291,6 +3386,8 @@ class BingoTerminal:
                 "history": [{"role": m.role, "content": m.content} for m in self.history[-30:]],
                 "agent_state": self._agent_state,
                 "loop_count": self._exec_loop_count,
+                "auth_session": getattr(self, "_auth_session", {}),
+                "last_exec_result": getattr(self, "_last_exec_result", ""),
             }
             _path.write_text(json.dumps(data, ensure_ascii=False, indent=2))
         except Exception:
@@ -3341,6 +3438,12 @@ class BingoTerminal:
             ]
             self._agent_state = {**self._agent_state, **data.get("agent_state", {})}
             self._exec_loop_count = data.get("loop_count", 0)
+            # auth_session 복원
+            saved_auth = data.get("auth_session", {})
+            if saved_auth.get("active"):
+                self._auth_session = saved_auth
+            # 마지막 실행 결과 복원 (retry용)
+            self._last_exec_result = data.get("last_exec_result", "")
 
             _resumed = {
                 "ko": f"✅ 이전 세션 복원 완료 — 타겟: {target}",
@@ -3641,10 +3744,25 @@ class BingoTerminal:
         from ..tools.hash_crack import extract_hashes_from_text
         hashes = extract_hashes_from_text(text)
         if not hashes:
+            # 크레덴셜 발견 키워드 감지 → 크리티컬 알림
+            _cred_signals = [
+                "password:", "username:", "admin:", "passwd=", "pw=",
+                "크레덴셜", "비밀번호 발견", "credential found", "凭据", "密码"
+            ]
+            if any(s in text.lower() for s in _cred_signals):
+                _lang = getattr(self.config, "lang", "en")
+                _t = {"ko": "🚨 BINGO — 크레덴셜 발견!", "zh": "🚨 BINGO — 发现凭据!", "en": "🚨 BINGO — Credential Found!"}.get(_lang, "🚨 BINGO — Critical!")
+                _b = {"ko": "관리자 자격증명이 발견되었습니다.", "zh": "发现了管理员凭据。", "en": "Admin credentials have been found."}.get(_lang, "Credential found.")
+                self._send_notification(_t, _b, critical=True)
             return
         self.console.print(
             f"\n[{THEME['warn']}]{self.s['hash_found'].format(n=len(hashes))}[/]"
         )
+        # 해시 발견 → 크리티컬 알림
+        _lang = getattr(self.config, "lang", "en")
+        _ht = {"ko": f"🔑 BINGO — 해시 {len(hashes)}개 발견!", "zh": f"🔑 BINGO — 发现 {len(hashes)} 个哈希!", "en": f"🔑 BINGO — {len(hashes)} hash(es) found!"}.get(_lang, f"🔑 {len(hashes)} hashes found")
+        _hb = {"ko": "자동 크랙 시작됨", "zh": "自动破解已启动", "en": "Auto-crack started"}.get(_lang, "Auto-crack started")
+        self._send_notification(_ht, _hb, critical=True)
         # 별도 스레드에서 실행 (채팅 블로킹 방지)
         self._stop_crack_flag.clear()
         t = threading.Thread(

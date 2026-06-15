@@ -2926,6 +2926,53 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
+### v2.1.3 — Session Resume + /retry + Notifications *(2026-06)*
+
+#### New Feature 1 — Session Auto-Save & Resume
+
+Every loop iteration saves the full session state automatically.  
+On next launch, BINGO detects the previous session and asks:
+
+```
+╭─ 🔄 Previous session found ──────────────────────╮
+│  Target: https://target.co.kr                    │
+│  Continue from where you left off?               │
+╰──────────────────────────────────────────────────╯
+Resume [Y/n]:
+```
+
+Restored state includes: conversation history, agent state, auth cookies, loop count, and last execution result.
+
+---
+
+#### New Feature 2 — `/retry` Command
+
+Re-run only the last failed step without restarting from scratch.
+
+```
+❯ /retry
+🔁 Retrying last failed step...
+→ AI analyzes the previous error and writes a corrected approach
+```
+
+BINGO sends the last execution result back to AI with the instruction to fix only what failed — no full restart required.
+
+---
+
+#### New Feature 3 — System Notifications
+
+Automatic macOS notification + terminal bell on:
+
+| Event | Notification |
+|-------|-------------|
+| Task complete (`TASK_COMPLETE`) | 🔔 Normal sound (Glass) |
+| Hash found | 🚨 Critical sound (Basso) |
+| Credential found | 🚨 Critical sound (Basso) |
+
+Works on macOS via `osascript`. Terminal bell (`\a`) fires on all platforms.
+
+---
+
 ### v2.1.2 — Mid-Task Hint Injection + General Conversation Mode *(2026-06)*
 
 #### New Feature 1 — Mid-Task Hint Injection

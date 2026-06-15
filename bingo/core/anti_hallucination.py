@@ -206,6 +206,7 @@ class ZeroHallucinationGuard:
         status_code: int,
         response_body: str,
         session_cookie: str = "",
+        baseline_response_len: int | None = None,
         role: str = "unknown",
         method: str = "bruteforce",
     ) -> VerifiedFinding:
@@ -213,19 +214,56 @@ class ZeroHallucinationGuard:
         자격증명 기록.
         쿠키/응답에 따라 VERIFIED / LIKELY 자동 라벨링.
         → 쿠키 없어도 차단하지 않는다. LIKELY로 기록됨.
-        """
-        success_signs = [
-            "logout", "로그아웃", "dashboard", "대시보드",
-            "welcome", "환영", "index", "mypage",
-        ]
-        has_cookie = bool(session_cookie)
-        has_success_text = any(s.lower() in response_body.lower() for s in success_signs)
-        good_status = status_code in (200, 302)
 
-        # 등급 결정 (차단 없음)
-        if has_cookie and good_status:
+        ※ ASP/IIS 오판 방지:
+           - ASPSESSIONID 같은 범용 세션 쿠키는 로그인 성공 증거가 아님
+           - 반드시 응답 본문에 성공 신호가 있어야 VERIFIED
+           - baseline_response_len 제공 시 길이 변화로 추가 판단
+        """
+        # 명확한 성공 신호 (로그인 후에만 나타나는 키워드)
+        success_signs = [
+            "logout", "log out", "sign out", "signout",
+            "로그아웃", "대시보드", "마이페이지", "회원정보", "환영합니다",
+            "dashboard", "welcome,", "my account",
+        ]
+        # 명확한 실패 신호
+        fail_signs = [
+            "incorrect", "invalid", "failed", "wrong", "error",
+            "틀렸", "잘못된", "실패", "인증실패", "아이디 또는 비밀번호",
+            "비밀번호가 일치하지", "존재하지 않", "login failed",
+        ]
+
+        body_l = response_body.lower()
+        has_success_text = any(s.lower() in body_l for s in success_signs)
+        has_fail_text = any(s.lower() in body_l for s in fail_signs)
+
+        # 리다이렉트가 로그인 페이지 외부로 향하는지 확인
+        is_login_redirect = (
+            status_code in (301, 302)
+            and not any(x in body_l for x in ["login", "signin", "logon"])
+        )
+
+        # 쿠키 존재 여부 (단, 범용 세션 쿠키는 성공 증거 아님)
+        # ASPSESSIONID, PHPSESSID 등은 항상 발급되므로 단독 증거로 불충분
+        generic_cookies = {"aspsessionid", "phpsessid", "jsessionid", "cfid", "cftoken"}
+        meaningful_cookie = False
+        if session_cookie:
+            cookie_names = {c.split("=")[0].strip().lower() for c in session_cookie.split(";")}
+            meaningful_cookie = bool(cookie_names - generic_cookies)
+
+        # baseline 길이 비교 (제공된 경우)
+        length_differs = False
+        if baseline_response_len is not None:
+            length_differs = abs(len(response_body) - baseline_response_len) > 200
+
+        # 등급 결정 (차단 없음 — 단, 실패 신호 있으면 INFERRED)
+        if has_fail_text:
+            level_str = "INFERRED"
+        elif has_success_text and (meaningful_cookie or is_login_redirect):
             level_str = "VERIFIED"
-        elif has_success_text or good_status:
+        elif has_success_text or (meaningful_cookie and is_login_redirect):
+            level_str = "LIKELY"
+        elif length_differs and not has_fail_text:
             level_str = "LIKELY"
         else:
             level_str = "INFERRED"
@@ -245,7 +283,7 @@ class ZeroHallucinationGuard:
             url=login_url,
             status_code=status_code,
             response_body=response_body[:500],
-            login_verified=has_cookie,
+            login_verified=(level_str == "VERIFIED"),
             session_cookie=session_cookie,
             remediation="해당 계정 비밀번호 즉시 변경 및 감사 로그 확인",
             cvss_score=9.8,
@@ -253,6 +291,9 @@ class ZeroHallucinationGuard:
             extra={
                 "username": username, "password": password,
                 "role": role, "evidence_grade": level_str,
+                "has_success_text": has_success_text,
+                "meaningful_cookie": meaningful_cookie,
+                "is_login_redirect": is_login_redirect,
             },
         )
         # 수동으로 등급 반영
@@ -378,12 +419,33 @@ class CredentialVerifier:
         except Exception as e:
             return {"verified": False, "error": str(e)}
 
-        success_signs = ["logout", "로그아웃", "dashboard", "대시보드"]
+        success_signs = [
+            "logout", "log out", "로그아웃", "대시보드",
+            "dashboard", "welcome,", "마이페이지",
+        ]
+        fail_signs = [
+            "incorrect", "invalid", "failed", "wrong",
+            "틀렸", "잘못된", "실패", "인증실패", "아이디 또는 비밀번호",
+        ]
         cookie_str = "; ".join(f"{k}={v}" for k, v in s.cookies.items())
+
+        # 쿠키 존재만으로 성공 판단 금지 (ASP ASPSESSIONID 오판 방지)
+        generic_cookies = {"aspsessionid", "phpsessid", "jsessionid"}
+        cookie_names = {k.lower() for k in s.cookies.keys()}
+        has_meaningful_cookie = bool(cookie_names - generic_cookies)
+
+        has_success_text = any(sign.lower() in r.text.lower() for sign in success_signs)
+        has_fail_text = any(sign.lower() in r.text.lower() for sign in fail_signs)
+        is_offsite_redirect = (
+            r.status_code == 302
+            and "login" not in r.headers.get("Location", "").lower()
+        )
+
         verified = (
-            any(sign.lower() in r.text.lower() for sign in success_signs)
-            or (r.status_code == 302 and "login" not in r.headers.get("Location", ""))
-        ) and bool(cookie_str)
+            not has_fail_text
+            and (has_success_text or is_offsite_redirect)
+            and (has_meaningful_cookie or is_offsite_redirect)
+        )
 
         curl = (
             f"curl -sk -X POST '{login_url}' "

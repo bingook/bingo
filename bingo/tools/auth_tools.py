@@ -153,22 +153,61 @@ class Auth:
         print(f"[AUTH] Fields: user={username_field}, pass={password_field}")
         return self._login_form
 
-    def _is_login_success(self, body: str, status: int, headers: dict) -> bool:
-        """로그인 성공 여부 판단."""
+    def _is_login_success(self, body: str, status: int, headers: dict,
+                          baseline_len: int | None = None) -> bool:
+        """로그인 성공 여부 판단.
+
+        판단 우선순위:
+        1. 리다이렉트 → Location 헤더 확인
+        2. 실패 키워드 → 즉시 False
+        3. 성공 키워드 → True
+        4. baseline 길이 비교 (기준 응답 대비 유의미한 차이)
+        5. 명시적 증거 없으면 False (ASP ASPSESSIONID 같은 쿠키 오판 방지)
+        """
+        # 1) 리다이렉트 성공 판단
         if status in (302, 301):
             loc = headers.get("location", "").lower()
-            if any(x in loc for x in ["dashboard", "home", "profile", "account", "main", "index"]):
+            # 로그인 페이지로 돌아가는 리다이렉트는 실패
+            if any(x in loc for x in ["login", "signin", "logon"]):
+                return False
+            if any(x in loc for x in ["dashboard", "home", "profile", "account",
+                                       "main", "index", "manager", "admin", "mypage"]):
                 return True
-        fail_keywords = ["incorrect", "invalid", "failed", "wrong", "error",
-                         "틀렸", "잘못된", "실패", "인증실패", "아이디 또는 비밀번호"]
-        success_keywords = ["logout", "dashboard", "profile", "welcome", "로그아웃",
-                            "대시보드", "마이페이지", "회원정보"]
+            # 알 수 없는 리다이렉트도 성공 가능성 (로그인 페이지 외)
+            if loc and "login" not in loc:
+                return True
+
         body_l = body.lower()
+
+        # 2) 실패 키워드 — 명확한 실패 신호
+        fail_keywords = [
+            "incorrect", "invalid", "failed", "wrong", "unauthorized",
+            "틀렸", "잘못된", "실패", "인증실패", "아이디 또는 비밀번호",
+            "비밀번호가 일치하지", "존재하지 않", "없는 아이디", "로그인 실패",
+            "불법적인 접근", "invalid password", "wrong password",
+            "login failed", "authentication failed",
+        ]
         if any(k in body_l for k in fail_keywords):
             return False
+
+        # 3) 성공 키워드 — 명확한 성공 신호
+        success_keywords = [
+            "logout", "log out", "sign out", "signout",
+            "로그아웃", "대시보드", "마이페이지", "회원정보", "환영합니다",
+            "dashboard", "welcome,", "my account", "my profile",
+        ]
         if any(k in body_l for k in success_keywords):
             return True
-        return status == 200 and len(body) > 500
+
+        # 4) baseline 비교 — 응답 길이가 기준과 유의미하게 다를 때만 성공 판단
+        if baseline_len is not None:
+            diff = abs(len(body) - baseline_len)
+            # 200바이트 이상 차이나고 실패 키워드 없으면 가능성 있음
+            if diff > 200:
+                return True
+
+        # 5) 증거 없음 → False (ASP ASPSESSIONID 등 단순 쿠키 존재는 무시)
+        return False
 
     # ── 기본 자격증명 테스트 ──────────────────────────────────────
     def test_default_creds(self, form: dict | None = None) -> list[dict]:
@@ -177,6 +216,14 @@ class Auth:
         if not form:
             return []
 
+        # baseline: 명백히 틀린 자격증명으로 기준 응답 길이 확보
+        _bl_data = {**form["other_fields"],
+                    form["username_field"]: "BINGO_NO_SUCH_USER_xXx9",
+                    form["password_field"]: "BINGO_WRONG_PASS_xXx9"}
+        _, _, _bl_body = self._req(form["action"], "POST", _bl_data)
+        baseline_len = len(_bl_body)
+        print(f"[AUTH] Baseline response length: {baseline_len}")
+
         results = []
         print(f"[AUTH] Testing {len(_DEFAULT_CREDS)} default credentials...")
         for username, password in _DEFAULT_CREDS:
@@ -184,7 +231,7 @@ class Auth:
                     form["username_field"]: username,
                     form["password_field"]: password}
             status, headers, body = self._req(form["action"], "POST", data)
-            if self._is_login_success(body, status, headers):
+            if self._is_login_success(body, status, headers, baseline_len=baseline_len):
                 detail = f"username={username!r}, password={password!r}"
                 self._add_finding("Default Credentials", detail, "CRITICAL")
                 results.append({"username": username, "password": password})
@@ -201,13 +248,20 @@ class Auth:
             return None
         passwords = passwords or _COMMON_PASSWORDS
 
-        print(f"[AUTH] Brute force: user={username!r}, {len(passwords)} passwords...")
+        # baseline: 명백히 틀린 비밀번호로 기준 응답 확보
+        _bl_data = {**form["other_fields"],
+                    form["username_field"]: username,
+                    form["password_field"]: "BINGO_WRONG_PASS_xXx9"}
+        _, _, _bl_body = self._req(form["action"], "POST", _bl_data)
+        baseline_len = len(_bl_body)
+        print(f"[AUTH] Brute force: user={username!r}, {len(passwords)} passwords, baseline={baseline_len}...")
+
         for password in passwords:
             data = {**form["other_fields"],
                     form["username_field"]: username,
                     form["password_field"]: password}
             status, headers, body = self._req(form["action"], "POST", data)
-            if self._is_login_success(body, status, headers):
+            if self._is_login_success(body, status, headers, baseline_len=baseline_len):
                 detail = f"username={username!r}, password={password!r}"
                 self._add_finding("Brute Force Success", detail, "CRITICAL")
                 return {"username": username, "password": password}
@@ -222,14 +276,22 @@ class Auth:
         form = form or self._login_form or self.detect_login_form()
         if not form:
             return []
+
+        # baseline: 존재하지 않는 사용자로 기준 응답 확보
+        _bl_data = {**form["other_fields"],
+                    form["username_field"]: "BINGO_NO_SUCH_USER_xXx9",
+                    form["password_field"]: password}
+        _, _, _bl_body = self._req(form["action"], "POST", _bl_data)
+        baseline_len = len(_bl_body)
+
         results = []
-        print(f"[AUTH] Password spray: {len(usernames)} users, password={password!r}...")
+        print(f"[AUTH] Password spray: {len(usernames)} users, password={password!r}, baseline={baseline_len}...")
         for username in usernames:
             data = {**form["other_fields"],
                     form["username_field"]: username,
                     form["password_field"]: password}
             status, headers, body = self._req(form["action"], "POST", data)
-            if self._is_login_success(body, status, headers):
+            if self._is_login_success(body, status, headers, baseline_len=baseline_len):
                 detail = f"username={username!r}, password={password!r}"
                 self._add_finding("Password Spray Success", detail, "CRITICAL")
                 results.append({"username": username, "password": password})

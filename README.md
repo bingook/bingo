@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.2.8-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.2.9-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -14,8 +14,8 @@
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
-> **v2.1.0 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.8 is the latest stable, production-ready version.
+> **v2.2.9 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.9 is the latest stable, production-ready version.
 
 </div>
 
@@ -4024,6 +4024,322 @@ docker run -it --rm -p 8000:8000 opensecurity/mobile-security-framework-mobsf
 
 # Print full setup guide
 python3 -c "from bingo.tools.mobile_recon import quick_setup_guide; print(quick_setup_guide())"
+```
+
+---
+
+## APK Toolkit — apkd + apkscan + apk.sh (v2.2.9)
+
+v2.2.9 integrates three powerful Android reverse-engineering tools into bingo's AI engine.
+The AI automatically selects the right tool based on what you ask.
+
+### What's included
+
+| Tool | Purpose | Source |
+|------|---------|--------|
+| **apkd** | Download APKs from multiple stores (ApkPure, F-Droid, ApkCombo, AppGallery, RuStore…) | [kiber-io/apkd](https://github.com/kiber-io/apkd) |
+| **apkscan** | Secret + endpoint scanner for APKs (multi-decompiler, Gitleaks rules) | [LucasFaudman/apkscan](https://github.com/LucasFaudman/apkscan) |
+| **apk.sh** | Frida Gadget injection, decode, rebuild, device pull — no root needed | [ax/apk.sh](https://github.com/ax/apk.sh) |
+
+---
+
+### 1. Download APK (apkd)
+
+Download any APK by package name — no Google Play account required.
+
+```bash
+# Basic download (auto-selects best source)
+bingo> download apk com.target.app
+
+# Download from a specific store
+bingo> apkd com.target.app from apkpure
+
+# List all available versions
+bingo> list apk versions com.target.app
+
+# Batch download from a file
+bingo> batch download apk packages.txt
+
+# Find developer ID and download all their apps
+bingo> developer apk download Instagram apkpure
+```
+
+**CLI equivalents (run outside bingo):**
+```bash
+apkd -p com.target.app -d -s apkpure          # download from ApkPure
+apkd -p com.target.app -lv                    # list versions
+apkd -p com.target.app -d -s fdroid           # download from F-Droid
+apkd -l packages.txt -d                       # batch download
+apkd -ld -p com.target.app -s apkpure         # find developer ID
+apkd -d -did 'Instagram' -s apkpure           # all apps from developer
+```
+
+**Supported stores:**
+
+| Store | Multiple Versions | Developer ID |
+|-------|------------------|-------------|
+| ApkPure | ✅ | ✅ |
+| ApkCombo | ✅ | ✅ |
+| F-Droid | ✅ | ❌ |
+| AppGallery | ❌ | ❌ |
+| RuStore | ❌ | ✅ |
+
+**Installation:**
+```bash
+pip install git+https://github.com/kiber-io/apkd
+```
+
+---
+
+### 2. Scan APK for Secrets & Endpoints (apkscan)
+
+Scan APKs for hardcoded API keys, tokens, passwords, backend URLs, SSL pinning locations, and root detection code.
+
+```bash
+# AI-triggered automatically when you ask:
+bingo> scan apk for secrets com.target.app.apk
+bingo> find api keys in apk
+bingo> android secret scan target.apk
+bingo> find backend endpoints in apk
+
+# Specify decompiler and rules
+bingo> apkscan target.apk with jadx and gitleaks rules
+```
+
+**CLI equivalents:**
+```bash
+# Basic scan with default settings (JADX decompiler)
+apkscan target.apk
+
+# Use multiple decompilers for better coverage
+apkscan target.apk -d jadx apktool cfr
+
+# Use custom rule formats
+apkscan target.apk -r rules/custom.toml      # Gitleaks TOML
+apkscan target.apk -r rules/secrets.json     # SecretLocator JSON
+apkscan target.apk -r rules/patterns.yaml    # secret-patterns-db YAML
+
+# Output formats
+apkscan target.apk -o results.json           # JSON output
+apkscan target.apk --output-format sarif     # SARIF output
+```
+
+**What apkscan detects:**
+- API keys (AWS, Google, Stripe, Twilio, etc.)
+- OAuth tokens and secrets
+- Database connection strings
+- Backend API endpoints and URLs
+- Cloud credentials (AWS, Azure, GCP)
+- SSL pinning implementation locations
+- Root detection code locations
+- Hardcoded passwords and private keys
+
+**Supported file formats:** `.apk`, `.xapk`, `.dex`, `.jar`, `.class`, `.smali`, `.zip`, `.aar`, `.arsc`, `.aab`, `.jadx.kts`
+
+**Supported decompilers:** JADX, APKTool, CFR, Procyon, Krakatau, Fernflower
+
+**Installation:**
+```bash
+pip install apkscan
+# or from source:
+pip install git+https://github.com/LucasFaudman/apkscan
+```
+
+---
+
+### 3. Frida Gadget Injection & APK Manipulation (apk.sh)
+
+Patch APKs to load Frida Gadget for dynamic instrumentation — **no root required**.
+
+#### 3a. Pull APK from Device
+
+```bash
+# AI-triggered when you say:
+bingo> pull apk from device com.target.app
+bingo> extract apk from phone
+bingo> adb pull apk com.target.app
+
+# Also handles split APKs / app bundles automatically
+```
+
+**CLI equivalent:**
+```bash
+./apk.sh pull com.target.app
+# Automatically merges split APKs into a single APK
+```
+
+#### 3b. Decode APK (Disassemble to Smali)
+
+```bash
+# AI-triggered when you say:
+bingo> decode apk target.apk
+bingo> disassemble apk to smali
+bingo> apktool decode target.apk
+
+# Decode without resources (faster)
+bingo> decode apk target.apk no resources
+```
+
+**CLI equivalents:**
+```bash
+./apk.sh decode target.apk
+./apk.sh decode target.apk -r           # skip resource decoding
+./apk.sh decode target.apk -s           # skip dex disassembly
+```
+
+#### 3c. Patch APK with Frida Gadget
+
+```bash
+# AI-triggered when you say:
+bingo> patch apk with frida target.apk
+bingo> inject frida gadget arm64
+bingo> frida no root target.apk
+bingo> bypass ssl pinning with frida target.apk
+
+# With custom gadget config
+bingo> frida patch target.apk arm64 with script config
+```
+
+**CLI equivalents:**
+```bash
+# Basic patch (arm64)
+./apk.sh patch target.apk --arch arm64
+
+# With gadget config for script interaction
+./apk.sh patch target.apk --arch arm64 --gadget-conf gadget.json
+
+# With permissive network security config (for HTTPS interception)
+./apk.sh patch target.apk --arch arm64 -n
+
+# Install after patching
+adb install target.gadget.apk
+```
+
+**Gadget config for SSL pinning bypass:**
+```json
+{
+  "interaction": {
+    "type": "script",
+    "path": "/data/local/tmp/ssl_bypass.js",
+    "on_change": "reload"
+  }
+}
+```
+
+```bash
+# Push your Frida script and install
+adb push ssl_bypass.js /data/local/tmp/
+adb install target.gadget.apk
+frida -U -n com.target.app  # or use objection
+```
+
+**Supported architectures:** `arm`, `arm64`, `x86`, `x86_64`
+
+#### 3d. Rebuild APK
+
+```bash
+# AI-triggered when you say:
+bingo> rebuild apk from smali
+bingo> recompile apk target_dir
+bingo> build apk after modification
+```
+
+**CLI equivalent:**
+```bash
+./apk.sh build target_dir/
+```
+
+#### 3e. Rename APK Package
+
+```bash
+bingo> rename apk package com.target.app to com.custom.app
+```
+
+**CLI equivalent:**
+```bash
+./apk.sh rename target.apk com.custom.newpackage
+```
+
+**Requirements for apk.sh:**
+```bash
+# macOS
+brew install apktool aapt android-platform-tools
+
+# Ubuntu/Debian
+apt install apktool aapt adb
+
+# Also needed:
+# apksigner (comes with Android SDK Build Tools)
+# unxz, zipalign
+```
+
+---
+
+### 4. Full APK Analysis Pipeline
+
+Run the complete workflow: download → scan for secrets → patch with Frida.
+
+```bash
+# AI-triggered when you say:
+bingo> full apk analysis com.target.app
+bingo> android pentest pipeline com.target.app
+bingo> apk end to end analysis
+
+# bingo will automatically:
+# 1. Download APK from best available source
+# 2. Scan for secrets, API keys, and backend endpoints
+# 3. Patch with Frida Gadget for dynamic analysis
+# 4. Generate Frida/Objection commands
+```
+
+**Python API:**
+```python
+from bingo.tools.apk_toolkit import full_apk_analysis_pipeline
+
+result = full_apk_analysis_pipeline(
+    package_name="com.target.app",
+    output_dir="./analysis",
+    arch="arm64",
+    decompiler="jadx",
+)
+print(result["download"].summary())
+print(result["scan"].summary())
+print(result["patch"].summary())
+```
+
+---
+
+### Skills Added (v2.2.9)
+
+| Skill ID | Description | Trigger Keywords |
+|----------|-------------|-----------------|
+| `apk-download` | Download APK from multiple stores via apkd | download apk, apkpure, fdroid, apkcombo |
+| `apkscan-secret-endpoint` | Scan APK for secrets and endpoints | apk secret, api key, android leaked, smali secret |
+| `apk-frida-patch` | Inject Frida Gadget into APK (no root) | frida gadget, frida patch, ssl pinning bypass frida |
+| `apk-decode-rebuild` | Decode/rebuild APK with apktool | apk decode, smali analysis, apk recompile |
+| `apk-pull-device` | Pull APK from Android device via ADB | pull apk device, extract apk phone, adb pull apk |
+| `apk-full-pipeline` | Complete APK download+scan+patch workflow | full apk analysis, android pentest pipeline |
+
+---
+
+### Install All APK Toolkit Tools
+
+```bash
+# apkd — APK downloader
+pip install git+https://github.com/kiber-io/apkd
+
+# apkscan — Secret & endpoint scanner
+pip install apkscan
+
+# apk.sh — Frida patcher
+curl -O https://raw.githubusercontent.com/ax/apk.sh/main/apk.sh
+chmod +x apk.sh
+
+# System dependencies (macOS)
+brew install apktool aapt android-platform-tools
+
+# System dependencies (Ubuntu)
+apt install apktool aapt adb default-jdk
 ```
 
 ---

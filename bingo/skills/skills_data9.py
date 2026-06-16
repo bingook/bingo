@@ -1,6 +1,6 @@
 """
 skills_data9.py — TruffleHog APK Scanner + Malimite iOS Decompiler Skills
-bingo v2.2.8
+bingo v2.2.9
 
 References:
   TruffleHog APK : https://trufflesecurity.com/blog/cracking-open-apk-files-at-scale

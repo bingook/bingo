@@ -21,21 +21,23 @@ from .skills_data6 import SKILLS_DB_6, MODULE_INDEX_6, TAG_INDEX_6
 from .skills_data7 import SKILLS_DB_7, MODULE_INDEX_7, TAG_INDEX_7
 from .skills_data8 import SKILLS_DB_8, MODULE_INDEX_8, TAG_INDEX_8
 from .skills_data9 import SKILLS_DB_9, MODULE_INDEX_9, TAG_INDEX_9
+from .skills_data10 import SKILLS_DB_10, MODULE_INDEX_10, TAG_INDEX_10
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite — v2.2.8)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit — v2.2.9)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
     **{s["name"]: s for s in SKILLS_DB_7},
     **{s["name"]: s for s in SKILLS_DB_8},
     **{s["name"]: s for s in SKILLS_DB_9},
+    **{s["name"]: s for s in SKILLS_DB_10},
 }
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
 
 for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
                  MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7, MODULE_INDEX_8,
-                 MODULE_INDEX_9]:
+                 MODULE_INDEX_9, MODULE_INDEX_10]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
@@ -43,7 +45,7 @@ for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
 
 for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4,
                  TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7, TAG_INDEX_8,
-                 TAG_INDEX_9]:
+                 TAG_INDEX_9, TAG_INDEX_10]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []
@@ -627,6 +629,7 @@ class SkillEngine:
             "secknowledge_skills": len(SKILLS_DB_7),
             "mobile_skills": len(SKILLS_DB_8),
             "trufflehog_malimite_skills": len(SKILLS_DB_9),
+            "apk_toolkit_skills": len(SKILLS_DB_10),
             "secknowledge_refs_available": _secknow_ok(),
             "secknowledge_status": _secknow_status(),
             "total_modules": len(ALL_MODULE_INDEX),
@@ -741,6 +744,44 @@ class SkillEngine:
           "swift decompile", "objc decompile", "ghidra ios",
           "hardcoded secret", "leaked key", "apk trufflehog"],
          "apk-trufflehog-scan", None),
+        # apkd APK 다운로드 라우팅
+        (["apkd", "apkpure", "apkcombo", "fdroid", "f-droid", "rustore",
+          "appgallery", "nashstore", "download apk", "apk download",
+          "apk without google play", "apk store", "list apk versions",
+          "batch download apk", "developer apk", "apk downloader",
+          "apk 다운로드", "apk下载"],
+         "apk-download", None),
+        # apkscan 시크릿+엔드포인트 스캔 라우팅
+        (["apkscan", "apk endpoint", "apk backend url", "android api endpoint",
+          "android secret scan", "android leaked", "android api key",
+          "smali secret", "jadx secret", "decompile apk secrets",
+          "apk vulnerability scan", "multiple decompilers", "gitleaks apk",
+          "apk 시크릿", "apk密钥"],
+         "apkscan-secret-endpoint", None),
+        # apk.sh Frida 패치 라우팅
+        (["apk.sh", "apksh", "frida gadget", "frida patch", "frida injection",
+          "inject frida", "frida no root", "no root frida",
+          "dynamic analysis no root", "frida-gadget.so",
+          "ssl pinning bypass frida", "프리다 가젯", "frida注入"],
+         "apk-frida-patch", None),
+        # apk.sh 디코드/리빌드 라우팅
+        (["apk decode", "apk decompile smali", "apktool decode", "apk disassemble",
+          "apk rebuild", "apk recompile", "apk build", "apk repack",
+          "apk rename package", "smali analysis", "apk modification",
+          "apk 디코드", "apk反编译"],
+         "apk-decode-rebuild", None),
+        # apk.sh 기기 추출 라우팅
+        (["pull apk device", "adb pull apk", "extract apk device",
+          "apk from phone", "apk from emulator", "apk.sh pull",
+          "device apk extraction", "split apk merge",
+          "기기에서 apk", "从设备提取APK"],
+         "apk-pull-device", None),
+        # APK 전체 파이프라인 라우팅
+        (["full apk analysis", "apk pipeline", "apk download scan patch",
+          "android pentest pipeline", "apkd apkscan apksh", "apk all in one",
+          "apk end to end", "android full pentest", "apk full",
+          "apk 전체 분석", "APK全流程"],
+         "apk-full-pipeline", None),
     ]
 
     def local_skill_context(self, keyword: str, max_chars: int = 4000) -> str:

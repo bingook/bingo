@@ -410,7 +410,7 @@ class BingoTerminal:
                 _ctrl_c_count += 1
                 if _ctrl_c_count >= 2:
                     # 연속 2회 Ctrl+C → 진짜 종료
-                self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
+                    self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
                     if self._session_log_path:
                         self.console.print(
                             f"[{THEME['dim']}]{self.s['session_done']}: {self._session_log_path}[/]"

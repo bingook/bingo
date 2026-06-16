@@ -2652,11 +2652,49 @@ class BingoTerminal:
         # ── 실행할 작업 목록 수집 ─────────────────────────────────────
         tasks: list[dict] = []
 
+        # ── 환각 감지 헬퍼 ──────────────────────────────────────────────
+        def _detect_hallucination(raw_code: str) -> str | None:
+            """JSON-in-code-block 또는 HTTP 호출 없는 가짜 코드 감지.
+            문제가 없으면 None, 있으면 경고 메시지 반환."""
+            s = raw_code.strip()
+            # 패턴 1: 순수 JSON dict (import/def/print/requests 없음)
+            if s.startswith("{") and s.endswith("}"):
+                has_code = any(kw in s for kw in
+                    ["import ", "def ", "class ", "requests.", "urllib", "print(", "httpx"])
+                if not has_code:
+                    return (
+                        "JSON_DICT_NOT_CODE: Your code block contains only a JSON "
+                        "dictionary, not Python. JSON cannot make HTTP requests. "
+                        "Rewrite with: import requests; r=requests.get(url); print(r.status_code)"
+                    )
+            # 패턴 2: 5줄 미만 & 네트워크 호출 없음 & import 있음 → 의심
+            lines = [l for l in s.splitlines() if l.strip() and not l.strip().startswith("#")]
+            has_network = any(kw in s for kw in
+                ["requests.", "urllib.", "httpx.", "socket.connect", "http.client",
+                 "urlopen", "urlretrieve"])
+            if len(lines) <= 3 and not has_network and "import" in s:
+                return (
+                    "STUB_CODE_NO_HTTP: Code has imports but NO HTTP calls "
+                    "(requests.get/post). Add real HTTP requests."
+                )
+            return None
+
         python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
+        _hallucination_msgs: list[str] = []
         for i, block in enumerate(python_blocks):
             code = block.strip()
             if not code:
                 continue
+
+            # 환각 감지 — JSON 코드블록이면 건너뜀
+            _hall = _detect_hallucination(code)
+            if _hall:
+                self.console.print(
+                    f"[{THEME['error']}]⛔ [HALLUCINATION BLOCKED #{i+1}] {_hall[:120]}[/]"
+                )
+                _hallucination_msgs.append(_hall)
+                continue
+
             tools_header = (
                 "import sys as _sys, os as _os\n"
                 "_sys.path.insert(0, _os.path.expanduser('~/.bingo'))\n"
@@ -2667,6 +2705,22 @@ class BingoTerminal:
             script_path.write_text(code, encoding="utf-8")
             preview = " | ".join(l.strip() for l in code.splitlines()[:3] if l.strip())[:80]
             tasks.append({"type": "python", "idx": i, "path": str(script_path), "preview": preview})
+
+        # 모든 블록이 환각으로 차단됐을 경우 → 강제 수정 메시지 반환
+        if _hallucination_msgs and not tasks:
+            _hall_feedback = (
+                "[⛔ ALL CODE BLOCKS REJECTED — HALLUCINATION DETECTED]\n"
+                + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
+                + "\n\nYou MUST rewrite ALL code blocks with REAL Python HTTP requests:\n"
+                "  import requests\n"
+                "  url = 'https://TARGET/endpoint'\n"
+                "  r = requests.get(url, timeout=10, verify=False, "
+                "headers={'User-Agent': 'Mozilla/5.0'})\n"
+                "  print(f'[STATUS] {r.status_code}  {url}')\n"
+                "  print(r.text[:500])\n"
+                "NO JSON. NO dict literals. Write actual HTTP code NOW."
+            )
+            return [_hall_feedback]
 
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
         _BASH_ALLOWED = {
@@ -2945,14 +2999,107 @@ class BingoTerminal:
 
             # 코드 실행
             results_text = self._run_code_blocks(current_response, _loaded_skills)
+
+            # ── 환각 감지 (HTTP 응답 지표 없는 출력) ─────────────────────────
+            _real_http_indicators = [
+                "200", "201", "301", "302", "400", "401", "403", "404", "500",
+                "HTTP/", "Content-", "text/html", "application/json",
+                "Server:", "Set-Cookie", "Location:", "charset",
+                "status_code", "STATUS", "<!DOCTYPE", "<html",
+            ]
+            def _has_real_http_output(outputs: list[str]) -> bool:
+                combined = " ".join(outputs).lower()
+                return any(ind.lower() in combined for ind in _real_http_indicators)
+
+            if results_text:
+                # 환각 차단 메시지 포함됐을 때 (JSON 코드블록)
+                _is_all_hallucination_blocks = all(
+                    "HALLUCINATION DETECTED" in r or "ALL CODE BLOCKS REJECTED" in r
+                    for r in results_text
+                )
+                # 실제 HTTP 출력 전혀 없고 결과가 너무 짧음
+                _all_very_short = all(len(r.strip()) < 200 for r in results_text)
+                _no_real_http = not _has_real_http_output(results_text)
+
+                if _is_all_hallucination_blocks or (_all_very_short and _no_real_http):
+                    _lang = getattr(self.config, "lang", "en")
+                    _force_rewrite = {
+                        "ko": (
+                            "[⛔ 환각 코드 감지 — 즉시 재작성 필요]\n"
+                            "작성한 코드에서 실제 HTTP 응답이 없습니다.\n"
+                            "반드시 아래 형식으로 코드를 다시 작성하세요:\n\n"
+                            "```python\n"
+                            "import requests\n"
+                            "url = 'https://TARGET/실제경로'\n"
+                            "r = requests.get(url, timeout=10, verify=False,\n"
+                            "    headers={'User-Agent': 'Mozilla/5.0'})\n"
+                            "print(f'[STATUS] {r.status_code}  {url}')\n"
+                            "print(r.text[:500])\n"
+                            "```\n"
+                            "JSON 딕셔너리({...})나 가짜 출력은 절대 사용 금지."
+                        ),
+                        "zh": (
+                            "[⛔ 检测到幻觉代码 — 必须立即重写]\n"
+                            "您的代码没有产生真实的HTTP响应。\n"
+                            "必须按以下格式重写所有代码块:\n\n"
+                            "```python\n"
+                            "import requests\n"
+                            "url = 'https://TARGET/真实路径'\n"
+                            "r = requests.get(url, timeout=10, verify=False,\n"
+                            "    headers={'User-Agent': 'Mozilla/5.0'})\n"
+                            "print(f'[STATUS] {r.status_code}  {url}')\n"
+                            "print(r.text[:500])\n"
+                            "```\n"
+                            "禁止使用JSON字典({...})或伪造输出。"
+                        ),
+                        "en": (
+                            "[⛔ HALLUCINATION CODE DETECTED — REWRITE REQUIRED]\n"
+                            "Your code produced NO real HTTP responses.\n"
+                            "You MUST rewrite ALL code blocks like this:\n\n"
+                            "```python\n"
+                            "import requests\n"
+                            "url = 'https://TARGET/real-path'\n"
+                            "r = requests.get(url, timeout=10, verify=False,\n"
+                            "    headers={'User-Agent': 'Mozilla/5.0'})\n"
+                            "print(f'[STATUS] {r.status_code}  {url}')\n"
+                            "print(r.text[:500])\n"
+                            "```\n"
+                            "FORBIDDEN: JSON dicts ({...}), fake output, simulation code."
+                        ),
+                    }.get(_lang, "Rewrite with real requests.get/post code NOW.")
+                    self.history.append(Message(role="user", content=_force_rewrite))
+                    from ..models.registry import ModelRegistry as _MR_hall
+                    _mc_hall = self.config.get_active_model_config()
+                    if not _mc_hall:
+                        break
+                    _m_hall = _MR_hall.build(_mc_hall)
+                    current_response = self._stream_response(_m_hall.chat_stream(self._build_messages("")))
+                    if current_response:
+                        self.history.append(Message(role="assistant", content=current_response))
+                    continue
+
             if not results_text:
                 # 코드 블록은 있었지만 실행 결과 없음 → AI에게 알리고 계속
                 _lang = getattr(self.config, "lang", "en")
                 _no_output_msg = {
-                    "ko": "스크립트가 출력 없이 종료되었습니다. 원인을 분석하고 수정된 코드를 작성하세요.",
-                    "zh": "脚本执行完毕但没有输出。请分析原因并重新编写修正后的代码。",
-                    "en": "Scripts ran but produced no output. Analyze why and write corrected code.",
-                }.get(_lang, "Scripts produced no output. Write corrected code.")
+                    "ko": (
+                        "[⛔ 스크립트 출력 없음 — 환각 코드 의심]\n"
+                        "스크립트가 실행됐지만 출력이 없습니다. "
+                        "코드에 실제 HTTP 요청(requests.get/post)이 없거나 JSON만 있습니다.\n"
+                        "반드시 requests.get(url)을 호출하고 print(r.status_code, r.text[:300])을 추가하세요."
+                    ),
+                    "zh": (
+                        "[⛔ 脚本无输出 — 疑似幻觉代码]\n"
+                        "脚本执行但没有输出。代码中缺少真实HTTP请求或只包含JSON。\n"
+                        "必须调用requests.get(url)并添加print(r.status_code, r.text[:300])。"
+                    ),
+                    "en": (
+                        "[⛔ SCRIPT NO OUTPUT — HALLUCINATION SUSPECTED]\n"
+                        "Script ran but produced ZERO output. "
+                        "Your code has no real HTTP calls or contains only JSON.\n"
+                        "Add: r = requests.get(url); print(r.status_code); print(r.text[:300])"
+                    ),
+                }.get(_lang, "Script produced no output. Add requests.get() and print(r.status_code).")
                 self.history.append(Message(role="user", content=f"[EXECUTION RESULT]\n{_no_output_msg}"))
                 model_cfg2 = self.config.get_active_model_config()
                 if not model_cfg2:
@@ -3280,12 +3427,31 @@ class BingoTerminal:
         _state = self._agent_state
         target = _state.get("target", "unknown")
 
-        # 보고서 저장 경로
+        # 보고서 저장 경로 — BINGO_REPORTS_DIR 환경변수 우선, 없으면 기본값
+        import os as _os_report
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_target = target.replace("https://", "").replace("http://", "").replace("/", "_")[:30]
-        report_dir = Path.home() / ".config" / "bingo" / "reports"
-        report_dir.mkdir(parents=True, exist_ok=True)
+        _env_dir = _os_report.environ.get("BINGO_REPORTS_DIR", "").strip()
+        if _env_dir:
+            report_dir = Path(_env_dir)
+        else:
+            report_dir = Path.home() / ".config" / "bingo" / "reports"
+        try:
+            report_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as _mkdir_err:
+            # 경로 생성 실패 → 현재 디렉토리 fallback
+            self.console.print(
+                f"[{THEME['warn']}]⚠ Cannot create report dir {report_dir}: {_mkdir_err} → using current dir[/]"
+            )
+            report_dir = Path.cwd()
         report_path = report_dir / f"report_{safe_target}_{ts}.md"
+
+        # 저장 경로 미리 출력 — 사용자가 어디 저장되는지 알 수 있게
+        self.console.print(
+            f"\n[{THEME['warn']}]📁 REPORT SAVE PATH:\n"
+            f"   [bold white]{report_path.absolute()}[/bold white]\n"
+            f"   (set BINGO_REPORTS_DIR env var to change location)[/]\n"
+        )
 
         # AI에게 보고서 생성 요청 (히스토리 오염 없이)
         last_assistant_msgs = [
@@ -3358,8 +3524,16 @@ class BingoTerminal:
                 # 파일로 저장
                 report_path.write_text(full.strip(), encoding="utf-8")
                 self.console.print(
-                    f"\n[{THEME['success']}]💾 {self.s.get('report_saved', 'Report saved')}: "
-                    f"[bold]{report_path}[/bold][/]\n"
+                    f"\n[{THEME['success']}]"
+                    f"╔══════════════════════════════════════════════════╗\n"
+                    f"║  💾 REPORT SAVED SUCCESSFULLY                    ║\n"
+                    f"╠══════════════════════════════════════════════════╣\n"
+                    f"║  PATH: [bold]{str(report_path.absolute())[:46]}[/bold]\n"
+                    f"╚══════════════════════════════════════════════════╝"
+                    f"[/]\n"
+                )
+                self.console.print(
+                    f"[{THEME['success']}]  Full path: [bold white]{report_path.absolute()}[/bold white][/]\n"
                 )
                 # ── 보고서 직후 인터랙티브 다음 단계 선택지 표시 ────
                 self._suggest_next_steps()

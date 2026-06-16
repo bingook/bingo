@@ -23,8 +23,9 @@ from .skills_data8 import SKILLS_DB_8, MODULE_INDEX_8, TAG_INDEX_8
 from .skills_data9 import SKILLS_DB_9, MODULE_INDEX_9, TAG_INDEX_9
 from .skills_data10 import SKILLS_DB_10, MODULE_INDEX_10, TAG_INDEX_10
 from .skills_data11 import SKILLS_DB_11, MODULE_INDEX_11, TAG_INDEX_11
+from .skills_data12 import SKILLS_DB_12, MODULE_INDEX_12, TAG_INDEX_12
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 — v2.3.0)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH — v2.3.1)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
@@ -33,13 +34,14 @@ ALL_SKILLS: dict[str, dict] = {
     **{s["name"]: s for s in SKILLS_DB_9},
     **{s["name"]: s for s in SKILLS_DB_10},
     **{s["name"]: s for s in SKILLS_DB_11},
+    **SKILLS_DB_12,
 }
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
 
 for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
                  MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7, MODULE_INDEX_8,
-                 MODULE_INDEX_9, MODULE_INDEX_10, MODULE_INDEX_11]:
+                 MODULE_INDEX_9, MODULE_INDEX_10, MODULE_INDEX_11, MODULE_INDEX_12]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
@@ -47,7 +49,7 @@ for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
 
 for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4,
                  TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7, TAG_INDEX_8,
-                 TAG_INDEX_9, TAG_INDEX_10, TAG_INDEX_11]:
+                 TAG_INDEX_9, TAG_INDEX_10, TAG_INDEX_11, TAG_INDEX_12]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []
@@ -633,6 +635,7 @@ class SkillEngine:
             "trufflehog_malimite_skills": len(SKILLS_DB_9),
             "apk_toolkit_skills": len(SKILLS_DB_10),
             "exe_phase0_skills": len(SKILLS_DB_11),
+            "dotnet_cswsh_skills": len(SKILLS_DB_12),
             "secknowledge_refs_available": _secknow_ok(),
             "secknowledge_status": _secknow_status(),
             "total_modules": len(ALL_MODULE_INDEX),
@@ -834,6 +837,52 @@ class SkillEngine:
           "setup exe analyzer", "exe setup", "install malware analysis tools",
           "EXE依赖安装", "安装PE分析库"],
          "exe-install-deps", None),
+
+        # ── .NET Assembly Analysis + CSWSH (v2.3.1) ──────────────────────────
+        # .NET 탐지
+        (["dotnet detect", ".net detect", "is dotnet", "clr header", "bsjb",
+          "costura", "ilmerge", "metadata stream", ".net assembly",
+          "dotnet exe", "c# exe", "csharp exe", "dotnet binary",
+          ".NET 탐지", ".net 어셈블리", ".NET检测"],
+         "exe-dotnet-detect", None),
+        # .NET 문자열 덤프
+        (["dotnet strings", ".net string dump", "us heap", "powershell reflection dump",
+          "hardcoded strings dotnet", "dump strings exe", "extract strings dotnet",
+          "string categorize exe", "url in dotnet", "registry path exe",
+          ".net strings", "dotnet 문자열", ".NET字符串"],
+         "exe-dotnet-strings", None),
+        # .NET 암호화 키·IV
+        (["dotnet crypto", ".net aes key", "aes key detect", "iv detection exe",
+          "16 byte key", "adjacent pair key", "crypto material exe",
+          "hardcoded key dotnet", "encryption key exe", "key iv pair",
+          "dotnet 암호화", "AES 키 탐지", ".NET加密密钥"],
+         "exe-dotnet-crypto", None),
+        # 로컬호스트 WebSocket 탐지
+        (["localhost websocket", "ws://127", "ws://localhost", "local ws server",
+          "websocket server exe", "find websocket", "js websocket", "ws port",
+          "desktop app websocket", "electron websocket", "local service ws",
+          "로컬 websocket", "ws 로컬 서버", "本地WebSocket"],
+         "exe-localhost-ws", None),
+        # CSWSH 탐지
+        (["cswsh", "cross site websocket hijacking", "websocket hijacking",
+          "origin validation websocket", "no origin check ws", "ws origin",
+          "websocket security test", "websocket pentest", "cswsh test",
+          "ws 101", "websocket 101", "크로스사이트 websocket",
+          "CSWSH检测", "WebSocket劫持"],
+         "cswsh-detect", None),
+        # CSWSH PoC 생성
+        (["cswsh poc", "websocket poc", "cswsh exploit", "ws rce poc",
+          "websocket rce", "generate cswsh", "cswsh html", "ws hijack poc",
+          "one click rce ws", "ws attack poc", "websocket hijack poc",
+          "PoC 생성 CSWSH", "WebSocket PoC", "CSWSH利用"],
+         "cswsh-poc-gen", None),
+        # .NET 전체 파이프라인
+        (["dotnet pipeline", ".net full analysis", "dotnet to cswsh",
+          "exe to rce websocket", "dotnet re pipeline", "voorivex", "re exe ai",
+          "reverse engineering exe ai", "exe rce chain", "dotnet websocket rce",
+          "exe cswsh pipeline", ".net analysis full", "ai re exe",
+          ".NET 파이프라인", "전체 .net 분석", ".NET逆向流水线"],
+         "exe-dotnet-pipeline", None),
     ]
 
     def local_skill_context(self, keyword: str, max_chars: int = 4000) -> str:

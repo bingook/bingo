@@ -153,6 +153,79 @@ install_bingo
 setup_path
 verify
 
+# ── EXE Phase 0 deps — Playwright 스타일 자동 설치 ──────────────
+echo ""
+echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
+echo -e "${CYAN}  EXE Phase 0 — Windows PE Analysis Libs${RESET}"
+echo -e "${DIM}  pefile · lief · yara-python · ssdeep · requests${RESET}"
+echo -e "${DIM}  Used for static analysis of EXE/DLL/SYS files${RESET}"
+echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
+echo ""
+
+# Playwright 스타일: 이미 설치된 항목은 표시, 없는 것만 설치
+_exe_deps=("pefile:pefile:required" "lief:lief:optional" "yara-python:yara:optional" "ssdeep:ssdeep:optional" "requests:requests:optional")
+
+_all_ok=true
+for _entry in "${_exe_deps[@]}"; do
+    _pip="${_entry%%:*}"
+    _rest="${_entry#*:}"
+    _mod="${_rest%%:*}"
+    _tag="${_rest#*:}"
+
+    if "$PY" -c "import ${_mod}" &>/dev/null 2>&1; then
+        ok "already installed  ${_pip}"
+    else
+        _all_ok=false
+        echo -e "${YELLOW}  📦  will install   ${_pip}  ${DIM}(${_tag})${RESET}"
+    fi
+done
+
+echo ""
+
+if ! $_all_ok; then
+    step "Installing EXE Phase 0 dependencies"
+    for _entry in "${_exe_deps[@]}"; do
+        _pip="${_entry%%:*}"
+        _rest="${_entry#*:}"
+        _mod="${_rest%%:*}"
+        _tag="${_rest#*:}"
+
+        if "$PY" -c "import ${_mod}" &>/dev/null 2>&1; then
+            continue   # already installed
+        fi
+
+        printf "    ${YELLOW}📦  Installing${RESET}  %-20s" "${_pip} ..."
+        if "$PY" -m pip install --quiet "${_pip}" 2>/dev/null; then
+            echo -e "\r    ${GREEN}✅  Installed  ${RESET}  ${_pip}              "
+        else
+            if [ "${_tag}" = "required" ]; then
+                echo -e "\r    ${RED}❌  Failed (required)${RESET}  ${_pip}"
+            else
+                echo -e "\r    ${YELLOW}⚠   Failed (optional)${RESET}  ${_pip} — skipping"
+            fi
+        fi
+    done
+    echo ""
+fi
+
+# 최종 상태 표시
+echo -e "${DIM}  EXE Phase 0 status:${RESET}"
+for _entry in "${_exe_deps[@]}"; do
+    _pip="${_entry%%:*}"
+    _rest="${_entry#*:}"
+    _mod="${_rest%%:*}"
+    _tag="${_rest#*:}"
+    if "$PY" -c "import ${_mod}" &>/dev/null 2>&1; then
+        echo -e "    ${GREEN}✅${RESET}  ${_pip}"
+    else
+        if [ "${_tag}" = "required" ]; then
+            echo -e "    ${RED}❌${RESET}  ${_pip}  ${DIM}← pip install ${_pip}${RESET}"
+        else
+            echo -e "    ${YELLOW}⚠ ${RESET}  ${_pip}  ${DIM}(optional)${RESET}"
+        fi
+    fi
+done
+
 # ── Playwright 선택 설치 ─────────────────────────────────────────
 echo ""
 echo -e "${CYAN}  ══════════════════════════════════════${RESET}"

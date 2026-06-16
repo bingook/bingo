@@ -127,6 +127,74 @@ try {
     } else { OK "PATH already set" }
 } catch { Warn "PATH config failed — run: python -m bingo" }
 
+# ── EXE Phase 0 deps — Playwright 스타일 자동 설치 ───────────────
+Write-Host ""
+Write-Host "  ===========================================" -ForegroundColor Cyan
+Write-Host "  EXE Phase 0 — Windows PE Analysis Libs" -ForegroundColor Cyan
+Write-Host "  pefile · lief · yara-python · ssdeep · requests" -ForegroundColor DarkGray
+Write-Host "  Used for static analysis of EXE/DLL/SYS files" -ForegroundColor DarkGray
+Write-Host "  ===========================================" -ForegroundColor Cyan
+Write-Host ""
+
+$exePy = @"
+import subprocess, sys, importlib
+
+# (pip_name, import_name, required)
+EXE_DEPS = [
+    ("pefile",      "pefile",   True),
+    ("lief",        "lief",     False),
+    ("yara-python", "yara",     False),
+    ("ssdeep",      "ssdeep",   False),
+    ("requests",    "requests", False),
+]
+
+needs_install = []
+for pip_name, imp, req in EXE_DEPS:
+    try:
+        importlib.import_module(imp)
+        print(f'    OK  already installed  {pip_name}')
+    except ImportError:
+        tag = '(required)' if req else '(optional)'
+        print(f'    --  will install       {pip_name}  {tag}')
+        needs_install.append((pip_name, imp, req))
+
+if not needs_install:
+    print()
+    print('    All EXE Phase 0 dependencies already installed!')
+    sys.exit(0)
+
+print()
+for pip_name, imp, req in needs_install:
+    print(f'    >> Installing {pip_name} ...', end='', flush=True)
+    r = subprocess.run(
+        [sys.executable, '-m', 'pip', 'install', '-q', pip_name],
+        capture_output=True, text=True
+    )
+    if r.returncode == 0:
+        print(f'\r    OK  Installed   {pip_name}              ')
+    else:
+        if req:
+            print(f'\r    X   Failed (required): {pip_name}')
+        else:
+            print(f'\r    !   Failed (optional): {pip_name} -- skipping')
+
+print()
+print('  EXE Phase 0 status:')
+for pip_name, imp, req in EXE_DEPS:
+    try:
+        importlib.import_module(imp)
+        print(f'    [OK] {pip_name}')
+    except ImportError:
+        tag = 'MISSING (required)' if req else 'not installed (optional)'
+        print(f'    [--] {pip_name}  <- {tag}')
+"@
+
+$tmpExePy = "$env:TEMP\bingo_exe_deps.py"
+$exePy | Out-File -FilePath $tmpExePy -Encoding UTF8
+& $py $tmpExePy
+Remove-Item $tmpExePy -Force -ErrorAction SilentlyContinue
+OK "EXE Phase 0 dependency check complete"
+
 # ── Playwright 선택 설치 ──────────────────────────────────────────
 Write-Host ""
 Write-Host "  ===========================================" -ForegroundColor Cyan

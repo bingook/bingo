@@ -465,11 +465,11 @@ class BingoTerminal:
         _lang = getattr(self.config, "lang", "en")
         _pause_msg = {
             "ko": (
-                "⚡ [굵게]루프 일시정지[/굵게] — 힌트를 입력하면 중단 없이 계속 진행\n"
+                "⚡ [bold]루프 일시정지[/bold] — 힌트를 입력하면 중단 없이 계속 진행\n"
                 "   (그냥 Enter 또는 Ctrl+C 한 번 더 → 완전 중단)"
             ),
             "zh": (
-                "⚡ [粗体]循环暂停[/粗体] — 输入提示则继续执行\n"
+                "⚡ [bold]循环暂停[/bold] — 输入提示则继续执行\n"
                 "   (直接回车或再按Ctrl+C → 完全停止)"
             ),
             "en": (

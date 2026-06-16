@@ -1406,7 +1406,7 @@ class BingoTerminal:
 
         # ── 일반 대화 모드 감지 ────────────────────────────────────────
         if self._is_general_question(text):
-        self.history.append(Message(role="user", content=text))
+            self.history.append(Message(role="user", content=text))
             self._append_to_session_log("user", text)
 
             # 임시로 시스템 메시지를 경량 일반대화 프롬프트로 교체
@@ -1427,7 +1427,7 @@ class BingoTerminal:
 
         if full_response:
             self.history.append(Message(role="assistant", content=full_response))
-                self._append_to_session_log("assistant", full_response)
+            self._append_to_session_log("assistant", full_response)
             return
 
         # 관련 스킬 자동 조회
@@ -1630,7 +1630,7 @@ class BingoTerminal:
         import re as _re
         display = _re.sub(r"SKILL_LOAD:\s*[^\n]*\n?", "", display)
 
-            self.console.print()
+        self.console.print()
         try:
             _has_rich = "[dim]" in display or "[bold" in display
             _has_md   = "**" in display or "\n# " in display or "\n## " in display
@@ -4488,11 +4488,11 @@ class BingoTerminal:
 
             if not hs_matches and not local_results:
                 # ── 내장 DB 검색 (마지막 수단) ─────────────────────────
-            results = engine.search(keyword)
-            if results:
+                results = engine.search(keyword)
+                if results:
                     for r in results[:8]:
-                    self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
-            else:
+                        self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
+                else:
                     self.console.print(
                         f"[{THEME['dim']}]{self.s['skill_no_result'].format(kw=keyword)}[/]"
                     )

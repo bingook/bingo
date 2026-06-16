@@ -1,6 +1,6 @@
 """
 skills_data11.py — Windows EXE / PE Phase 0 Static Analysis Skills
-bingo v2.3.0
+bingo v2.3.4
 
 6 AI-selectable skills for Windows executable analysis:
   - exe-pe-analysis       : Full PE header + section + import analysis

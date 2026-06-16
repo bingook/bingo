@@ -1,6 +1,6 @@
 """
 exe_analyzer.py — Windows PE/EXE Static Analysis (Phase 0)
-bingo v2.3.0
+bingo v2.3.4
 
 Phase 0 reconnaissance for Windows executables and PE files.
 No execution required — fully static analysis.
@@ -1055,7 +1055,7 @@ def install_guide() -> str:
     """Return dependency status + install hint (Playwright style)."""
     lines: list[str] = [
         "",
-        "  bingo v2.3.0 — EXE Phase 0 Dependencies",
+        "  bingo v2.3.4 — EXE Phase 0 Dependencies",
         "",
     ]
     for pip_name, import_name, required in _EXE_DEPS:

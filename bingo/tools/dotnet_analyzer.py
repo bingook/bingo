@@ -1,6 +1,6 @@
 """
 dotnet_analyzer.py — .NET Assembly Analysis + CSWSH Detection
-bingo v2.3.2
+bingo v2.3.4
 
 Reference: https://blog.voorivex.team/first-rce-via-reverse-engineering-with-ai
 
@@ -519,7 +519,7 @@ def generate_cswsh_poc(
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>CSWSH PoC — bingo v2.3.2</title>
+    <title>CSWSH PoC — bingo v2.3.4</title>
     <style>
         body {{ font-family: monospace; background: #1a1a1a; color: #00ff41; padding: 20px; }}
         h2 {{ color: #ff4444; }}
@@ -537,7 +537,7 @@ def generate_cswsh_poc(
     <div id="log"></div>
 
     <script>
-    // bingo v2.3.2 — Auto-generated CSWSH PoC
+    // bingo v2.3.4 — Auto-generated CSWSH PoC
     // Ref: https://blog.voorivex.team/first-rce-via-reverse-engineering-with-ai
     const WS_URL  = "{ws_url}";
     const METHODS = {methods_js};
@@ -624,7 +624,7 @@ def generate_powershell_dump(exe_path: str) -> str:
     using System.Reflection (as described in the blog post).
     Works on Windows without any external tools.
     """
-    return f"""# bingo v2.3.2 — .NET String Dump via PowerShell Reflection
+    return f"""# bingo v2.3.4 — .NET String Dump via PowerShell Reflection
 # Based on: https://blog.voorivex.team/first-rce-via-reverse-engineering-with-ai
 # Usage: .\\dump_strings.ps1 > strings.txt
 
@@ -695,7 +695,7 @@ def format_report(result: DotNetAnalysisResult) -> str:
     lines = [
         "",
         "═" * 60,
-        f"  bingo v2.3.2 — .NET Analysis Report",
+        f"  bingo v2.3.4 — .NET Analysis Report",
         f"  File: {result.file_path}",
         "═" * 60,
         "",
@@ -761,7 +761,7 @@ def cswsh_full_test(ws_url: str, save_poc: Optional[str] = None) -> str:
     lines = [
         "",
         "═" * 60,
-        f"  bingo v2.3.2 — CSWSH Test",
+        f"  bingo v2.3.4 — CSWSH Test",
         f"  Target: {ws_url}",
         "═" * 60,
         f"  Port Open:        {'✅ YES' if result.reachable else '❌ NO'}",

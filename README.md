@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.2.5-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.2.6-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -15,7 +15,7 @@
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
 > **v2.1.0 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.5 is the latest stable, production-ready version.
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.6 is the latest stable, production-ready version.
 
 </div>
 
@@ -3391,6 +3391,100 @@ if result.get("success"):
 | `로그인 우회`, `admin bypass`, `sqli login` | `sqli-admin-bypass` |
 | `antsword`, `AntSword 연결`, `ant 설정` | `antsword-config` |
 | `전체 침투`, `full chain`, `post exploit` | `post-exploit-pipeline` |
+
+---
+
+## SecKnowledge Integration — Web+AI Security Knowledge Base (v2.2.6)
+
+> **16 built-in skills** powered by **WooYun 88,636 real-world cases**, **先知 L1-L4 methodology**, **GAARM 150 AI risk identifiers**, and **OWASP LLM/ASI/WSTG**.  
+> The AI automatically selects the most relevant skill based on target type and intent — zero manual configuration required.
+
+### Architecture
+
+```
+secknowledge_loader.py          ← runtime loader for ~/.cursor/skills/secknowledge/references/
+    └── load_reference(key)     ← returns up to 8,000 chars of the reference .md
+    └── load_section(key, pat)  ← extract specific section
+    └── references_status()     ← check available reference files
+
+skills_data7.py                 ← 16 skills, each with:
+    ├── multilingual desc       (ko / en / zh)
+    ├── AI auto-select tags
+    ├── payloads & commands
+    └── load_reference() call   ← live knowledge at prompt time
+```
+
+### Skill List (v2.2.6)
+
+| Skill ID | Coverage | Auto-trigger keywords |
+|---|---|---|
+| `secknow-sqli` | SQL Injection (27,732 WooYun cases) | `sqli`, `sql-injection`, `union`, `blind-sqli` |
+| `secknow-xss` | XSS — reflected/stored/DOM (7,532 cases) | `xss`, `cross-site-scripting`, `csp-bypass` |
+| `secknow-rce` | RCE / Command Injection (6,826 cases) | `rce`, `command-injection`, `log4shell`, `struts2` |
+| `secknow-upload` | File Upload + Webshell | `upload`, `webshell`, `extension-bypass`, `mime-bypass` |
+| `secknow-ssrf` | SSRF + Protocol Abuse | `ssrf`, `cloud-metadata`, `gopher`, `redis` |
+| `secknow-logic-auth` | Auth Bypass + Business Logic (22,669 cases) | `idor`, `auth-bypass`, `payment`, `password-reset` |
+| `secknow-xxe-deser` | XXE + Deserialization | `xxe`, `deserialization`, `ysoserial`, `php-unserialize` |
+| `secknow-traversal` | Path Traversal + Info Disclosure | `traversal`, `lfi`, `git-leak`, `backup-leak` |
+| `secknow-modern-proto` | GraphQL / HTTP Smuggling / CORS / JWT / OAuth | `graphql`, `http-smuggling`, `cors`, `jwt` |
+| `secknow-deployment` | Supply Chain / Cloud / Container / CI-CD | `supply-chain`, `docker`, `kubernetes`, `github-actions` |
+| `secknow-prompt-inject` | Prompt Injection (GAARM.0039-0061, OWASP LLM01) | `prompt-injection`, `indirect-injection`, `rag-poisoning` |
+| `secknow-mcp-attack` | MCP Protocol Attack (GAARM.0046.x) | `mcp`, `tool-poisoning`, `rug-pull`, `hidden-instruction` |
+| `secknow-jailbreak` | LLM Jailbreak (GAARM.0027.x) | `jailbreak`, `dan`, `many-shot`, `adversarial-suffix` |
+| `secknow-agent-cot` | Agent / CoT Attack (GAARM.0041-0047) | `agent`, `cot`, `agent-ssrf`, `agent-rce` |
+| `secknow-container-esc` | Container / Sandbox Escape | `container-escape`, `privileged`, `cgroup-abuse` |
+| `secknow-methodology` | L1-L4 + WooYun + GAARM + OWASP methodology | `methodology`, `pentest`, `recon`, `gaarm` |
+
+### AI Auto-Selection Logic
+
+```
+Target is a URL/endpoint  →  secknow-sqli / xss / rce / upload / ssrf / logic-auth
+Target has ?id= param     →  secknow-sqli, secknow-logic-auth (IDOR)
+Target uses GraphQL       →  secknow-modern-proto
+Target is LLM/chatbot     →  secknow-prompt-inject, secknow-jailbreak
+Target is MCP server      →  secknow-mcp-attack
+Target is AI agent        →  secknow-agent-cot
+Inside container          →  secknow-container-esc
+Cloud / CI-CD audit       →  secknow-deployment
+Need methodology          →  secknow-methodology
+```
+
+### Usage Examples
+
+```python
+# Direct API
+from bingo.tools.secknowledge_loader import load_reference, load_section, references_status
+
+print(references_status())                        # check available refs
+sqli_kb  = load_reference("sqli")                # full SQLi reference
+xss_waf  = load_section("xss", "WAF", 2000)      # only WAF-bypass section
+
+# bingo CLI — AI auto-selects secknow-* skill automatically
+bingo run --target https://target.com/search?q=1
+bingo skill secknow-prompt-inject
+bingo skill secknow-jailbreak
+```
+
+### Reference Files (requires `~/.cursor/skills/secknowledge/references/`)
+
+| Key | File |
+|---|---|
+| `sqli` | `web-sqli.md` |
+| `xss` | `web-xss.md` |
+| `rce` | `web-rce.md` |
+| `upload` | `web-upload.md` |
+| `ssrf` | `web-ssrf-misc.md` |
+| `logic-auth` | `web-logic-auth.md` |
+| `xxe` | `web-xxe.md` |
+| `deser` | `web-deser.md` |
+| `traversal` | `web-traversal.md` |
+| `prompt` | `ai-app-prompt.md` |
+| `mcp` | `ai-app-mcp.md` |
+| `jailbreak` | `ai-model-jailbreak.md` |
+| `agent-cot` | `ai-app-agent-cot.md` |
+| `ai-escape` | `ai-baseline-escape.md` |
+| `methodology` | `testing-methodology.md` |
+| `gaarm` | `gaarm-risk-matrix.md` |
 
 ---
 

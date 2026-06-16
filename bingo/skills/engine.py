@@ -18,22 +18,24 @@ from .skills_data3 import SKILLS_DB_3, MODULE_INDEX_3, TAG_INDEX_3
 from .skills_data4 import SKILLS_DB_4, MODULE_INDEX_4, TAG_INDEX_4
 from .skills_data5 import SKILLS_DB_5, MODULE_INDEX_5, TAG_INDEX_5
 from .skills_data6 import SKILLS_DB_6, MODULE_INDEX_6, TAG_INDEX_6
+from .skills_data7 import SKILLS_DB_7, MODULE_INDEX_7, TAG_INDEX_7
 
-# 통합 (CyberSecurity-Skills 195개 + SecSkills + PentestPrecision + BurpEngine + PostExploit — v2.2.5)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge — v2.2.6)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
+    **{s["name"]: s for s in SKILLS_DB_7},
 }
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
 
-for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4, MODULE_INDEX_5, MODULE_INDEX_6]:
+for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4, MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
         ALL_MODULE_INDEX[k].extend(v)
 
-for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4, TAG_INDEX_5, TAG_INDEX_6]:
+for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4, TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []
@@ -609,10 +611,14 @@ class SkillEngine:
 
     def stats(self) -> dict:
         """내장 스킬 통계"""
+        from ..tools.secknowledge_loader import is_available as _secknow_ok, references_status as _secknow_status
         return {
             "total_skills": len(ALL_SKILLS),
             "cybersecurity_skills": len(SKILLS_DB) + len(SKILLS_DB_2),
             "secskills_local": len(SKILLS_DB_3),
+            "secknowledge_skills": len(SKILLS_DB_7),
+            "secknowledge_refs_available": _secknow_ok(),
+            "secknowledge_status": _secknow_status(),
             "total_modules": len(ALL_MODULE_INDEX),
             "total_tags": len(ALL_TAG_INDEX),
             "local_clone": self._local,
@@ -711,6 +717,8 @@ class SkillEngine:
         (["edr", "syscall", "direct syscall", "hell gate", "etw"], "advsec-plus", "evasion-advanced.md"),
         # api-unauth-fuzz 라우팅 (전체 스킬)
         (["unauth", "unauthorized", "api fuzz", "js extract", "tech stack detect"], "api-unauth-fuzz", None),
+        # secknowledge 라우팅 (런타임 reference 로더)
+        (["secknowledge", "wooYun", "gaarm", "l1-l4", "l1 l4", "method", "methodology"], "secknowledge", None),
     ]
 
     def local_skill_context(self, keyword: str, max_chars: int = 4000) -> str:

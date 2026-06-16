@@ -1519,18 +1519,19 @@ class BingoTerminal:
         1. JSON plan 응답  {"accepted":true,"data":{"intents":[...]}}
         2. AI 자가고백    "내 실행환경은 텍스트 대화", "无法直接生成文件" 등
         3. 가짜 자격증명  코드 실행 없이 username/password/hash를 직접 제시
+        4. 증거 없는 결론 코드블록 없이 취약점 발견/공격 성공/DB 접근 주장
         """
         import re as _re
         import json as _json
 
         stripped = full_response.strip()
+        _has_code_block = "```" in full_response
 
         # ── 패턴 1: JSON plan 응답 감지 ──────────────────────────────────
         _is_json_plan = False
         if stripped.startswith("{") or stripped.startswith("["):
             try:
                 _parsed = _json.loads(stripped)
-                # {"accepted":true,"data":{"intents":[...]}} 형태 감지
                 if isinstance(_parsed, dict) and (
                     "intents" in str(_parsed)
                     or "accepted" in _parsed
@@ -1540,7 +1541,6 @@ class BingoTerminal:
                 ):
                     _is_json_plan = True
             except Exception:
-                # JSON 파싱 실패해도 intents 키워드 문자열 검사
                 if '"intents"' in stripped or '"accepted"' in stripped:
                     _is_json_plan = True
 
@@ -1559,7 +1559,6 @@ class BingoTerminal:
         )
 
         # ── 패턴 3: 가짜 자격증명 감지 (코드블록 없이 credentials 직접 제시) ──
-        _has_code_block = "```" in full_response
         _cred_patterns = [
             r"(用户名|username|user\s*name)\s*[:：]\s*\w+",
             r"(密码|password|passwd)\s*[:：].{3,30}",
@@ -1570,17 +1569,41 @@ class BingoTerminal:
             and any(_re.search(p, full_response, _re.IGNORECASE) for p in _cred_patterns)
         )
 
-        # ── 환각 감지 시 차단 및 강제 재실행 요구 ────────────────────────
-        if _is_json_plan or _is_confession or _has_fake_creds:
-            _reason = []
-            if _is_json_plan:
-                _reason.append("JSON PLAN (not Python code)")
-            if _is_confession:
-                _reason.append("AI SELF-CONFESSION (admitted no real execution)")
-            if _has_fake_creds:
-                _reason.append("FAKE CREDENTIALS (invented without code execution)")
+        # ── 패턴 4: 증거 없는 결론 (코드블록 없이 공격 성공/취약점 발견 주장) ──
+        _conclusion_patterns = [
+            # 취약점 발견 주장
+            r"(sql\s*inject|sqli|xss|rce|ssrf|lfi).{0,40}(발견|확인|detected|found|confirmed|존재)",
+            r"(취약점|vulnerability|vuln).{0,30}(발견|확인|존재|found|detected)",
+            # 공격 성공 주장
+            r"(waf|bypass|우회).{0,30}(성공|success|successful|완료)",
+            r"(공격|attack|exploit).{0,20}(성공|success|완료)",
+            # DB/서버 접근 성공 주장
+            r"(database|db|데이터베이스).{0,30}(접근|access|추출|extract|dump).{0,20}(성공|success|완료)",
+            r"(admin|관리자).{0,20}(로그인|login|접근|access).{0,20}(성공|success|완료)",
+            r"(서버|server).{0,20}(접근|access|침투|compromise).{0,20}(성공|success|완료)",
+            # 데이터 추출 주장
+            r"(추출|extracted|dumped).{0,30}(table|column|data|password|hash)",
+            r"(获取|提取|拿到).{0,20}(密码|账号|凭证|数据库|hash)",
+            r"(注入成功|绕过成功|攻击成功|漏洞确认)",
+        ]
+        _has_unproven_conclusion = (
+            not _has_code_block
+            and any(_re.search(p, full_response, _re.IGNORECASE) for p in _conclusion_patterns)
+        )
 
-            _reason_str = " | ".join(_reason)
+        # ── 환각 감지 시 차단 및 강제 재실행 요구 ────────────────────────
+        _reasons = []
+        if _is_json_plan:
+            _reasons.append("JSON PLAN (not Python code)")
+        if _is_confession:
+            _reasons.append("AI SELF-CONFESSION (admitted no real execution)")
+        if _has_fake_creds:
+            _reasons.append("FAKE CREDENTIALS (invented without code execution)")
+        if _has_unproven_conclusion:
+            _reasons.append("UNPROVEN CONCLUSION (claimed success without running code)")
+
+        if _reasons:
+            _reason_str = " | ".join(_reasons)
             self.console.print(
                 f"\n[{THEME['error']}]"
                 f"╔══════════════════════════════════════════════════════════╗\n"
@@ -1591,24 +1614,24 @@ class BingoTerminal:
                 f"[/]\n"
             )
 
-            # 강제 재실행 메시지 주입
             _force_msg = (
                 "[BINGO RUNTIME INTERCEPTED HALLUCINATION]\n"
                 f"REASON: {_reason_str}\n\n"
-                "MANDATORY: Write REAL Python code using requests library.\n"
-                "DO NOT return JSON plans. DO NOT invent credentials.\n"
+                "RULE: You CANNOT claim vulnerability found / attack success / DB access\n"
+                "      WITHOUT a Python code block that produced HTTP evidence.\n"
+                "MANDATORY: Write REAL Python requests.get/post code that PROVES the claim.\n"
+                "DO NOT return JSON plans. DO NOT invent credentials or results.\n"
                 "DO NOT say 'my environment is limited to text'.\n"
-                "BINGO RUNS YOUR CODE — write actual requests.get/post calls.\n\n"
+                "EVERY conclusion MUST come from actual HTTP response output.\n\n"
                 f"Original task: {original_text[:200]}\n\n"
-                "Now write the Python code that actually executes HTTP requests:"
+                "Now write Python code that actually executes and proves the finding:"
             )
             self.history.append(Message(role="user", content=_force_msg))
-            from ..models.system_prompt import detect_refusal
             _retry = self._stream_response(
                 model.chat_stream(self._build_messages(skill_context))
             )
             if _retry:
-                self.history.pop()  # force_msg 제거
+                self.history.pop()
                 return _retry
             self.history.pop()
 

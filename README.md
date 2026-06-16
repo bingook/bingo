@@ -25,7 +25,7 @@
 
 bingo is a hacker-style AI terminal that automates real penetration testing workflows. You type a target URL, and bingo runs a full red team pipeline — WAF detection, vulnerability scanning, SQL injection, file upload exploitation, IDOR enumeration, hash cracking, and auto-generated reports — all powered by the AI model of your choice.
 
-**Zero-Hallucination Engine** (v2.3.5 — complete rebuild): Every Python code block is now validated at runtime before execution. JSON dicts, fake output, and simulation code are **automatically rejected** — the AI is forced to rewrite with real `requests.get/post` HTTP calls. Reports include the full save path and support `BINGO_REPORTS_DIR` env variable for custom output locations.
+**Zero-Hallucination Engine** (v2.3.10 — 4-layer enforcement): Every AI response is validated at four independent layers before any output is accepted. (1) Code blocks: JSON dicts, stubs, and simulation code are rejected. (2) Text-level: JSON plans and AI self-confessions are intercepted. (3) Fake credentials: usernames/passwords/hashes claimed without HTTP evidence are blocked. (4) **NEW — Unproven conclusions**: Any statement claiming "SQLi found", "WAF bypassed", "admin access succeeded", or "DB extracted" WITHOUT an accompanying code block is automatically blocked and the AI is forced to produce Python `requests` code that proves the claim. Nothing is accepted without real HTTP response evidence.
 
 **Pentest Precision Engine** (new in v2.2): AI automatically applies high-precision analysis when a web target is given. Eliminates false positives from WAF silent-blocks, auto-solves CAPTCHA via ddddocr, accurately extracts session tokens and form fields, fingerprints tech stacks with version details, and auto-generates WAF bypass payload variants. Zero-interaction: the AI selects and applies it automatically based on context.
 
@@ -158,18 +158,37 @@ On first launch: **select language → enter AI model API key → start hacking*
 
 ## Core Features
 
-### Zero-Hallucination System (v2.1)
+### Zero-Hallucination System (v2.3.10 — 4-Layer Enforcement)
 
-Every finding produced by bingo is assigned an evidence level:
+Every AI response passes through four independent validation layers before being accepted:
 
-| Level | Meaning | Report placement |
-|-------|---------|-----------------|
-| `✅ VERIFIED` | HTTP response confirmed (status code + URL + curl) | Main vulnerability list |
-| `🟡 LIKELY` | Partial evidence (response pattern + URL) | Main list with annotation |
-| `🔍 INFERRED` | No direct proof — reasoning-based | "Needs Investigation" section |
-| `🤖 AI_ANALYSIS` | AI analysis text | Separate AI section |
+**Layer 1 — Code Block Guard** (runtime)
+- Rejects Python code blocks that contain only JSON dicts, empty stubs, or `print()` without HTTP calls
+- Forces a rewrite with real `requests.get/post` calls
 
-**No finding is ever discarded.** Unverified results are clearly labeled and placed in a dedicated section so you can manually verify them — not silently dropped.
+**Layer 2 — Text Hallucination Intercept** (text-level)
+- Rejects AI responses that begin with `{` or `[` (JSON plan format)
+- Intercepts AI self-confessions: `"my environment is limited to text"`, `"无法直接生成文件"`, etc.
+
+**Layer 3 — Fake Credential Block** (credential-level)
+- Blocks any response that presents `username:`, `password:`, or `hash:` values without an accompanying code block
+- Prevents the AI from inventing credentials it has never actually extracted
+
+**Layer 4 — Unproven Conclusion Block** *(NEW in v2.3.10)*
+- Blocks statements like `"SQLi vulnerability confirmed"`, `"WAF bypass successful"`, `"admin login succeeded"`, `"database extracted"` **when no code block is present**
+- The AI cannot claim a finding without first running Python code that produces HTTP response evidence
+- Trigger phrases (any language): SQLi/XSS/RCE/SSRF confirmed, WAF bypass success, DB access success, admin login success, credentials extracted
+
+**Evidence levels in reports:**
+
+| Level | Meaning |
+|-------|---------|
+| `✅ VERIFIED` | HTTP response confirmed (status code + body) |
+| `🟡 LIKELY` | Partial evidence (pattern match + URL) |
+| `🔍 INFERRED` | Reasoning only — manual verification needed |
+| `🤖 AI_ANALYSIS` | AI analysis text, clearly separated |
+
+**No claim is accepted without HTTP evidence. Every conclusion must follow from actual code execution.**
 
 ---
 

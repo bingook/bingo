@@ -265,12 +265,60 @@ SKILLS_DB_5: dict[str, dict] = {
     ),
 },
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 해시 오탐 필터 (Error-code vs Password-Hash Context Filter)
+# ─────────────────────────────────────────────────────────────────────────────
+"hash-context-filter": {
+    "name": "해시 오탐 필터 — 오류코드/추적ID 자동 제외",
+    "module": "HashCrack",
+    "tags": [
+        "hash", "hash-crack", "false-positive", "error-code", "tracking-id",
+        "context-filter", "ntlm", "md5", "smart-detect",
+    ],
+    "desc": (
+        "HTTP 오류 응답(400/500 등)에 나타나는 오류코드·추적ID·트랜잭션 ID 등 "
+        "비밀번호 해시가 아닌 hex 문자열을 AI가 자동으로 구별하여 크랙 시도 제외.\n"
+        "판단 기준: 주변 컨텍스트 키워드(error code, 오류 코드, tracking id 등) + "
+        "HTTP 4xx/5xx 상태코드 컨텍스트 + 혼합 대소문자 패턴.\n"
+        "EN: Automatically distinguishes error codes / tracking IDs from real password hashes.\n"
+        "Filters: surrounding keywords (error code, tracking id, etc.), HTTP 4xx/5xx context, "
+        "mixed-case hex pattern. Prevents wasted crack attempts on non-hash identifiers.\n"
+        "ZH: 自动区分错误码/追踪ID与真实密码哈希，避免对非哈希标识符进行无效破解尝试。\n"
+        "过滤依据：周围关键词（错误代码、追踪ID等）、HTTP 4xx/5xx状态码上下文、大小写混合模式。"
+    ),
+    "tools": [
+        "hash_crack.extract_hashes_from_text",
+        "hash_crack._is_error_context",
+    ],
+    "commands": [
+        "# strict=True (기본값): 오탐 자동 제거",
+        "from bingo.tools.hash_crack import extract_hashes_from_text",
+        "hashes = extract_hashes_from_text(ai_response_text, strict=True)",
+        "",
+        "# strict=False: 필터 없이 모든 hex 문자열 추출 (기존 동작)",
+        "hashes = extract_hashes_from_text(ai_response_text, strict=False)",
+    ],
+    "payloads": [],
+    "notes": (
+        "오탐 판단 기준 (False Positive Rules):\n"
+        "  1. 주변 120자 내 오류코드 키워드: error code, tracking id, 오류 코드, 추적 ID, 错误代码 등\n"
+        "  2. HTTP 4xx/5xx 상태코드 컨텍스트: '400 페이지', '500 error', '오류 페이지' 등\n"
+        "  3. 32자 hex의 대소문자 혼합: 실제 MD5는 소문자, NTLM은 대문자 일관성. 혼합이면 에러코드 의심\n"
+        "  4. 접두 패턴: 'code=', 'id=', 'ref=', 'err=', 'trace=' 뒤에 오는 hex\n"
+        "예외 (실제 해시로 허용):\n"
+        "  - bcrypt ($2y$/...), md5crypt ($1$/...), sha512crypt ($6$/...), MySQL (*hex)\n"
+        "  - 주변에 'password hash:', 'ntlm hash:', 'md5:' 등 명시적 해시 신호 존재\n"
+        "비활성화: extract_hashes_from_text(text, strict=False) 또는 /crack 명령 직접 입력"
+    ),
+},
+
 }  # SKILLS_DB_5 end
 
 
 MODULE_INDEX_5: dict[str, list[str]] = {
     "BurpEngine": list(SKILLS_DB_5.keys()),
     "SecSkills-Web": list(SKILLS_DB_5.keys()),
+    "HashCrack": ["hash-context-filter"],
 }
 
 TAG_INDEX_5: dict[str, list[str]] = {}

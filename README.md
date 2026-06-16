@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.2.3-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.2.4-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -15,7 +15,7 @@
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
 > **v2.1.0 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.3 is the first stable, production-ready version.
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.4 is the latest stable, production-ready version.
 
 </div>
 
@@ -51,6 +51,7 @@ bingo is a hacker-style AI terminal that automates real penetration testing work
 | Collaborator | `burp_engine.CollaboratorClient()` | Out-of-band detection via interactsh. SSRF / XXE / RCE / Log4Shell callbacks. No Burp Pro required. |
 | Proxy | `burp_engine.BurpProxy()` | Intercept and log HTTP traffic with optional request modifier. History dump included. |
 | File Input Traversal | `burp_engine.scan_file_input_traversal()` | Detect path traversal in `<input type="file">` accept/value attributes. Based on HackerOne #3712279 (Burp Suite RCE via crawler). Also tests server-side upload handlers. |
+| **Hash Context Filter** | `hash_crack.extract_hashes_from_text(strict=True)` | **Smart false-positive filter for hash detection.** Skips error codes, tracking IDs, and HTTP error-page hex strings that match the MD5/NTLM pattern but are not password hashes. Filters: error-code keywords, HTTP 4xx/5xx context, mixed-case hex pattern, prefix match (`code=`, `id=`, `ref=`). |
 
 ---
 
@@ -1467,7 +1468,31 @@ Based on real-world exploitation experience:
 
 ---
 
-### Hash Cracking — Fully Automated
+### Hash Cracking — Smart Detection with False-Positive Filter
+
+When password hashes appear in AI responses, bingo automatically triggers a crack pipeline.
+
+**Context-Aware Hash Filter (new in v2.2.3 → v2.2.4)**
+
+Not every 32-character hex string is a password hash. HTTP error pages, tracking IDs, transaction codes, and other identifiers share the same hexadecimal pattern as MD5/NTLM hashes. bingo now automatically detects and skips these false positives before wasting time on crack attempts.
+
+| Filter Rule | Example Trigger |
+|-------------|-----------------|
+| Error-code keywords in context | `"오류 코드 94B1FB7E..."`, `"error code A3F2..."` |
+| HTTP 4xx / 5xx response context | `"400 페이지에 오류코드 ..."` |
+| Mixed-case hex without hash signal | `94B1FB7E4E69B3844895...` (alternating upper/lower) |
+| Prefix pattern match | `code=`, `id=`, `ref=`, `trace=`, `err=` |
+
+**Always treated as real hashes (bypass filter):** `$2y$…` (bcrypt), `$1$…` (md5crypt), `$6$…` (sha512crypt), `*hex` (MySQL41), or any hex with explicit `password hash:` / `ntlm hash:` context.
+
+To disable the filter for a single session: use `/crack <hash>` directly, or call `extract_hashes_from_text(text, strict=False)` in Python.
+
+When the filter skips candidates, a dim notice appears:
+```
+🔍 False-positive filter: 1 hex string(s) skipped (error code / tracking ID detected)
+```
+
+---
 
 When password hashes appear in AI responses, bingo automatically triggers a crack pipeline:
 

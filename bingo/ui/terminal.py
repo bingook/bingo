@@ -3935,9 +3935,23 @@ class BingoTerminal:
         return "\n".join(lines) + "\n"
 
     def _notify_hashes_found(self, text: str) -> None:
-        """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행"""
+        """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행
+        (컨텍스트 필터: 오류코드/추적ID 등 비밀번호 해시가 아닌 hex 문자열 자동 제외)
+        """
         from ..tools.hash_crack import extract_hashes_from_text
-        hashes = extract_hashes_from_text(text)
+        # strict=True: 오류코드/추적ID/HTTP에러페이지 hex 자동 필터링
+        raw_hashes = extract_hashes_from_text(text, strict=False)   # 필터 전
+        hashes     = extract_hashes_from_text(text, strict=True)    # 필터 후
+        # 필터링된 항목이 있으면 사용자에게 알림
+        filtered_out = [h for h in raw_hashes if h not in hashes]
+        if filtered_out:
+            _lang = getattr(self.config, "lang", "en")
+            _msg = {
+                "ko": f"[dim]🔍 오탐 제외: {len(filtered_out)}개 hex 문자열이 오류코드/추적ID로 판단되어 크랙 건너뜀[/dim]",
+                "zh": f"[dim]🔍 误报过滤: {len(filtered_out)}个十六进制字符串被识别为错误码/追踪ID，已跳过破解[/dim]",
+                "en": f"[dim]🔍 False-positive filter: {len(filtered_out)} hex string(s) skipped (error code / tracking ID detected)[/dim]",
+            }.get(_lang, f"[dim]🔍 Filtered {len(filtered_out)} non-hash hex string(s)[/dim]")
+            self.console.print(_msg)
         if not hashes:
             # 크레덴셜 발견 키워드 감지 → 크리티컬 알림
             _cred_signals = [

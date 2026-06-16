@@ -369,10 +369,105 @@ class HashCracker:
         return results
 
 
-def extract_hashes_from_text(text: str) -> list[str]:
+# ─────────────────────────────────────────────────────────────────────────────
+# 컨텍스트 기반 오탐 필터 (error code / tracking ID 등 false positive 제거)
+# Context-aware false positive filter for hex strings misidentified as hashes
+# 基于上下文的误报过滤（错误码/追踪ID等被误识别为哈希）
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 주변 컨텍스트에 이 단어가 있으면 해시가 아닌 오류코드/추적ID로 판단
+_FALSE_POSITIVE_CONTEXT_KEYWORDS = re.compile(
+    r"error[\s_\-]?(?:code|id|num|number|track|ref|message)?"
+    r"|오류[\s]?(?:코드|번호|추적|id)?"
+    r"|tracking[\s_\-]?(?:id|code|number)?"
+    r"|transaction[\s_\-]?(?:id|code)?"
+    r"|reference[\s_\-]?(?:id|code|number)?"
+    r"|request[\s_\-]?(?:id|code)?"
+    r"|session[\s_\-]?(?:token|id)?"
+    r"|correlation[\s_\-]?id"
+    r"|trace[\s_\-]?(?:id|code)?"
+    r"|incident[\s_\-]?(?:id|number)?"
+    r"|ticket[\s_\-]?(?:id|number)?"
+    r"|ref(?:erence)?[\s_\-]?no"
+    r"|에러\s*(?:코드|번호)?"
+    r"|추적\s*(?:코드|번호|ID)?"
+    r"|오류\s*코드"
+    r"|错误\s*(?:代码|编号|码)?"
+    r"|跟踪\s*(?:ID|编号)?"
+    r"|事务\s*(?:ID|编号)?",
+    re.IGNORECASE,
+)
+
+# HTTP 4xx / 5xx 상태코드 컨텍스트
+_HTTP_ERROR_STATUS_RE = re.compile(
+    r"\b(?:4[0-9]{2}|5[0-9]{2})\s+(?:error|page|response|status|Bad|Not Found|Forbidden|"
+    r"Internal|Service|Unauthorized|페이지|응답|오류)",
+    re.IGNORECASE,
+)
+
+# 구체적인 에러코드 패턴: 전형적인 에러코드는 대/소문자 혼합 불규칙 + 특정 접두사 없음
+# 실제 패스워드 해시: 소문자만(MD5/SHA) 또는 대문자만(NTLM) 일관성이 있음
+def _is_error_context(candidate: str, surrounding: str) -> bool:
     """
-    텍스트에서 해시값 자동 추출
-    AI 응답 / 덤프 결과 / 마크다운 테이블 등에서 해시를 파싱
+    주어진 hex 문자열이 오류코드/추적ID일 가능성을 판단.
+
+    True  → 오탐 (해시 크랙 건너뜀)
+    False → 실제 해시일 가능성 있음 (크랙 진행)
+
+    EN: Returns True if the candidate hex string is likely an error/tracking code.
+    ZH: 如果候选字符串可能是错误码/追踪ID，返回True。
+    """
+    ctx = surrounding.lower()
+
+    # 1. 주변에 오류코드/추적ID 키워드 존재
+    if _FALSE_POSITIVE_CONTEXT_KEYWORDS.search(ctx):
+        return True
+
+    # 2. HTTP 4xx/5xx 페이지 컨텍스트
+    if _HTTP_ERROR_STATUS_RE.search(surrounding):
+        return True
+
+    # 3. 32자 hex의 경우 대소문자 혼합(mixed-case)이면 에러코드일 가능성↑
+    #    실제 MD5는 소문자만, NTLM은 대문자만 (크래킹 툴 출력 기준)
+    if len(candidate) == 32:
+        has_lower = any(c.islower() for c in candidate if c.isalpha())
+        has_upper = any(c.isupper() for c in candidate if c.isalpha())
+        if has_lower and has_upper:
+            # 혼합 대소문자 → 에러코드 의심. 추가 키워드 없어도 오탐 처리
+            # 단, DB dump / hash= 패턴이 명시적으로 있으면 허용
+            _hash_signals = re.compile(
+                r"password[\s_]?hash|hash[\s_]?:?\s*$|pwd[\s_]?hash|"
+                r"ntlm[\s_]?hash|md5[\s_]?:|sha[\s_]?:|"
+                r"해시[\s:]|비밀번호[\s]?해시|密码[\s]?哈希|哈希值",
+                re.IGNORECASE,
+            )
+            if not _hash_signals.search(surrounding):
+                return True
+
+    # 4. 특정 접두/접미 패턴: "code=XXXX", "id=XXXX", "ref=XXXX"
+    _code_prefix = re.compile(
+        r"(?:code|id|ref|num|no|err|error|trace|tx|txn|token|key|guid|uuid)"
+        r"[\s=:_\-]+$",
+        re.IGNORECASE,
+    )
+    prefix_window = surrounding[-40:] if len(surrounding) >= 40 else surrounding
+    if _code_prefix.search(prefix_window):
+        return True
+
+    return False
+
+
+def extract_hashes_from_text(text: str, strict: bool = True) -> list[str]:
+    """
+    텍스트에서 해시값 자동 추출 (컨텍스트 기반 오탐 필터 포함)
+
+    strict=True (기본): 오류코드/추적ID 등 비밀번호 해시가 아닌 것 자동 제거.
+    strict=False     : 기존 패턴 매칭만 (오탐 필터 건너뜀).
+
+    EN: Extract password hashes from text with context-aware false positive filtering.
+        Error codes, tracking IDs, HTTP error page codes are automatically excluded.
+    ZH: 从文本中提取密码哈希，包含基于上下文的误报过滤。
+        错误码、追踪ID、HTTP错误页面的十六进制字符串会被自动排除。
     """
     patterns = [
         # bcrypt: $2y$10$<53chars> — {50,60}으로 유연하게 처리 (마크다운 테이블 잘림 대비)
@@ -385,10 +480,26 @@ def extract_hashes_from_text(text: str) -> list[str]:
         r"(?<![0-9a-fA-F])[0-9a-f]{40}(?![0-9a-fA-F])",    # SHA-1
         r"(?<![0-9a-fA-F])[0-9a-fA-F]{32}(?![0-9a-fA-F])", # MD5 / NTLM
     ]
+
+    # $2y$…, $1$…, $6$…, *MySQL 패턴은 구조가 뚜렷해서 컨텍스트 필터 불필요
+    _STRUCTURED_PATTERNS = {0, 1, 2, 3}
+
     found = []
-    for pat in patterns:
-        matches = re.findall(pat, text)
-        # 마크다운 테이블 구분자(|)로 잘린 경우 정리
-        cleaned = [m.strip("| \t\n") for m in matches]
-        found.extend(cleaned)
-    return list(dict.fromkeys(found))  # 중복 제거, 순서 유지
+    for idx, pat in enumerate(patterns):
+        for m in re.finditer(pat, text):
+            candidate = m.group(0).strip("| \t\n")
+            if not candidate:
+                continue
+
+            # 구조적 패턴(bcrypt/mysql 등)은 필터 건너뜀
+            if strict and idx not in _STRUCTURED_PATTERNS:
+                start = max(0, m.start() - 120)
+                end   = min(len(text), m.end() + 80)
+                surrounding = text[start : m.start()] + text[m.end() : end]
+                if _is_error_context(candidate, surrounding):
+                    continue  # 오탐 → 건너뜀
+
+            if candidate not in found:
+                found.append(candidate)
+
+    return found

@@ -303,9 +303,9 @@ class BingoTerminal:
             # 복원된 경우 → 자동으로 에이전트 재개 메시지 주입
             _lang = getattr(self.config, "lang", "en")
             _auto_continue = {
-                "ko": f"이전 작업을 이어서 계속 진행해 주세요. 타겟: {self._agent_state.get('target', '')}",
-                "zh": f"请继续上次未完成的工作。目标: {self._agent_state.get('target', '')}",
-                "en": f"Continue the previous task from where it was left off. Target: {self._agent_state.get('target', '')}",
+                "ko": f"이전 작업을 이어서 계속 진행해 주세요. 타겟: {self._agent_state.get('target') or ''}",
+                "zh": f"请继续上次未完成的工作。目标: {self._agent_state.get('target') or ''}",
+                "en": f"Continue the previous task from where it was left off. Target: {self._agent_state.get('target') or ''}",
             }.get(_lang, "Continue previous task.")
             # 자동 재개 — chat_loop 거치지 않고 직접 AI 호출
             from ..models.registry import ModelRegistry
@@ -2968,7 +2968,7 @@ class BingoTerminal:
             self._rollback.save(
                 agent_state=self._agent_state,
                 history_len=len(self.history),
-                label=f"Loop #{self._exec_loop_count} — {self._agent_state.get('target','?')[:40]}",
+                label=f"Loop #{self._exec_loop_count} — {(self._agent_state.get('target') or '?')[:40]}",
             )
 
             # 결과 압축 (컨텍스트 폭발 방지)

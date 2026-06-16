@@ -25,7 +25,7 @@ from .skills_data10 import SKILLS_DB_10, MODULE_INDEX_10, TAG_INDEX_10
 from .skills_data11 import SKILLS_DB_11, MODULE_INDEX_11, TAG_INDEX_11
 from .skills_data12 import SKILLS_DB_12, MODULE_INDEX_12, TAG_INDEX_12
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH — v2.3.1)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH — v2.3.2)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
@@ -838,7 +838,7 @@ class SkillEngine:
           "EXE依赖安装", "安装PE分析库"],
          "exe-install-deps", None),
 
-        # ── .NET Assembly Analysis + CSWSH (v2.3.1) ──────────────────────────
+        # ── .NET Assembly Analysis + CSWSH (v2.3.2) ──────────────────────────
         # .NET 탐지
         (["dotnet detect", ".net detect", "is dotnet", "clr header", "bsjb",
           "costura", "ilmerge", "metadata stream", ".net assembly",

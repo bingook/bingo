@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.1-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.2-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -4640,7 +4640,7 @@ target.exe
 
 ---
 
-## .NET Reverse Engineering + CSWSH — AI-Assisted RCE Discovery (v2.3.1)
+## .NET Reverse Engineering + CSWSH — AI-Assisted RCE Discovery (v2.3.2)
 
 > **Reference:** [My First RCE by Reverse Engineering an EXE File With the Help of AI](https://blog.voorivex.team/first-rce-via-reverse-engineering-with-ai) — Voorivex Team
 
@@ -4658,7 +4658,7 @@ Break the task into small, focused steps and feed results forward.
 
 ### What is this feature?
 
-bingo v2.3.1 integrates this exact methodology:
+bingo v2.3.2 integrates this exact methodology:
 
 | Step | Technique | bingo Module |
 |------|-----------|-------------|
@@ -4681,7 +4681,7 @@ python -m bingo.tools.dotnet_analyzer target.exe
 
 ```
 ═══════════════════════════════════════════════════
-  bingo v2.3.1 — .NET Analysis Report
+  bingo v2.3.2 — .NET Analysis Report
   File: target.exe
 ═══════════════════════════════════════════════════
   .NET Assembly: ✅ YES
@@ -4710,7 +4710,7 @@ python -m bingo.tools.dotnet_analyzer ws://127.0.0.1:3100
 
 ```
 ═══════════════════════════════════════════════════
-  bingo v2.3.1 — CSWSH Test
+  bingo v2.3.2 — CSWSH Test
   Target: ws://127.0.0.1:3100
 ═══════════════════════════════════════════════════
   Port Open:        ✅ YES
@@ -4804,7 +4804,7 @@ while ($offset -lt 0x4000) {
 
 ---
 
-### Skills Added (v2.3.1)
+### Skills Added (v2.3.2)
 
 | Skill ID | Description | Trigger Keywords |
 |----------|-------------|-----------------|

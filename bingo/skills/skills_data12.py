@@ -1,6 +1,6 @@
 """
 skills_data12.py — .NET RE + CSWSH 스킬 DB
-bingo v2.3.1
+bingo v2.3.2
 
 Reference: https://blog.voorivex.team/first-rce-via-reverse-engineering-with-ai
 

@@ -17,19 +17,23 @@ from .skills_data2 import SKILLS_DB_2, MODULE_INDEX_2, TAG_INDEX_2
 from .skills_data3 import SKILLS_DB_3, MODULE_INDEX_3, TAG_INDEX_3
 from .skills_data4 import SKILLS_DB_4, MODULE_INDEX_4, TAG_INDEX_4
 from .skills_data5 import SKILLS_DB_5, MODULE_INDEX_5, TAG_INDEX_5
+from .skills_data6 import SKILLS_DB_6, MODULE_INDEX_6, TAG_INDEX_6
 
-# 통합 (CyberSecurity-Skills 195개 + SecSkills + PentestPrecision + BurpEngine — v2.2.3)
-ALL_SKILLS: dict[str, dict] = {**SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3, **SKILLS_DB_4, **SKILLS_DB_5}
+# 통합 (CyberSecurity-Skills 195개 + SecSkills + PentestPrecision + BurpEngine + PostExploit — v2.2.5)
+ALL_SKILLS: dict[str, dict] = {
+    **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
+    **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
+}
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
 
-for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4, MODULE_INDEX_5]:
+for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4, MODULE_INDEX_5, MODULE_INDEX_6]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
         ALL_MODULE_INDEX[k].extend(v)
 
-for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4, TAG_INDEX_5]:
+for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4, TAG_INDEX_5, TAG_INDEX_6]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []

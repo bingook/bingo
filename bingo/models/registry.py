@@ -5,15 +5,14 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
     "deepseek": {
         "label": "DeepSeek V4 Pro  ★ 추천",
         "base_url": "https://api.deepseek.com/v1",
-        "default_model": "deepseek-chat",          # V4 Pro = deepseek-chat
+        "default_model": "deepseek-v4-pro",        # 실제 Pro 모델 ID (deepseek-chat → flash로 변경됨)
         "models": [
-            "deepseek-chat",       # DeepSeek V4 Pro (최신, 권장)
+            "deepseek-v4-pro",     # DeepSeek V4 Pro (최신, 권장) ← 반드시 이것만 사용
             "deepseek-reasoner",   # DeepSeek R2 (추론 특화)
-            "deepseek-coder",      # 코딩 특화
         ],
         "cls": "openai_compat",
         "recommended": True,
-        "note": "모의침투 기본 추천 모델 — 상세 프롬프트 최적화 적용",
+        "note": "모의침투 기본 추천 모델 — deepseek-v4-pro 전용 (deepseek-chat은 flash로 전락)",
     },
     "claude": {
         "label": "Anthropic Claude",

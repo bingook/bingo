@@ -39,9 +39,9 @@ _STRINGS = {
         "en": "Model configuration saved",
     },
     "model_name_prompt": {
-        "ko": "모델명을 입력하세요 (예: deepseek-chat)",
-        "zh": "请输入模型名称（例：deepseek-chat）",
-        "en": "Enter model name (e.g. deepseek-chat)",
+        "ko": "모델명을 입력하세요 (예: deepseek-v4-pro)",
+        "zh": "请输入模型名称（例：deepseek-v4-pro）",
+        "en": "Enter model name (e.g. deepseek-v4-pro)",
     },
     "add_model": {
         "ko": "새 모델 추가",

@@ -39,7 +39,7 @@ GENERIC_DEFAULT_SYSTEM = "You are Bingo, a helpful AI assistant."
 @dataclass
 class ModelConfig:
     provider: str           # "deepseek" | "claude" | "openai" | "glm" | "custom"
-    model: str              # e.g. "deepseek-chat"
+    model: str              # e.g. "deepseek-v4-pro"
     api_key: str
     base_url: str
     alias: str = ""         # 사용자 지정 별칭

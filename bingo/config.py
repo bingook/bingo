@@ -62,7 +62,17 @@ class BingoConfig:
         if CONFIG_FILE.exists():
             try:
                 d = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-                return cls.from_dict(d)
+                cfg = cls.from_dict(d)
+                # ── deepseek-chat → deepseek-v4-pro 자동 마이그레이션 ──
+                # deepseek-chat은 현재 flash 모델로 전락함 (2026년 DeepSeek 정책 변경)
+                _migrated = False
+                for m in cfg.models:
+                    if m.provider == "deepseek" and m.model == "deepseek-chat":
+                        m.model = "deepseek-v4-pro"
+                        _migrated = True
+                if _migrated:
+                    cfg.save()  # 마이그레이션 결과 즉시 저장
+                return cfg
             except Exception:
                 pass
         return cls()

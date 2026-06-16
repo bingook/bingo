@@ -123,6 +123,13 @@ class RedTeamSession:
                 result.append(f)
         return result
 
+    def get_phase_findings(self, phase: str) -> list[dict]:
+        """특정 phase의 findings만 반환. phase가 없으면 빈 리스트."""
+        pr = self.phases.get(phase)
+        if pr is None:
+            return []
+        return list(pr.findings)
+
     def summary_table(self) -> str:
         lines = [f"Target: {self.target}", ""]
         for ph, pr in self.phases.items():

@@ -137,7 +137,7 @@ SKILLS_DB_10: list[dict] = [
         ],
         "payloads": [
             # Custom rule example (JSON format)
-            '{"id":"custom-api-key","name":"Custom API Key","pattern":"API_KEY[\\s=:]+[\\"\\\'](\\w+)[\\"\\'"]","confidence":"high"}',
+            r'{"id":"custom-api-key","name":"Custom API Key","pattern":"API_KEY[\\s=:]+([\"\'])(\\w+)\1","confidence":"high"}',
         ],
         "notes": {
             "ko": (

@@ -1405,6 +1405,7 @@ class BingoTerminal:
         model = ModelRegistry.build(model_cfg)
 
         # ── 일반 대화 모드 감지 ────────────────────────────────────────
+        full_response = ""  # 초기화 — UnboundLocalError 방지
         if self._is_general_question(text):
             self.history.append(Message(role="user", content=text))
             self._append_to_session_log("user", text)

@@ -20,26 +20,30 @@ from .skills_data5 import SKILLS_DB_5, MODULE_INDEX_5, TAG_INDEX_5
 from .skills_data6 import SKILLS_DB_6, MODULE_INDEX_6, TAG_INDEX_6
 from .skills_data7 import SKILLS_DB_7, MODULE_INDEX_7, TAG_INDEX_7
 from .skills_data8 import SKILLS_DB_8, MODULE_INDEX_8, TAG_INDEX_8
+from .skills_data9 import SKILLS_DB_9, MODULE_INDEX_9, TAG_INDEX_9
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile — v2.2.7)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite — v2.2.8)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
     **{s["name"]: s for s in SKILLS_DB_7},
     **{s["name"]: s for s in SKILLS_DB_8},
+    **{s["name"]: s for s in SKILLS_DB_9},
 }
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
 
 for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
-                 MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7, MODULE_INDEX_8]:
+                 MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7, MODULE_INDEX_8,
+                 MODULE_INDEX_9]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
         ALL_MODULE_INDEX[k].extend(v)
 
 for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4,
-                 TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7, TAG_INDEX_8]:
+                 TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7, TAG_INDEX_8,
+                 TAG_INDEX_9]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []
@@ -622,6 +626,7 @@ class SkillEngine:
             "secskills_local": len(SKILLS_DB_3),
             "secknowledge_skills": len(SKILLS_DB_7),
             "mobile_skills": len(SKILLS_DB_8),
+            "trufflehog_malimite_skills": len(SKILLS_DB_9),
             "secknowledge_refs_available": _secknow_ok(),
             "secknowledge_status": _secknow_status(),
             "total_modules": len(ALL_MODULE_INDEX),
@@ -729,6 +734,13 @@ class SkillEngine:
           "frida", "objection", "adb", "phase0", "phase 0",
           "play store", "app store", "ssl pinning", "jailbreak", "루팅"],
          "mobile-phase0", None),
+        # TruffleHog APK + Malimite iOS 라우팅
+        (["trufflehog", "trufflesecurity", "malimite", "dex", "const-string",
+          "resources.arsc", "resources-arsc", "strings.xml",
+          "apk secret", "apk scan", "apk leak", "ipa decompile",
+          "swift decompile", "objc decompile", "ghidra ios",
+          "hardcoded secret", "leaked key", "apk trufflehog"],
+         "apk-trufflehog-scan", None),
     ]
 
     def local_skill_context(self, keyword: str, max_chars: int = 4000) -> str:

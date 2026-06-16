@@ -49,7 +49,7 @@ BANNER = r"""
   ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║
   ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝
   ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ [/#00ff41]
-[#00d4aa]  AI Terminal  ·  v2.2.7  ·  Multi-Model[/#00d4aa]
+[#00d4aa]  AI Terminal  ·  v2.2.8  ·  Multi-Model[/#00d4aa]
 """
 
 PT_STYLE = PTStyle.from_dict({
@@ -410,7 +410,7 @@ class BingoTerminal:
                 _ctrl_c_count += 1
                 if _ctrl_c_count >= 2:
                     # 연속 2회 Ctrl+C → 진짜 종료
-                    self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
+                self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
                     if self._session_log_path:
                         self.console.print(
                             f"[{THEME['dim']}]{self.s['session_done']}: {self._session_log_path}[/]"
@@ -1406,7 +1406,7 @@ class BingoTerminal:
 
         # ── 일반 대화 모드 감지 ────────────────────────────────────────
         if self._is_general_question(text):
-            self.history.append(Message(role="user", content=text))
+        self.history.append(Message(role="user", content=text))
             self._append_to_session_log("user", text)
 
             # 임시로 시스템 메시지를 경량 일반대화 프롬프트로 교체
@@ -1425,8 +1425,8 @@ class BingoTerminal:
             )
             self._build_messages = _orig_build  # type: ignore[method-assign]
 
-            if full_response:
-                self.history.append(Message(role="assistant", content=full_response))
+        if full_response:
+            self.history.append(Message(role="assistant", content=full_response))
                 self._append_to_session_log("assistant", full_response)
             return
 
@@ -1630,7 +1630,7 @@ class BingoTerminal:
         import re as _re
         display = _re.sub(r"SKILL_LOAD:\s*[^\n]*\n?", "", display)
 
-        self.console.print()
+            self.console.print()
         try:
             _has_rich = "[dim]" in display or "[bold" in display
             _has_md   = "**" in display or "\n# " in display or "\n## " in display
@@ -1862,7 +1862,7 @@ class BingoTerminal:
                     "cookies": {}, "evidence": "", "active": False,
                 }
                 self._success("세션 초기화 완료.")
-            else:
+        else:
                 self._cmd_session()
         elif name == "/crack":
             self._cmd_crack(arg)
@@ -2294,16 +2294,16 @@ class BingoTerminal:
             self._warn(self.s["lang_invalid"].format(raw=raw))
             return
 
-        self.config.lang = lang
-        self.config.save()
-        self.s = get_strings(lang)
+            self.config.lang = lang
+            self.config.save()
+            self.s = get_strings(lang)
         # 전역 i18n 동기화
         try:
             from ..i18n import set_lang as _set_lang
             _set_lang(lang)
         except Exception:
             pass
-        self._success(self.s["lang_saved"])
+            self._success(self.s["lang_saved"])
         self.console.print(
             f"  [{THEME['dim']}]{self.s['lang_changed'].format(lang=SUPPORTED_LANGS[lang])}[/]"
         )
@@ -4420,11 +4420,11 @@ class BingoTerminal:
 
             if not hs_matches and not local_results:
                 # ── 내장 DB 검색 (마지막 수단) ─────────────────────────
-                results = engine.search(keyword)
-                if results:
+            results = engine.search(keyword)
+            if results:
                     for r in results[:8]:
-                        self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
-                else:
+                    self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
+            else:
                     self.console.print(
                         f"[{THEME['dim']}]{self.s['skill_no_result'].format(kw=keyword)}[/]"
                     )

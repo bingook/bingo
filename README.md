@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.2.7-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.2.8-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -15,7 +15,7 @@
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
 > **v2.1.0 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.7 is the latest stable, production-ready version.
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.8 is the latest stable, production-ready version.
 
 </div>
 
@@ -3488,7 +3488,196 @@ bingo skill secknow-jailbreak
 
 ---
 
-## Mobile App Phase 0 — Android & iOS Reconnaissance (v2.2.7)
+## TruffleHog APK + Malimite iOS Secret Scanner (v2.2.8)
+
+bingo integrates two specialized tools for deep mobile secret scanning:
+
+| Tool | Target | Speed | Key Technique |
+|---|---|---|---|
+| **TruffleHog** (native APK) | Android `.apk` | **9× faster** than jadx | No decompiler — direct APK parsing |
+| **jadx + TruffleHog** | Android `.apk` | Slower but thorough | Full decompile — catches obfuscated code |
+| **Malimite** | iOS/macOS `.ipa` | Ghidra-based | Swift class reconstruction + LLM naming |
+
+### How TruffleHog Parses APK Natively (9× Faster)
+
+TruffleHog v3.63+ decodes APK files without calling `jadx` or any external decompiler:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  APK file (ZIP structure)                                │
+│                                                          │
+│  ① AndroidManifest.xml                                   │
+│     → Android Binary XML decoded via resources.arsc      │
+│     → Resource IDs (e.g. @7F0300b3) resolved to strings  │
+│                                                          │
+│  ② strings.xml                                           │
+│     → Reconstructed from resources.arsc                  │
+│     → ID range: 0x7f000000 – 0x7fffffff                  │
+│                                                          │
+│  ③ classes.dex / classes2.dex / ...                      │
+│     → DEX bytecode parsed for const-string instructions  │
+│     → Class + method names added as context keywords     │
+│     → TruffleHog keyword pre-flighting finds matches     │
+│                                                          │
+│  ④ All other assets                                      │
+│     → *.json, *.properties, *.js, sqlite DBs,            │
+│        .git dirs, raw asset files                        │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Why 9× faster?** Eliminating the full jadx decompilation step saves 2–5 minutes per scan (Facebook Messenger `.apk` with 40 architecture variants dropped from 3 min → 20 sec per file).
+
+### Malimite — Ghidra-based iOS Decompiler
+
+Malimite ([GitHub](https://github.com/LaurieWired/Malimite)) features:
+- **Native IPA / .app bundle support** — no manual extraction required
+- **Swift class reconstruction** — structs, enums, protocols properly rebuilt
+- **Objective-C support** — full method signature recovery
+- **Built-in LLM method translation** — resolves obfuscated method names
+- **Skips library code** — analyzes only app-owned code, reducing noise
+
+After Malimite decompiles the IPA, bingo automatically:
+1. Classifies Swift vs ObjC files
+2. Lists security-sensitive methods (password, encrypt, keychain, ssl pinning, etc.)
+3. Runs secret pattern scan on all decompiled output
+
+### bingo AI Auto-Selection
+
+| You type | bingo selects |
+|---|---|
+| `trufflehog target.apk` | `apk-trufflehog-scan` |
+| `apk secret scan` | `apk-trufflehog-scan` |
+| `hardcoded api key android` | `apk-trufflehog-scan` |
+| `jadx full decompile thorough` | `apk-trufflehog-jadx` |
+| `malimite target.ipa` | `ios-malimite-decompile` |
+| `ios swift decompile` | `ios-malimite-decompile` |
+| `ghidra ios reverse` | `ios-malimite-decompile` |
+| `apk ipa auto scan` | `mobile-secret-pipeline` |
+| `dex const-string resources.arsc` | `apk-dex-secret-analysis` |
+
+### Skills Added (v2.2.8)
+
+| Skill | Description |
+|---|---|
+| `apk-trufflehog-scan` | TruffleHog native APK scan — 9× faster, no jadx |
+| `apk-trufflehog-jadx` | Full jadx decompile + TruffleHog — thorough scan |
+| `ios-malimite-decompile` | Malimite Ghidra-based iOS/macOS IPA decompiler |
+| `mobile-secret-pipeline` | Unified auto-scan — APK→TruffleHog, IPA→Malimite |
+| `apk-dex-secret-analysis` | DEX bytecode analysis + resources.arsc explanation |
+
+### Usage Examples
+
+#### Android APK — TruffleHog Native (Recommended)
+
+```bash
+# bingo chat
+bingo> target.apk secret scan
+bingo> target.apk trufflehog
+
+# CLI direct
+trufflehog filesystem target.apk --json --no-verification | jq -r '"[" + .DetectorName + "] " + .Redacted'
+
+# Docker (no install)
+docker run -v $(pwd):/work trufflesecurity/trufflehog:latest filesystem /work/target.apk --json
+
+# Python API
+python3 -c "
+from bingo.tools.apk_secret_scanner import scan_apk_trufflehog
+r = scan_apk_trufflehog('target.apk')
+print(r.summary())
+for s in r.secrets:
+    print(f'  [{s.detector}] {s.redacted} @ {s.file}:{s.line}')
+"
+```
+
+#### Android APK — jadx + TruffleHog (Thorough)
+
+```bash
+# When native scan finds nothing suspicious — run full decompile
+python3 -c "
+from bingo.tools.apk_secret_scanner import scan_apk_jadx_trufflehog
+r = scan_apk_jadx_trufflehog('target.apk')
+print(r.summary())
+"
+```
+
+#### iOS IPA — Malimite Decompile + Secret Scan
+
+```bash
+# Prerequisite: Java 17+, Malimite.jar at ~/tools/Malimite.jar
+java -jar ~/tools/Malimite.jar target.ipa --output ./decompiled_output/
+
+# Then scan
+trufflehog filesystem ./decompiled_output/ --json --no-verification
+
+# bingo all-in-one (decompile + secret scan + method listing)
+python3 -c "
+from bingo.tools.apk_secret_scanner import decompile_ipa_malimite
+r = decompile_ipa_malimite('target.ipa')
+print(r.summary())
+print('\\nSecurity-sensitive methods:')
+for m in r.interesting_methods[:10]:
+    print(f'  {m}')
+"
+```
+
+#### Auto-Scan (APK or IPA — auto-detected)
+
+```bash
+python3 -c "
+from bingo.tools.apk_secret_scanner import auto_scan
+r = auto_scan('target.apk')   # or target.ipa
+print(r.summary())
+"
+
+# Package name → download commands
+python3 -c "
+import json
+from bingo.tools.apk_secret_scanner import auto_scan
+print(json.dumps(auto_scan('com.target.app'), indent=2))
+"
+```
+
+#### Check Tool Availability
+
+```bash
+python3 -c "
+import json
+from bingo.tools.apk_secret_scanner import check_tools
+print(json.dumps(check_tools(), indent=2))
+"
+# Output:
+# {
+#   "trufflehog": { "available": true, "version": "trufflehog 3.82.6" },
+#   "jadx":       { "available": true },
+#   "java":       { "available": true },
+#   "malimite_jar": { "available": false, "path": "not found — set MALIMITE_JAR env var" }
+# }
+```
+
+### Install
+
+```bash
+# TruffleHog (Android APK scanning)
+brew install trufflesecurity/trufflehog/trufflehog           # macOS
+curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin  # Linux
+
+# Malimite (iOS decompiler) — requires Java 17+
+brew install openjdk@17                                       # macOS
+sudo apt install default-jdk-17                              # Ubuntu
+
+# Download Malimite JAR
+# https://github.com/LaurieWired/Malimite/releases/latest → Malimite.jar
+mkdir -p ~/tools && mv ~/Downloads/Malimite.jar ~/tools/
+# OR: export MALIMITE_JAR=~/Downloads/Malimite.jar
+
+# Print full setup guide
+python3 -c "from bingo.tools.apk_secret_scanner import install_guide; print(install_guide())"
+```
+
+---
+
+## Mobile App Phase 0 — Android & iOS Reconnaissance (v2.2.8)
 
 Cursor-grade mobile application penetration testing built directly into bingo.
 No external tooling required for initial reconnaissance — everything runs through `bingo.tools.mobile_recon`.

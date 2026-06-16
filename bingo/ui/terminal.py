@@ -3568,7 +3568,7 @@ class BingoTerminal:
         # 보고서 저장 경로 — BINGO_REPORTS_DIR 환경변수 우선, 없으면 기본값
         import os as _os_report
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_target = target.replace("https://", "").replace("http://", "").replace("/", "_")[:30]
+        safe_target = (target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:30]
         _env_dir = _os_report.environ.get("BINGO_REPORTS_DIR", "").strip()
         if _env_dir:
             report_dir = Path(_env_dir)

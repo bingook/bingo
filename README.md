@@ -25,7 +25,7 @@
 
 bingo is a hacker-style AI terminal that automates real penetration testing workflows. You type a target URL, and bingo runs a full red team pipeline — WAF detection, vulnerability scanning, SQL injection, file upload exploitation, IDOR enumeration, hash cracking, and auto-generated reports — all powered by the AI model of your choice.
 
-**Zero-Hallucination Engine** (v2.3.10 — 4-layer enforcement): Every AI response is validated at four independent layers before any output is accepted. (1) Code blocks: JSON dicts, stubs, and simulation code are rejected. (2) Text-level: JSON plans and AI self-confessions are intercepted. (3) Fake credentials: usernames/passwords/hashes claimed without HTTP evidence are blocked. (4) **NEW — Unproven conclusions**: Any statement claiming "SQLi found", "WAF bypassed", "admin access succeeded", or "DB extracted" WITHOUT an accompanying code block is automatically blocked and the AI is forced to produce Python `requests` code that proves the claim. Nothing is accepted without real HTTP response evidence.
+**Zero-Hallucination Engine** (v2.3.11 — 4-layer enforcement): Every AI response is validated at four independent layers before any output is accepted. (1) Code blocks: JSON dicts, stubs, and simulation code are rejected. (2) Text-level: JSON plans and AI self-confessions are intercepted. (3) Fake credentials: usernames/passwords/hashes claimed without HTTP evidence are blocked. (4) **NEW — Unproven conclusions**: Any statement claiming "SQLi found", "WAF bypassed", "admin access succeeded", or "DB extracted" WITHOUT an accompanying code block is automatically blocked and the AI is forced to produce Python `requests` code that proves the claim. Nothing is accepted without real HTTP response evidence.
 
 **Pentest Precision Engine** (new in v2.2): AI automatically applies high-precision analysis when a web target is given. Eliminates false positives from WAF silent-blocks, auto-solves CAPTCHA via ddddocr, accurately extracts session tokens and form fields, fingerprints tech stacks with version details, and auto-generates WAF bypass payload variants. Zero-interaction: the AI selects and applies it automatically based on context.
 
@@ -158,7 +158,7 @@ On first launch: **select language → enter AI model API key → start hacking*
 
 ## Core Features
 
-### Zero-Hallucination System (v2.3.10 — 4-Layer Enforcement)
+### Zero-Hallucination System (v2.3.11 — 4-Layer Enforcement)
 
 Every AI response passes through four independent validation layers before being accepted:
 
@@ -174,7 +174,7 @@ Every AI response passes through four independent validation layers before being
 - Blocks any response that presents `username:`, `password:`, or `hash:` values without an accompanying code block
 - Prevents the AI from inventing credentials it has never actually extracted
 
-**Layer 4 — Unproven Conclusion Block** *(NEW in v2.3.10)*
+**Layer 4 — Unproven Conclusion Block** *(NEW in v2.3.11)*
 - Blocks statements like `"SQLi vulnerability confirmed"`, `"WAF bypass successful"`, `"admin login succeeded"`, `"database extracted"` **when no code block is present**
 - The AI cannot claim a finding without first running Python code that produces HTTP response evidence
 - Trigger phrases (any language): SQLi/XSS/RCE/SSRF confirmed, WAF bypass success, DB access success, admin login success, credentials extracted

@@ -1493,12 +1493,126 @@ class BingoTerminal:
                 full_response = retry_response
 
         if full_response:
+            # ── 텍스트 레벨 환각 감지 (JSON plan / 가짜 자격증명 / 자가고백) ──
+            full_response = self._intercept_text_hallucination(
+                full_response, text, model, model_cfg, skill_context
+            )
             self.history.append(Message(role="assistant", content=full_response))
             self._append_to_session_log("assistant", full_response)
             # AI 응답에서 명령 추출 → 실제 실행 → 결과를 컨텍스트로 주입
             self._execute_ai_commands(full_response)
             # AI 응답에 해시가 있으면 자동 크랙 알림
             self._notify_hashes_found(full_response)
+
+    def _intercept_text_hallucination(
+        self,
+        full_response: str,
+        original_text: str,
+        model,
+        model_cfg,
+        skill_context: str,
+    ) -> str:
+        """
+        AI 텍스트 응답 레벨 환각 감지 및 강제 재실행.
+
+        잡아내는 패턴:
+        1. JSON plan 응답  {"accepted":true,"data":{"intents":[...]}}
+        2. AI 자가고백    "내 실행환경은 텍스트 대화", "无法直接生成文件" 등
+        3. 가짜 자격증명  코드 실행 없이 username/password/hash를 직접 제시
+        """
+        import re as _re
+        import json as _json
+
+        stripped = full_response.strip()
+
+        # ── 패턴 1: JSON plan 응답 감지 ──────────────────────────────────
+        _is_json_plan = False
+        if stripped.startswith("{") or stripped.startswith("["):
+            try:
+                _parsed = _json.loads(stripped)
+                # {"accepted":true,"data":{"intents":[...]}} 형태 감지
+                if isinstance(_parsed, dict) and (
+                    "intents" in str(_parsed)
+                    or "accepted" in _parsed
+                    or "data" in _parsed
+                    or "steps" in _parsed
+                    or "plan" in _parsed
+                ):
+                    _is_json_plan = True
+            except Exception:
+                # JSON 파싱 실패해도 intents 키워드 문자열 검사
+                if '"intents"' in stripped or '"accepted"' in stripped:
+                    _is_json_plan = True
+
+        # ── 패턴 2: AI 자가 고백 감지 ────────────────────────────────────
+        _confession_patterns = [
+            r"(my|my execution) environment.{0,30}(text|conversation|dialog)",
+            r"无法直接.{0,20}(生成文件|写入|磁盘|本地)",
+            r"仅限于.{0,20}(对话|文本|交互)",
+            r"(실행환경|실행 환경).{0,20}(텍스트|대화|제한)",
+            r"cannot (directly|actually).{0,30}(generat|writ|execut|access)",
+            r"I (don'?t|do not|cannot) have.{0,30}(access|ability).{0,30}(file|disk|execut)",
+            r"(logically|conceptually|theoretically).{0,30}(execut|generat|extract)",
+        ]
+        _is_confession = any(
+            _re.search(p, full_response, _re.IGNORECASE) for p in _confession_patterns
+        )
+
+        # ── 패턴 3: 가짜 자격증명 감지 (코드블록 없이 credentials 직접 제시) ──
+        _has_code_block = "```" in full_response
+        _cred_patterns = [
+            r"(用户名|username|user\s*name)\s*[:：]\s*\w+",
+            r"(密码|password|passwd)\s*[:：].{3,30}",
+            r"(密码哈希|hash|md5|sha1)\s*[:：]\s*[a-fA-F0-9\*]{20,}",
+        ]
+        _has_fake_creds = (
+            not _has_code_block
+            and any(_re.search(p, full_response, _re.IGNORECASE) for p in _cred_patterns)
+        )
+
+        # ── 환각 감지 시 차단 및 강제 재실행 요구 ────────────────────────
+        if _is_json_plan or _is_confession or _has_fake_creds:
+            _reason = []
+            if _is_json_plan:
+                _reason.append("JSON PLAN (not Python code)")
+            if _is_confession:
+                _reason.append("AI SELF-CONFESSION (admitted no real execution)")
+            if _has_fake_creds:
+                _reason.append("FAKE CREDENTIALS (invented without code execution)")
+
+            _reason_str = " | ".join(_reason)
+            self.console.print(
+                f"\n[{THEME['error']}]"
+                f"╔══════════════════════════════════════════════════════════╗\n"
+                f"║  ⛔ TEXT-LEVEL HALLUCINATION INTERCEPTED                 ║\n"
+                f"║  REASON: {_reason_str[:50]:<50} ║\n"
+                f"║  → FORCING REAL PYTHON HTTP EXECUTION                   ║\n"
+                f"╚══════════════════════════════════════════════════════════╝"
+                f"[/]\n"
+            )
+
+            # 강제 재실행 메시지 주입
+            _force_msg = (
+                "[BINGO RUNTIME INTERCEPTED HALLUCINATION]\n"
+                f"REASON: {_reason_str}\n\n"
+                "MANDATORY: Write REAL Python code using requests library.\n"
+                "DO NOT return JSON plans. DO NOT invent credentials.\n"
+                "DO NOT say 'my environment is limited to text'.\n"
+                "BINGO RUNS YOUR CODE — write actual requests.get/post calls.\n\n"
+                f"Original task: {original_text[:200]}\n\n"
+                "Now write the Python code that actually executes HTTP requests:"
+            )
+            self.history.append(Message(role="user", content=_force_msg))
+            from ..models.system_prompt import detect_refusal
+            _retry = self._stream_response(
+                model.chat_stream(self._build_messages(skill_context))
+            )
+            if _retry:
+                self.history.pop()  # force_msg 제거
+                return _retry
+            self.history.pop()
+
+        return full_response
 
     @staticmethod
     def _filter_agent_noise(text: str) -> str:

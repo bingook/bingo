@@ -1834,6 +1834,17 @@ class BingoTerminal:
                 self._cmd_skill(arg)
         elif name == "/tools":
             self._cmd_tools(arg)
+        elif name == "/install":
+            # /install exe-deps  — Playwright-style auto-installer
+            _arg = arg.lower().strip()
+            if _arg in ("exe-deps", "exe", "pe-deps", "exe-analyzer",
+                        "exe deps", "exe dependencies", "pe deps"):
+                self._cmd_install_exe_deps()
+            else:
+                self._warn(
+                    "Usage: /install exe-deps\n"
+                    "       Installs EXE Phase 0 analysis libraries (pefile, lief, yara, ssdeep, requests)"
+                )
         elif name == "/scan":
             if arg:
                 self._cmd_scan(arg)
@@ -1862,7 +1873,7 @@ class BingoTerminal:
                     "cookies": {}, "evidence": "", "active": False,
                 }
                 self._success("세션 초기화 완료.")
-        else:
+            else:
                 self._cmd_session()
         elif name == "/crack":
             self._cmd_crack(arg)
@@ -4164,6 +4175,63 @@ class BingoTerminal:
         else:
             # 파이프라인 (온라인 → 오프라인)
             self._auto_crack_pipeline(hashes)
+
+    # ── /install exe-deps (Playwright style) ─────────────────────────────
+    def _cmd_install_exe_deps(self) -> None:
+        """
+        Playwright-style EXE dependency installer.
+        Shows status of each dep, installs missing ones.
+        """
+        from ..tools.exe_analyzer import (  # noqa: PLC0415
+            ensure_exe_deps, _load_optional_deps, _DEPS_CHECKED,
+        )
+        import bingo.tools.exe_analyzer as _exe_mod  # noqa: PLC0415
+
+        self.console.print()
+        self.console.print(
+            f"[{THEME['success']}]  bingo — EXE Phase 0 Dependencies[/]"
+        )
+        self.console.print()
+
+        # Force re-check so status is always shown fresh
+        _exe_mod._DEPS_CHECKED = False
+        result = ensure_exe_deps(silent=True)   # we print our own rich output below
+        _load_optional_deps()
+
+        labels = {
+            "pefile":   ("pefile",       "PE header parsing",       True),
+            "lief":     ("lief",         "PE/ELF/Mach-O rich API",  False),
+            "yara":     ("yara-python",  "YARA rule scanning",      False),
+            "ssdeep":   ("ssdeep",       "Fuzzy hashing (ssdeep)",  False),
+            "requests": ("requests",     "VirusTotal lookup",       False),
+        }
+        for import_name, (pip_name, desc, required) in labels.items():
+            ok = result.get(import_name, False)
+            tag = "" if required else f"  [{THEME['dim']}](optional)[/]"
+            if ok:
+                icon = f"[{THEME['success']}]✅  already installed[/]"
+            else:
+                icon = f"[{THEME['warn']}]📦  installed now    [/]"
+            self.console.print(
+                f"    {icon}  [white]{pip_name:<18}[/] [{THEME['dim']}]{desc}[/]{tag}"
+            )
+
+        self.console.print()
+        all_ready = all(result.values())
+        if all_ready:
+            self.console.print(
+                f"[{THEME['success']}]  ✅  All EXE Phase 0 dependencies are ready![/]\n"
+            )
+        else:
+            missing = [
+                labels[k][0] for k, v in result.items() if not v and k in labels
+            ]
+            self.console.print(
+                f"[{THEME['warn']}]  ⚠   Some dependencies could not be installed:[/]"
+            )
+            for m in missing:
+                self.console.print(f"      pip install {m}")
+            self.console.print()
 
     def _cmd_tools(self, arg: str = "") -> None:
         from ..tools.registry import ToolRegistry

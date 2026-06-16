@@ -30,6 +30,7 @@ References:
 from __future__ import annotations
 
 import hashlib
+import importlib
 import math
 import os
 import re
@@ -40,35 +41,196 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-# ── optional imports ──────────────────────────────────────────────────────────
+
+# ── Playwright-style auto-installer ──────────────────────────────────────────
+
+# package_name → import_name
+_EXE_DEPS: list[tuple[str, str, bool]] = [
+    # (pip_name,      import_name,  required)
+    ("pefile",        "pefile",     True),   # core PE parsing
+    ("lief",          "lief",       False),  # richer PE/ELF/Mach-O
+    ("yara-python",   "yara",       False),  # YARA rule scanning
+    ("ssdeep",        "ssdeep",     False),  # fuzzy hashing
+    ("requests",      "requests",   False),  # VirusTotal lookup
+]
+
+_DEPS_CHECKED = False   # run check only once per process
+
+
+def _color(text: str, code: str) -> str:
+    """ANSI color if stdout supports it."""
+    if sys.stdout.isatty() or os.environ.get("FORCE_COLOR"):
+        return f"\033[{code}m{text}\033[0m"
+    return text
+
+
+def ensure_exe_deps(silent: bool = False) -> dict[str, bool]:
+    """
+    Playwright-style dependency installer.
+
+    Checks each EXE-analysis dependency:
+      ✅  already installed  → skip
+      📦  missing           → auto-install via pip
+      ❌  install failed    → warn and continue (optional only)
+
+    Returns dict {import_name: is_available}
+    """
+    global _DEPS_CHECKED
+    if _DEPS_CHECKED:
+        return _dep_status()
+
+    _DEPS_CHECKED = True
+    needs_install = []
+
+    for pip_name, import_name, required in _EXE_DEPS:
+        try:
+            importlib.import_module(import_name)
+        except ImportError:
+            needs_install.append((pip_name, import_name, required))
+
+    if not needs_install:
+        if not silent:
+            _print_all_ok()
+        return _dep_status()
+
+    # ── print header (Playwright style) ────────────────────────────────────
+    if not silent:
+        print()
+        print(_color("  bingo — EXE Phase 0 Dependencies", "1;36"))
+        print()
+
+    # ── print status of each dep ───────────────────────────────────────────
+    if not silent:
+        for pip_name, import_name, required in _EXE_DEPS:
+            try:
+                importlib.import_module(import_name)
+                label = _color("✅  already installed", "32")
+            except ImportError:
+                label = _color("📦  will install", "33")
+            tag = "" if required else _color("  (optional)", "2")
+            print(f"    {label}  {pip_name}{tag}")
+        print()
+
+    # ── install missing ────────────────────────────────────────────────────
+    pip_cmd = [sys.executable, "-m", "pip", "install", "--quiet"]
+    for pip_name, import_name, required in needs_install:
+        if not silent:
+            print(f"    {_color('📦  Installing', '33')}  {pip_name} ...", end="", flush=True)
+        try:
+            subprocess.run(
+                [*pip_cmd, pip_name],
+                check=True,
+                capture_output=True,
+                timeout=120,
+            )
+            importlib.import_module(import_name)
+            if not silent:
+                print(f"\r    {_color('✅  Installed   ', '32')}  {pip_name}          ")
+        except subprocess.CalledProcessError as exc:
+            if not silent:
+                print(f"\r    {_color('❌  Failed      ', '31')}  {pip_name}")
+                if required:
+                    stderr = exc.stderr.decode(errors="replace").strip()
+                    print(f"       {_color(stderr[:120], '31')}")
+        except ImportError:
+            if not silent:
+                print(f"\r    {_color('❌  Install ok but import failed', '31')}  {pip_name}")
+        except Exception as exc:
+            if not silent:
+                print(f"\r    {_color(f'❌  Error: {exc}', '31')}  {pip_name}")
+
+    if not silent:
+        print()
+        _print_status_table()
+        print()
+
+    return _dep_status()
+
+
+def _dep_status() -> dict[str, bool]:
+    result = {}
+    for _, import_name, _ in _EXE_DEPS:
+        try:
+            importlib.import_module(import_name)
+            result[import_name] = True
+        except ImportError:
+            result[import_name] = False
+    return result
+
+
+def _print_all_ok() -> None:
+    print()
+    print(_color("  bingo — EXE Phase 0 Dependencies", "1;36"))
+    print()
+    for pip_name, import_name, required in _EXE_DEPS:
+        tag = "" if required else _color("  (optional)", "2")
+        print(f"    {_color('✅  already installed', '32')}  {pip_name}{tag}")
+    print()
+
+
+def _print_status_table() -> None:
+    print(_color("  Status:", "1"))
+    for pip_name, import_name, required in _EXE_DEPS:
+        try:
+            importlib.import_module(import_name)
+            icon = _color("✅", "32")
+            status = "ready"
+        except ImportError:
+            if required:
+                icon = _color("❌", "31")
+                status = "MISSING (required)"
+            else:
+                icon = _color("⚠ ", "33")
+                status = "not installed (optional)"
+        tag = "" if required else _color("  (optional)", "2")
+        print(f"    {icon}  {pip_name:<18} {_color(status, '2')}{tag}")
+
+
+# ── optional imports (loaded after ensure_exe_deps) ──────────────────────────
+
 _HAS_PEFILE = False
 _HAS_LIEF = False
 _HAS_YARA = False
 _HAS_SSDEEP = False
 
-try:
-    import pefile  # type: ignore
-    _HAS_PEFILE = True
-except ImportError:
-    pass
 
-try:
-    import lief  # type: ignore
-    _HAS_LIEF = True
-except ImportError:
-    pass
+def _load_optional_deps() -> None:
+    """Re-import optional libraries after auto-install."""
+    global _HAS_PEFILE, _HAS_LIEF, _HAS_YARA, _HAS_SSDEEP, pefile, lief, yara, ssdeep  # noqa: PLW0603
 
-try:
-    import yara  # type: ignore
-    _HAS_YARA = True
-except ImportError:
-    pass
+    try:
+        import pefile as _pefile  # type: ignore
+        globals()["pefile"] = _pefile
+        _HAS_PEFILE = True
+    except ImportError:
+        pass
 
-try:
-    import ssdeep  # type: ignore
-    _HAS_SSDEEP = True
-except ImportError:
-    pass
+    try:
+        import lief as _lief  # type: ignore
+        globals()["lief"] = _lief
+        _HAS_LIEF = True
+    except ImportError:
+        pass
+
+    try:
+        import yara as _yara  # type: ignore
+        globals()["yara"] = _yara
+        _HAS_YARA = True
+    except ImportError:
+        pass
+
+    try:
+        import ssdeep as _ssdeep  # type: ignore
+        globals()["ssdeep"] = _ssdeep
+        _HAS_SSDEEP = True
+    except ImportError:
+        pass
+
+
+# ── run on first import ───────────────────────────────────────────────────────
+# silent=True so bingo startup isn't noisy;
+# analyze_pe() calls ensure_exe_deps(silent=False) on first real use.
+_load_optional_deps()
 
 
 # ── constants ─────────────────────────────────────────────────────────────────
@@ -802,6 +964,10 @@ def analyze_pe(
     Returns:
         PEAnalysisResult with all analysis data
     """
+    # ── Playwright-style: install missing deps on first real use ──────────
+    ensure_exe_deps(silent=False)
+    _load_optional_deps()
+
     result = PEAnalysisResult()
     path = Path(file_path)
 
@@ -886,35 +1052,51 @@ def compare_pe(file1: str, file2: str) -> dict:
 
 
 def install_guide() -> str:
-    return """
-╔══════════════════════════════════════════════════════════════╗
-║   bingo v2.3.0 — EXE Phase 0 Install Guide                  ║
-╚══════════════════════════════════════════════════════════════╝
+    """Return dependency status + install hint (Playwright style)."""
+    lines: list[str] = [
+        "",
+        "  bingo v2.3.0 — EXE Phase 0 Dependencies",
+        "",
+    ]
+    for pip_name, import_name, required in _EXE_DEPS:
+        try:
+            importlib.import_module(import_name)
+            icon = "✅"
+            status = "installed"
+        except ImportError:
+            if required:
+                icon = "❌"
+                status = "MISSING  ← pip install " + pip_name
+            else:
+                icon = "⚠ "
+                status = "not installed  ← pip install " + pip_name + "  (optional)"
+        lines.append(f"    {icon}  {pip_name:<18} {status}")
 
-Core (required):
-  pip install pefile              # PE header parsing
-  pip install lief                # Alternative PE parser + rich API
+    lines += [
+        "",
+        "  All-in-one install:",
+        "    pip install pefile lief yara-python ssdeep requests",
+        "",
+        "  Or use bingo's installer:",
+        "    bingo> install exe deps",
+        "",
+    ]
+    return "\n".join(lines)
 
-Optional (enhances analysis):
-  pip install yara-python         # YARA rule scanning
-  pip install ssdeep              # Fuzzy hashing
-  pip install requests            # VirusTotal lookup
 
-All-in-one:
-  pip install pefile lief yara-python ssdeep requests
+def run_install(force: bool = False) -> None:
+    """
+    Interactive Playwright-style installer.
+    Call this directly:  python -m bingo.tools.exe_analyzer
+    Or from bingo:       bingo> install exe deps
+    """
+    global _DEPS_CHECKED
+    if force:
+        _DEPS_CHECKED = False
+    ensure_exe_deps(silent=False)
+    _load_optional_deps()
 
-External tools (optional):
-  # Detect-It-Easy (packer detection)
-  brew install detect-it-easy     # macOS
-  apt install detect-it-easy      # Ubuntu (snap/flatpak)
 
-  # die (command-line DIE)
-  wget https://github.com/horsicq/DIE-engine/releases/latest
-
-Usage in bingo:
-  bingo> analyze exe malware.exe
-  bingo> pe analysis suspicious.dll
-  bingo> check imports target.exe
-  bingo> scan exe for secrets payload.exe
-  bingo> full exe analysis sample.exe
-"""
+if __name__ == "__main__":
+    # python -m bingo.tools.exe_analyzer   ← triggers installer
+    run_install(force=True)

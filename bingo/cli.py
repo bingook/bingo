@@ -387,6 +387,18 @@ def main() -> None:
         _run_waf_test(args[1], sl)
         return
 
+    # ── bingo install exe-deps ───────────────────────────────────
+    # Playwright-style: "bingo install exe-deps"
+    if args and args[0] == "install" and len(args) > 1 and args[1] in (
+        "exe-deps", "exe", "exe-analyzer", "pe-deps",
+    ):
+        from .tools.exe_analyzer import ensure_exe_deps, _load_optional_deps, _DEPS_CHECKED  # noqa: PLC0415
+        import bingo.tools.exe_analyzer as _exe_mod
+        _exe_mod._DEPS_CHECKED = False   # force re-check so output always shown
+        ensure_exe_deps(silent=False)
+        _load_optional_deps()
+        return
+
     # ── bingo tools ──────────────────────────────────────────────
     if args and args[0] == "tools":
         from .tools.registry import ToolRegistry
@@ -439,6 +451,7 @@ def main() -> None:
         console.print(f"    [white]bingo skill[/]                {sl['cli_help_skill']}")
         console.print(f"    [white]bingo skill install[/]        {sl['cli_help_skill_install']}")
         console.print(f"    [white]bingo skill search <keyword>[/] {sl['cli_help_skill_search']}")
+        console.print(f"    [white]bingo install exe-deps[/]      Install EXE Phase 0 libs (pefile, lief, yara, ssdeep, requests)")
         console.print()
         console.print("  [#4a4a4a]Options:[/]")
         console.print(f"    [#00d4aa]--reset[/]    {sl['cli_help_reset']}")

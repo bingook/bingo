@@ -827,6 +827,13 @@ class SkillEngine:
           "batch pe analysis", "compare pe files", "exe all", "full malware analysis",
           "exe 전체 분석", "악성코드 전체 분석", "EXE全面分析"],
          "exe-full-pipeline", None),
+
+        # ── EXE dep installer ────────────────────────────────────────────────
+        (["install exe deps", "exe install", "install pe deps", "install exe dependencies",
+          "exe 의존성 설치", "pe 라이브러리 설치", "pefile install", "yara install",
+          "setup exe analyzer", "exe setup", "install malware analysis tools",
+          "EXE依赖安装", "安装PE分析库"],
+         "exe-install-deps", None),
     ]
 
     def local_skill_context(self, keyword: str, max_chars: int = 4000) -> str:

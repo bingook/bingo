@@ -3614,6 +3614,209 @@ print(quick_setup_guide("android"))  # or "ios" or "both"
 | HARDCODED_PASSWORD | `password = "..."` |
 | + 6 more | ... |
 
+### How to Use — Step by Step
+
+bingo accepts APK/IPA in **three ways**. No upload server — everything runs locally.
+
+---
+
+#### Method 1: Local File Path (Most Common)
+
+Download the APK/IPA to your machine first, then pass the file path to bingo.
+
+```bash
+# Step 1 — Download APK (any method)
+#   - Manual download from https://apkpure.com or https://apkmirror.com
+#   - Or use CLI tools (see below)
+
+# Step 2 — Run bingo
+bingo
+
+# Step 3 — Type in the bingo chat prompt
+> /path/to/target.apk analyze
+> ~/Downloads/com.target.app.apk pentest
+> /home/user/target.ipa vulnerability scan
+```
+
+bingo auto-detects `.apk` / `.ipa` extension and dispatches to the right analyzer.
+
+---
+
+#### Method 2: Package Name Only (No File Required — OSINT)
+
+If you only know the package name, bingo can start reconnaissance immediately without a file.
+
+```bash
+# In the bingo chat prompt:
+> com.kakaobank.channel analyze
+> com.target.app mobile pentest
+> com.samsung.android.health osint
+```
+
+**What bingo returns automatically:**
+- Play Store / App Store direct URL
+- APK download commands (gplaycli, APKPure, APKMirror)
+- Domain recon commands (subfinder, amass, httpx)
+- Certificate transparency lookup
+
+---
+
+#### Method 3: App Store URL (Paste and Go)
+
+```bash
+# Android — Google Play Store URL
+> https://play.google.com/store/apps/details?id=com.target.app analyze
+
+# iOS — Apple App Store URL
+> https://apps.apple.com/kr/app/appname/id123456789 pentest
+```
+
+---
+
+### Full Workflow Example
+
+```
+[Target: com.mybank.app]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1 — Start with package name (no APK yet)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+bingo> com.mybank.app mobile pentest
+
+bingo auto-outputs:
+  ✅ Play Store URL
+  ✅ APK download commands (gplaycli / APKPure)
+  ✅ Domain recon commands (subfinder / amass)
+  ✅ Certificate transparency query
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2 — Download APK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Option A: gplaycli (CLI, Google account required)
+python3 -m gplaycli -d com.mybank.app -f . -v
+→ saves com.mybank.app.apk
+
+# Option B: apkeep (no account needed)
+apkeep -a com.mybank.app .
+→ saves com.mybank.app.apk
+
+# Option C: Manual browser download
+# Visit https://apkpure.com/search?q=com.mybank.app
+# Click "Download APK" → save to ~/Downloads/
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3 — Static analysis (no device needed)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+bingo> com.mybank.app.apk static analysis
+
+bingo auto-runs AndroidAnalyzer and outputs:
+  ✅ AndroidManifest.xml findings (debuggable, backup, cleartext)
+  ✅ Exported components (Activities, Services, Receivers, Providers)
+  ✅ Deep links / URL schemes
+  ✅ Hardcoded secrets scan (AWS key, API key, JWT, Firebase, etc.)
+  ✅ 3rd-party SDK fingerprint (Firebase, Sentry, Amplitude...)
+  ✅ Dangerous permissions list
+  ✅ Ready-to-run ADB / Frida / objection commands
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4 — Dynamic analysis (rooted device required)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+bingo> com.mybank.app frida ssl pinning bypass
+
+bingo outputs ready-to-copy commands:
+
+  # Bypass SSL pinning
+  objection -g com.mybank.app explore --startup-command 'android sslpinning disable'
+
+  # Bypass root detection
+  objection -g com.mybank.app explore --startup-command 'android root disable'
+
+  # Dump SharedPreferences
+  adb shell run-as com.mybank.app cat /data/data/com.mybank.app/shared_prefs/*.xml
+
+  # Log all network traffic
+  adb logcat | grep -iE 'token|Bearer|password|secret|api_key'
+```
+
+---
+
+### APK Download Methods (All Options)
+
+| Tool | Command | Notes |
+|---|---|---|
+| **gplaycli** | `python3 -m gplaycli -d <pkg> -f . -v` | Needs Google account |
+| **apkeep** | `apkeep -a <pkg> .` | No account needed |
+| **APKPure** (browser) | https://apkpure.com/search?q=`<pkg>` | Manual download |
+| **APKMirror** (browser) | https://apkmirror.com | Manual download |
+| **APKCombo** (browser) | https://apkcombo.com/search/`<pkg>` | Manual download |
+| **ADB from device** | `adb pull $(adb shell pm path <pkg> \| cut -d: -f2) .` | Rooted device |
+
+---
+
+### IPA Download Methods (iOS — All Options)
+
+| Tool | Command | Notes |
+|---|---|---|
+| **ipatool** | `ipatool download -b <bundle.id>` | Apple ID required |
+| **frida-ios-dump** | `frida -U --codeshare luander/frida-ios-dump -f <bundle.id>` | Jailbroken device |
+| **Clutch** | SSH to jailbroken device → `Clutch -d <bundle.id>` | Jailbroken only |
+| **3uTools** (Windows) | GUI tool, extract IPA from connected device | iTunes needed |
+
+---
+
+### Python API (Direct Usage)
+
+```python
+from bingo.tools.mobile_recon import mobile_phase0, quick_setup_guide
+
+# ── Android APK ───────────────────────────────────
+result = mobile_phase0("/path/to/target.apk")
+print(result.summary())
+
+# Access specific data
+print("Hardcoded secrets:", result.hardcoded_secrets)
+print("Exported activities:", result.exported_activities)
+print("Network endpoints:", result.network_endpoints[:10])
+print("Vulnerabilities:", result.vulnerabilities)
+
+# Copy-paste ready commands
+print("\n=== ADB Commands ===")
+for cmd in result.adb_commands:
+    print(cmd)
+
+print("\n=== Frida Commands ===")
+for cmd in result.frida_commands:
+    print(cmd)
+
+print("\n=== objection Commands ===")
+for cmd in result.objection_commands:
+    print(cmd)
+
+# ── iOS IPA ──────────────────────────────────────
+result = mobile_phase0("/path/to/target.ipa")
+print(result.summary())
+
+# ── Package name OSINT (no file) ─────────────────
+import json
+info = mobile_phase0("com.target.app")
+print(json.dumps(info, indent=2))
+
+# ── App Store URL ─────────────────────────────────
+info = mobile_phase0("https://play.google.com/store/apps/details?id=com.target")
+print(json.dumps(info, indent=2))
+
+# ── Environment setup guide ───────────────────────
+print(quick_setup_guide("android"))   # Android only
+print(quick_setup_guide("ios"))       # iOS only
+print(quick_setup_guide("both"))      # Both platforms
+```
+
+---
+
 ### Install Required Tools
 
 ```bash

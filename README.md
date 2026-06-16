@@ -25,7 +25,7 @@
 
 bingo is a hacker-style AI terminal that automates real penetration testing workflows. You type a target URL, and bingo runs a full red team pipeline — WAF detection, vulnerability scanning, SQL injection, file upload exploitation, IDOR enumeration, hash cracking, and auto-generated reports — all powered by the AI model of your choice.
 
-**Zero-Hallucination Engine** (v2.3.12 — 4-layer enforcement): Every AI response is validated at four independent layers before any output is accepted. (1) Code blocks: JSON dicts, stubs, and simulation code are rejected. (2) Text-level: JSON plans and AI self-confessions are intercepted. (3) Fake credentials: usernames/passwords/hashes claimed without HTTP evidence are blocked. (4) **NEW — Unproven conclusions**: Any statement claiming "SQLi found", "WAF bypassed", "admin access succeeded", or "DB extracted" WITHOUT an accompanying code block is automatically blocked and the AI is forced to produce Python `requests` code that proves the claim. Nothing is accepted without real HTTP response evidence.
+**Zero-Hallucination Engine** (v2.3.13 — 4-layer enforcement): Every AI response is validated at four independent layers before any output is accepted. (1) Code blocks: JSON dicts, stubs, and simulation code are rejected. (2) Text-level: JSON plans and AI self-confessions are intercepted. (3) Fake credentials: usernames/passwords/hashes claimed without HTTP evidence are blocked. (4) **NEW — Unproven conclusions**: Any statement claiming "SQLi found", "WAF bypassed", "admin access succeeded", or "DB extracted" WITHOUT an accompanying code block is automatically blocked and the AI is forced to produce Python `requests` code that proves the claim. Nothing is accepted without real HTTP response evidence.
 
 **Pentest Precision Engine** (new in v2.2): AI automatically applies high-precision analysis when a web target is given. Eliminates false positives from WAF silent-blocks, auto-solves CAPTCHA via ddddocr, accurately extracts session tokens and form fields, fingerprints tech stacks with version details, and auto-generates WAF bypass payload variants. Zero-interaction: the AI selects and applies it automatically based on context.
 
@@ -158,7 +158,7 @@ On first launch: **select language → enter AI model API key → start hacking*
 
 ## Core Features
 
-### Zero-Hallucination System (v2.3.12 — 4-Layer Enforcement)
+### Zero-Hallucination System (v2.3.13 — 4-Layer Enforcement)
 
 Every AI response passes through four independent validation layers before being accepted:
 
@@ -174,7 +174,7 @@ Every AI response passes through four independent validation layers before being
 - Blocks any response that presents `username:`, `password:`, or `hash:` values without an accompanying code block
 - Prevents the AI from inventing credentials it has never actually extracted
 
-**Layer 4 — Unproven Conclusion Block** *(NEW in v2.3.12)*
+**Layer 4 — Unproven Conclusion Block** *(NEW in v2.3.12, active in v2.3.13)*
 - Blocks statements like `"SQLi vulnerability confirmed"`, `"WAF bypass successful"`, `"admin login succeeded"`, `"database extracted"` **when no code block is present**
 - The AI cannot claim a finding without first running Python code that produces HTTP response evidence
 - Trigger phrases (any language): SQLi/XSS/RCE/SSRF confirmed, WAF bypass success, DB access success, admin login success, credentials extracted
@@ -4837,7 +4837,7 @@ while ($offset -lt 0x4000) {
 
 ---
 
-## Nuxt.js / Vue SPA Attack Toolkit (v2.3.12)
+## Nuxt.js / Vue SPA Attack Toolkit (v2.3.12+)
 
 Dedicated skill set for attacking **Nuxt.js** and **Vue SPA** applications.  
 AI automatically selects these skills when the target is identified as Nuxt.js (via `/_nuxt/` paths, `__NUXT__` globals, `_payload.json` references).
@@ -4922,6 +4922,93 @@ Target> https://target.com
   Secrets found:      7
   Payload files:      3
   Config exposed:     1
+```
+
+---
+
+## Next.js / React Attack Toolkit (v2.3.13)
+
+Dedicated skill set for attacking **Next.js** and **React** applications, including critical 2025 CVEs (React2Shell, Re-Cache SXSS, Host Header SSRF).  
+AI automatically selects these skills when the target is identified as Next.js (via `__NEXT_DATA__`, `/_next/`, `Next-Action` headers, or Server Components `Rsc: 1`).
+
+### Covered CVEs & Techniques
+
+| CVE / Technique | Impact | Severity |
+|-----------------|--------|----------|
+| CVE-2025-55182 / CVE-2025-66478 (React2Shell) | Unauthenticated RCE via React Flight protocol deserialization | **Critical** |
+| Re-Cache Excessive Reflection + 0-Click SXSS | Cache poisoning → stored XSS without user interaction | **High** |
+| `__NEXT_DATA__` SSR Props Leakage | Sensitive data (tokens, API keys, PII) exposed in initial HTML | **High** |
+| `_next/image` SSRF | Internal SSRF via permissive `remotePatterns` config | **High** |
+| Server Action Enumeration & Replay | Enumerate `Next-Action` IDs, replay privileged mutations | **High** |
+| CVE-2024-34351 Host Header SSRF | SSRF via Host header in Next.js Server Actions | **High** |
+| RSC Fingerprinting | Detect React Server Components via `Rsc: 1` header | **Info** |
+| RSC Type Confusion SXSS | Exploit `Content-Type` override on RSC endpoints for XSS | **High** |
+
+### AI Auto-Selection Criteria
+
+Bingo automatically triggers Next.js skills when it detects:
+- `__NEXT_DATA__` in response HTML
+- `/_next/static/` or `/_next/image` in response body
+- `Next-Action` header in requests
+- `x-nextjs-*` response headers
+- RSC requests (`Rsc: 1` header)
+
+### Usage
+
+```bash
+# Standard — AI auto-detects Next.js and selects skills
+bingo
+Target> https://your-nextjs-app.vercel.app
+
+# Run full automated Next.js pipeline
+> Use nextjs-full-pipeline skill
+
+# Check for React2Shell RCE (CVE-2025-55182)
+> Use nextjs-react2shell skill
+
+# Scan __NEXT_DATA__ for leaked secrets
+> Use nextjs-next-data-leak skill
+
+# Test Server Actions for unauthorized replay
+> Use nextjs-server-action skill
+
+# Check for CVE-2024-34351 Host Header SSRF
+> Use nextjs-host-ssrf skill
+```
+
+### Next.js / React Skills Reference
+
+| Skill ID | Description | Auto-Trigger Keywords |
+|----------|-------------|----------------------|
+| `nextjs-full-pipeline` | Full Next.js recon + exploit pipeline (all 8 checks) | nextjs, react, /_next/, vercel, __NEXT_DATA__ |
+| `nextjs-rsc-fingerprint` | Fingerprint RSC via `Rsc: 1` header | rsc, react server component, next.js, /_next/ |
+| `nextjs-rsc-sxss` | 0-click SXSS via RSC cache poisoning & Content-Type confusion | sxss, cache poisoning, rsc, 0-click xss |
+| `nextjs-react2shell` | CVE-2025-55182/66478 — React Flight protocol RCE detection | react2shell, cve-2025-55182, rce, react flight |
+| `nextjs-next-data-leak` | Scan `__NEXT_DATA__` for secrets, tokens, PII | __NEXT_DATA__, ssr leak, next data |
+| `nextjs-image-ssrf` | SSRF via `_next/image` permissive remotePatterns | _next/image, ssrf, image proxy |
+| `nextjs-server-action` | Server Action enumeration & replay (Next-Action header) | server action, next-action, form action |
+| `nextjs-host-ssrf` | CVE-2024-34351 Host Header SSRF in Server Actions | cve-2024-34351, host header ssrf, server actions |
+
+### Sample Output
+
+```
+[nextjs-full-pipeline] Starting Next.js attack pipeline on https://target.vercel.app
+
+[RSC Fingerprint] ✓ React Server Components detected (Rsc: 1 response)
+[React2Shell] Testing CVE-2025-55182 multipart probe...
+  → POST /__react_server_action__  [200] 847B
+  ⚠ Suspiciously large RSC response — possible deserialization sink
+[__NEXT_DATA__] Extracting SSR props...
+  → Found: {"apiKey":"sk-...","userId":42,"session":"eyJ..."}
+  ✓ API key leaked in __NEXT_DATA__
+[Server Actions] Enumerating Next-Action IDs...
+  → Found 3 action IDs: [abc123, def456, ghi789]
+  → Replayed action abc123 as unauthenticated user → [200] Success
+
+[PIPELINE COMPLETE] Summary:
+  React2Shell: Potential RCE sink found
+  SSR Leaks:   3 secrets in __NEXT_DATA__
+  Actions:     1 unauthorized replay succeeded
 ```
 
 ---

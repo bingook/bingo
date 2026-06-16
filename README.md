@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.2.9-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -14,8 +14,8 @@
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
-> **v2.2.9 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.9 is the latest stable, production-ready version.
+> **v2.3.0 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.0 is the latest stable, production-ready version.
 
 </div>
 
@@ -4341,6 +4341,302 @@ brew install apktool aapt android-platform-tools
 # System dependencies (Ubuntu)
 apt install apktool aapt adb default-jdk
 ```
+
+---
+
+## EXE Phase 0 — Windows PE / Executable Static Analysis (v2.3.0)
+
+Analyze Windows executables (EXE / DLL / SYS / SCR / DRV) **without executing them**.  
+bingo v2.3.0 integrates a full PE static analysis pipeline powered by `pefile` and `lief`.
+
+### What is EXE Phase 0?
+
+Phase 0 is the **initial recon stage** for Windows binaries — gather maximum intelligence before executing anything:
+
+| Component | What it detects |
+|-----------|----------------|
+| PE Header | Architecture (x86/x64/ARM), compile timestamp, subsystem (GUI/CLI), entry point, image base |
+| Section Analysis | Entropy per section — high entropy (>7.0) = packed/encrypted/obfuscated |
+| Import Table | 30+ suspicious Windows APIs categorized by attack technique |
+| String Extraction | C2 URLs, hardcoded IPs, API keys, registry paths, mutex names, Base64 blobs |
+| Packer Detection | UPX, Themida, VMProtect, MPRESS, ASPack, Enigma, and custom packers |
+| Digital Signature | Authenticode presence + validity check |
+| YARA Scanning | Built-in rules + custom rule file support |
+| Capability Scoring | Automated risk score (LOW / MEDIUM / HIGH) based on all indicators |
+| Hash Computing | MD5, SHA1, SHA256, ImpHash, SSDeep (fuzzy hash) |
+| VirusTotal Lookup | Optional hash lookup via VT API |
+
+---
+
+### Installation
+
+```bash
+# Core (required for PE analysis)
+pip install pefile lief
+
+# Optional (enhances analysis)
+pip install yara-python ssdeep requests
+
+# All-in-one
+pip install pefile lief yara-python ssdeep requests
+```
+
+---
+
+### Usage — bingo Natural Language Interface
+
+Just type in bingo — AI selects the right skill automatically:
+
+```
+bingo> analyze exe malware.exe
+bingo> pe analysis suspicious.dll
+bingo> check imports target.exe
+bingo> scan exe for secrets payload.exe
+bingo> full exe analysis sample.exe
+bingo> detect packer in packed.exe
+bingo> yara scan malware.exe
+bingo> compare pe original.exe modified.exe
+```
+
+---
+
+### Usage — Python API
+
+#### 1. Quick Full Analysis (one function)
+
+```python
+from bingo.tools.exe_analyzer import quick_scan
+
+# Returns formatted summary string
+print(quick_scan("malware.exe"))
+```
+
+Output example:
+```
+════════════════════════════════════════════════════════════════
+  EXE Phase 0 — malware.exe
+  Size     : 512.0 KB
+  Arch     : x64
+  Type     : EXE
+  Subsystem: GUI (Windows)
+  Compiled : 2024-03-15 12:30:00 UTC
+────────────────────────────────────────────────────────────────
+  MD5      : a1b2c3d4e5f6...
+  SHA256   : 8f9a0b1c2d3e...
+  ImpHash  : c7d8e9f0a1b2...
+────────────────────────────────────────────────────────────────
+  Signature: ❌ Unsigned
+  Packer   : ⚠ UPX [high]
+────────────────────────────────────────────────────────────────
+  Risk     : 🔴 HIGH (12 indicators)
+    • Process Injection: VirtualAllocEx, WriteProcessMemory, CreateRemoteThread
+    • Anti-Debugging: IsDebuggerPresent, CheckRemoteDebuggerPresent
+    • Credential Dumping: MiniDumpWriteDump
+...
+```
+
+#### 2. Detailed Analysis (access all fields)
+
+```python
+from bingo.tools.exe_analyzer import analyze_pe
+
+r = analyze_pe("target.exe", extract_strings=True, run_yara=True)
+
+# File info
+print(r.file_name, r.file_size_human)
+print(r.hashes.md5, r.hashes.sha256)
+
+# PE info
+print(r.arch, r.subsystem, r.compile_time)
+print(f"DLL: {r.is_dll}, .NET: {r.is_dotnet}")
+
+# Sections with entropy
+for sec in r.sections:
+    if sec.entropy > 7.0:
+        print(f"HIGH ENTROPY: {sec.name} = {sec.entropy:.2f}")
+
+# Suspicious imports
+for fn, reason in r.suspicious_imports:
+    print(f"  [{reason}] {fn}")
+
+# Extracted strings
+print("URLs:", r.strings.urls[:5])
+print("IPs:", r.strings.ips[:5])
+print("API Keys:", r.strings.api_keys[:5])
+print("Mutexes:", r.strings.mutexes)
+
+# Packer
+if r.packer.detected:
+    print(f"Packer: {r.packer.packer_name} [{r.packer.confidence}]")
+
+# Risk score
+print(r.capabilities.severity())  # 🔴 HIGH / 🟡 MEDIUM / 🟢 LOW
+for cap, ev in r.capabilities.capabilities:
+    print(f"  {cap}: {ev}")
+
+# YARA matches
+print("YARA:", r.yara_matches)
+```
+
+#### 3. Batch Analysis — Scan Entire Directory
+
+```python
+from bingo.tools.exe_analyzer import batch_analyze
+
+# Analyze all .exe, .dll, .sys in directory (recursive)
+results = batch_analyze("./malware_samples/", recursive=True)
+
+for r in results:
+    if r.capabilities.total >= 5:  # Only show risky ones
+        print(f"\n{r.file_name} [{r.capabilities.severity()}]")
+        print(r.summary())
+```
+
+#### 4. Compare Two PE Files (detect tampering)
+
+```python
+from bingo.tools.exe_analyzer import compare_pe
+import json
+
+diff = compare_pe("original.exe", "modified.exe")
+print(json.dumps(diff, indent=2))
+```
+
+Output:
+```json
+{
+  "file1": "original.exe",
+  "file2": "modified.exe",
+  "hash_match": false,
+  "imphash_match": false,
+  "size_diff": 4096,
+  "section_count_diff": 1,
+  "r1_suspicious": 2,
+  "r2_suspicious": 8,
+  "r1_risk": "🟢 LOW",
+  "r2_risk": "🔴 HIGH",
+  "packer_change": true
+}
+```
+
+#### 5. VirusTotal Hash Lookup
+
+```python
+import os
+from bingo.tools.exe_analyzer import analyze_pe, vt_lookup
+
+r = analyze_pe("target.exe")
+result = vt_lookup(r.hashes.sha256, api_key=os.environ.get("VT_API_KEY", ""))
+print(f"Detections: {result['malicious']}/{result['total']}")
+print(f"Threat: {result['popular_threat']}")
+print(f"Link: {result['link']}")
+```
+
+#### 6. YARA Scanning with Custom Rules
+
+```python
+from bingo.tools.exe_analyzer import analyze_pe
+
+# With built-in rules (default)
+r = analyze_pe("target.exe", run_yara=True)
+
+# With custom rule file
+r = analyze_pe("target.exe", run_yara=True, yara_rules="/path/to/custom.yar")
+print("YARA matches:", r.yara_matches)
+```
+
+---
+
+### CLI Equivalents
+
+```bash
+# PE analysis with pefile
+python3 -c "from bingo.tools.exe_analyzer import quick_scan; print(quick_scan('target.exe'))"
+
+# String extraction
+strings target.exe | grep -E "https?://"
+strings target.exe | grep -E "[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}"
+
+# Section entropy (requires pefile)
+python3 -c "
+from bingo.tools.exe_analyzer import analyze_pe
+r = analyze_pe('target.exe')
+for sec in r.sections:
+    flag = '⚠ HIGH ENTROPY' if sec.entropy > 7.0 else ''
+    print(f'{sec.name:<15} entropy={sec.entropy:.2f} {flag}')
+"
+
+# Import analysis
+python3 -c "
+from bingo.tools.exe_analyzer import analyze_pe
+r = analyze_pe('target.exe')
+for fn, reason in r.suspicious_imports:
+    print(f'  [{reason}] {fn}')
+"
+
+# External: Detect-It-Easy (packer)
+die target.exe
+diec target.exe    # console mode
+
+# External: YARA
+yara rules.yar target.exe
+yara -r rules/ ./samples/
+```
+
+---
+
+### Suspicious API Reference
+
+bingo auto-detects 30+ suspicious Windows APIs:
+
+| API | Attack Technique |
+|-----|-----------------|
+| `VirtualAllocEx` | Process Injection |
+| `WriteProcessMemory` | Process Injection |
+| `CreateRemoteThread` | Process Injection |
+| `NtUnmapViewOfSection` | Process Hollowing |
+| `MiniDumpWriteDump` | Credential Dumping |
+| `IsDebuggerPresent` | Anti-Debugging |
+| `GetAsyncKeyState` | Keylogging |
+| `SetWindowsHookEx` | Hook Installation |
+| `RegSetValueEx` | Registry Persistence |
+| `GetProcAddress` | Dynamic API Resolution |
+| `BitBlt` | Screen Capture |
+| `CryptUnprotectData` | DPAPI Decryption |
+
+---
+
+### Analysis Workflow
+
+```
+target.exe
+    │
+    ├─ Hash (MD5/SHA256/ImpHash/SSDeep)
+    ├─ PE Header (arch, compile time, subsystem, .NET?)
+    ├─ Section Entropy (>7.0 = packed/encrypted)
+    ├─ Import Analysis (30+ suspicious APIs detected)
+    ├─ Packer Detection (UPX/Themida/VMProtect/MPRESS...)
+    ├─ String Extraction (URLs/IPs/keys/mutexes/registry)
+    ├─ YARA Scanning (built-in + custom rules)
+    ├─ Capability Scoring (LOW/MEDIUM/HIGH risk)
+    └─ VirusTotal Lookup (optional, requires API key)
+```
+
+> **⚠ Safety**: NEVER execute malware samples on your host machine.  
+> Use an isolated environment: **FlareVM** (Windows), **REMnux** (Linux), or **Cuckoo Sandbox** (automated).
+
+---
+
+### Skills Added (v2.3.0)
+
+| Skill ID | Description | Trigger Keywords |
+|----------|-------------|-----------------|
+| `exe-pe-analysis` | Full PE header, section, metadata analysis | analyze exe, pe analysis, windows executable, exe phase 0 |
+| `exe-string-extract` | Extract C2 URLs, IPs, secrets from binary | exe strings, url in exe, hardcoded ip, c2 address |
+| `exe-import-analysis` | Detect 30+ suspicious Windows APIs | import analysis, suspicious api, process injection detection |
+| `exe-packer-detect` | Detect UPX/Themida/VMProtect/MPRESS | packer detection, detect packer, entropy analysis |
+| `exe-yara-scan` | YARA rule matching (built-in + custom) | yara scan, yara rules exe, malware signature |
+| `exe-full-pipeline` | Complete EXE analysis + VT lookup + batch | full exe analysis, malware triage, virustotal lookup |
 
 ---
 

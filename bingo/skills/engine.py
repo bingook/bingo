@@ -22,8 +22,9 @@ from .skills_data7 import SKILLS_DB_7, MODULE_INDEX_7, TAG_INDEX_7
 from .skills_data8 import SKILLS_DB_8, MODULE_INDEX_8, TAG_INDEX_8
 from .skills_data9 import SKILLS_DB_9, MODULE_INDEX_9, TAG_INDEX_9
 from .skills_data10 import SKILLS_DB_10, MODULE_INDEX_10, TAG_INDEX_10
+from .skills_data11 import SKILLS_DB_11, MODULE_INDEX_11, TAG_INDEX_11
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit — v2.2.9)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 — v2.3.0)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
@@ -31,13 +32,14 @@ ALL_SKILLS: dict[str, dict] = {
     **{s["name"]: s for s in SKILLS_DB_8},
     **{s["name"]: s for s in SKILLS_DB_9},
     **{s["name"]: s for s in SKILLS_DB_10},
+    **{s["name"]: s for s in SKILLS_DB_11},
 }
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
 
 for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
                  MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7, MODULE_INDEX_8,
-                 MODULE_INDEX_9, MODULE_INDEX_10]:
+                 MODULE_INDEX_9, MODULE_INDEX_10, MODULE_INDEX_11]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
@@ -45,7 +47,7 @@ for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
 
 for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4,
                  TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7, TAG_INDEX_8,
-                 TAG_INDEX_9, TAG_INDEX_10]:
+                 TAG_INDEX_9, TAG_INDEX_10, TAG_INDEX_11]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []
@@ -630,6 +632,7 @@ class SkillEngine:
             "mobile_skills": len(SKILLS_DB_8),
             "trufflehog_malimite_skills": len(SKILLS_DB_9),
             "apk_toolkit_skills": len(SKILLS_DB_10),
+            "exe_phase0_skills": len(SKILLS_DB_11),
             "secknowledge_refs_available": _secknow_ok(),
             "secknowledge_status": _secknow_status(),
             "total_modules": len(ALL_MODULE_INDEX),
@@ -782,6 +785,48 @@ class SkillEngine:
           "apk end to end", "android full pentest", "apk full",
           "apk 전체 분석", "APK全流程"],
          "apk-full-pipeline", None),
+        # ── EXE Phase 0 — Windows PE Analysis ─────────────────────────────
+        # PE 전체 분석 라우팅
+        (["exe analysis", "pe analysis", "analyze exe", "pe file", "pe header",
+          "windows executable", "dll analysis", "exe phase 0", "pe phase 0",
+          "pe static", "static analysis exe", "binary analysis", "exe recon",
+          "pe metadata", "pe info", "compile time", "pe section", "architecture x86 x64",
+          "exe 분석", "pe 분석", "실행파일 분석", "PE分析", "exe分析"],
+         "exe-pe-analysis", None),
+        # EXE 문자열 추출 라우팅
+        (["exe strings", "strings from binary", "strings exe", "extract strings exe",
+          "url in exe", "ip in exe", "c2 address", "hardcoded ip", "hardcoded secret exe",
+          "api key exe", "password exe", "credential exe", "mutex exe",
+          "malware c2", "embedded url", "binary strings",
+          "exe 문자열", "실행파일 문자열", "EXE字符串"],
+         "exe-string-extract", None),
+        # 임포트 분석 라우팅
+        (["import analysis", "exe imports", "dll imports", "suspicious api",
+          "process injection detection", "virtualalloc", "createremotethread",
+          "writeprocessmemory", "minidumpwritedump", "anti debug detection",
+          "import table", "iat analysis", "malware indicator", "suspicious windows api",
+          "임포트 분석", "악성 api", "프로세스 인젝션 탐지", "导入分析"],
+         "exe-import-analysis", None),
+        # 패커 탐지 라우팅
+        (["packer detection", "detect packer", "upx detection", "packed exe",
+          "themida", "vmprotect", "aspack", "mpress", "obfuscated exe",
+          "entropy analysis", "high entropy section", "packed binary",
+          "die", "detect it easy", "exeinfope", "is exe packed", "check if packed",
+          "패커 탐지", "upx 탐지", "패킹 탐지", "加壳检测"],
+         "exe-packer-detect", None),
+        # YARA 스캔 라우팅
+        (["yara scan", "yara rules exe", "yara exe", "yara binary",
+          "malware signature", "yara match", "yara pattern", "yara rule file",
+          "threat hunting exe", "signature detection", "yara hunt",
+          "야라 스캔", "야라 룰", "YARA扫描"],
+         "exe-yara-scan", None),
+        # EXE 전체 파이프라인 라우팅
+        (["full exe analysis", "exe pipeline", "exe all in one", "malware analysis full",
+          "malware triage", "exe triage", "pe triage", "exe end to end",
+          "virustotal lookup", "vt lookup hash", "hash lookup exe",
+          "batch pe analysis", "compare pe files", "exe all", "full malware analysis",
+          "exe 전체 분석", "악성코드 전체 분석", "EXE全面分析"],
+         "exe-full-pipeline", None),
     ]
 
     def local_skill_context(self, keyword: str, max_chars: int = 4000) -> str:

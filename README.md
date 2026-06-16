@@ -25,7 +25,7 @@
 
 bingo is a hacker-style AI terminal that automates real penetration testing workflows. You type a target URL, and bingo runs a full red team pipeline — WAF detection, vulnerability scanning, SQL injection, file upload exploitation, IDOR enumeration, hash cracking, and auto-generated reports — all powered by the AI model of your choice.
 
-**Zero-Hallucination Engine** (v2.3.11 — 4-layer enforcement): Every AI response is validated at four independent layers before any output is accepted. (1) Code blocks: JSON dicts, stubs, and simulation code are rejected. (2) Text-level: JSON plans and AI self-confessions are intercepted. (3) Fake credentials: usernames/passwords/hashes claimed without HTTP evidence are blocked. (4) **NEW — Unproven conclusions**: Any statement claiming "SQLi found", "WAF bypassed", "admin access succeeded", or "DB extracted" WITHOUT an accompanying code block is automatically blocked and the AI is forced to produce Python `requests` code that proves the claim. Nothing is accepted without real HTTP response evidence.
+**Zero-Hallucination Engine** (v2.3.12 — 4-layer enforcement): Every AI response is validated at four independent layers before any output is accepted. (1) Code blocks: JSON dicts, stubs, and simulation code are rejected. (2) Text-level: JSON plans and AI self-confessions are intercepted. (3) Fake credentials: usernames/passwords/hashes claimed without HTTP evidence are blocked. (4) **NEW — Unproven conclusions**: Any statement claiming "SQLi found", "WAF bypassed", "admin access succeeded", or "DB extracted" WITHOUT an accompanying code block is automatically blocked and the AI is forced to produce Python `requests` code that proves the claim. Nothing is accepted without real HTTP response evidence.
 
 **Pentest Precision Engine** (new in v2.2): AI automatically applies high-precision analysis when a web target is given. Eliminates false positives from WAF silent-blocks, auto-solves CAPTCHA via ddddocr, accurately extracts session tokens and form fields, fingerprints tech stacks with version details, and auto-generates WAF bypass payload variants. Zero-interaction: the AI selects and applies it automatically based on context.
 
@@ -158,7 +158,7 @@ On first launch: **select language → enter AI model API key → start hacking*
 
 ## Core Features
 
-### Zero-Hallucination System (v2.3.11 — 4-Layer Enforcement)
+### Zero-Hallucination System (v2.3.12 — 4-Layer Enforcement)
 
 Every AI response passes through four independent validation layers before being accepted:
 
@@ -174,7 +174,7 @@ Every AI response passes through four independent validation layers before being
 - Blocks any response that presents `username:`, `password:`, or `hash:` values without an accompanying code block
 - Prevents the AI from inventing credentials it has never actually extracted
 
-**Layer 4 — Unproven Conclusion Block** *(NEW in v2.3.11)*
+**Layer 4 — Unproven Conclusion Block** *(NEW in v2.3.12)*
 - Blocks statements like `"SQLi vulnerability confirmed"`, `"WAF bypass successful"`, `"admin login succeeded"`, `"database extracted"` **when no code block is present**
 - The AI cannot claim a finding without first running Python code that produces HTTP response evidence
 - Trigger phrases (any language): SQLi/XSS/RCE/SSRF confirmed, WAF bypass success, DB access success, admin login success, credentials extracted
@@ -4834,6 +4834,95 @@ while ($offset -lt 0x4000) {
 | `cswsh-detect` | Cross-Site WebSocket Hijacking test (origin validation) | cswsh, websocket hijacking, origin validation |
 | `cswsh-poc-gen` | CSWSH PoC HTML generator (zero-click RCE template) | cswsh poc, websocket rce, ws hijack poc |
 | `exe-dotnet-pipeline` | Full .NET → string dump → crypto → WS → CSWSH → PoC | dotnet pipeline, voorivex, exe cswsh pipeline |
+
+---
+
+## Nuxt.js / Vue SPA Attack Toolkit (v2.3.12)
+
+Dedicated skill set for attacking **Nuxt.js** and **Vue SPA** applications.  
+AI automatically selects these skills when the target is identified as Nuxt.js (via `/_nuxt/` paths, `__NUXT__` globals, `_payload.json` references).
+
+### Attack Vectors
+
+| Vector | What It Finds | Risk |
+|--------|--------------|------|
+| Source Map Leak (`/_nuxt/*.js.map`) | Original unminified source code, API endpoints, hardcoded secrets | **Critical** |
+| `_payload.json` Enumeration | SSG data payloads with user data, tokens, DB records | **High** |
+| `.env` / Config Exposure | API keys, DB URIs, JWT secrets, cloud credentials | **Critical** |
+| Nuxt DevTools Detection | Debug interface with RPC access if left enabled in production | **High** |
+| JS Chunk Secret Scan | OpenAI keys, AWS keys, MongoDB URIs, JWT tokens in client JS | **Critical** |
+| API Route Extraction | Hidden `server/api/` routes revealed from source maps | **Medium** |
+| AWS Metadata SSRF | IAM credentials via `169.254.170.23` on AWS App Runner targets | **Critical** |
+| Build Artifact Exposure | `.output/`, `.nuxt/` directory listing and file access | **High** |
+
+### How AI Auto-Selects
+
+When bingo identifies any of these signals, it automatically runs `nuxt-full-pipeline`:
+- URL contains `awsapprunner.com`, `nuxtjs.org`, or `vercel.app`
+- Response HTML contains `/_nuxt/`, `__NUXT__`, or `_payload.json`
+- Response headers include Nuxt/Vue framework fingerprints
+
+### Usage
+
+```bash
+# Standard target — AI detects Nuxt automatically
+bingo
+Target> https://your-nuxt-app.awsapprunner.com
+
+# Manual skill invocation
+bingo
+Target> https://target.com
+> Use nuxt-full-pipeline skill
+
+# Individual skill
+> Use nuxt-sourcemap-leak skill
+> Use nuxt-payload-dump skill
+> Use nuxt-js-chunk-secrets skill
+```
+
+### Nuxt.js Skills Reference
+
+| Skill ID | Description | Auto-Trigger Keywords |
+|----------|-------------|----------------------|
+| `nuxt-full-pipeline` | Full automated pipeline (all 8 checks) | nuxt, vue, spa, awsapprunner, /_nuxt/ |
+| `nuxt-sourcemap-leak` | Discover & parse `*.js.map` for source code recovery | sourcemap, js.map, /_nuxt/ |
+| `nuxt-payload-dump` | Enumerate `_payload.json` across all site pages | _payload.json, ssg, nuxt payload |
+| `nuxt-env-exposure` | Check `.env`, `nuxt.config.*` file exposure | .env, nuxt.config, environment variable |
+| `nuxt-devtools-detect` | Detect Nuxt DevTools left enabled in production | devtools, nuxt debug |
+| `nuxt-api-route-extract` | Extract `server/api/` routes from JS chunks | api route, server/api, nuxt endpoint |
+| `nuxt-aws-ssrf` | AWS App Runner metadata SSRF for IAM credential theft | aws ssrf, metadata, 169.254.170.23 |
+| `nuxt-build-artifact` | Detect `.output/`, `.nuxt/` directory exposure | .output, nuxt build artifact |
+| `nuxt-js-chunk-secrets` | Scan all JS chunks for hardcoded secrets & API keys | js chunk, hardcoded secret |
+
+### Sample Output
+
+```
+[*] Nuxt.js Full Attack Pipeline — https://target.awsapprunner.com
+======================================================================
+
+[Phase 1] Fingerprinting...
+  Nuxt.js: YES | Vue: YES
+  Status: 200 | Size: 48291 bytes
+
+[Phase 2] Source Map Discovery...
+  [MAP SECRET] MongoDB URI: mongodb+srv://admin:P@ssw0rd@cluster0.xyz.mongodb.net
+
+[Phase 3] JS Chunk Secret Scan...
+  [OpenAI Key] sk-proj-abc123...xyz (chunk-BF2A91.js)
+  [AWS Key] AKIAIOSFODNN7EXAMPLE (chunk-vendors.js)
+
+[Phase 4] _payload.json Enumeration...
+  [PAYLOAD] https://target.com/dashboard/_payload.json
+    [!] SENSITIVE DATA detected in payload!
+
+[Phase 5] Config File Exposure...
+  [CONFIG] https://target.com/.env (843 bytes)
+
+[PIPELINE COMPLETE] Summary:
+  Secrets found:      7
+  Payload files:      3
+  Config exposed:     1
+```
 
 ---
 

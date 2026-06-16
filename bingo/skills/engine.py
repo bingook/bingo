@@ -24,8 +24,9 @@ from .skills_data9 import SKILLS_DB_9, MODULE_INDEX_9, TAG_INDEX_9
 from .skills_data10 import SKILLS_DB_10, MODULE_INDEX_10, TAG_INDEX_10
 from .skills_data11 import SKILLS_DB_11, MODULE_INDEX_11, TAG_INDEX_11
 from .skills_data12 import SKILLS_DB_12, MODULE_INDEX_12, TAG_INDEX_12
+from .skills_data13 import SKILLS_DB_13, MODULE_INDEX_13, TAG_INDEX_13
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH — v2.3.4)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH + Nuxt.js — v2.3.12)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
@@ -35,13 +36,15 @@ ALL_SKILLS: dict[str, dict] = {
     **{s["name"]: s for s in SKILLS_DB_10},
     **{s["name"]: s for s in SKILLS_DB_11},
     **SKILLS_DB_12,
+    **SKILLS_DB_13,
 }
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
 
 for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
                  MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7, MODULE_INDEX_8,
-                 MODULE_INDEX_9, MODULE_INDEX_10, MODULE_INDEX_11, MODULE_INDEX_12]:
+                 MODULE_INDEX_9, MODULE_INDEX_10, MODULE_INDEX_11, MODULE_INDEX_12,
+                 MODULE_INDEX_13]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
@@ -49,7 +52,8 @@ for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
 
 for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4,
                  TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7, TAG_INDEX_8,
-                 TAG_INDEX_9, TAG_INDEX_10, TAG_INDEX_11, TAG_INDEX_12]:
+                 TAG_INDEX_9, TAG_INDEX_10, TAG_INDEX_11, TAG_INDEX_12,
+                 TAG_INDEX_13]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []
@@ -636,6 +640,7 @@ class SkillEngine:
             "apk_toolkit_skills": len(SKILLS_DB_10),
             "exe_phase0_skills": len(SKILLS_DB_11),
             "dotnet_cswsh_skills": len(SKILLS_DB_12),
+            "nuxtjs_skills": len(SKILLS_DB_13),
             "secknowledge_refs_available": _secknow_ok(),
             "secknowledge_status": _secknow_status(),
             "total_modules": len(ALL_MODULE_INDEX),

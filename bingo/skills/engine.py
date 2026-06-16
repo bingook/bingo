@@ -19,23 +19,27 @@ from .skills_data4 import SKILLS_DB_4, MODULE_INDEX_4, TAG_INDEX_4
 from .skills_data5 import SKILLS_DB_5, MODULE_INDEX_5, TAG_INDEX_5
 from .skills_data6 import SKILLS_DB_6, MODULE_INDEX_6, TAG_INDEX_6
 from .skills_data7 import SKILLS_DB_7, MODULE_INDEX_7, TAG_INDEX_7
+from .skills_data8 import SKILLS_DB_8, MODULE_INDEX_8, TAG_INDEX_8
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge — v2.2.6)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile — v2.2.7)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
     **{s["name"]: s for s in SKILLS_DB_7},
+    **{s["name"]: s for s in SKILLS_DB_8},
 }
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
 
-for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4, MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7]:
+for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
+                 MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7, MODULE_INDEX_8]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
         ALL_MODULE_INDEX[k].extend(v)
 
-for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4, TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7]:
+for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4,
+                 TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7, TAG_INDEX_8]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []
@@ -617,6 +621,7 @@ class SkillEngine:
             "cybersecurity_skills": len(SKILLS_DB) + len(SKILLS_DB_2),
             "secskills_local": len(SKILLS_DB_3),
             "secknowledge_skills": len(SKILLS_DB_7),
+            "mobile_skills": len(SKILLS_DB_8),
             "secknowledge_refs_available": _secknow_ok(),
             "secknowledge_status": _secknow_status(),
             "total_modules": len(ALL_MODULE_INDEX),
@@ -719,6 +724,11 @@ class SkillEngine:
         (["unauth", "unauthorized", "api fuzz", "js extract", "tech stack detect"], "api-unauth-fuzz", None),
         # secknowledge 라우팅 (런타임 reference 로더)
         (["secknowledge", "wooYun", "gaarm", "l1-l4", "l1 l4", "method", "methodology"], "secknowledge", None),
+        # mobile 라우팅 (Android + iOS Phase 0)
+        (["android", "ios", "apk", "ipa", "mobile", "앱 침투", "앱 분석", "모바일",
+          "frida", "objection", "adb", "phase0", "phase 0",
+          "play store", "app store", "ssl pinning", "jailbreak", "루팅"],
+         "mobile-phase0", None),
     ]
 
     def local_skill_context(self, keyword: str, max_chars: int = 4000) -> str:

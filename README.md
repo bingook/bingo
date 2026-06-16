@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.2.6-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.2.7-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -15,7 +15,7 @@
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
 > **v2.1.0 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.6 is the latest stable, production-ready version.
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.2.7 is the latest stable, production-ready version.
 
 </div>
 
@@ -3485,6 +3485,154 @@ bingo skill secknow-jailbreak
 | `ai-escape` | `ai-baseline-escape.md` |
 | `methodology` | `testing-methodology.md` |
 | `gaarm` | `gaarm-risk-matrix.md` |
+
+---
+
+## Mobile App Phase 0 — Android & iOS Reconnaissance (v2.2.7)
+
+Cursor-grade mobile application penetration testing built directly into bingo.
+No external tooling required for initial reconnaissance — everything runs through `bingo.tools.mobile_recon`.
+
+### Architecture
+
+```
+mobile_recon.py
+├── AndroidAnalyzer      — APK static analysis (aapt + apktool + jadx pipeline)
+├── IOSAnalyzer          — IPA static analysis (unzip + plutil + otool + strings)
+├── mobile_phase0()      — Unified auto-dispatch entry point
+├── recon_by_package()   — Package name OSINT (no file required)
+├── recon_by_store_url() — Play Store / App Store URL dispatcher
+└── quick_setup_guide()  — Full environment setup instructions
+```
+
+### Skills (12 built-in — `bingo/skills/skills_data8.py`)
+
+| Skill Name | Coverage |
+|---|---|
+| `mobile-phase0` | Unified Android/iOS Phase 0 auto-recon |
+| `mobile-android-static` | APK static analysis (aapt → apktool → jadx → MobSF) |
+| `mobile-android-dynamic` | Frida + objection + ADB dynamic analysis |
+| `mobile-ios-static` | IPA static analysis (unzip → plutil → otool → strings) |
+| `mobile-ios-dynamic` | iOS Frida + objection (jailbroken device) |
+| `mobile-secret-scan` | 16-pattern hardcoded secret scanner |
+| `mobile-ssl-bypass` | SSL pinning detection + bypass (Android + iOS) |
+| `mobile-deep-link` | Intent / URL Scheme / App Link vulnerability analysis |
+| `mobile-api-recon` | Network endpoint extraction (static + dynamic) |
+| `mobile-frida-setup` | Frida environment setup + essential scripts |
+| `mobile-store-osint` | APK/IPA acquisition from Play Store / App Store |
+| `mobile-env-setup` | Complete mobile pentest toolchain setup guide |
+
+### AI Auto-Selection
+
+The AI automatically selects the appropriate mobile skill when it detects:
+
+| Input Pattern | Selected Skill |
+|---|---|
+| `.apk` file path | `mobile-android-static` → `mobile-phase0` |
+| `.ipa` file path | `mobile-ios-static` → `mobile-phase0` |
+| `com.xxx.xxx` package name | `mobile-phase0` → `mobile-store-osint` |
+| Play/App Store URL | `mobile-store-osint` |
+| Keywords: `android`, `ios`, `frida`, `apk`, `ipa`, `mobile`, `adb` | `mobile-phase0` |
+| Keywords: `ssl pinning`, `ssl bypass`, `certificate pin` | `mobile-ssl-bypass` |
+| Keywords: `deep link`, `intent`, `exported`, `url scheme` | `mobile-deep-link` |
+| Keywords: `hardcoded`, `secret scan`, `api key leak` | `mobile-secret-scan` |
+| Keywords: `frida setup`, `objection install` | `mobile-frida-setup` |
+
+### Usage Examples
+
+```bash
+# Auto-dispatch by file type
+bingo "analyze target.apk"
+bingo "pentest com.target.app"
+bingo "recon https://play.google.com/store/apps/details?id=com.target"
+
+# Python API
+from bingo.tools.mobile_recon import mobile_phase0
+
+# APK static analysis
+result = mobile_phase0("target.apk")
+print(result.summary())
+
+# IPA static analysis  
+result = mobile_phase0("target.ipa")
+print(result.summary())
+
+# Package OSINT (no file needed)
+import json
+info = mobile_phase0("com.target.app")
+print(json.dumps(info, indent=2))
+
+# Environment setup guide
+from bingo.tools.mobile_recon import quick_setup_guide
+print(quick_setup_guide("android"))  # or "ios" or "both"
+```
+
+### Phase 0 Output
+
+```
+[Mobile Phase 0 — ANDROID] target.apk
+  App ID     : com.example.app
+  Version    : 3.1.2
+  Debuggable : ⚠️  YES
+  Backup     : ⚠️  ALLOWED
+  Clear Text : ⚠️  YES
+  SSL Pinning: YES
+  Root Detect: NOT DETECTED
+
+  Permissions      : 23
+  Exported Comps   : Activities=3 Services=1 Receivers=2 Providers=0
+  Deep Links       : myapp://
+  Network Endpoints: 47
+  Hardcoded Secrets: 3
+  3rd Party SDKs   : Firebase, Sentry, Amplitude Analytics
+
+  [!] Hardcoded Secrets:
+      [AWS_ACCESS_KEY] AKIA4XXXXXXXXXXXXXYZ @ assets/config.json:12
+      [GOOGLE_API_KEY] AIzaSyXXXXXXXXXXXXX @ res/values/strings.xml:89
+      [HARDCODED_PASSWORD] password='admin123' @ com/example/LoginActivity.smali:234
+
+  [!] Vulnerabilities:
+      [HIGH] Debuggable Build
+      [HIGH] Cleartext Traffic Allowed
+      [MEDIUM] Backup Allowed
+      [MEDIUM] Dangerous Permissions (5)
+```
+
+### Secret Scanner — 16 Pattern Types
+
+| Pattern | Example |
+|---|---|
+| AWS_ACCESS_KEY | `AKIA[0-9A-Z]{16}` |
+| GOOGLE_API_KEY | `AIza[0-9A-Za-z-_]{35}` |
+| FIREBASE_URL | `https://*.firebaseio.com` |
+| STRIPE_KEY | `sk_live_[0-9a-zA-Z]{24}` |
+| GITHUB_TOKEN | `ghp_[A-Za-z0-9]{36}` |
+| JWT_TOKEN | `eyJ*.eyJ*.*` |
+| KAKAO_KEY | Kakao API key pattern |
+| NAVER_KEY | Naver API key pattern |
+| PRIVATE_KEY | `-----BEGIN PRIVATE KEY-----` |
+| HARDCODED_PASSWORD | `password = "..."` |
+| + 6 more | ... |
+
+### Install Required Tools
+
+```bash
+# macOS — Full stack
+brew install apktool aapt android-platform-tools jadx
+brew install libimobiledevice ideviceinstaller ifuse
+pip install frida-tools objection gplaycli
+
+# Ubuntu — Full stack
+apt install apktool aapt adb default-jdk
+pip install frida-tools objection
+snap install jadx
+
+# MobSF (all-in-one Docker)
+docker run -it --rm -p 8000:8000 opensecurity/mobile-security-framework-mobsf
+
+# Print full setup guide
+python3 -c "from bingo.tools.mobile_recon import quick_setup_guide; print(quick_setup_guide())"
+```
 
 ---
 

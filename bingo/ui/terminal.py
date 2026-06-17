@@ -2817,6 +2817,48 @@ class BingoTerminal:
                 )
             return None
 
+        # ── 코드 사전 검증 헬퍼 (SyntaxError / NameError 예방) ──────────
+        def _precheck_python_code(code: str) -> str | None:
+            """실행 전 Python 코드의 명백한 구문 오류를 감지.
+            문제 없으면 None, 있으면 수정된 코드 반환."""
+            import ast as _ast
+            import re as _pre_re
+
+            fixed = code
+
+            # 1. f-string 내 백슬래시 탐지 및 수정
+            #    f"...\\'..."  또는  f"...{d['key']}..."  → 임시변수로 분리
+            if _pre_re.search(r'f"[^"]*\\"[^"]*"', fixed) or _pre_re.search(r"f'[^']*\\'[^']*'", fixed):
+                # 이 경우는 복잡해서 경고만
+                pass
+
+            # 2. py compile 으로 SyntaxError 체크
+            try:
+                compile(fixed, "<bingo_precheck>", "exec")
+                return fixed  # 구문 OK
+            except SyntaxError as _se:
+                _line = _se.lineno or 0
+                _lines = fixed.splitlines()
+                # f-string 내 backslash 또는 dict subscript 오류 자동 수정 시도
+                if _line > 0 and _line <= len(_lines):
+                    bad_line = _lines[_line - 1]
+                    # pattern: f"...val + \"'\"..."  →  quote = "'"; f"...val + {quote}..."
+                    _fl_match = _pre_re.search(
+                        r'(f["\'].*?)\\(["\'])(.*?["\'])',
+                        bad_line
+                    )
+                    if _fl_match:
+                        # fallback: escape 제거
+                        _lines[_line - 1] = bad_line.replace("\\'", "'").replace('\\"', '"')
+                        fixed = "\n".join(_lines)
+                        try:
+                            compile(fixed, "<bingo_precheck2>", "exec")
+                            return fixed
+                        except SyntaxError:
+                            pass
+                # 수정 실패 → 오류 메시지와 함께 None 반환해 caller가 재생성 요청하도록
+                return None  # type: ignore
+
         python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
         _hallucination_msgs: list[str] = []
         for i, block in enumerate(python_blocks):
@@ -2832,6 +2874,21 @@ class BingoTerminal:
                 )
                 _hallucination_msgs.append(_hall)
                 continue
+
+            # 구문 사전 검증
+            _checked = _precheck_python_code(code)
+            if _checked is None:
+                self.console.print(
+                    f"[{THEME['warn']}]⚠ [SYNTAX PRECHECK #{i+1}] "
+                    f"SyntaxError detected — auto-fix failed. "
+                    f"Check f-string backslash or dict subscript issues.[/]"
+                )
+                # 그래도 실행 시도 (stderr에서 상세 오류가 출력됨)
+            elif _checked != code:
+                self.console.print(
+                    f"[{THEME['secondary']}]🔧 [SYNTAX AUTO-FIX #{i+1}] Applied.[/]"
+                )
+                code = _checked
 
             tools_header = (
                 "import sys as _sys, os as _os\n"
@@ -3293,7 +3350,9 @@ class BingoTerminal:
                 ("503 service", "503 Service Unavailable"),
                 ("connection refused", "Connection refused"),
                 ("connection reset", "Connection reset"),
-                ("timed out", "Request timeout"),
+                ("timed out", "Request timeout — possible WAF silent drop"),
+                ("readtimeout", "ReadTimeout — WAF silent drop"),
+                ("connecttimeout", "ConnectTimeout — server/WAF blocking"),
                 ("blocked", "Block detected"),
                 ("captcha", "CAPTCHA detected"),
                 ("banned", "Possible IP ban"),
@@ -3302,8 +3361,42 @@ class BingoTerminal:
             ]
             _detected_blocks = [label for sig, label in _ip_block_signals if sig in _raw_lower]
 
+            # VBScript 에러 감지 — SQL 인젝션 시도 중단 신호
+            _vbscript_no_sqli_patterns = [
+                ("800a01a8", "VBScript Error 800a01a8 (Object required — NOT SQLi)"),
+                ("800a0d5d", "VBScript Error 800a0d5d (ADODB Type mismatch — PARAMETERIZED, NOT injectable)"),
+                ("8002000a", "VBScript Error 8002000a (ADO stream error — NOT SQLi)"),
+                ("800a000d", "VBScript Error 800a000d (Type mismatch — NOT SQLi)"),
+            ]
+            _vbscript_signals = [
+                label for sig, label in _vbscript_no_sqli_patterns if sig in _raw_lower
+            ]
+
+            if _vbscript_signals:
+                _lang = getattr(self.config, "lang", "en")
+                _vb_msg = {
+                    "ko": f"⚠ VBScript 런타임 에러 감지 — SQL 인젝션 불가 파라미터: {', '.join(_vbscript_signals[:2])}",
+                    "zh": f"⚠ 检测到VBScript运行时错误 — 该参数不可注入SQL: {', '.join(_vbscript_signals[:2])}",
+                    "en": f"⚠ VBScript runtime error detected — parameter NOT SQLi-injectable: {', '.join(_vbscript_signals[:2])}",
+                }.get(_lang, f"⚠ VBScript error — NOT SQLi: {', '.join(_vbscript_signals[:2])}")
+                self.console.print(f"[{THEME['warn']}]{_vb_msg}[/]")
+                _ip_block_hint += (
+                    f"\n[VBSCRIPT_ERROR_DETECTED: {'; '.join(_vbscript_signals)}]\n"
+                    "ACTION REQUIRED: STOP testing these parameters for SQL injection.\n"
+                    "  - Error 800a01a8 = Object required (VBScript logic error, not SQLi)\n"
+                    "  - Error 800a0d5d = ADODB type mismatch = PARAMETERIZED QUERY = NOT injectable\n"
+                    "  - Error 8002000a = ADO stream error = NOT SQLi\n"
+                    "Mark these parameters as SAFE / PARAMETERIZED and move to different endpoints.\n"
+                    "Do NOT waste more loops on these VBScript errors.\n"
+                )
+
             if _detected_blocks:
                 _wait_secs = 15
+                # 타임아웃만 감지된 경우 WAF 드롭으로 명시
+                _is_timeout_only = all("timeout" in b.lower() or "drop" in b.lower() for b in _detected_blocks)
+                if _is_timeout_only:
+                    _wait_secs = 5  # 타임아웃은 짧게 대기
+
                 _lang = getattr(self.config, "lang", "en")
                 _block_msg = {
                     "ko": f"⛔ 차단 감지: {', '.join(_detected_blocks)} — {_wait_secs}초 대기 후 재시도...",
@@ -3322,6 +3415,7 @@ class BingoTerminal:
                     f"  - Different User-Agent string\n"
                     f"  - X-Forwarded-For: 8.8.8.8 header\n"
                     f"  - Reduce request rate (add time.sleep(2) between requests)\n"
+                    f"  - If timeout/WAF-drop: try chunked Transfer-Encoding or smaller payloads\n"
                     f"  - Try a different endpoint or parameter\n"
                     f"  - If CAPTCHA: look for API endpoint that bypasses frontend\n"
                 )

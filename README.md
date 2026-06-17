@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.5-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.21-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -5146,6 +5146,48 @@ commonly found in real-world assessments.
 
 No user configuration needed — everything is automatic and controlled by the
 tech-stack fingerprint detected in Step 1.
+
+---
+
+## Penetration Test Accuracy Fixes (v2.3.21)
+
+Analysis of real penetration test logs revealed 6 systematic errors — all fixed.
+
+### Fixes Applied
+
+| # | Category | Problem | Fix |
+|---|----------|---------|-----|
+| 1 | **False Positive** | DB names extracted from URL paths / domain names, not SQL error messages | System prompt: strict rule — DB names only from actual SQL error output |
+| 2 | **False Positive** | Session cookie alone classified as "login success" | System prompt: login confirmed only when response contains logout link OR user ID |
+| 3 | **Code Bug** | `r3 NameError` — variable from Block 2 referenced in Block 3 (different subprocess) | System prompt: self-contained block rule + `/tmp/bingo_state.json` handoff pattern |
+| 4 | **Code Bug** | f-string backslash `SyntaxError` e.g. `f"val + \"'\" "` | Pre-execution syntax check + auto-fix via `compile()` in `terminal.py` |
+| 5 | **Analysis Error** | VBScript errors `800a01a8` / `800a0d5d` misidentified as SQL injection opportunities | Runtime detector: these error codes now trigger "NOT INJECTABLE — stop testing this param" |
+| 6 | **Network** | Request timeout treated same as WAF block; no distinction | Timeout signals now labeled "WAF silent drop" with chunked-encoding bypass hint |
+
+### VBScript Error Classification (New)
+
+ASP Classic sites return VBScript runtime errors when parameters are **not** injectable:
+
+```
+Error '800a01a8'  → Object required (VBScript logic error) — NOT SQLi
+Error '800a0d5d'  → ADODB Type mismatch — PARAMETERIZED query — NOT injectable  ← most important
+Error '8002000a'  → ADO stream error — NOT SQLi
+Error '800a000d'  → VBScript type mismatch — NOT SQLi
+```
+
+When bingo detects these in script output, it now **automatically** notifies the AI to stop testing that parameter and move on — preventing wasted loops.
+
+### SQL Injection Oracle Rules (New in System Prompt)
+
+```
+✅ Valid oracle: baseline response differs from TRUE/FALSE payloads predictably
+❌ Invalid oracle: WAF 403/503 for payload ≠ boolean condition
+❌ Invalid oracle: response size alone (must check content)
+✅ Login confirmed: response contains logout link OR user ID in body
+❌ Login NOT confirmed: Set-Cookie header alone
+✅ DB name source: SQL error message (ORA-*, MySQL syntax error, etc.)
+❌ DB name NOT from: URL path, domain name, page title
+```
 
 ---
 

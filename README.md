@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.32 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.32 is the latest stable, production-ready version.
+> **v2.3.33 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.33 is the latest stable, production-ready version.
 
 </div>
 
@@ -3069,6 +3069,13 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.3.33 — Report Hallucination Fix: Session State Isolation *(2026-06)*
+
+- **🔴 Bug fix: Report hallucination — previous session carry-over eliminated** — When user selected `n` (don't resume), credentials/tables/DB names from the previous session remained in `_agent_state` and were incorrectly included in the new session's final report. Fixed by calling `_reset_agent_state()` immediately when `n` is selected, wiping all previous credentials, table lists, and DB information.
+- **🟢 New tracking: `_session_tables` / `_session_credentials`** — Two in-memory lists now track only items discovered in the *current* session (never pre-loaded). `_parse_agent_state` populates both simultaneously.
+- **🟢 Report prompt hardening** — `_auto_generate_report` now passes separate "confirmed in this session" vs "from previous session" contexts. AI is explicitly instructed: *"Only report credentials from THIS SESSION. Previous session items must be tagged ⚠️ From previous session (not re-verified)."*
+- **🟡 i18n: 3 new multilingual keys** — `session_state_cleared`, `session_prev_data_warning`, `session_current_confirmed` (ko/zh/en).
 
 ### v2.3.32 — UTF-16LE False Positive Hash Filter *(2026-06)*
 

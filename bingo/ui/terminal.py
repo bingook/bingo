@@ -200,6 +200,11 @@ class BingoTerminal:
         self._detect_network_env()
         # /retry 용 마지막 실행 결과 캐시
         self._last_exec_result: str = ""
+        # 현재 세션에서 실제 확인된 항목 (이전 세션 carry-over 구분용)
+        # ↳ 보고서 환각 방지: 보고서에는 이 목록 기준으로 현재 세션 확인 여부를 AI에게 전달
+        self._session_tables: list[str] = []
+        self._session_credentials: list[dict] = []
+        self._session_fresh: bool = True   # True = 새 세션, False = 이전 세션 복원
 
     # ── 네트워크 환경 감지 (VPN 자동 판단) ───────────────────────
     def _detect_network_env(self) -> None:
@@ -4217,12 +4222,43 @@ class BingoTerminal:
         }
         def _h(key): return _sec[key].get(_lang, _sec[key]["en"])
 
+        # ── 세션 구분 정보 수집 (보고서 환각 방지) ──────────────────────
+        _session_tables  = getattr(self, "_session_tables", [])
+        _session_creds   = getattr(self, "_session_credentials", [])
+        _session_fresh   = getattr(self, "_session_fresh", True)
+        # 이전 세션 복원이면 어떤 항목이 이전 세션에서 왔는지 구분
+        _prev_tables = [t for t in _state.get("tables", []) if t not in _session_tables]
+        _prev_creds  = [c for c in _state.get("credentials", []) if c not in _session_creds]
+        _session_origin_note = ""
+        if not _session_fresh and (_prev_tables or _prev_creds):
+            _session_origin_note = (
+                f"\n⚠️ SESSION ORIGIN NOTICE (CRITICAL — READ CAREFULLY):\n"
+                f"This session was RESUMED from a previous run.\n"
+                f"Items confirmed ONLY IN THIS SESSION:\n"
+                f"  Tables    : {_session_tables or 'none confirmed yet'}\n"
+                f"  Credentials: {_session_creds or 'none confirmed yet'}\n"
+                f"Items from PREVIOUS SESSION (NOT re-verified this run):\n"
+                f"  Tables    : {_prev_tables}\n"
+                f"  Credentials: {_prev_creds}\n"
+                f"RULE: In the Credentials Extracted section, list ONLY items from THIS SESSION.\n"
+                f"For previous-session items, note them as '⚠️ From previous session (not re-verified)'.\n"
+            )
+        elif _session_fresh and not _session_tables and not _session_creds:
+            _session_origin_note = (
+                f"\n⚠️ SESSION ACCURACY NOTICE:\n"
+                f"This is a FRESH session. No credentials or tables were loaded from previous sessions.\n"
+                f"Confirmed in this session — Tables: {_session_tables}, Credentials: {_session_creds}.\n"
+                f"RULE: Only report what was actually discovered in this session's execution history.\n"
+                f"DO NOT invent or assume any credentials, table names, or database names not present in the recent findings context.\n"
+            )
+
         prompt_msg = Message(
             role="user",
             content=(
                 f"[GENERATE FINAL PENTEST REPORT]\n\n"
                 f"Target: {target}\n"
-                f"Known state: {_state}\n\n"
+                f"Known state: {_state}\n"
+                f"{_session_origin_note}\n"
                 f"Recent findings:\n{context}\n\n"
                 f"Write a concise penetration test report in {_lang_label}.\n"
                 f"Use EXACTLY these section headers:\n"
@@ -4572,6 +4608,11 @@ class BingoTerminal:
                 self._auth_session = saved_auth
             # 마지막 실행 결과 복원 (retry용)
             self._last_exec_result = data.get("last_exec_result", "")
+            # 이전 세션 복원 — 현재 세션 추적 목록은 빈 상태로 시작
+            # (이어서 새로 발견되는 항목만 _session_* 에 누적됨)
+            self._session_tables = []
+            self._session_credentials = []
+            self._session_fresh = False  # 이전 세션 복원 모드
 
             _resumed = {
                 "ko": f"✅ 이전 세션 복원 완료 — 타겟: {target}",
@@ -4586,6 +4627,19 @@ class BingoTerminal:
                 _path.unlink()
             except Exception:
                 pass
+            # ── 핵심 수정: 이전 세션 agent_state 완전 초기화 (보고서 환각 방지) ──
+            # "n" 선택 시 이전 세션의 credentials/tables/db_name 등이
+            # 현재 세션 보고서에 포함되는 "보고서 환각" 버그를 방지한다.
+            self._reset_agent_state()
+            self._session_tables = []
+            self._session_credentials = []
+            self._session_fresh = True
+            _cleared = {
+                "ko": "🗑️ 이전 세션 state 초기화 완료 (자격증명·테이블·DB 정보 리셋)",
+                "zh": "🗑️ 已清除上次会话状态（凭据/表/数据库信息已重置）",
+                "en": "🗑️ Previous session state cleared (credentials/tables/DB reset)",
+            }.get(_lang, "🗑️ Previous session state cleared")
+            self.console.print(f"[{THEME['dim']}]{_cleared}[/]\n")
             return False
 
     def _load_agent_state(self) -> dict:
@@ -4655,11 +4709,17 @@ class BingoTerminal:
             for t in tables:
                 if t and t not in self._agent_state["tables"]:
                     self._agent_state["tables"].append(t)
+                # 현재 세션 추적 (보고서 환각 방지)
+                if t and t not in self._session_tables:
+                    self._session_tables.append(t)
 
         # 개별 테이블 존재 확인
         for t in re.findall(r"\[\+\] Table exists(?:: |\()([a-zA-Z0-9_]+)", text):
             if t not in self._agent_state["tables"]:
                 self._agent_state["tables"].append(t)
+            # 현재 세션 추적 (보고서 환각 방지)
+            if t not in self._session_tables:
+                self._session_tables.append(t)
 
         # 컬럼 목록
         m = re.search(r"[Vv]alid columns?:\s*\[([^\]]+)\]", text)
@@ -4681,6 +4741,8 @@ class BingoTerminal:
                     if v.strip() and "~" not in v and "?" not in v and len(v.strip()) > 2}
             if cred:
                 self._agent_state["credentials"].append(cred)
+                # 현재 세션 추적 (보고서 환각 방지)
+                self._session_credentials.append(cred)
 
         # WAF
         m = re.search(r"WAF.*?detected.*?([Cc]loudflare|[Aa]WS|[Mm]od[Ss]ecurity|[Ww]ordfence)", text)

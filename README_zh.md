@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.32 — 正式发布版**  
-> v2.3.32 是最新稳定版本。
+> **v2.3.33 — 正式发布版**  
+> v2.3.33 是最新稳定版本。
 
 </div>
 
@@ -135,6 +135,13 @@ bingo
 - 云锁 → HTTP 参数污染
 
 ---
+
+## v2.3.33 —— 报告幻觉修复：会话状态隔离 *(2026-06)*
+
+- **🔴 错误修复: 报告幻觉 — 上次会话数据泄漏已完全消除** — 用户选择`n`（不恢复）时，上次会话的凭据/表/数据库名残留在`_agent_state`中，导致新会话最终报告包含未经本次验证的旧数据（"报告幻觉"）。修复方式：`_offer_resume()`的`n`分支中立即调用`_reset_agent_state()`，完全清除上次会话状态。
+- **🟢 新增当前会话追踪：`_session_tables` / `_session_credentials`** — 新增2个内存列表，仅累积本次会话实际发现的项目。`_parse_agent_state()`解析表/凭据时同步更新这两个列表。
+- **🟢 报告Prompt强化** — `_auto_generate_report()`现在向AI分别传递"本次会话已确认项目"和"上次会话项目"。明确指示AI：*"凭据部分只报告本次会话的项目。上次会话项目标注为⚠️ 来自上次会话（未重新验证）。"*
+- **🟡 多语言: 3个新增键** — `session_state_cleared`, `session_prev_data_warning`, `session_current_confirmed`（ko/zh/en）。
 
 ## v2.3.32 —— UTF-16LE哈希误报过滤 *(2026-06)*
 

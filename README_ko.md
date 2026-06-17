@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.32 — 공식 릴리스**  
-> v2.3.32이 최신 안정 버전입니다.
+> **v2.3.33 — 공식 릴리스**  
+> v2.3.33이 최신 안정 버전입니다.
 
 </div>
 
@@ -135,6 +135,13 @@ bingo
 - CAPTCHA (kcaptcha) 자동 OCR 해결
 
 ---
+
+## v2.3.33 — 보고서 환각 수정: 세션 state 격리 *(2026-06)*
+
+- **🔴 버그 수정: 보고서 환각 — 이전 세션 carry-over 완전 차단** — 사용자가 `n` (재개 안 함)을 선택해도 이전 세션의 자격증명·테이블·DB명이 `_agent_state`에 잔류해 새 세션 최종 보고서에 포함되는 "보고서 환각" 버그 수정. `_offer_resume()` "n" 분기에서 즉시 `_reset_agent_state()`를 호출하여 이전 세션 state를 완전히 리셋한다.
+- **🟢 현재 세션 추적 목록 신설: `_session_tables` / `_session_credentials`** — 현재 세션에서 실제 발견된 항목만 누적하는 in-memory 목록 2개 신설. `_parse_agent_state()`에서 테이블/자격증명 파싱 시 이 목록도 동시에 업데이트.
+- **🟢 보고서 프롬프트 강화** — `_auto_generate_report()`가 이제 "현재 세션 확인 항목"과 "이전 세션 항목"을 AI에게 별도 전달. AI에게 명시적으로 지시: *"자격증명은 반드시 현재 세션 항목만 보고. 이전 세션 항목은 ⚠️ 이전 세션 (재확인 불가)으로 표시."*
+- **🟡 다국어: 3개 신규 키** — `session_state_cleared`, `session_prev_data_warning`, `session_current_confirmed` (ko/zh/en).
 
 ## v2.3.32 — UTF-16LE 해시 오탐 필터 *(2026-06)*
 

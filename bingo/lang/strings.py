@@ -1681,6 +1681,17 @@ _STRINGS.update({
     "hash_utf16le_skipped":      {"ko": "⚠️ [해시] UTF-16LE 인코딩 문자열로 오탐 감지 — 크랙 건너뜀: {h}",
                                    "zh": "⚠️ [哈希] 检测到UTF-16LE编码字符串误报 — 跳过破解: {h}",
                                    "en": "⚠️ [Hash] UTF-16LE encoded string detected as false positive — skipping crack: {h}"},
+
+    # ── 세션 state 초기화 (보고서 환각 방지) ──────────────────────────────
+    "session_state_cleared":     {"ko": "🗑️ 이전 세션 state 초기화 완료 (자격증명·테이블·DB 정보 리셋)",
+                                   "zh": "🗑️ 已清除上次会话状态（凭据/表/数据库信息已重置）",
+                                   "en": "🗑️ Previous session state cleared (credentials/tables/DB reset)"},
+    "session_prev_data_warning": {"ko": "⚠️ 이전 세션 복원 — 아래 항목은 이번 세션에서 재확인되지 않음",
+                                   "zh": "⚠️ 已恢复上次会话 — 以下项目本次未重新验证",
+                                   "en": "⚠️ Session resumed — items below were NOT re-verified in this run"},
+    "session_current_confirmed": {"ko": "✅ 현재 세션 확인 항목",
+                                   "zh": "✅ 本次会话已确认项目",
+                                   "en": "✅ Confirmed in current session"},
 })
 
 

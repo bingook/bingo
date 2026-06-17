@@ -194,9 +194,10 @@ class HttpProbe:
             time.sleep(0.2)
         return found
 
-    def check_admin_panels(self) -> list[dict]:
-        """관리자 패널 탐색"""
-        ADMIN_PATHS = [
+    def check_admin_panels(self, extra_paths: list[str] | None = None) -> list[dict]:
+        """관리자 패널 탐색 — 동적 경로 지원 (extra_paths로 확장 가능)"""
+        # extra_paths가 없으면 기본 13개만 사용 (하위 호환)
+        paths = extra_paths if extra_paths else [
             "/admin/", "/admin/login/", "/admin/login/index.php",
             "/admin/index.php", "/admin.php", "/administrator/",
             "/manager/", "/manage/", "/panel/",
@@ -204,14 +205,102 @@ class HttpProbe:
             "/login.php", "/member/login.php",
         ]
         found = []
-        for path in ADMIN_PATHS:
+        for path in paths:
             r = self.get(path, timeout=8)
-            if r.status in (200, 301, 302):
+            if r.status in (200, 301, 302, 401):
                 has_form = bool(re.search(r'<form|<input.*password', r.body, re.I))
+                title_m = re.search(r'<title>([^<]{1,80})</title>', r.body, re.I)
                 found.append({
-                    "path": path, "status": r.status,
+                    "path": path,
+                    "status": r.status,
                     "has_login_form": has_form,
-                    "title": (re.search(r'<title>([^<]+)</title>', r.body) or ["", ""])[1],
+                    "title": title_m.group(1).strip() if title_m else "",
+                    "url": self.base_url + path,
+                })
+            elif r.status == 403:
+                # 403도 기록 — WAF가 차단하는 경로는 존재 가능성 높음
+                found.append({
+                    "path": path,
+                    "status": 403,
+                    "has_login_form": False,
+                    "title": "",
+                    "url": self.base_url + path,
+                    "note": "Forbidden — possibly exists",
                 })
             time.sleep(0.15)
         return found
+
+    def discover_api_endpoints(self, paths: list[str] | None = None) -> list[dict]:
+        """API 엔드포인트 미인증 접근 탐색"""
+        from .path_dict import get_api_paths
+        target_paths = paths if paths else get_api_paths()
+        found = []
+        for path in target_paths:
+            r = self.get(path, timeout=8)
+            if r.status in (200, 201):
+                is_json = (
+                    "application/json" in r.headers.get("Content-Type", "")
+                    or r.body.lstrip().startswith(("{", "["))
+                )
+                found.append({
+                    "path": path,
+                    "status": r.status,
+                    "size": len(r.body),
+                    "is_json": is_json,
+                    "preview": r.body[:200],
+                    "url": self.base_url + path,
+                })
+            elif r.status == 401:
+                # 401도 기록 — 존재하지만 인증 필요
+                found.append({
+                    "path": path,
+                    "status": 401,
+                    "size": 0,
+                    "is_json": False,
+                    "preview": "",
+                    "url": self.base_url + path,
+                    "note": "Exists but requires auth",
+                })
+            time.sleep(0.1)
+        return found
+
+    def brute_admin_login(
+        self,
+        login_url: str,
+        credentials: list[tuple[str, str]],
+        user_field: str = "username",
+        pass_field: str = "password",
+        max_attempts: int = 20,
+    ) -> list[dict]:
+        """약한 비밀번호 브루트포스 (속도 제한 포함)"""
+        successes = []
+        for i, (user, pwd) in enumerate(credentials[:max_attempts]):
+            r = self.post(
+                login_url,
+                {user_field: user, pass_field: pwd},
+                timeout=10,
+            )
+            body_lower = r.body.lower()
+            # 성공 판단: 리다이렉트 or 성공 키워드 포함
+            is_success = (
+                r.status in (302, 301)
+                or any(kw in body_lower for kw in [
+                    "dashboard", "logout", "welcome",
+                    "대시보드", "로그아웃", "환영", "성공",
+                ])
+            ) and not any(kw in body_lower for kw in [
+                "invalid", "incorrect", "error", "fail",
+                "wrong", "denied", "unauthorized",
+                "아이디", "비밀번호가 틀", "로그인 실패", "오류",
+            ])
+            if is_success:
+                successes.append({
+                    "url": login_url,
+                    "username": user,
+                    "password": pwd,
+                    "status": r.status,
+                    "evidence": r.body[:200],
+                })
+            # 속도 제한 — WAF 트리거 방지
+            time.sleep(0.5 if i < 5 else 1.0)
+        return successes

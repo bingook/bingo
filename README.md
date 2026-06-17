@@ -5063,6 +5063,92 @@ Any value **above 4 096** is treated as a deliberate override and is never auto-
 
 ---
 
+## Skill-Driven Dynamic Path Discovery (v2.3.17)
+
+### The Problem
+
+Previously Bingo's recon phase only probed **13 hard-coded paths** for admin panels:
+
+```
+/admin/, /admin/login/, /wp-admin/, /wp-login.php, /administrator/, ...
+```
+
+The 540-skill library contained rich path knowledge (e.g. `/admin/dashboard`,
+`/api/coordinates`), but it was **only consulted during the final AI analysis step** —
+long after active scanning had finished. The AI could say "you should scan
+`/admin/dashboard`" but Bingo never actually scanned it.
+
+### The Fix (v2.3.17)
+
+Three new components wire the skill library directly into Phase 01:
+
+| File | Role |
+|------|------|
+| `bingo/tools/path_dict.py` | Central path dictionary: 80+ admin paths, 60+ API paths, 35+ weak credentials, tech-stack overrides |
+| `bingo/tools/http_probe.py` | New methods: `discover_api_endpoints()`, `brute_admin_login()`, `check_admin_panels(extra_paths=…)` |
+| `bingo/redteam/phases/01_recon.py` | Loads path_dict **before scanning**, feeds tech-specific paths into every probe call |
+
+### New Scan Pipeline
+
+```
+Phase 01 — Reconnaissance
+  [1/8] Technology fingerprinting           ← determines tech stack
+  [2/8] Path dictionary pre-load            ← skill knowledge loaded HERE
+        → 80+ admin paths (tech-specific)
+        → 60+ API paths
+  [3/8] DNS / IP resolution
+  [4/8] Subdomain enumeration (subfinder)
+  [5/8] Sensitive file discovery
+  [6/8] Admin panel scan (80+ paths)        ← was 13, now 80+
+  [7/8] API endpoint unauthenticated scan   ← NEW: /api/coordinates etc.
+  [8/8] Weak credential brute-force         ← NEW: lahyl:lahy12025 style
+```
+
+### Tech-Stack Aware Paths
+
+Bingo automatically selects extra paths based on the detected stack:
+
+| Technology | Extra Paths Added |
+|------------|-------------------|
+| WordPress | `/xmlrpc.php`, `/?author=1`, `/wp-json/wp/v2/users`, ... |
+| Gnuboard | `/adm/`, `/g5/adm/`, `/bbs/login.php`, ... |
+| Next.js | `/api/auth/session`, `/api/me`, `/api/v1/admin`, ... |
+| Vue / Nuxt | `/api/coordinates`, `/api/config`, `/_nuxt/`, ... |
+| Spring Boot | `/actuator/env`, `/actuator/heapdump`, `/v3/api-docs`, ... |
+| Laravel | `/horizon/`, `/telescope/`, `/_ignition/health-check`, ... |
+| Django | `/api-auth/login/`, `/api/v1/`, ... |
+| ASP.NET | `/elmah.axd`, `/trace.axd`, `/swagger/ui/index`, ... |
+| PHP | `/phpinfo.php`, `/config.php`, `/install.php`, ... |
+
+### API Endpoint Unauthenticated Scan
+
+All API paths from the skill library are now actively probed in Phase 01.
+Endpoints returning **HTTP 200 with JSON** are flagged as **High** severity
+(potential unauthenticated data exposure).  Endpoints returning **401** are
+logged as **Info** (exists but requires auth).
+
+```
+[7/8] API endpoint scan (60 paths)...
+  → /api/coordinates  [200] (JSON)  ← HIGH: unauthenticated access!
+  → /api/users        [401]          ← INFO: exists, auth required
+```
+
+### Weak Credential Brute-Force
+
+When a login form is discovered, Bingo automatically tests **domain-aware**
+weak credentials — including patterns like `admin:sitename2025` that are
+commonly found in real-world assessments.
+
+```
+[8/8] Weak credential brute-force (3 login forms, 35 passwords)...
+  → /admin/login  admin:admin2025   [302]  ← CRITICAL!
+```
+
+No user configuration needed — everything is automatic and controlled by the
+tech-stack fingerprint detected in Step 1.
+
+---
+
 ## License
 
 MIT © 2026 bingook

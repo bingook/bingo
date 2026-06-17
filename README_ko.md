@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.3.28-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.31-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.30 — 공식 릴리스**  
-> v2.3.30이 최신 안정 버전입니다.
+> **v2.3.31 — 공식 릴리스**  
+> v2.3.31이 최신 안정 버전입니다.
 
 </div>
 
@@ -135,6 +135,12 @@ bingo
 - CAPTCHA (kcaptcha) 자동 OCR 해결
 
 ---
+
+## v2.3.31 — urllib.parse 자동 import 주입 *(2026-06)*
+
+- **🔴 Precheck: `urllib.parse` 자동 주입** — AI가 `urllib.parse.quote/urlencode/urlparse` 등을 사용하면서 `import urllib.parse`를 누락하는 경우, `_precheck_python_code`가 실행 전 자동으로 주입. `NameError: name 'urllib' is not defined` 완전 해결 (`urllib3`를 `urllib.parse`로 혼용하는 오류 방지).
+- **🔴 Rule 21: urllib.parse vs urllib3 명시** — `import urllib3`는 표준 라이브러리 `urllib.parse`를 활성화하지 않음. 반드시 `import urllib.parse` 또는 `from urllib.parse import quote`로 별도 임포트.
+- **🟡 다국어: 1개 신규 키** — `urllib_parse_injected` (ko/zh/en).
 
 ## v2.3.30 신규 기능 — 응답 인코딩 자동 감지, 배너 버전 수정, Syntax Precheck 오탐 제거 *(2026-06)*
 

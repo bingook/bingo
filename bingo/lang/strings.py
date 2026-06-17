@@ -1671,6 +1671,11 @@ _STRINGS.update({
     "encoding_inject_notice":    {"ko": "🔤 [PRECHECK] r.text → smart_decode() 자동 교체 (인코딩 자동 감지)",
                                    "zh": "🔤 [PRECHECK] r.text → smart_decode() 已自动替换 (自动检测编码)",
                                    "en": "🔤 [PRECHECK] r.text → smart_decode() injected (auto encoding detection)"},
+
+    # ── urllib.parse 자동 주입 ──────────────────────────────────────────
+    "urllib_parse_injected":     {"ko": "🔧 [PRECHECK] import urllib.parse 자동 주입 (urllib3 와 혼용 오류 방지)",
+                                   "zh": "🔧 [PRECHECK] import urllib.parse 已自动注入 (防止与urllib3混淆)",
+                                   "en": "🔧 [PRECHECK] import urllib.parse injected (was missing, prevent NameError)"},
 })
 
 

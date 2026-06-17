@@ -2913,6 +2913,26 @@ class BingoTerminal:
 
             fixed = code
 
+            # ── 0-Y. urllib.parse 미import 자동 주입 ──────────────────────────
+            # AI가 urllib3만 import하고 urllib.parse.quote/urlencode/urlparse 등 사용 → NameError
+            _urllib_parse_uses = bool(_pre_re.search(
+                r'\burllib\.parse\.(quote|urlencode|urlparse|urlunparse|urljoin|parse_qs|parse_qsl)\b',
+                fixed
+            ))
+            _urllib_parse_imported = bool(_pre_re.search(
+                r'^(?:import urllib\.parse|from urllib(?:\.parse)?\s+import)',
+                fixed, _pre_re.MULTILINE
+            ))
+            if _urllib_parse_uses and not _urllib_parse_imported:
+                # 첫 번째 import 줄 앞에 삽입
+                _first_import_match = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
+                if _first_import_match:
+                    _fip = _first_import_match.start()
+                    fixed = fixed[:_fip] + "import urllib.parse\n" + fixed[_fip:]
+                else:
+                    fixed = "import urllib.parse\n" + fixed
+                fixed = "__URLLIB_INJECTED__\n" + fixed
+
             # ── 0-Z. 인코딩 자동 감지 헬퍼 주입 ──────────────────────────────
             # r.text / resp.text 사용 시 EUC-KR 등 구형 인코딩 깨짐 방지
             # requests.get/post 가 있고 smart_decode 가 없는 경우 헬퍼 + 교체 주입
@@ -3133,6 +3153,11 @@ class BingoTerminal:
 
             # 구문 사전 검증 + 무한루프 패턴 차단
             _checked = _precheck_python_code(code)
+            # urllib.parse 자동 주입 감지
+            if isinstance(_checked, str) and _checked.startswith("__URLLIB_INJECTED__\n"):
+                _checked = _checked[len("__URLLIB_INJECTED__\n"):]
+                _ul_msg = t("urllib_parse_injected", "🔧 [PRECHECK] import urllib.parse injected (was missing)")
+                self.console.print(f"[{THEME['dim']}]{_ul_msg}[/]")
             # 인코딩 자동 주입 감지
             if isinstance(_checked, str) and _checked.startswith("__ENCODE_INJECTED__\n"):
                 _checked = _checked[len("__ENCODE_INJECTED__\n"):]

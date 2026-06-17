@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.28-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.31-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.30 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.30 is the latest stable, production-ready version.
+> **v2.3.31 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.31 is the latest stable, production-ready version.
 
 </div>
 
@@ -3069,6 +3069,12 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.3.31 — urllib.parse Auto-Import Injection *(2026-06)*
+
+- **🔴 Precheck: `urllib.parse` auto-inject** — `_precheck_python_code` now detects usage of `urllib.parse.quote/urlencode/urlparse` etc. without a corresponding `import urllib.parse`. If missing, it automatically injects `import urllib.parse` before execution. Fixes `NameError: name 'urllib' is not defined` caused by AI confusing `urllib3` (third-party) with `urllib.parse` (stdlib).
+- **🔴 Rule 21: urllib.parse vs urllib3** — AI system prompt now explicitly documents that `import urllib3` does NOT make `urllib.parse` available. Always import explicitly: `import urllib.parse` or `from urllib.parse import quote`.
+- **🟡 i18n: 1 new multilingual key** — `urllib_parse_injected` (ko/zh/en).
 
 ### v2.3.30 — Response Encoding Auto-Detection, Banner Version Fix, Syntax Precheck Fix *(2026-06)*
 

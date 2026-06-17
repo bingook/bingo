@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.3.28-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.31-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.30 — 正式发布版**  
-> v2.3.30 是最新稳定版本。
+> **v2.3.31 — 正式发布版**  
+> v2.3.31 是最新稳定版本。
 
 </div>
 
@@ -135,6 +135,12 @@ bingo
 - 云锁 → HTTP 参数污染
 
 ---
+
+## v2.3.31 —— urllib.parse自动import注入 *(2026-06)*
+
+- **🔴 Precheck: `urllib.parse`自动注入** — AI代码使用`urllib.parse.quote/urlencode/urlparse`等但缺少`import urllib.parse`时，`_precheck_python_code`在执行前自动注入。彻底解决`NameError: name 'urllib' is not defined`（防止将`urllib3`与`urllib.parse`混淆）。
+- **🔴 规则21: urllib.parse vs urllib3** — `import urllib3`不激活标准库`urllib.parse`。必须显式`import urllib.parse`或`from urllib.parse import quote`。
+- **🟡 多语言: 1个新增键** — `urllib_parse_injected`（ko/zh/en）。
 
 ## v2.3.30 新功能 —— 响应编码自动检测、Banner版本修复、Syntax Precheck误报修复 *(2026-06)*
 

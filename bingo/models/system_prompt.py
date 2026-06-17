@@ -612,7 +612,22 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   causing all requests to fail with SSLError or ConnectionError immediately.
   MANDATORY: Before using any URL in requests, verify it starts with exactly one https:// or http://
 
-  ── 21. Response Encoding — Auto-Detect, NEVER Assume UTF-8 ──
+  ── 21. urllib.parse — ALWAYS Import Explicitly, NEVER Confuse with urllib3 ──
+  `urllib3` and `urllib.parse` are DIFFERENT packages. NEVER use `urllib.parse.quote()`,
+  `urllib.parse.urlencode()`, `urllib.parse.urlparse()` etc. without `import urllib.parse`.
+  BAD:
+    import urllib3
+    url = base + urllib.parse.quote(path)   # → NameError: name 'urllib' is not defined
+  GOOD:
+    import urllib.parse
+    url = base + urllib.parse.quote(path, safe='')
+  ALSO CORRECT:
+    from urllib.parse import quote, urlencode, urlparse
+    url = base + quote(path, safe='')
+  REASON: `import urllib3` only imports the third-party urllib3 package. The standard library's
+  `urllib.parse` module must be imported separately.
+
+  ── 22. Response Encoding — Auto-Detect, NEVER Assume UTF-8 ──
   Korean/Japanese/Chinese sites often use EUC-KR, EUC-JP, GB2312, Shift-JIS.
   NEVER use r.text directly on unknown targets — it may silently garble non-UTF-8 content.
   ALWAYS use this pattern for response decoding:

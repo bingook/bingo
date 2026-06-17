@@ -50,7 +50,7 @@ BANNER = r"""
   ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║
   ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝
   ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ [/#00ff41]
-[#00d4aa]  AI Terminal  ·  v2.3.4  ·  Multi-Model[/#00d4aa]
+[#00d4aa]  AI Terminal  ·  v{ver}  ·  Multi-Model[/#00d4aa]
 """
 
 PT_STYLE = PTStyle.from_dict({
@@ -327,7 +327,8 @@ class BingoTerminal:
 
     # ── 배너 / 상태 표시 ──────────────────────────────────────────
     def _print_banner(self) -> None:
-        self.console.print(BANNER)
+        from bingo import __version__ as _bingo_ver
+        self.console.print(BANNER.replace("{ver}", _bingo_ver))
         model_cfg = self.config.get_active_model_config()
         status = f"[{THEME['secondary']}]{model_cfg.display_name()}[/]" if model_cfg else f"[{THEME['warn']}]no model[/]"
         lang_label = SUPPORTED_LANGS.get(self.config.lang, self.config.lang)

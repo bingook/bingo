@@ -5149,6 +5149,75 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
+## Username Harvesting + Smart Brute-Force (v2.3.18)
+
+### The Problem
+
+Even after v2.3.17's 80-path scan, real-world credentials like `lahyl:lahy12025`
+were missed because:
+
+1. The username `lahyl` is **not** in any standard list (`admin`, `root`, etc.)
+2. The password follows the pattern **first-4-chars-of-username + year**:  
+   `lahyl` → `lahy` + `2025` = `lahy2025`
+
+Bingo had no way to discover `lahyl` or generate `lahy2025` automatically.
+
+### The Fix (v2.3.18)
+
+Three targeted improvements:
+
+| Component | What Changed |
+|-----------|--------------|
+| `http_probe.harvest_usernames()` | **NEW** — scrapes site for real usernames via email addresses, WordPress `/author/` slugs, `<meta author>`, Contact/About/Team pages |
+| `path_dict.get_weak_credentials()` | Rewritten — cross-joins **all usernames** (standard + harvested) × **common password templates** |
+| `01_recon.py` Step 8 | Calls `harvest_usernames()` first, then feeds results into credential generation; `max_attempts` raised to 50 |
+
+### Password Template Engine
+
+Every username is combined with every template. Templates support three placeholders:
+
+| Placeholder | Expands To |
+|-------------|-----------|
+| `__USER__` | full username (e.g. `lahyl`) |
+| `__USERSHORT__` | first 4 chars of username (e.g. `lahy`) |
+| `__DOMAIN__` | domain name extracted from target URL (e.g. `example`) |
+
+**Example — detecting `lahyl:lahy2025`:**
+
+```
+username  = "lahyl"         (harvested from Contact page email)
+template  = "__USERSHORT__2025"
+expanded  = "lahy" + "2025" = "lahy2025"   ← matches!
+```
+
+### Username Harvesting Sources
+
+```
+harvest_usernames()
+  → Email addresses on homepage / Contact / About / Team pages
+      → local-part before @ becomes candidate username
+  → WordPress /?author=1…5 redirects → /author/<slug>/
+  → <meta name="author" content="…"> tags
+  → login form placeholder/value hints
+```
+
+### API 502 / 503 / 504 Handling
+
+When an API path returns a proxy error, Bingo now classifies it as **Medium**
+(backend service likely exists) instead of silently ignoring it:
+
+```
+[7/8] API endpoint scan (60 paths)...
+  → /api/coordinates  [502]  ← MEDIUM: proxy error — backend service may exist
+  → /api/users        [200]  ← HIGH:   unauthenticated JSON access!
+  → /api/admin        [401]  ← INFO:   exists but requires auth
+```
+
+This means you no longer miss endpoints that are temporarily down or behind
+an overloaded upstream service.
+
+---
+
 ## License
 
 MIT © 2026 bingook

@@ -231,7 +231,13 @@ class HttpProbe:
         return found
 
     def discover_api_endpoints(self, paths: list[str] | None = None) -> list[dict]:
-        """API 엔드포인트 미인증 접근 탐색"""
+        """API 엔드포인트 미인증 접근 탐색
+
+        status 기준:
+          200/201 → 미인증 접근 성공 (High)
+          401/403 → 존재하지만 인증 필요 (Info)
+          502/503/504 → 리버스 프록시 뒤에 서비스 존재 가능성 (Medium)
+        """
         from .path_dict import get_api_paths
         target_paths = paths if paths else get_api_paths()
         found = []
@@ -249,20 +255,98 @@ class HttpProbe:
                     "is_json": is_json,
                     "preview": r.body[:200],
                     "url": self.base_url + path,
+                    "note": "Unauthenticated access",
                 })
-            elif r.status == 401:
-                # 401도 기록 — 존재하지만 인증 필요
+            elif r.status in (401, 403):
+                # 존재하지만 인증 필요
                 found.append({
                     "path": path,
-                    "status": 401,
+                    "status": r.status,
                     "size": 0,
                     "is_json": False,
                     "preview": "",
                     "url": self.base_url + path,
                     "note": "Exists but requires auth",
                 })
+            elif r.status in (502, 503, 504):
+                # Bad Gateway / Service Unavailable — 리버스 프록시 뒤에 서비스 존재
+                # 서비스가 일시 다운이거나 백엔드가 해당 경로를 갖고 있음
+                found.append({
+                    "path": path,
+                    "status": r.status,
+                    "size": 0,
+                    "is_json": False,
+                    "preview": "",
+                    "url": self.base_url + path,
+                    "note": f"Proxy error {r.status} — backend service may exist",
+                })
             time.sleep(0.1)
         return found
+
+    def harvest_usernames(self) -> list[str]:
+        """사이트에서 잠재적 사용자명 자동 수집
+
+        수집 방법:
+          1. 페이지 내 이메일 주소 (@앞부분 추출)
+          2. WordPress /?author=1~5 리다이렉트에서 author slug 추출
+          3. meta author 태그
+          4. Contact/About/Team 페이지 이메일
+          5. HTML input placeholder/value 힌트
+        """
+        usernames: set[str] = set()
+
+        # 1. 메인 페이지 이메일
+        r_home = self.get("/", timeout=10)
+        if r_home.status == 200:
+            emails = re.findall(r'[\w.+\-]+@[\w.\-]+\.\w{2,6}', r_home.body)
+            for email in emails[:15]:
+                local = email.split("@")[0].lower()
+                # 필터: 너무 짧거나 no-reply 제외
+                if len(local) >= 3 and "noreply" not in local and "no-reply" not in local:
+                    usernames.add(local)
+
+            # meta author
+            m = re.search(r'<meta[^>]+name=["\']author["\'][^>]+content=["\']([^"\']+)["\']',
+                          r_home.body, re.I)
+            if m:
+                author = m.group(1).strip().lower().replace(" ", "")
+                if author:
+                    usernames.add(author)
+
+        # 2. WordPress author 스캔 (?author=N → /author/username/ 리다이렉트)
+        for i in range(1, 6):
+            r = self.get(f"/?author={i}", timeout=8)
+            loc = r.headers.get("Location", "")
+            if r.status in (301, 302) and "/author/" in loc:
+                m2 = re.search(r'/author/([^/?#]+)', loc)
+                if m2:
+                    usernames.add(m2.group(1).lower())
+
+        # 3. Contact / About / Team 페이지
+        for path in ["/contact", "/about", "/about-us", "/team", "/staff",
+                     "/contact-us", "/company"]:
+            r = self.get(path, timeout=8)
+            if r.status == 200:
+                emails2 = re.findall(r'[\w.+\-]+@[\w.\-]+\.\w{2,6}', r.body)
+                for email in emails2[:5]:
+                    local = email.split("@")[0].lower()
+                    if len(local) >= 3:
+                        usernames.add(local)
+
+        # 4. login form placeholder 힌트 (예: placeholder="아이디" value="admin")
+        login_paths = ["/login", "/login/", "/admin/login", "/member/login.php"]
+        for lp in login_paths:
+            r = self.get(lp, timeout=8)
+            if r.status == 200:
+                placeholders = re.findall(
+                    r'<input[^>]+type=["\']text["\'][^>]+value=["\']([^"\']{3,20})["\']',
+                    r.body, re.I
+                )
+                for ph in placeholders[:3]:
+                    if ph.lower() not in ("username", "email", "id", "아이디"):
+                        usernames.add(ph.lower())
+
+        return list(usernames)
 
     def brute_admin_login(
         self,

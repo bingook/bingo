@@ -171,56 +171,49 @@ API_PATHS: list[str] = [
     "/.well-known/change-password",
 ]
 
-# ── 약한 비밀번호 브루트포스 목록 ──────────────────────────────────────
-# 이용자 제보: lahyl:lahy12025 같은 약한 비밀번호 탐지 못함 → 추가
-WEAK_CREDENTIALS: list[tuple[str, str]] = [
-    # admin/admin 계열
-    ("admin", "admin"),
-    ("admin", "admin123"),
-    ("admin", "admin1234"),
-    ("admin", "admin12345"),
-    ("admin", "Admin123"),
-    ("admin", "Admin@123"),
-    ("admin", "password"),
-    ("admin", "password123"),
-    ("admin", "12345"),
-    ("admin", "123456"),
-    ("admin", "1234567890"),
-    ("admin", "qwerty"),
-    ("admin", "letmein"),
-    ("admin", "welcome"),
-    ("admin", "changeme"),
-    # root
-    ("root", "root"),
-    ("root", "toor"),
-    ("root", "123456"),
-    ("root", "password"),
-    ("root", "root123"),
-    # 기본 계정
-    ("administrator", "administrator"),
-    ("administrator", "admin123"),
-    ("administrator", "Admin@123"),
-    ("test", "test"),
-    ("test", "test123"),
-    ("test", "testing"),
-    ("guest", "guest"),
-    ("user", "user"),
-    ("user", "user123"),
-    ("manager", "manager"),
-    ("manager", "manager123"),
-    # 한국 자주 사용 패턴
-    ("admin", "admin2024"),
-    ("admin", "admin2025"),
-    ("admin", "admin2026"),
-    ("admin", "korea123"),
-    ("admin", "admin!@#"),
-    # 연도 패턴
-    ("admin", "__DOMAIN__123"),
-    ("admin", "__DOMAIN__2024"),
-    ("admin", "__DOMAIN__2025"),
-    ("admin", "__DOMAIN__2026"),
-    ("admin", "__DOMAIN__@123"),
-    ("admin", "__DOMAIN__!@#"),
+# ── 공통 비밀번호 패턴 (아이디 무관) ─────────────────────────────────
+# 이용자 제보: lahyl:lahy12025 패턴 → 아이디 첫4자+연도 패턴 반영
+COMMON_PASSWORDS: list[str] = [
+    "admin", "admin123", "admin1234", "admin12345",
+    "Admin123", "Admin@123", "Admin1234",
+    "password", "password123", "Password1",
+    "12345", "123456", "1234567890", "123456789",
+    "qwerty", "letmein", "welcome", "changeme",
+    "111111", "000000", "654321",
+    "iloveyou", "sunshine", "monkey",
+    "admin2024", "admin2025", "admin2026",
+    "test123", "test1234", "Test123",
+    "korea123", "korea2025",
+    "__USER__123",        # 아이디+123
+    "__USER__1234",
+    "__USER__12345",
+    "__USER__2024",
+    "__USER__2025",
+    "__USER__2026",
+    "__USER____USER__",   # 아이디+아이디
+    "__USER__!@#",
+    "__DOMAIN__123",      # 사이트명+123
+    "__DOMAIN__2024",
+    "__DOMAIN__2025",
+    "__DOMAIN__2026",
+    "__DOMAIN__@123",
+    "__DOMAIN__!@#",
+    # lahyl:lahy12025 계열 — 아이디 앞 4자+연도 패턴
+    "__USERSHORT__2024",
+    "__USERSHORT__2025",
+    "__USERSHORT__2026",
+    "__USERSHORT__123",
+    "__USERSHORT__1234",
+    "__USERSHORT__12345",
+]
+
+# ── 기본 아이디 목록 ──────────────────────────────────────────────────
+COMMON_USERNAMES: list[str] = [
+    "admin", "root", "administrator", "test", "guest",
+    "user", "manager", "webmaster", "master", "operator",
+    "info", "support", "system", "server", "web", "mail",
+    "supervisor", "superuser", "su", "devops",
+    "korea", "kr", "service", "cs",
 ]
 
 
@@ -265,24 +258,53 @@ def get_api_paths(tech_stack: list[str] | None = None) -> list[str]:
     return paths
 
 
-def get_weak_credentials(domain: str = "") -> list[tuple[str, str]]:
-    """도메인 기반 약한 비밀번호 목록 (사이트명 조합 포함)"""
-    # 도메인에서 이름 추출 (예: example.co.kr → example)
+def get_weak_credentials(
+    domain: str = "",
+    extra_usernames: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    """동적 아이디+비밀번호 조합 생성
+
+    전략:
+    1. 표준 아이디 목록 (admin, root, test …)
+    2. 사이트에서 수집한 아이디 (extra_usernames)
+    3. 각 아이디 × 공통 비밀번호 패턴 크로스 조인
+       - __USER__     → 실제 아이디로 치환
+       - __USERSHORT__ → 아이디 앞 4글자 (lahyl → lahy)
+       - __DOMAIN__   → 도메인명 (example.co.kr → example)
+
+    이용자 제보 lahyl:lahy12025 패턴 커버:
+      username = "lahyl"
+      password = __USERSHORT__2025 → "lahy" + "2025" = "lahy2025"  ✓
+    """
     parts = domain.replace("www.", "").split(".")
     domain_name = parts[0] if parts else ""
+
+    # 아이디 풀 구성: 기본 + 수집
+    usernames = list(COMMON_USERNAMES)
+    if extra_usernames:
+        for u in extra_usernames:
+            u = u.strip().lower()
+            if u and u not in usernames:
+                usernames.append(u)
+    # 도메인명 자체도 아이디로 시도
+    if domain_name and domain_name not in usernames:
+        usernames.append(domain_name)
 
     creds: list[tuple[str, str]] = []
     seen: set[tuple[str, str]] = set()
 
-    for user, pwd in WEAK_CREDENTIALS:
-        if "__DOMAIN__" in pwd:
-            if domain_name:
-                actual_pwd = pwd.replace("__DOMAIN__", domain_name)
-                pair = (user, actual_pwd)
-                if pair not in seen:
-                    seen.add(pair)
-                    creds.append(pair)
-        else:
+    for user in usernames:
+        user_short = user[:4]  # lahyl → lahy (4글자 슬라이싱)
+        for pwd_tmpl in COMMON_PASSWORDS:
+            pwd = (
+                pwd_tmpl
+                .replace("__USERSHORT__", user_short)
+                .replace("__USER__", user)
+                .replace("__DOMAIN__", domain_name)
+            )
+            # 도메인/유저 플레이스홀더가 비어 있으면 건너뜀
+            if "__" in pwd:
+                continue
             pair = (user, pwd)
             if pair not in seen:
                 seen.add(pair)

@@ -5013,6 +5013,56 @@ Target> https://your-nextjs-app.vercel.app
 
 ---
 
+## Dynamic `max_tokens` per Model (v2.3.16)
+
+Bingo now **automatically adjusts the AI output token limit** based on the selected LLM provider.
+Previously all models were capped at 4 096 tokens, causing Python scripts to be silently truncated mid-execution.  
+From v2.3.16 onwards each provider has its own optimal ceiling:
+
+| Provider | `max_tokens` | Reason |
+|----------|-------------|--------|
+| DeepSeek (`deepseek-v4-pro`) | **8 192** | V4 Pro supports up to 8 K output; prevents code truncation |
+| Anthropic Claude | **16 000** | Claude 200K context window; safe output ceiling |
+| OpenAI GPT (GPT-4o / GPT-5) | **16 384** | GPT-4o / GPT-5 series native 16 K output limit |
+| Zhipu GLM | **8 192** | GLM-5 series 8 K output cap |
+| Alibaba Qwen | **8 192** | Qwen3 series 8 K output cap |
+| Ollama (local) | **8 192** | Conservative safe default for local models |
+| Custom / unknown | **8 192** | Fallback safe value |
+
+### How It Works
+
+The logic lives entirely in `ModelRegistry.build()` — **no user action required**:
+
+```python
+# bingo/models/registry.py  (simplified)
+if config.max_tokens <= 4096:          # user hasn't overridden the default
+    config.max_tokens = info.get("max_tokens", 8192)   # apply provider optimum
+```
+
+- If you have **never touched** the token setting → Bingo upgrades it silently.  
+- If you manually set a higher value (e.g. `32768`) → Bingo **respects your setting**.  
+- Old configs (`max_tokens = 4096`) are automatically upgraded on the next run.
+
+### Why It Matters
+
+A 4 096-token ceiling means a single Python script block of ~250 lines fills the entire budget,
+forcing the AI to stop mid-code with `# 脚本被截断` (script truncated) warnings.  
+With 8 K – 16 K tokens the AI can generate complete, multi-function exploitation scripts without interruption.
+
+### Manual Override
+
+You can still pin a custom limit per session in `~/.config/bingo/config.json`:
+
+```json
+{
+  "max_tokens": 32768
+}
+```
+
+Any value **above 4 096** is treated as a deliberate override and is never auto-changed.
+
+---
+
 ## License
 
 MIT © 2026 bingook

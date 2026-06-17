@@ -7,6 +7,7 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "label": "DeepSeek  ★ 추천",
         "base_url": "https://api.deepseek.com/v1",
         "default_model": "deepseek-v4-pro",
+        "max_tokens": 8192,        # DeepSeek V4 최대 출력 8K
         "models": [
             # ── V4 세대 (현재) ──
             "deepseek-v4-pro",     # V4 Pro — 1.6T params, 49B active, 1M ctx (최신·권장)
@@ -23,6 +24,7 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "label": "Anthropic Claude",
         "base_url": "https://api.anthropic.com/v1",
         "default_model": "claude-fable-5",
+        "max_tokens": 16000,       # Claude 최대 출력 16K (안전 기본값)
         "models": [
             # ── Fable 세대 (2026-06, 최상위) ──
             "claude-fable-5",          # Fable 5 — 최상위 Mythos 클래스 (2026-06)
@@ -44,6 +46,7 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "label": "OpenAI GPT",
         "base_url": "https://api.openai.com/v1",
         "default_model": "gpt-5.5",
+        "max_tokens": 16384,       # GPT-4o/5 계열 최대 출력 16K
         "models": [
             # ── GPT-5 세대 (최신) ──
             "gpt-5.5",             # GPT-5.5 — 최신 플래그십 (2026)
@@ -80,6 +83,7 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "label": "Zhipu GLM (Z.ai)",
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "default_model": "glm-5.1",
+        "max_tokens": 8192,        # GLM 최대 출력 8K
         "models": [
             # ── GLM-5 세대 (최신) ──
             "glm-5.2",             # GLM-5.2 — 1M ctx (2026, 최신)
@@ -111,6 +115,7 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "label": "Alibaba Qwen (DashScope)",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "default_model": "qwen3.7-max",
+        "max_tokens": 8192,        # Qwen 최대 출력 8K
         "models": [
             # ── Qwen3.7 세대 (최신) ──
             "qwen3.7-max",         # Qwen3.7-Max — 최신 플래그십 (2026-05)
@@ -142,6 +147,7 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "label": "Ollama (로컬)",
         "base_url": "http://localhost:11434/v1",
         "default_model": "llama3",
+        "max_tokens": 8192,        # 로컬 모델 안전 기본값
         "models": [],  # 동적 조회
         "cls": "openai_compat",
         "note": "로컬 실행 — 모델 목록은 ollama list 로 확인",
@@ -150,6 +156,7 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "label": "커스텀 / 직접 입력",
         "base_url": "",
         "default_model": "",
+        "max_tokens": 8192,        # 커스텀 안전 기본값
         "models": [],
         "cls": "openai_compat",
         "note": "base_url 과 model 을 직접 입력",
@@ -164,6 +171,12 @@ class ModelRegistry:
     def build(config: ModelConfig) -> BaseModel:
         provider = config.provider
         info = BUILTIN_PROVIDERS.get(provider, BUILTIN_PROVIDERS["custom"])
+
+        # ── max_tokens 자동 설정 ──────────────────────────────────────────
+        # 사용자가 별도 지정(4096 초과)하지 않은 경우, 모델별 최적값 자동 적용
+        if config.max_tokens <= 4096:
+            config.max_tokens = info.get("max_tokens", 8192)
+
         if info["cls"] == "claude":
             return ClaudeModel(config)
         return BaseModel(config)

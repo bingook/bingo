@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.26-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.28-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.26 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.26 is the latest stable, production-ready version.
+> **v2.3.28 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.28 is the latest stable, production-ready version.
 
 </div>
 
@@ -3070,6 +3070,16 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
+### v2.3.28 — WAF ReadTimeout Guard, URL Concat Bug Fix, f-string Auto-Repair *(2026-06)*
+
+Three defensive layers to stop AI-generated code bugs that wasted tokens across every run:
+
+- **🔴 Rule 19: ReadTimeout = WAF silent drop** — When a `requests` call raises `ReadTimeout` specifically on SQL injection payloads (AND/OR/WAITFOR), the AI now correctly identifies this as a WAF dropping the request silently — NOT a time-based SQLi confirmation. Mandatory behavior: try once with encoding, if still timeout → mark as WAF-blocked, pivot immediately. Prevents infinite retry loops.
+- **🔴 Rule 20: URL construction guard** — AI is now explicitly prohibited from concatenating `base_url + "https://..."`. The pattern `base_url + "https://www.example.com/path"` creates malformed hosts like `www.example.comhttps`. Mandatory: use full URLs directly or `urljoin()`. The precheck system auto-fixes this pattern at runtime.
+- **🔴 Precheck: URL concat auto-fix** — `_precheck_python_code` now detects and auto-corrects `*url* + "https://..."` patterns before execution, replacing them with the full URL only. Prevents `SSLEOFError` and `MaxRetryError` from malformed hosts.
+- **🟠 Precheck: f-string auto-repair** — Improved `SyntaxError` handling for Python 3.12 f-string features (same-quote dict subscripts, etc.). Known-safe Python 3.12 patterns now suppress the noisy `⚠ SyntaxError detected` warning instead of showing a false alarm on every loop.
+- **🟡 i18n: 2 new multilingual keys** — `waf_timeout_detected`, `url_concat_fixed` (ko/zh/en).
+
 ### v2.3.26 — Hard Watchdog Timeout, pymssql VPN Guard, Oracle Validation *(2026-06)*
 
 Critical runtime enforcement and SQL injection accuracy improvements:
@@ -5174,9 +5184,9 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
-## Runtime Infinite Loop Killer (v2.3.26)
+## Runtime Infinite Loop Killer (**v2.3.28)
 
-v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.26 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
+v2.3.23 fixed the AI prompt rules — but the loop was already running. **v2.3.28 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
 
 ### New Runtime Protections (terminal.py)
 
@@ -5190,7 +5200,7 @@ v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.26 
 
 **Before (v2.3.22)**: Script runs 28 minutes, prints `ARREO_SMS` 383 times, terminal watches helplessly.
 
-**After (v2.3.26)**:
+**After (**v2.3.28)**:
 ```
 [U] ulsan$
 [U] ulsan$

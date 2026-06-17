@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.3.26-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.28-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.26 — 正式发布版**  
-> v2.3.26 是最新稳定版本。
+> **v2.3.28 — 正式发布版**  
+> v2.3.28 是最新稳定版本。
 
 </div>
 
@@ -135,6 +135,16 @@ bingo
 - 云锁 → HTTP 参数污染
 
 ---
+
+## v2.3.28 新功能 —— WAF ReadTimeout防护、URL拼接修复、f-string自动修复 *(2026-06)*
+
+三层防护终止AI生成代码的重复错误：
+
+- **🔴 规则19: ReadTimeout = WAF静默丢弃** — 当SQL注入载荷（AND/OR/WAITFOR）触发`ReadTimeout`时，AI现在能正确识别这是WAF静默丢弃请求，而非time-based SQLi成功。强制行为：尝试编码后重试1次 → 仍超时 → 标记为WAF阻断，立即切换。防止无限重试循环。
+- **🔴 规则20: URL构建防护** — AI现在明确禁止`base_url + "https://..."`模式。该模式会产生`www.example.comhttps`等畸形主机名。强制要求：直接使用完整URL或使用`urljoin()`。precheck系统在运行时自动修复此问题。
+- **🔴 Precheck: URL拼接自动修复** — `_precheck_python_code`现在在执行前自动检测并修正`*url* + "https://..."`模式，防止`SSLEOFError`和`MaxRetryError`。
+- **🟠 Precheck: f-string自动修复** — 改进了Python 3.12 f-string功能（同类型引号dict下标等）的`SyntaxError`处理，抑制每次循环都出现的误报警告。
+- **🟡 多语言: 2个新增键** — `waf_timeout_detected`、`url_concat_fixed`（ko/zh/en）。
 
 ## v2.3.26 新功能 —— 硬看门狗超时、pymssql VPN防护、Oracle验证 *(2026-06)*
 

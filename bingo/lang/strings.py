@@ -1621,6 +1621,24 @@ _STRINGS.update({
                                   "zh": "⏭️  无登录表单 ({size}B) — 跳过: {url}",
                                   "en": "⏭️  No login form ({size}B) — skipping: {url}"},
 
+    # ── 무한루프 차단 피드백 ────────────────────────────────────────────────
+    "loop_block_feedback_title": {"ko": "⛔ 코드 블록 거부됨 — 무한루프 패턴 감지",
+                                   "zh": "⛔ 代码块已拒绝 — 检测到无限循环模式",
+                                   "en": "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED"},
+
+    "loop_block_mandatory_rewrite": {"ko": "필수 재작성 — 커서 페이지네이션 패턴 사용:",
+                                      "zh": "必须重写 — 使用游标分页模式:",
+                                      "en": "MANDATORY REWRITE — Use cursor pagination:"},
+
+    # ── 스크립트 강제 종료 피드백 ────────────────────────────────────────────
+    "script_killed_mandatory_fix": {"ko": "필수 수정 — 열거 루프에 중복 제거 로직이 없음",
+                                     "zh": "必须修复 — 枚举循环没有去重逻辑",
+                                     "en": "MANDATORY FIX — Your enumeration loop has NO deduplication."},
+
+    "script_killed_cursor_must":   {"ko": "커서 페이지네이션 패턴으로 반드시 재작성하십시오:",
+                                     "zh": "必须用游标分页模式重写:",
+                                     "en": "You MUST rewrite with cursor pagination pattern:"},
+
     # ── Rule 17: 기법 소진 후 피벗 알림 ────────────────────────────────────
     "technique_exhausted":      {"ko": "🔄  [{param}] {technique} 3회 연속 실패 → 기법 소진, 다음으로 전환",
                                   "zh": "🔄  [{param}] {technique} 连续失败3次 → 技术耗尽, 切换下一个",
@@ -1630,6 +1648,16 @@ _STRINGS.update({
     "requests_timeout_injected": {"ko": "⚠️  코드에 timeout=30 자동 주입됨 (서버 블로킹 방지)",
                                    "zh": "⚠️  已自动注入 timeout=30 (防止服务器阻塞)",
                                    "en": "⚠️  Auto-injected timeout=30 into requests calls (prevents server hang)"},
+
+    # ── Rule 19: WAF ReadTimeout 피벗 알림 ──────────────────────────────
+    "waf_timeout_detected":      {"ko": "🛡️  [{param}] ReadTimeout = WAF silent drop — 동일 페이로드 재시도 금지, 다음으로 전환",
+                                   "zh": "🛡️  [{param}] ReadTimeout = WAF静默丢弃 — 禁止重试相同载荷, 切换下一个",
+                                   "en": "🛡️  [{param}] ReadTimeout = WAF silent drop — do NOT retry same payload, pivoting"},
+
+    # ── Rule 20: URL 연소 버그 자동 수정 알림 ───────────────────────────
+    "url_concat_fixed":          {"ko": "🔧  URL 연소 버그 자동 수정: base_url + 'https://...' → 완전한 URL만 사용",
+                                   "zh": "🔧  已修复URL拼接错误: base_url + 'https://...' → 仅使用完整URL",
+                                   "en": "🔧  URL concat bug auto-fixed: base_url + 'https://...' → using full URL only"},
 })
 
 

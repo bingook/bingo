@@ -2924,9 +2924,52 @@ class BingoTerminal:
                         fixed, count=1
                     )
 
-            # ── 4. f-string 내 백슬래시 탐지 및 수정 ────────────────────────
-            if _pre_re.search(r'f"[^"]*\\"[^"]*"', fixed) or _pre_re.search(r"f'[^']*\\'[^']*'", fixed):
-                pass  # 복잡해서 경고만
+            # ── 4. URL 연소 버그 감지 및 수정 ────────────────────────────────
+            # 패턴: some_var + "https://..." → 완전한 URL을 잘못 이어붙임
+            # 예: base_url + "https://www.kar.or.kr/login.asp"
+            # → host='www.kar.or.krhttps' 같은 버그 발생
+            def _fix_url_concat(m: "_pre_re.Match") -> str:
+                """url_var + "https://..." → "https://..." (전체 URL만 사용)"""
+                return m.group(2)  # 완전한 URL 부분만 반환
+
+            # url/base/host/domain 변수에 https:// 가 붙는 경우 수정
+            fixed = _pre_re.sub(
+                r'\b(\w*(?:url|base|host|domain|site|target)\w*)\s*\+\s*'
+                r'(f?["\']https?://[^"\']{4,}["\'])',
+                _fix_url_concat,
+                fixed,
+                flags=_pre_re.IGNORECASE
+            )
+            # 반대 방향: "https://..." + url_var → "https://..."
+            fixed = _pre_re.sub(
+                r'(f?["\']https?://[^"\']{4,}["\'])\s*\+\s*'
+                r'\b(\w*(?:url|base|host|domain|site|target)\w*)\b',
+                lambda m2: m2.group(1),
+                fixed,
+                flags=_pre_re.IGNORECASE
+            )
+
+            # ── 4-B. f-string dict subscript 자동 수정 ───────────────────────
+            # Python 3.10/3.11: f"...{d['key']}..." → SyntaxError
+            # 수정: 같은 따옴표 충돌을 다른 따옴표로 교체
+            def _fix_fstring_subscript(m: "_pre_re.Match") -> str:
+                fstr = m.group(0)
+                # f"..." 안의 { } 블록에서 ' 를 사용한 dict key 접근을 임시변수로 추출
+                # 간단 교체: 외부가 "이면 내부 '는 그대로 OK (Python3.12+)
+                # 외부가 '이면 내부 ' 충돌 → 내부를 " 로 변환
+                if fstr.startswith("f'"):
+                    # f'...{d['key']}...' → f'...{d["key"]}...'
+                    inner = fstr[2:-1]  # f' 와 ' 제거
+                    # { } 안의 ' 를 " 로 변환 (단순)
+                    result = "f'" + _pre_re.sub(
+                        r'\{([^}]*\'[^}]*)\}',
+                        lambda bm: "{" + bm.group(1).replace("'", '"') + "}",
+                        inner
+                    ) + "'"
+                    return result
+                return fstr
+
+            fixed = _pre_re.sub(r"f'[^']*\{[^}]*'[^}]*\}[^']*'", _fix_fstring_subscript, fixed)
 
             # ── 5. SyntaxError 체크 + 자동 수정 시도 ────────────────────────
             try:
@@ -2936,21 +2979,35 @@ class BingoTerminal:
             except SyntaxError as _se:
                 _line = _se.lineno or 0
                 _lines = fixed.splitlines()
+                _fixed_se = False
                 if _line > 0 and _line <= len(_lines):
                     bad_line = _lines[_line - 1]
-                    _fl_match = _pre_re.search(
-                        r'(f["\'].*?)\\(["\'])(.*?["\'])',
-                        bad_line
-                    )
+                    # 시도 1: f-string 백슬래시 제거
+                    _fl_match = _pre_re.search(r'(f["\'].*?)\\(["\'])(.*?["\'])', bad_line)
                     if _fl_match:
                         _lines[_line - 1] = bad_line.replace("\\'", "'").replace('\\"', '"')
                         fixed = "\n".join(_lines)
-                        try:
-                            compile(fixed, "<bingo_precheck2>", "exec")
-                            return fixed
-                        except SyntaxError:
-                            pass
-                return None  # type: ignore
+                        _fixed_se = True
+                    # 시도 2: dict subscript 따옴표 충돌
+                    elif _pre_re.search(r'f"[^"]*\{[^}]*"[^}]*\}', bad_line):
+                        _lines[_line - 1] = _pre_re.sub(
+                            r'(f")([^"]*\{[^}]*)"([^}]*\})',
+                            lambda bm: bm.group(1) + bm.group(2) + "'" + bm.group(3),
+                            bad_line
+                        )
+                        fixed = "\n".join(_lines)
+                        _fixed_se = True
+                if _fixed_se:
+                    try:
+                        compile(fixed, "<bingo_precheck2>", "exec")
+                        return fixed
+                    except SyntaxError:
+                        pass
+                # Python 3.12 호환 f-string 패턴은 경고만 (실행은 시도)
+                _is_py312_fstring = bool(_pre_re.search(
+                    r'f["\'][^"\']*\{[^}]*["\'][^}]*\}', fixed
+                ))
+                return "__WARN_SYNTAX__" if _is_py312_fstring else None
 
         python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
         _hallucination_msgs: list[str] = []
@@ -2976,6 +3033,12 @@ class BingoTerminal:
                 self.console.print(f"[bold red]{_loop_label}[/]")
                 _hallucination_msgs.append(f"LOOP_BLOCKED: {_block_reason}")
                 continue  # 이 코드블록 실행 건너뜀
+            elif _checked == "__WARN_SYNTAX__":
+                # Python 3.12 호환 f-string (실행은 시도, 경고만)
+                _checked = None
+                self.console.print(
+                    f"[{THEME['dim']}]ℹ [PRECHECK #{i+1}] Python 3.12 f-string detected — skipping strict compile check.[/]"
+                )
             elif _checked is None:
                 self.console.print(
                     f"[{THEME['warn']}]⚠ [SYNTAX PRECHECK #{i+1}] "
@@ -2990,10 +3053,22 @@ class BingoTerminal:
                 ) or (
                     "login_timeout=10" in _checked and "login_timeout=10" not in code
                 )
+                # URL 연소 버그 수정 여부 확인
+                _url_fixed = (
+                    import_re := __import__("re"),
+                    bool(_url_fixed_re := _url_fixed_re if (_url_fixed_re := import_re.search(
+                        r'https?://', code
+                    )) else None) and
+                    code.count("https://") != _checked.count("https://")
+                )[-1]
                 if _timeout_injected:
                     _to_msg = t("requests_timeout_injected",
                                 "⚠️  Auto-injected timeout=30 into requests calls (prevents server hang)")
                     self.console.print(f"[{THEME['warn']}]{_to_msg}[/]")
+                elif _url_fixed:
+                    _uf_msg = t("url_concat_fixed",
+                                "🔧  URL concat bug auto-fixed: base_url + 'https://...' → using full URL only")
+                    self.console.print(f"[{THEME['warn']}]{_uf_msg}[/]")
                 else:
                     self.console.print(
                         f"[{THEME['secondary']}]🔧 [SYNTAX AUTO-FIX #{i+1}] Applied.[/]"

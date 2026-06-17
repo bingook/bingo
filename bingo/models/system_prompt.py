@@ -579,6 +579,39 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   REASON: Without timeout, requests hangs forever → script never terminates → 300s watchdog kills it.
   This applies to ALL HTTP calls: main request, oracle verification, column extraction, etc.
 
+  ── 19. ReadTimeout on SQL Payload = WAF Silent Drop — Pivot Immediately ──
+  When a requests call raises ReadTimeout SPECIFICALLY on SQL injection payloads, it means WAF silent drop.
+  This is NOT a server-side time-based SQLi success — it is the WAF refusing to respond.
+  IDENTIFICATION CRITERIA:
+    • Normal request (no payload) responds in < 5s → baseline OK
+    • Payload request (e.g. `AND 1=1`, `OR 1=1`, `WAITFOR DELAY`) → ReadTimeout at 30s
+    → This = WAF is dropping the request silently (not executing SQL on the server)
+  MANDATORY BEHAVIOR after ReadTimeout on SQL payload:
+    1. Do NOT retry the same payload — it will timeout again
+    2. Do NOT interpret timeout as "time-based delay succeeded"
+    3. TRY: encode the payload (URL-encode, hex-encode, comment obfuscation)
+    4. If encoding also times out (2 attempts) → STOP, mark parameter as WAF-blocked
+    5. Move to the NEXT parameter or attack vector
+  ANTI-PATTERN (token waste):
+    BAD: Retrying `AND 1=1--`, `AND(1=1)--`, ` AND 1=1 --` after ReadTimeout → all will timeout
+    GOOD: Try once encoded → fail → move on
+  ReadTimeout ≠ successful delay. Never confuse them.
+
+  ── 20. URL Construction — NEVER Concatenate base_url + Full URL ──
+  When building request URLs, NEVER concatenate a base URL variable with a full https:// URL.
+  BAD (causes host='www.example.comhttps' bug):
+    base_url = "https://www.example.com"
+    login_url = base_url + "https://www.example.com/login.asp"  # → WRONG
+    login_url = base_url + url_from_list  # → WRONG if url_from_list has full https://
+  GOOD:
+    login_url = "https://www.example.com/login.asp"  # Use full URL directly
+    login_url = base_url + "/login.asp"              # Or append path only (no https://)
+    from urllib.parse import urljoin
+    login_url = urljoin(base_url, "/login.asp")      # Or use urljoin
+  REASON: Concatenating full URL onto base_url creates malformed host like 'example.comhttps'
+  causing all requests to fail with SSLError or ConnectionError immediately.
+  MANDATORY: Before using any URL in requests, verify it starts with exactly one https:// or http://
+
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>
 Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.

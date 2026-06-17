@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.3.26-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.28-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.26 — 공식 릴리스**  
-> v2.3.26이 최신 안정 버전입니다.
+> **v2.3.28 — 공식 릴리스**  
+> v2.3.28이 최신 안정 버전입니다.
 
 </div>
 
@@ -135,6 +135,16 @@ bingo
 - CAPTCHA (kcaptcha) 자동 OCR 해결
 
 ---
+
+## v2.3.28 신규 기능 — WAF ReadTimeout 가드, URL 연소 버그 수정, f-string 자동 수정 *(2026-06)*
+
+AI 생성 코드의 반복 오류를 차단하는 3가지 방어 레이어:
+
+- **🔴 Rule 19: ReadTimeout = WAF silent drop** — SQL 인젝션 페이로드(AND/OR/WAITFOR)에서 `ReadTimeout`이 발생하면, 이제 AI는 이를 WAF가 요청을 조용히 차단한 것으로 정확히 인식합니다 (time-based SQLi 성공이 아님). 필수 행동: 인코딩으로 1회 재시도 → 여전히 타임아웃 → WAF 차단으로 표시 후 즉시 피벗. 무한 재시도 루프 방지.
+- **🔴 Rule 20: URL 구성 가드** — AI는 이제 `base_url + "https://..."` 패턴을 명시적으로 금지합니다. 이 패턴은 `www.example.comhttps` 같은 비정상 호스트를 생성합니다. 필수: 전체 URL 직접 사용 또는 `urljoin()` 사용. precheck 시스템이 런타임에 자동 수정합니다.
+- **🔴 Precheck: URL 연소 자동 수정** — `_precheck_python_code`가 이제 `*url* + "https://..."` 패턴을 실행 전 자동으로 감지하고 수정합니다. `SSLEOFError` 및 `MaxRetryError` 방지.
+- **🟠 Precheck: f-string 자동 수정** — Python 3.12 f-string 기능(같은 따옴표 dict subscript 등)에 대한 `SyntaxError` 처리 개선. 매 루프마다 나타나는 오탐 경고 억제.
+- **🟡 다국어: 2개 신규 키** — `waf_timeout_detected`, `url_concat_fixed` (ko/zh/en).
 
 ## v2.3.26 신규 기능 — 하드 워치독 타임아웃, pymssql VPN 가드, Oracle 검증 *(2026-06)*
 

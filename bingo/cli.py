@@ -334,6 +334,17 @@ def _run_update(sl: dict, lang: str = "en") -> None:
                 cwd=str(git_root),
                 check=True,
             )
+            # git pull 후 editable install 재실행 — 실행 파일에 최신 코드 반영
+            console.print(f"[#4a4a4a]⚙  pip install -e . 실행 중...[/]")
+            _pip_result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-e", ".", "-q"],
+                cwd=str(git_root),
+                capture_output=True,
+                text=True,
+            )
+            if _pip_result.returncode != 0:
+                console.print(f"[#ff8800]⚠  pip install 실패 — 수동 실행:[/]")
+                console.print(f"[#4a4a4a]  cd {git_root} && pip install -e .[/]")
             console.print(f"\n[#00ff41]{lb['done']}[/]")
         except subprocess.CalledProcessError:
             console.print(f"\n[#ff4444]{lb['fail_git']}[/]")

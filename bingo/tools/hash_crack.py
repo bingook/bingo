@@ -454,6 +454,17 @@ def _is_error_context(candidate: str, surrounding: str) -> bool:
     if _code_prefix.search(prefix_window):
         return True
 
+    # 5. UTF-16LE 인코딩된 문자열 오탐 필터
+    #    예) 25004D0065006D006200650072002500 → 2바이트마다 '00' 반복 = UTF-16LE 텍스트
+    #    NTLM 해시와 길이(32) + 대문자 패턴이 동일하지만 실제 크래킹 불가능
+    if len(candidate) == 32:
+        # 짝수 위치(0,2,4...) 또는 홀수 위치(1,3,5...) 바이트가 '00'이면 UTF-16LE
+        pairs = [candidate[i:i+4] for i in range(0, 32, 4)]  # 4자 단위 (2바이트)
+        low_bytes  = [p[2:4] for p in pairs]  # 각 2바이트 쌍의 하위 바이트
+        high_bytes = [p[0:2] for p in pairs]  # 각 2바이트 쌍의 상위 바이트
+        if all(b == "00" for b in low_bytes) or all(b == "00" for b in high_bytes):
+            return True
+
     return False
 
 

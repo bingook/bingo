@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.3.31-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.32-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.31 — 공식 릴리스**  
-> v2.3.31이 최신 안정 버전입니다.
+> **v2.3.32 — 공식 릴리스**  
+> v2.3.32이 최신 안정 버전입니다.
 
 </div>
 
@@ -135,6 +135,11 @@ bingo
 - CAPTCHA (kcaptcha) 자동 OCR 해결
 
 ---
+
+## v2.3.32 — UTF-16LE 해시 오탐 필터 *(2026-06)*
+
+- **🔴 해시 감지: UTF-16LE 오탐 필터 추가** — `extract_hashes_from_text`가 이제 UTF-16LE 인코딩된 문자열(예: `25004D0065006D006200650072002500` = `%Member%`)을 NTLM 해시로 오탐하는 문제 해결. 2바이트 쌍마다 `00`이 고/하위 바이트에 규칙적으로 등장하면 UTF-16LE로 판단하여 크랙 건너뜀. MSSQL/ASP Unicode 컬럼에서 발생하는 오탐 토큰 낭비 방지.
+- **🟡 다국어: 1개 신규 키** — `hash_utf16le_skipped` (ko/zh/en).
 
 ## v2.3.31 — urllib.parse 자동 import 주입 *(2026-06)*
 

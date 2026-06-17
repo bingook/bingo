@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.31-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.32-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.31 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.31 is the latest stable, production-ready version.
+> **v2.3.32 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.32 is the latest stable, production-ready version.
 
 </div>
 
@@ -3069,6 +3069,11 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.3.32 — UTF-16LE False Positive Hash Filter *(2026-06)*
+
+- **🔴 Hash detection: UTF-16LE false positive filter** — `extract_hashes_from_text` now detects UTF-16LE encoded strings (e.g. `25004D0065006D006200650072002500` = `%Member%`) that have the same 32-char hex appearance as NTLM hashes. Every 2-byte pair with `00` as high or low byte is now detected and skipped, preventing wasted crack attempts on non-hash data from MSSQL/ASP Unicode columns.
+- **🟡 i18n: 1 new multilingual key** — `hash_utf16le_skipped` (ko/zh/en).
 
 ### v2.3.31 — urllib.parse Auto-Import Injection *(2026-06)*
 

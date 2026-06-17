@@ -1676,6 +1676,11 @@ _STRINGS.update({
     "urllib_parse_injected":     {"ko": "🔧 [PRECHECK] import urllib.parse 자동 주입 (urllib3 와 혼용 오류 방지)",
                                    "zh": "🔧 [PRECHECK] import urllib.parse 已自动注入 (防止与urllib3混淆)",
                                    "en": "🔧 [PRECHECK] import urllib.parse injected (was missing, prevent NameError)"},
+
+    # ── UTF-16LE 해시 오탐 필터 ──────────────────────────────────────────
+    "hash_utf16le_skipped":      {"ko": "⚠️ [해시] UTF-16LE 인코딩 문자열로 오탐 감지 — 크랙 건너뜀: {h}",
+                                   "zh": "⚠️ [哈希] 检测到UTF-16LE编码字符串误报 — 跳过破解: {h}",
+                                   "en": "⚠️ [Hash] UTF-16LE encoded string detected as false positive — skipping crack: {h}"},
 })
 
 

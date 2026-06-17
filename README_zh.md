@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.3.31-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.32-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.31 — 正式发布版**  
-> v2.3.31 是最新稳定版本。
+> **v2.3.32 — 正式发布版**  
+> v2.3.32 是最新稳定版本。
 
 </div>
 
@@ -135,6 +135,11 @@ bingo
 - 云锁 → HTTP 参数污染
 
 ---
+
+## v2.3.32 —— UTF-16LE哈希误报过滤 *(2026-06)*
+
+- **🔴 哈希检测: UTF-16LE误报过滤** — `extract_hashes_from_text`现在能识别UTF-16LE编码字符串（如`25004D0065006D006200650072002500` = `%Member%`）与NTLM哈希的混淆。每个2字节对的高位或低位字节规律性出现`00`时判定为UTF-16LE编码并跳过破解。防止MSSQL/ASP Unicode列数据的无效token消耗。
+- **🟡 多语言: 1个新增键** — `hash_utf16le_skipped`（ko/zh/en）。
 
 ## v2.3.31 —— urllib.parse自动import注入 *(2026-06)*
 

@@ -1620,6 +1620,16 @@ _STRINGS.update({
     "login_page_no_form":       {"ko": "⏭️  로그인 폼 없음 ({size}B) — 건너뜀: {url}",
                                   "zh": "⏭️  无登录表单 ({size}B) — 跳过: {url}",
                                   "en": "⏭️  No login form ({size}B) — skipping: {url}"},
+
+    # ── Rule 17: 기법 소진 후 피벗 알림 ────────────────────────────────────
+    "technique_exhausted":      {"ko": "🔄  [{param}] {technique} 3회 연속 실패 → 기법 소진, 다음으로 전환",
+                                  "zh": "🔄  [{param}] {technique} 连续失败3次 → 技术耗尽, 切换下一个",
+                                  "en": "🔄  [{param}] {technique} failed 3x in a row → technique exhausted, pivoting"},
+
+    # ── Rule 18: requests timeout 자동 주입 알림 ────────────────────────────
+    "requests_timeout_injected": {"ko": "⚠️  코드에 timeout=30 자동 주입됨 (서버 블로킹 방지)",
+                                   "zh": "⚠️  已自动注入 timeout=30 (防止服务器阻塞)",
+                                   "en": "⚠️  Auto-injected timeout=30 into requests calls (prevents server hang)"},
 })
 
 

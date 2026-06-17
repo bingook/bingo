@@ -2793,9 +2793,11 @@ class BingoTerminal:
 
         # ── 환각 감지 헬퍼 ──────────────────────────────────────────────
         def _detect_hallucination(raw_code: str) -> str | None:
-            """JSON-in-code-block 또는 HTTP 호출 없는 가짜 코드 감지.
+            """JSON-in-code-block 또는 실행 불가 가짜 코드 감지.
             문제가 없으면 None, 있으면 경고 메시지 반환."""
+            import re as _hall_re
             s = raw_code.strip()
+
             # 패턴 1: 순수 JSON dict (import/def/print/requests 없음)
             if s.startswith("{") and s.endswith("}"):
                 has_code = any(kw in s for kw in
@@ -2806,64 +2808,141 @@ class BingoTerminal:
                         "dictionary, not Python. JSON cannot make HTTP requests. "
                         "Rewrite with: import requests; r=requests.get(url); print(r.status_code)"
                     )
-            # 패턴 2: 5줄 미만 & 네트워크 호출 없음 & import 있음 → 의심
-            lines = [l for l in s.splitlines() if l.strip() and not l.strip().startswith("#")]
-            has_network = any(kw in s for kw in
+
+            # 패턴 2: 3줄 미만 & 네트워크 호출 없음 & import 있음 → stub
+            _lines = [l for l in s.splitlines() if l.strip() and not l.strip().startswith("#")]
+            _has_network = any(kw in s for kw in
                 ["requests.", "urllib.", "httpx.", "socket.connect", "http.client",
-                 "urlopen", "urlretrieve"])
-            if len(lines) <= 3 and not has_network and "import" in s:
+                 "urlopen", "urlretrieve", "pymssql", "pyodbc"])
+            if len(_lines) <= 3 and not _has_network and "import" in s:
                 return (
                     "STUB_CODE_NO_HTTP: Code has imports but NO HTTP calls "
                     "(requests.get/post). Add real HTTP requests."
                 )
+
+            # 패턴 3: print("...") 만 있고 실제 네트워크/로직 없음
+            _non_print = [l for l in _lines if not l.strip().startswith("print(")]
+            _all_imports = [l for l in _non_print if l.strip().startswith("import ") or l.strip().startswith("from ")]
+            if len(_non_print) == len(_all_imports) and len(_lines) > 0 and not _has_network:
+                return (
+                    "PRINT_ONLY_CODE: Code only has print() statements and imports — "
+                    "no actual HTTP request or logic. Add requests.get(url) calls."
+                )
+
+            # 패턴 4: 도메인/URL 하드코딩 없이 variable placeholder만 있는 코드
+            # (url = "TARGET_URL" 같은 미완성 코드)
+            if _hall_re.search(r'["\'](?:TARGET_URL|YOUR_URL|PLACEHOLDER|INSERT_URL)["\']', s, _hall_re.IGNORECASE):
+                return (
+                    "PLACEHOLDER_URL: Code contains placeholder URL (TARGET_URL/YOUR_URL). "
+                    "Replace with the actual target URL before executing."
+                )
+
             return None
 
         # ── 코드 사전 검증 헬퍼 (SyntaxError / NameError 예방) ──────────
         def _precheck_python_code(code: str) -> str | None:
-            """실행 전 Python 코드의 명백한 구문 오류 + 무한루프 패턴 감지.
-            문제 없으면 None, 구문 수정 시 수정된 코드, 차단 시 특수 문자열 '__BLOCKED__:reason' 반환."""
-            import ast as _ast
+            """실행 전 Python 코드의 명백한 구문 오류 + 무한루프 패턴 감지 + 타임아웃 자동 주입.
+            문제 없으면 None, 수정/주입 시 수정된 코드, 차단 시 '__BLOCKED__:reason' 반환."""
             import re as _pre_re
 
             fixed = code
 
-            # 0. 무한루프 위험 패턴 감지 — 실행 전 차단
-            #    패턴: for/while 루프 + SQL query + seen=set() 없음
-            _has_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed) or _pre_re.search(r'\bwhile\s+True\b', fixed))
-            _has_query = bool(_pre_re.search(r'(requests\.(get|post)|urllib|query|extract|inject|sqli)', fixed, _pre_re.IGNORECASE))
+            # ── 0-A. 무한루프: for/range + TOP 1 + seen=set() 없음 ─────────
+            _has_range_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed))
+            _has_query = bool(_pre_re.search(
+                r'(requests\.(get|post)|urllib|query|extract|inject|sqli)', fixed, _pre_re.IGNORECASE))
             _has_seen = bool(_pre_re.search(r'\bseen\s*=\s*set\s*\(', fixed))
             _has_top1_no_cursor = bool(
                 _pre_re.search(r'TOP\s+1', fixed, _pre_re.IGNORECASE) and
                 not _pre_re.search(r'name\s*>\s*(last|cursor|prev)', fixed, _pre_re.IGNORECASE) and
                 not _pre_re.search(r'\bname\s*>\s*0x', fixed, _pre_re.IGNORECASE)
             )
-            # FOR loop + DB query + TOP 1 without cursor + no seen set = infinite loop risk
-            if _has_loop and _has_query and _has_top1_no_cursor and not _has_seen:
+            if _has_range_loop and _has_query and _has_top1_no_cursor and not _has_seen:
                 return "__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever"
 
-            # 1. f-string 내 백슬래시 탐지 및 수정
-            #    f"...\\'..."  또는  f"...{d['key']}..."  → 임시변수로 분리
-            if _pre_re.search(r'f"[^"]*\\"[^"]*"', fixed) or _pre_re.search(r"f'[^']*\\'[^']*'", fixed):
-                # 이 경우는 복잡해서 경고만
-                pass
+            # ── 0-B. 무한루프: while True + break 없음 ─────────────────────
+            if _pre_re.search(r'\bwhile\s+True\s*:', fixed):
+                # while True 블록이 있는 경우 break 문 존재 여부 확인
+                _wt_blocks = list(_pre_re.finditer(r'\bwhile\s+True\s*:', fixed))
+                for _wt in _wt_blocks:
+                    # 해당 while 이후 코드에서 break 탐색 (간단한 범위 검사)
+                    _after = fixed[_wt.end():]
+                    _has_break = bool(_pre_re.search(r'\bbreak\b', _after))
+                    _has_exit = bool(_pre_re.search(r'\b(sys\.exit|raise\s+\w+Error|return)\b', _after))
+                    if not _has_break and not _has_exit:
+                        return "__BLOCKED__:INFINITE_LOOP_RISK: while True loop has no break/return/raise — will run forever"
 
-            # 2. py compile 으로 SyntaxError 체크
+            # ── 1. requests.get/post/put/delete — timeout 자동 주입 ─────────
+            def _add_kwarg(call_str: str, kwarg: str) -> str:
+                """call_str의 닫는 괄호 앞에 kwarg 추가. 이미 있으면 그대로 반환."""
+                if kwarg.split("=")[0] in call_str:
+                    return call_str
+                if not call_str.endswith(")"):
+                    return call_str
+                inner = call_str[:-1]  # 닫는 ) 제거
+                paren_idx = inner.rindex("(")
+                has_args = bool(inner[paren_idx + 1:].strip())
+                sep = ", " if has_args else ""
+                return inner.rstrip() + sep + kwarg + ")"
+
+            def _inject_requests_timeout(m: "_pre_re.Match") -> str:
+                return _add_kwarg(m.group(0), "timeout=30")
+
+            # requests.get/post/put/delete/head 호출 패턴 (괄호 중첩 없는 단순 호출)
+            _req_pattern = (
+                r'requests\.(get|post|put|delete|head|request)\s*\('
+                r'[^)]*'
+                r'\)'
+            )
+            fixed = _pre_re.sub(_req_pattern, _inject_requests_timeout, fixed)
+
+            # ── 2. pymssql/pyodbc.connect — timeout 주입 ────────────────────
+            def _inject_db_timeout(m: "_pre_re.Match") -> str:
+                return _add_kwarg(m.group(0), "login_timeout=10, timeout=10"
+                                  ) if "login_timeout" not in m.group(0) else m.group(0)
+            # pymssql/pyodbc 단순 connect 패턴
+            fixed = _pre_re.sub(r'pymssql\.connect\s*\([^)]*\)', _inject_db_timeout, fixed)
+            fixed = _pre_re.sub(r'pyodbc\.connect\s*\([^)]*\)', _inject_db_timeout, fixed)
+
+            fixed = _pre_re.sub(
+                r'pymssql\.connect\s*\([^)]*\)',
+                _inject_db_timeout, fixed
+            )
+            fixed = _pre_re.sub(
+                r'pyodbc\.connect\s*\([^)]*\)',
+                _inject_db_timeout, fixed
+            )
+
+            # ── 3. socket — settimeout 주입 ──────────────────────────────────
+            # socket.connect() 전에 settimeout이 없으면 주입
+            if _pre_re.search(r'socket\.connect\s*\(', fixed):
+                if not _pre_re.search(r'socket\.settimeout\s*\(', fixed):
+                    # import socket 다음 줄에 settimeout 추가
+                    fixed = _pre_re.sub(
+                        r'(import\s+socket\b[^\n]*\n)',
+                        r'\1socket.setdefaulttimeout(10)\n',
+                        fixed, count=1
+                    )
+
+            # ── 4. f-string 내 백슬래시 탐지 및 수정 ────────────────────────
+            if _pre_re.search(r'f"[^"]*\\"[^"]*"', fixed) or _pre_re.search(r"f'[^']*\\'[^']*'", fixed):
+                pass  # 복잡해서 경고만
+
+            # ── 5. SyntaxError 체크 + 자동 수정 시도 ────────────────────────
             try:
                 compile(fixed, "<bingo_precheck>", "exec")
-                return fixed  # 구문 OK
+                # 코드가 수정된 경우 수정본 반환, 아니면 None(변경없음)
+                return fixed if fixed != code else None
             except SyntaxError as _se:
                 _line = _se.lineno or 0
                 _lines = fixed.splitlines()
-                # f-string 내 backslash 또는 dict subscript 오류 자동 수정 시도
                 if _line > 0 and _line <= len(_lines):
                     bad_line = _lines[_line - 1]
-                    # pattern: f"...val + \"'\"..."  →  quote = "'"; f"...val + {quote}..."
                     _fl_match = _pre_re.search(
                         r'(f["\'].*?)\\(["\'])(.*?["\'])',
                         bad_line
                     )
                     if _fl_match:
-                        # fallback: escape 제거
                         _lines[_line - 1] = bad_line.replace("\\'", "'").replace('\\"', '"')
                         fixed = "\n".join(_lines)
                         try:
@@ -2871,7 +2950,6 @@ class BingoTerminal:
                             return fixed
                         except SyntaxError:
                             pass
-                # 수정 실패 → 오류 메시지와 함께 None 반환해 caller가 재생성 요청하도록
                 return None  # type: ignore
 
         python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
@@ -2905,10 +2983,21 @@ class BingoTerminal:
                     f"Check f-string backslash or dict subscript issues.[/]"
                 )
                 # 그래도 실행 시도 (stderr에서 상세 오류가 출력됨)
-            elif _checked != code:
-                self.console.print(
-                    f"[{THEME['secondary']}]🔧 [SYNTAX AUTO-FIX #{i+1}] Applied.[/]"
+            elif _checked is not None and _checked != code:
+                # 타임아웃 주입 여부 확인
+                _timeout_injected = (
+                    "timeout=30" in _checked and "timeout=30" not in code
+                ) or (
+                    "login_timeout=10" in _checked and "login_timeout=10" not in code
                 )
+                if _timeout_injected:
+                    _to_msg = t("requests_timeout_injected",
+                                "⚠️  Auto-injected timeout=30 into requests calls (prevents server hang)")
+                    self.console.print(f"[{THEME['warn']}]{_to_msg}[/]")
+                else:
+                    self.console.print(
+                        f"[{THEME['secondary']}]🔧 [SYNTAX AUTO-FIX #{i+1}] Applied.[/]"
+                    )
                 code = _checked
 
             tools_header = (

@@ -553,6 +553,32 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   Login page detection: check for <input type="password"> in response body.
   If no password input → page has no login form → move on.
 
+  ── 17. Technique Exhaustion — Pivot After 3 Consecutive Failures ──
+  For EACH (parameter, technique) pair, track the failure count in your reasoning.
+  After 3 CONSECUTIVE failures of the same technique on the same parameter → EXHAUSTED.
+  MANDATORY PIVOT TABLE:
+    GET param + boolean blind — 3 failures → STOP, try error-based or time-based
+    GET param + time-based    — 3 failures → STOP, try UNION or move to next param
+    GET param + UNION         — 3 failures → STOP, mark param as "not UNION injectable"
+    POST param + any technique — 3 failures → STOP, move to next POST param
+    pymssql direct connect    — 1 failure  → STOP immediately, use HTTP injection only
+  ANTI-PATTERN: Retrying the same payload with minor variations counts as a FAILURE.
+    Example: if `AND(1=1)--`, `AND 1=1--`, `AND(1)=(1)--` all fail → that is 3 failures.
+  NEVER spend > 15 HTTP requests total on one (parameter, technique) combination.
+  After exhausting all techniques on all params → report TARGET_FAILED with full attempt list.
+
+  ── 18. MANDATORY timeout=30 in ALL requests.get/post Calls ──
+  Every single requests.get() or requests.post() call MUST include timeout=30.
+  The precheck system will auto-inject timeout=30 if missing, but you MUST write it yourself.
+  BAD  (will cause indefinite hang if server stops responding):
+    r = requests.get(url)
+    r = requests.post(url, data=payload)
+  GOOD (server hang terminates after 30s):
+    r = requests.get(url, timeout=30)
+    r = requests.post(url, data=payload, timeout=30)
+  REASON: Without timeout, requests hangs forever → script never terminates → 300s watchdog kills it.
+  This applies to ALL HTTP calls: main request, oracle verification, column extraction, etc.
+
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>
 Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.

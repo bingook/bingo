@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.24-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.25-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.24 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.24 is the latest stable, production-ready version.
+> **v2.3.25 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.25 is the latest stable, production-ready version.
 
 </div>
 
@@ -3070,6 +3070,16 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
+### v2.3.25 — SQLi Oracle Precision & UnboundLocalError Fix *(2026-06)*
+
+Critical bug fix and SQL injection analysis accuracy improvements:
+
+- **🔴 Fix: `UnboundLocalError: cannot access local variable 't'`** — `for t in threads:` loop variable inside `_run_code_blocks` was shadowing the global `t()` i18n translation function. Renamed to `for _th in threads:` across all 3 occurrences.
+- **🟠 Fix: VBScript 800a01a8 false warning suppression** — If real OLE DB SQL errors (`80040e14`, `80040e07`) are also present in the same output batch, the VBScript "NOT injectable" warning is now suppressed. Mixed results correctly identified.
+- **🟠 Fix: AI misanalysis of 800a01a8 as WAF bypass** — Added Rule 11 to system_prompt: `800a01a8 = VBScript runtime error ≠ WAF bypass`. AI must not label 800a01a8 responses as successful injections.
+- **🟡 Fix: Wasteful ORDER BY/UNION on typed integer parameters** — Added Rule 12: stop all ORDER BY and UNION SELECT enumeration when type errors detected on integer parameters.
+- **i18n: 3 new multilingual keys** — `mixed_sqli_result_title`, `mixed_sqli_result_detail`, `typed_param_skip` (ko/zh/en).
+
 ### v2.1.4 — `bingo --update` Self-Updater *(2026-06)*
 
 Update bingo to the latest version with a single command — works on **macOS, Windows, and Linux**.
@@ -5152,9 +5162,9 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
-## Runtime Infinite Loop Killer (v2.3.24)
+## Runtime Infinite Loop Killer (v2.3.25)
 
-v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.24 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
+v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.25 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
 
 ### New Runtime Protections (terminal.py)
 
@@ -5168,7 +5178,7 @@ v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.24 
 
 **Before (v2.3.22)**: Script runs 28 minutes, prints `ARREO_SMS` 383 times, terminal watches helplessly.
 
-**After (v2.3.24)**:
+**After (v2.3.25)**:
 ```
 [U] ulsan$
 [U] ulsan$

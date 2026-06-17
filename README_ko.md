@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.3.24-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.25-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.24 — 공식 릴리스**  
-> v2.3.24이 최신 안정 버전입니다.
+> **v2.3.25 — 공식 릴리스**  
+> v2.3.25이 최신 안정 버전입니다.
 
 </div>
 
@@ -123,7 +123,7 @@ bingo
 - MSSQL / MySQL / PostgreSQL / Oracle 지원
 - Boolean blind, Time-based, Error-based, UNION 자동 선택
 - WAF 우회 페이로드 자동 생성
-- **v2.3.24 신규**: 무한 루프 방지 — 중복 결과 5회 → 즉시 프로세스 종료
+- **v2.3.25 신규**: 무한 루프 방지 — 중복 결과 5회 → 즉시 프로세스 종료
 
 ### WAF 우회
 - Cloudflare · Safe3 · D盾 · 云锁 지원
@@ -136,10 +136,22 @@ bingo
 
 ---
 
-## v2.3.24 신규 기능 — 무한 루프 킬러
+## v2.3.25 신규 기능 — SQLi 오라클 정밀도 개선 & UnboundLocalError 수정
+
+### 버그 수정
+
+- **🔴 `UnboundLocalError: cannot access local variable 't'` 수정** — `_run_code_blocks` 내 `for t in threads:` 루프 변수가 전역 `t()` 번역 함수를 덮어쓰던 문제. 3곳 모두 `for _th in threads:`로 변경.
+- **🟠 VBScript 800a01a8 경고 오발 수정** — 같은 결과 배치에 OLE DB SQL 에러(`80040e14`, `80040e07`)가 함께 있으면 VBScript "인젝션 불가" 경고를 억제. 혼합 결과 정확히 판별.
+- **🟠 800a01a8을 WAF 우회 성공으로 오분석하는 문제 수정** — Rule 11 추가: `800a01a8 = VBScript 런타임 에러 ≠ WAF 우회`. AI가 더 이상 800a01a8을 인젝션 성공으로 판정하지 않음.
+- **🟡 타입 지정 정수 파라미터에서의 불필요한 ORDER BY/UNION 열거 수정** — Rule 12 추가: 타입 에러 감지 시 ORDER BY 및 UNION SELECT 열거 즉시 중단.
+- **i18n: 신규 다국어 키 3개** — `mixed_sqli_result_title`, `mixed_sqli_result_detail`, `typed_param_skip` (ko/zh/en).
+
+---
+
+## v2.3.25 이전 — 무한 루프 킬러
 
 이전 버전에서 테이블 열거 루프가 28분 동안 동일한 테이블을 383번 출력하는 버그 발생.  
-v2.3.24에서 3단계 방어막 추가:
+v2.3.25에서 3단계 방어막 추가:
 
 | 단계 | 메커니즘 | 트리거 |
 |------|---------|--------|
@@ -147,7 +159,7 @@ v2.3.24에서 3단계 방어막 추가:
 | 실시간 KILL | 스트리밍 모니터 | 동일 줄 5회 반복 → 즉시 프로세스 종료 |
 | 타임아웃 | 하드 제한 | 스크립트 300초 초과 → 강제 종료 |
 
-**올바른 열거 패턴 (v2.3.24 필수)**:
+**올바른 열거 패턴 (v2.3.25 필수)**:
 ```python
 seen = set()
 last_hex = ''

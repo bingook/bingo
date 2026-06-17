@@ -3194,8 +3194,8 @@ class BingoTerminal:
             threading.Thread(target=_tracked_run_task, args=(task, i), daemon=True)
             for i, task in enumerate(tasks)
         ]
-        for t in threads:
-            t.start()
+        for _th in threads:
+            _th.start()
 
         # 30초마다 진행 상황 표시 + 10분 소프트 타임아웃
         _s = self.s
@@ -3206,11 +3206,11 @@ class BingoTerminal:
 
         HEARTBEAT = 30  # 30초마다 상태 표시
         elapsed = 0
-        while any(t.is_alive() for t in threads):
-            for t in threads:
-                t.join(timeout=HEARTBEAT)
+        while any(_th.is_alive() for _th in threads):
+            for _th in threads:
+                _th.join(timeout=HEARTBEAT)
             elapsed += HEARTBEAT
-            if any(t.is_alive() for t in threads):
+            if any(_th.is_alive() for _th in threads):
                 self.console.print(
                     f"[{THEME['dim']}]  ⏱ {elapsed}s {_s.get('exec_running', 'running')}...[/]"
                 )
@@ -3225,8 +3225,8 @@ class BingoTerminal:
                             p.terminate()
                         except Exception:
                             pass
-                for t in threads:
-                    t.join(timeout=5)
+                for _th in threads:
+                    _th.join(timeout=5)
                 for i, r in enumerate(results_text):
                     if not r:
                         results_text[i] = "=== INTERRUPTED — partial results only ==="
@@ -3497,8 +3497,13 @@ class BingoTerminal:
             _vbscript_signals = [
                 label for sig, label in _vbscript_no_sqli_patterns if sig in _raw_lower
             ]
+            # 진짜 OLE DB SQL 에러 패턴 — 이것들이 있으면 VBScript 경고 억제
+            # (같은 배치 결과에 두 종류가 섞여 있을 수 있음)
+            _real_sqli_sigs = ["80040e14", "80040e07", "80040e01", "80040e21", "80040e23"]
+            _has_real_sqli_err = any(sig in _raw_lower for sig in _real_sqli_sigs)
 
-            if _vbscript_signals:
+            if _vbscript_signals and not _has_real_sqli_err:
+                # 진짜 SQL 에러 없음 → 순수 VBScript 파라미터화된 에러 → 경고 출력
                 _vb_title = t("vbscript_not_sqli_title", "⚠️  VBScript error detected — these parameters are NOT SQL injectable")
                 _vb_detail = t("vbscript_not_sqli_detail", "Detected: {signals}\n→ NOT injectable\n→ STOP testing this parameter.").replace("{signals}", ", ".join(_vbscript_signals[:2]))
                 self.console.print(f"[{THEME['warn']}]{_vb_title}[/]")
@@ -3511,6 +3516,17 @@ class BingoTerminal:
                     "  - Error 8002000a = ADO stream error = NOT SQLi\n"
                     "Mark these parameters as SAFE / PARAMETERIZED and move to different endpoints.\n"
                     "Do NOT waste more loops on these VBScript errors.\n"
+                )
+            elif _vbscript_signals and _has_real_sqli_err:
+                # 같은 배치에 VBScript 에러 + 진짜 OLE DB SQL 에러 혼재
+                # → VBScript 경고 억제, AI에게 혼합 결과임을 알림
+                _ip_block_hint += (
+                    "\n[MIXED_SQLI_RESULT: VBScript errors AND real OLE DB SQL errors both present]\n"
+                    "INTERPRETATION: Different parameters have different injection status.\n"
+                    "  - Parameters triggering 800a01a8/800a0d5d → parameterized → NOT injectable\n"
+                    "  - Parameters triggering 80040e14/80040e07 → REAL SQL error → INJECTABLE!\n"
+                    "FOCUS on the parameters that returned 80040e14 or 80040e07 errors.\n"
+                    "DO NOT apply VBScript 'stop testing' rule to the 80040e1x parameters.\n"
                 )
 
             # ADODB 800a0cc1 감지 — Stacked Query 실행 가능 신호

@@ -1582,6 +1582,19 @@ _STRINGS.update({
     "infinite_loop_warning":    {"ko": "⚠️  무한 루프 감지 — '{name}'이(가) {n}회 이상 반복됨. 커서 페이지네이션 없이 TOP 1 쿼리를 사용한 것 같습니다.",
                                   "zh": "⚠️  检测到无限循环 — '{name}' 重复出现 {n} 次以上。疑似使用TOP 1查询而无游标分页。",
                                   "en": "⚠️  Infinite loop detected — '{name}' repeated {n}+ times. Likely TOP 1 query without cursor pagination."},
+
+    # ── 혼합 SQLi 결과 (VBScript + OLE DB 동시 감지) / Mixed SQLi result ──
+    "mixed_sqli_result_title":  {"ko": "🔍 혼합 결과 — VBScript 에러 + 진짜 OLE DB SQL 에러 동시 감지",
+                                  "zh": "🔍 混合结果 — 同时检测到VBScript错误和真实OLE DB SQL错误",
+                                  "en": "🔍 Mixed result — VBScript errors AND real OLE DB SQL errors both detected"},
+    "mixed_sqli_result_detail": {"ko": "→ 80040e1x 에러가 발생한 파라미터는 SQLi 가능! VBScript 에러 파라미터는 파라미터화됨(불가)\n→ 80040e14/80040e07 파라미터에 집중하세요.",
+                                  "zh": "→ 触发80040e1x错误的参数可注入！VBScript错误参数已参数化（不可注入）\n→ 专注于80040e14/80040e07参数。",
+                                  "en": "→ Parameters triggering 80040e1x ARE injectable! VBScript error params are parameterized (NOT injectable)\n→ Focus on 80040e14/80040e07 parameters."},
+
+    # ── 타입 에러 파라미터 스킵 안내 / Typed param skip notice ──────────
+    "typed_param_skip":         {"ko": "⏭️  타입 지정 파라미터 — ORDER BY/UNION 열거 건너뜀 (type error 감지됨)",
+                                  "zh": "⏭️  类型指定参数 — 跳过ORDER BY/UNION枚举（检测到类型错误）",
+                                  "en": "⏭️  Typed parameter — skipping ORDER BY/UNION enumeration (type error detected)"},
 })
 
 

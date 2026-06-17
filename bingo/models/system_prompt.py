@@ -469,6 +469,33 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   CRITICAL: For boardidx-type parameters where TRUE response ≠ BASE_SIZE, the field is
         likely dynamic-content (page count changes) — validate with content keywords, not size.
 
+  ── 11. VBScript 800a01a8 ≠ WAF Bypass (CRITICAL MISANALYSIS PREVENTION) ──
+  The error '800a01a8' means "Object required" in VBScript runtime — it means the
+  parameter is PARAMETERIZED (using ADODB Command object) and is NOT injectable.
+  WRONG interpretation: "800a01a8 appeared → WAF was bypassed → injection worked!"
+  CORRECT interpretation: "800a01a8 → VBScript tried to use a non-object → parameterized query"
+  OLE DB error code comparison:
+    800a01a8  → VBScript runtime error (Object required) → NOT SQLi
+    80040e14  → OLE DB SQL Server "Incorrect syntax near..." → REAL SQLi!
+    80040e07  → OLE DB "Error converting data type..." → REAL SQLi!
+    80040e21  → OLE DB multiple-step OLE DB error → REAL SQLi!
+  RULE: If you see 800a01a8 but NOT 80040e1x → NOT injectable, stop all testing on this param.
+        If you see 80040e14 or 80040e07 alongside 800a01a8 → the 80040e1x param IS injectable.
+  NEVER say "WAF bypass succeeded" based solely on 800a01a8 appearing in the response.
+
+  ── 12. Stop ORDER BY / UNION Enumeration on Typed Parameters ──
+  If a URL parameter contains an INTEGER value (e.g., boardidx=1234, pagenum=3, catno=7)
+  AND the server returns VBScript type error (800a0d5d, 800a000d) on your payloads →
+  the parameter is TYPED/PARAMETERIZED → it does NOT accept SQL syntax injection.
+  RULE: Do NOT run ORDER BY 1,2,3... enumeration on integer parameters that return type errors.
+        Do NOT run UNION SELECT NULL,NULL... enumeration on parameters where type errors occur.
+  CORRECT behavior:
+    1. Detect type error on integer param → mark as "typed integer, not injectable"
+    2. Skip ORDER BY / UNION attempts entirely for that parameter
+    3. Move to the next untested parameter or endpoint
+  WASTE PREVENTION: ORDER BY / UNION on parameterized integers = 0% success rate.
+  Each such test wastes 2-3 HTTP requests. After 2 consecutive type errors on same param → STOP.
+
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>
 Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.

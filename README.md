@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.23-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.24-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.23 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.23 is the latest stable, production-ready version.
+> **v2.3.24 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.24 is the latest stable, production-ready version.
 
 </div>
 
@@ -5152,9 +5152,9 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
-## Runtime Infinite Loop Killer (v2.3.23)
+## Runtime Infinite Loop Killer (v2.3.24)
 
-v2.3.22 fixed the AI prompt rules — but the loop was already running. v2.3.23 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
+v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.24 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
 
 ### New Runtime Protections (terminal.py)
 
@@ -5168,7 +5168,7 @@ v2.3.22 fixed the AI prompt rules — but the loop was already running. v2.3.23 
 
 **Before (v2.3.22)**: Script runs 28 minutes, prints `ARREO_SMS` 383 times, terminal watches helplessly.
 
-**After (v2.3.23)**:
+**After (v2.3.24)**:
 ```
 [U] ulsan$
 [U] ulsan$

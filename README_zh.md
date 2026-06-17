@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.3.23-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.24-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.23 — 正式发布版**  
-> v2.3.23 是最新稳定版本。
+> **v2.3.24 — 正式发布版**  
+> v2.3.24 是最新稳定版本。
 
 </div>
 
@@ -123,7 +123,7 @@ bingo
 - 支持 MSSQL / MySQL / PostgreSQL / Oracle
 - 自动选择 Boolean blind、Time-based、Error-based、UNION
 - 自动生成 WAF 绕过载荷
-- **v2.3.23 新增**: 无限循环防护 —— 重复结果 5 次 → 立即终止进程
+- **v2.3.24 新增**: 无限循环防护 —— 重复结果 5 次 → 立即终止进程
 
 ### WAF 绕过
 - 支持 Cloudflare · Safe3 · D盾 · 云锁
@@ -136,10 +136,10 @@ bingo
 
 ---
 
-## v2.3.23 新功能 —— 无限循环终止器
+## v2.3.24 新功能 —— 无限循环终止器
 
 旧版本中，表枚举循环曾连续运行 28 分钟，将同一张表输出 383 次。  
-v2.3.23 新增三层防护：
+v2.3.24 新增三层防护：
 
 | 层级 | 机制 | 触发条件 |
 |------|------|---------|
@@ -147,7 +147,7 @@ v2.3.23 新增三层防护：
 | 实时 KILL | 流式输出监控 | 同一行重复 5 次 → 立即终止进程 |
 | 超时限制 | 硬性限制 | 脚本超过 300 秒 → 强制终止 |
 
-**正确枚举模式（v2.3.23 强制要求）**：
+**正确枚举模式（v2.3.24 强制要求）**：
 ```python
 seen = set()
 last_hex = ''

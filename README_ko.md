@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.3.23-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.24-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.23 — 공식 릴리스**  
-> v2.3.23이 최신 안정 버전입니다.
+> **v2.3.24 — 공식 릴리스**  
+> v2.3.24이 최신 안정 버전입니다.
 
 </div>
 
@@ -123,7 +123,7 @@ bingo
 - MSSQL / MySQL / PostgreSQL / Oracle 지원
 - Boolean blind, Time-based, Error-based, UNION 자동 선택
 - WAF 우회 페이로드 자동 생성
-- **v2.3.23 신규**: 무한 루프 방지 — 중복 결과 5회 → 즉시 프로세스 종료
+- **v2.3.24 신규**: 무한 루프 방지 — 중복 결과 5회 → 즉시 프로세스 종료
 
 ### WAF 우회
 - Cloudflare · Safe3 · D盾 · 云锁 지원
@@ -136,10 +136,10 @@ bingo
 
 ---
 
-## v2.3.23 신규 기능 — 무한 루프 킬러
+## v2.3.24 신규 기능 — 무한 루프 킬러
 
 이전 버전에서 테이블 열거 루프가 28분 동안 동일한 테이블을 383번 출력하는 버그 발생.  
-v2.3.23에서 3단계 방어막 추가:
+v2.3.24에서 3단계 방어막 추가:
 
 | 단계 | 메커니즘 | 트리거 |
 |------|---------|--------|
@@ -147,7 +147,7 @@ v2.3.23에서 3단계 방어막 추가:
 | 실시간 KILL | 스트리밍 모니터 | 동일 줄 5회 반복 → 즉시 프로세스 종료 |
 | 타임아웃 | 하드 제한 | 스크립트 300초 초과 → 강제 종료 |
 
-**올바른 열거 패턴 (v2.3.23 필수)**:
+**올바른 열거 패턴 (v2.3.24 필수)**:
 ```python
 seen = set()
 last_hex = ''

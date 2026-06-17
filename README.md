@@ -14,6 +14,9 @@
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
+**🌐 Language / 언어 / 语言:**
+[English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
+
 > **v2.3.23 — Official Release**  
 > Previous versions (≤ 2.0.x) were test/beta releases. v2.3.23 is the latest stable, production-ready version.
 

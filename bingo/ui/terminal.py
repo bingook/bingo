@@ -2975,7 +2975,7 @@ class BingoTerminal:
             # ── 5. SyntaxError 체크 + 자동 수정 시도 ────────────────────────
             try:
                 compile(fixed, "<bingo_precheck>", "exec")
-                # 코드가 수정된 경우 수정본 반환, 아니면 None(변경없음)
+                # 코드가 수정된 경우 수정본 반환, 아니면 None(변경없음 = 정상)
                 return fixed if fixed != code else None
             except SyntaxError as _se:
                 _line = _se.lineno or 0
@@ -3008,7 +3008,8 @@ class BingoTerminal:
                 _is_py312_fstring = bool(_pre_re.search(
                     r'f["\'][^"\']*\{[^}]*["\'][^}]*\}', fixed
                 ))
-                return "__WARN_SYNTAX__" if _is_py312_fstring else None
+                # "__SYNTAX_ERR__" = 수정 불가 문법 오류 (None 과 다름: None = 정상)
+                return "__WARN_SYNTAX__" if _is_py312_fstring else "__SYNTAX_ERR__"
 
         python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
         _hallucination_msgs: list[str] = []
@@ -3035,18 +3036,18 @@ class BingoTerminal:
                 _hallucination_msgs.append(f"LOOP_BLOCKED: {_block_reason}")
                 continue  # 이 코드블록 실행 건너뜀
             elif _checked == "__WARN_SYNTAX__":
-                # Python 3.12 호환 f-string (실행은 시도, 경고만)
+                # Python 3.12 호환 f-string (실행은 시도, 조용한 안내만)
                 _checked = None
-                self.console.print(
-                    f"[{THEME['dim']}]ℹ [PRECHECK #{i+1}] Python 3.12 f-string detected — skipping strict compile check.[/]"
-                )
-            elif _checked is None:
+            elif _checked == "__SYNTAX_ERR__":
+                # 수정 불가 문법 오류 — 경고 출력 후 그래도 실행 시도
+                _checked = None
                 self.console.print(
                     f"[{THEME['warn']}]⚠ [SYNTAX PRECHECK #{i+1}] "
                     f"SyntaxError detected — auto-fix failed. "
                     f"Check f-string backslash or dict subscript issues.[/]"
                 )
-                # 그래도 실행 시도 (stderr에서 상세 오류가 출력됨)
+            elif _checked is None:
+                pass  # 코드 정상, 변경 없음 — 경고 없음
             elif _checked is not None and _checked != code:
                 # 타임아웃 주입 여부 확인
                 _timeout_injected = (

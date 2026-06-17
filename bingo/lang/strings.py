@@ -1525,6 +1525,63 @@ _STRINGS.update({
     "ingress_remediation":      {"ko": "🔧 수정: ingress-nginx 1.11.5+/1.12.1+ 업그레이드 + NetworkPolicy로 kube-apiserver만 8443 접근 허용 + Gateway API 마이그레이션 고려(EOL 2025-11)",
                                   "zh": "🔧 修复: 升级ingress-nginx至1.11.5+/1.12.1+ + NetworkPolicy仅允许kube-apiserver访问8443 + 考虑迁移到Gateway API(EOL 2025-11)",
                                   "en": "🔧 Fix: Upgrade ingress-nginx to 1.11.5+/1.12.1+ + NetworkPolicy: only kube-apiserver can reach port 8443 + plan Gateway API migration (EOL Nov 2025)"},
+
+    # ── 무한루프 킬러 / Infinite Loop Killer (v2.3.22+) ─────────────
+    "loop_block_label":         {"ko": "🚫 [루프 차단 #{n}] {reason}",
+                                  "zh": "🚫 [循环拦截 #{n}] {reason}",
+                                  "en": "🚫 [LOOP BLOCK #{n}] {reason}"},
+    "loop_block_reason_infinite": {
+                                  "ko": "INFINITE_LOOP_RISK: for/range + TOP 1 쿼리 + seen=set() 없음 → 동일 결과 무한 반복",
+                                  "zh": "INFINITE_LOOP_RISK: for/range + TOP 1查询 + 无seen=set() → 无限重复相同结果",
+                                  "en": "INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever"},
+    "loop_block_feedback_title": {
+                                  "ko": "⛔ 코드 블록 거부 — 무한 루프 패턴 감지됨",
+                                  "zh": "⛔ 代码块被拒绝 — 检测到无限循环模式",
+                                  "en": "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED"},
+    "loop_block_mandatory_rewrite": {
+                                  "ko": "필수 재작성 — 커서 페이지네이션 패턴을 사용하세요:",
+                                  "zh": "强制重写 — 请使用游标分页模式：",
+                                  "en": "MANDATORY REWRITE — Use cursor pagination:"},
+    "loop_block_rewrite_now":   {"ko": "위의 커서 페이지네이션 패턴으로 지금 당장 재작성하세요.",
+                                  "zh": "请立即使用上面的游标分页模式重写。",
+                                  "en": "Rewrite with the cursor pagination pattern above NOW."},
+
+    # ── 스크립트 킬 메시지 / Script Kill Messages (v2.3.23) ───────────
+    "script_killed_infinite":   {"ko": "[스크립트_종료: 무한_루프 감지됨]",
+                                  "zh": "[脚本已终止: 检测到无限循环]",
+                                  "en": "[SCRIPT_KILLED: INFINITE_LOOP detected]"},
+    "script_killed_same_val":   {"ko": "동일 값 '{val}'이(가) {n}회 이상 반복됨.",
+                                  "zh": "相同值 '{val}' 重复出现 {n} 次以上。",
+                                  "en": "Same value '{val}' repeated {n}+ times."},
+    "script_killed_mandatory_fix": {
+                                  "ko": "필수 수정 — 열거 루프에 중복 제거 로직이 없습니다.",
+                                  "zh": "强制修复 — 您的枚举循环没有去重逻辑。",
+                                  "en": "MANDATORY FIX — Your enumeration loop has NO deduplication."},
+    "script_killed_cursor_must": {
+                                  "ko": "반드시 커서 페이지네이션 패턴으로 재작성하세요:",
+                                  "zh": "必须使用游标分页模式重写：",
+                                  "en": "You MUST rewrite with cursor pagination pattern:"},
+    "script_killed_timeout":    {"ko": "[스크립트_종료: 타임아웃]\n스크립트가 {sec}초 제한을 초과하여 강제 종료되었습니다.\n스크립트를 더 작은 블록으로 나누거나 루프를 최적화하세요.",
+                                  "zh": "[脚本已终止: 超时]\n脚本超过{sec}秒限制，已被强制终止。\n请将脚本拆分为更小的块或优化循环。",
+                                  "en": "[SCRIPT_KILLED: TIMEOUT]\nScript exceeded {sec}s timeout and was forcibly terminated.\nSplit the script into smaller blocks or optimize the loop."},
+
+    # ── VBScript 에러 / VBScript Error Detection (v2.3.21+) ──────────
+    "vbscript_not_sqli_title":  {"ko": "⚠️  VBScript 에러 감지 — 이 파라미터들은 SQL 인젝션이 아닙니다",
+                                  "zh": "⚠️  检测到VBScript错误 — 这些参数不是SQL注入点",
+                                  "en": "⚠️  VBScript error detected — these parameters are NOT SQL injectable"},
+    "vbscript_not_sqli_detail": {"ko": "감지된 에러: {signals}\n→ 파라미터화된 쿼리/ADO 타입 불일치 = 인젝션 불가\n→ 이 파라미터 테스트 중단. 다른 진입점을 찾으세요.",
+                                  "zh": "检测到的错误: {signals}\n→ 参数化查询/ADO类型不匹配 = 无法注入\n→ 停止测试此参数，寻找其他入口点。",
+                                  "en": "Detected: {signals}\n→ Parameterized query/ADO type mismatch = NOT injectable\n→ STOP testing this parameter. Find a different entry point."},
+
+    # ── ADODB 800a0cc1 / Stacked Query Signal (v2.3.22+) ─────────────
+    "stacked_query_detected":   {"ko": "⚡ ADODB 800a0cc1 감지 — 세미콜론 스택 쿼리 실행 가능! (SELECT가 아닌 EXEC/INSERT 시도)",
+                                  "zh": "⚡ 检测到ADODB 800a0cc1 — 分号堆叠查询可执行！(尝试EXEC/INSERT而非SELECT)",
+                                  "en": "⚡ ADODB 800a0cc1 detected — semicolon stacked query IS executing! (try EXEC/INSERT not SELECT)"},
+
+    # ── 무한 루프 경고 (사후 감지) / Post-execution loop warning ────────
+    "infinite_loop_warning":    {"ko": "⚠️  무한 루프 감지 — '{name}'이(가) {n}회 이상 반복됨. 커서 페이지네이션 없이 TOP 1 쿼리를 사용한 것 같습니다.",
+                                  "zh": "⚠️  检测到无限循环 — '{name}' 重复出现 {n} 次以上。疑似使用TOP 1查询而无游标分页。",
+                                  "en": "⚠️  Infinite loop detected — '{name}' repeated {n}+ times. Likely TOP 1 query without cursor pagination."},
 })
 
 

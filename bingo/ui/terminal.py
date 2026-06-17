@@ -26,6 +26,7 @@ from prompt_toolkit.completion import Completer, Completion, WordCompleter
 
 from ..models.base import Message, StreamChunk
 from ..lang.strings import get_strings, get_slash_commands, SUPPORTED_LANGS
+from ..i18n import t
 
 # ── 색상 팔레트 (해커 그린 테마) ──────────────────────────────────
 THEME = {
@@ -2893,9 +2894,8 @@ class BingoTerminal:
             _checked = _precheck_python_code(code)
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
-                self.console.print(
-                    f"[bold red]🚫 [LOOP BLOCK #{i+1}] {_block_reason[:120]}[/]"
-                )
+                _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])
+                self.console.print(f"[bold red]{_loop_label}[/]")
                 _hallucination_msgs.append(f"LOOP_BLOCKED: {_block_reason}")
                 continue  # 이 코드블록 실행 건너뜀
             elif _checked is None:
@@ -2926,12 +2926,15 @@ class BingoTerminal:
         if _hallucination_msgs and not tasks:
             _has_loop_block = any("LOOP_BLOCKED" in m for m in _hallucination_msgs)
             if _has_loop_block:
+                _fb_title = t("loop_block_feedback_title", "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED")
+                _fb_rewrite = t("loop_block_mandatory_rewrite", "MANDATORY REWRITE — Use cursor pagination:")
+                _fb_now = t("loop_block_rewrite_now", "Rewrite with the cursor pagination pattern above NOW.")
                 _hall_feedback = (
-                    "[⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED]\n"
+                    f"[{_fb_title}]\n"
                     + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
                     + "\n\nYour enumeration loop will print the SAME table name forever!\n"
                     "ROOT CAUSE: SELECT TOP 1 without cursor + no seen=set()\n\n"
-                    "MANDATORY REWRITE — Use cursor pagination:\n"
+                    f"{_fb_rewrite}\n"
                     "  seen = set()\n"
                     "  last_hex = ''\n"
                     "  while True:\n"
@@ -2944,7 +2947,7 @@ class BingoTerminal:
                     "      last_hex = '0x' + result.encode().hex().upper()\n"
                     "      print(result)\n\n"
                     "DO NOT use: for i in range(N): query('SELECT TOP 1 name ... LIKE ...')\n"
-                    "Rewrite with the cursor pagination pattern above NOW."
+                    f"{_fb_now}"
                 )
             else:
                 _hall_feedback = (
@@ -3148,11 +3151,15 @@ class BingoTerminal:
                 if _killed_reason:
                     if _killed_reason.startswith("INFINITE_LOOP:"):
                         _dup_val = _killed_reason.split(":", 1)[1]
+                        _k_title = t("script_killed_infinite", "[SCRIPT_KILLED: INFINITE_LOOP detected]")
+                        _k_same = t("script_killed_same_val", "Same value '{val}' repeated {n}+ times.").replace("{val}", _dup_val).replace("{n}", str(_MAX_CONSEC_DUP))
+                        _k_fix = t("script_killed_mandatory_fix", "MANDATORY FIX — Your enumeration loop has NO deduplication.")
+                        _k_cursor = t("script_killed_cursor_must", "You MUST rewrite with cursor pagination pattern:")
                         _kill_suffix = (
-                            f"\n[SCRIPT_KILLED: INFINITE_LOOP detected]\n"
-                            f"Same value '{_dup_val}' repeated {_MAX_CONSEC_DUP}+ times.\n"
-                            "MANDATORY FIX — Your enumeration loop has NO deduplication.\n"
-                            "You MUST rewrite with cursor pagination pattern:\n"
+                            f"\n{_k_title}\n"
+                            f"{_k_same}\n"
+                            f"{_k_fix}\n"
+                            f"{_k_cursor}\n"
                             "  seen = set()\n"
                             "  last_hex = ''\n"
                             "  while True:\n"
@@ -3165,11 +3172,8 @@ class BingoTerminal:
                             "STOP using FOR loops with TOP 1 and no cursor.\n"
                         )
                     else:
-                        _kill_suffix = (
-                            f"\n[SCRIPT_KILLED: {_killed_reason}]\n"
-                            f"Script exceeded {_SCRIPT_TIMEOUT}s timeout and was forcibly terminated.\n"
-                            "Split the script into smaller blocks or optimize the loop.\n"
-                        )
+                        _k_timeout = t("script_killed_timeout", "[SCRIPT_KILLED: TIMEOUT]\nScript exceeded {sec}s timeout and was forcibly terminated.\nSplit the script into smaller blocks or optimize the loop.").replace("{sec}", str(_SCRIPT_TIMEOUT))
+                        _kill_suffix = f"\n{_k_timeout}\n"
                 if output.strip():
                     results_text[slot] = (
                         f"=== {prefix} ({label}) ===\n"
@@ -3495,13 +3499,10 @@ class BingoTerminal:
             ]
 
             if _vbscript_signals:
-                _lang = getattr(self.config, "lang", "en")
-                _vb_msg = {
-                    "ko": f"⚠ VBScript 런타임 에러 감지 — SQL 인젝션 불가 파라미터: {', '.join(_vbscript_signals[:2])}",
-                    "zh": f"⚠ 检测到VBScript运行时错误 — 该参数不可注入SQL: {', '.join(_vbscript_signals[:2])}",
-                    "en": f"⚠ VBScript runtime error detected — parameter NOT SQLi-injectable: {', '.join(_vbscript_signals[:2])}",
-                }.get(_lang, f"⚠ VBScript error — NOT SQLi: {', '.join(_vbscript_signals[:2])}")
-                self.console.print(f"[{THEME['warn']}]{_vb_msg}[/]")
+                _vb_title = t("vbscript_not_sqli_title", "⚠️  VBScript error detected — these parameters are NOT SQL injectable")
+                _vb_detail = t("vbscript_not_sqli_detail", "Detected: {signals}\n→ NOT injectable\n→ STOP testing this parameter.").replace("{signals}", ", ".join(_vbscript_signals[:2]))
+                self.console.print(f"[{THEME['warn']}]{_vb_title}[/]")
+                self.console.print(f"[{THEME['muted']}]{_vb_detail}[/]")
                 _ip_block_hint += (
                     f"\n[VBSCRIPT_ERROR_DETECTED: {'; '.join(_vbscript_signals)}]\n"
                     "ACTION REQUIRED: STOP testing these parameters for SQL injection.\n"
@@ -3514,12 +3515,7 @@ class BingoTerminal:
 
             # ADODB 800a0cc1 감지 — Stacked Query 실행 가능 신호
             if "800a0cc1" in _raw_lower:
-                _lang = getattr(self.config, "lang", "en")
-                _stacked_msg = {
-                    "ko": "⚡ ADODB 800a0cc1 감지 — 세미콜론 스택 쿼리 실행 가능! (SELECT가 아닌 EXEC/INSERT 시도)",
-                    "zh": "⚡ 检测到ADODB 800a0cc1 — 分号堆叠查询可执行！(尝试EXEC/INSERT而非SELECT)",
-                    "en": "⚡ ADODB 800a0cc1 detected — semicolon stacked query IS executing! (try EXEC/INSERT not SELECT)",
-                }.get(_lang, "⚡ ADODB 800a0cc1 — stacked query executing!")
+                _stacked_msg = t("stacked_query_detected", "⚡ ADODB 800a0cc1 detected — stacked query executing!")
                 self.console.print(f"[bold green]{_stacked_msg}[/]")
                 _ip_block_hint += (
                     "\n[STACKED_QUERY_OPPORTUNITY: ADODB 800a0cc1 detected]\n"
@@ -3543,12 +3539,7 @@ class BingoTerminal:
                 _last_five = _table_lines[-5:]
                 if len(set(_last_five)) == 1:  # 마지막 5줄이 모두 동일
                     _dup_val = _last_five[0]
-                    _lang = getattr(self.config, "lang", "en")
-                    _dup_msg = {
-                        "ko": f"🔁 무한 루프 경고: '{_dup_val}'이 계속 반복됨 — 중복 제거 + 페이지네이션 필요!",
-                        "zh": f"🔁 无限循环警告: '{_dup_val}' 不断重复 — 需要去重+分页!",
-                        "en": f"🔁 Infinite loop warning: '{_dup_val}' repeating — dedup + pagination required!",
-                    }.get(_lang, f"🔁 Loop warning: '{_dup_val}' repeating!")
+                    _dup_msg = t("infinite_loop_warning", "⚠️  Infinite loop detected — '{name}' repeated {n}+ times.").replace("{name}", _dup_val).replace("{n}", "5")
                     self.console.print(f"[bold red]{_dup_msg}[/]")
                     _ip_block_hint += (
                         f"\n[INFINITE_LOOP_DETECTED: same result '{_dup_val}' repeating]\n"

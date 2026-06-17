@@ -28,6 +28,71 @@ from ..models.base import Message, StreamChunk
 from ..lang.strings import get_strings, get_slash_commands, SUPPORTED_LANGS
 from ..i18n import t
 
+# ── 응답 인코딩 자동 감지 유틸 ──────────────────────────────────────
+def _decode_response(resp) -> str:
+    """
+    HTTP 응답을 올바른 인코딩으로 디코딩.
+    우선순위: Content-Type 헤더 → HTML meta charset → chardet(선택) → apparent_encoding → utf-8 fallback
+    EUC-KR, EUC-JP, GB2312, Shift-JIS 등 구형 인코딩 자동 처리.
+    """
+    import re as _re_enc
+
+    raw = resp.content  # bytes
+
+    # 1. Content-Type 헤더에서 charset 추출
+    ct = resp.headers.get("Content-Type", "")
+    _m = _re_enc.search(r"charset\s*=\s*([^\s;,\"']+)", ct, _re_enc.I)
+    enc_from_header = _m.group(1).strip().lower() if _m else None
+
+    # 2. HTML meta charset 추출 (헤더에 없을 경우)
+    enc_from_meta = None
+    if not enc_from_header:
+        raw_sample = raw[:4096]
+        for pat in [
+            rb'charset\s*=\s*["\']?([a-zA-Z0-9_\-]+)',
+            rb'<meta[^>]+content-type[^>]+charset=([a-zA-Z0-9_\-]+)',
+        ]:
+            _mm = _re_enc.search(pat, raw_sample, _re_enc.I)
+            if _mm:
+                enc_from_meta = _mm.group(1).decode("ascii", errors="ignore").strip().lower()
+                break
+
+    # 3. 인코딩 우선순위 결정
+    enc = enc_from_header or enc_from_meta
+
+    # 4. 별칭 정규화 (euc_kr → euc-kr 등 Python codec 호환)
+    _alias_map = {
+        "euc_kr": "euc-kr", "euckr": "euc-kr", "ks_c_5601": "euc-kr",
+        "ks_c_5601-1987": "euc-kr", "ksc5601": "euc-kr",
+        "euc_jp": "euc-jp", "eucjp": "euc-jp",
+        "shift_jis": "shift-jis", "sjis": "shift-jis", "shift-jis": "shift_jis",
+        "gb2312": "gb2312", "gbk": "gbk", "gb18030": "gb18030",
+        "big5": "big5",
+        "utf8": "utf-8", "utf_8": "utf-8",
+        "latin1": "latin-1", "iso-8859-1": "latin-1",
+    }
+    if enc:
+        enc = _alias_map.get(enc, enc)
+
+    # 5. 디코딩 시도
+    if enc:
+        try:
+            return raw.decode(enc, errors="replace")
+        except (LookupError, UnicodeDecodeError):
+            pass
+
+    # 6. requests apparent_encoding 폴백
+    apparent = getattr(resp, "apparent_encoding", None)
+    if apparent:
+        try:
+            return raw.decode(apparent, errors="replace")
+        except (LookupError, UnicodeDecodeError):
+            pass
+
+    # 7. 최후: utf-8 replace
+    return raw.decode("utf-8", errors="replace")
+
+
 # ── 색상 팔레트 (해커 그린 테마) ──────────────────────────────────
 THEME = {
     "primary":   "#00ff41",   # 매트릭스 그린
@@ -668,7 +733,7 @@ class BingoTerminal:
                 _hdrs_with_session = _hdrs
 
             resp = _hx.get(url, headers=_hdrs_with_session, follow_redirects=True, timeout=12, verify=False)
-            page = resp.text
+            page = _decode_response(resp)
             orig_status = resp.status_code
             parsed_url = urlparse(resp.url)
             base_domain = parsed_url.scheme + "://" + parsed_url.netloc
@@ -734,7 +799,7 @@ class BingoTerminal:
                     f"[{THEME['warn']}]  {self.s.get('url_404_fallback', '⚠ {url} → 404').format(url=url, root=root_url)}[/]"
                 )
                 resp = _hx.get(root_url, headers=_hdrs, follow_redirects=True, timeout=12, verify=False)
-                page = resp.text
+                page = _decode_response(resp)
                 parsed_url = urlparse(resp.url)
                 base_domain = parsed_url.scheme + "://" + parsed_url.netloc
 
@@ -2848,6 +2913,45 @@ class BingoTerminal:
 
             fixed = code
 
+            # ── 0-Z. 인코딩 자동 감지 헬퍼 주입 ──────────────────────────────
+            # r.text / resp.text 사용 시 EUC-KR 등 구형 인코딩 깨짐 방지
+            # requests.get/post 가 있고 smart_decode 가 없는 경우 헬퍼 + 교체 주입
+            _has_requests = bool(_pre_re.search(r'\brequests\.(get|post|put|patch|delete)\b', fixed))
+            _has_smart_decode = "smart_decode" in fixed
+            _has_rtext = bool(_pre_re.search(r'\b(?:r|resp|response|res)\s*\.\s*text\b', fixed))
+            if _has_requests and _has_rtext and not _has_smart_decode:
+                _smart_decode_helper = (
+                    "\ndef _smart_decode(resp):\n"
+                    "    import re as _sre\n"
+                    "    raw = resp.content\n"
+                    "    ct = resp.headers.get('Content-Type', '')\n"
+                    "    m = _sre.search(r'charset\\s*=\\s*([^\\s;,\"]+)', ct, _sre.I)\n"
+                    "    enc = m.group(1).strip() if m else None\n"
+                    "    if not enc:\n"
+                    "        mm = _sre.search(rb'charset\\s*=\\s*[\"\\']?([a-zA-Z0-9_\\-]+)', raw[:4096], _sre.I)\n"
+                    "        enc = mm.group(1).decode('ascii', errors='ignore').strip() if mm else None\n"
+                    "    for cand in [enc, getattr(resp, 'apparent_encoding', None), 'utf-8']:\n"
+                    "        if not cand: continue\n"
+                    "        try: return raw.decode(cand, errors='replace')\n"
+                    "        except (LookupError, UnicodeDecodeError): pass\n"
+                    "    return raw.decode('utf-8', errors='replace')\n\n"
+                )
+                # import 블록 뒤 또는 코드 맨 앞에 삽입
+                _import_end = 0
+                for _ln in fixed.splitlines():
+                    _sl = _ln.strip()
+                    if _sl.startswith("import ") or _sl.startswith("from "):
+                        _import_end = fixed.find(_ln) + len(_ln)
+                _insert_pos = _import_end if _import_end > 0 else 0
+                fixed = fixed[:_insert_pos] + _smart_decode_helper + fixed[_import_end:]
+                # .text → _smart_decode(변수) 교체
+                fixed = _pre_re.sub(
+                    r'\b(r|resp|response|res)\s*\.\s*text\b',
+                    lambda m2: f"_smart_decode({m2.group(1)})",
+                    fixed
+                )
+                fixed = "__ENCODE_INJECTED__\n" + fixed
+
             # ── 0-A. 무한루프: for/range + TOP 1 + seen=set() 없음 ─────────
             _has_range_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed))
             _has_query = bool(_pre_re.search(
@@ -3029,6 +3133,11 @@ class BingoTerminal:
 
             # 구문 사전 검증 + 무한루프 패턴 차단
             _checked = _precheck_python_code(code)
+            # 인코딩 자동 주입 감지
+            if isinstance(_checked, str) and _checked.startswith("__ENCODE_INJECTED__\n"):
+                _checked = _checked[len("__ENCODE_INJECTED__\n"):]
+                _enc_msg = t("encoding_inject_notice", "🔤 [PRECHECK] r.text → smart_decode() injected (auto encoding detection)")
+                self.console.print(f"[{THEME['dim']}]{_enc_msg}[/]")
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])

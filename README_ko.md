@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.29 — 공식 릴리스**  
-> v2.3.29이 최신 안정 버전입니다.
+> **v2.3.30 — 공식 릴리스**  
+> v2.3.30이 최신 안정 버전입니다.
 
 </div>
 
@@ -136,14 +136,20 @@ bingo
 
 ---
 
-## v2.3.29 신규 기능 — WAF ReadTimeout 가드, URL 연소 버그 수정, f-string 자동 수정 *(2026-06)*
+## v2.3.30 신규 기능 — 응답 인코딩 자동 감지, 배너 버전 수정, Syntax Precheck 오탐 제거 *(2026-06)*
+
+- **🔴 Rule 21: 응답 인코딩 자동 감지** — AI가 `r.text`를 직접 사용하지 않음. EUC-KR/EUC-JP/GB2312 등 구형 한국어·일본어·중국어 사이트에서 깨진 문자(`Է` 등) 완전 해결. Content-Type 헤더 → HTML meta charset → apparent_encoding → UTF-8 순으로 자동 감지.
+- **🔴 Precheck: `r.text` → `smart_decode()` 자동 주입** — `_precheck_python_code`가 `requests.get/post` + `.text` 패턴 감지 시 자동으로 `_smart_decode()` 헬퍼 삽입 및 `.text` 호출 교체.
+- **🟠 배너 버전 수정** — 터미널 배너가 하드코딩 `v2.3.4` 대신 `__version__`을 동적으로 읽어 표시.
+- **🟠 Syntax Precheck 오탐 수정** — `None` 반환 값이 "정상"과 "오류"를 동시에 의미해서 매번 경고가 뜨던 문제 해결. `None`(정상) vs `__SYNTAX_ERR__`(실제 오류) 분리.
+- **🟡 다국어: 2개 신규 키** — `encoding_auto_detected`, `encoding_inject_notice` (ko/zh/en).
+
+## v2.3.29 — WAF ReadTimeout 가드, URL 연소 버그 수정, f-string 자동 수정 *(2026-06)*
 
 AI 생성 코드의 반복 오류를 차단하는 3가지 방어 레이어:
 
-- **🔴 Rule 19: ReadTimeout = WAF silent drop** — SQL 인젝션 페이로드(AND/OR/WAITFOR)에서 `ReadTimeout`이 발생하면, 이제 AI는 이를 WAF가 요청을 조용히 차단한 것으로 정확히 인식합니다 (time-based SQLi 성공이 아님). 필수 행동: 인코딩으로 1회 재시도 → 여전히 타임아웃 → WAF 차단으로 표시 후 즉시 피벗. 무한 재시도 루프 방지.
-- **🔴 Rule 20: URL 구성 가드** — AI는 이제 `base_url + "https://..."` 패턴을 명시적으로 금지합니다. 이 패턴은 `www.example.comhttps` 같은 비정상 호스트를 생성합니다. 필수: 전체 URL 직접 사용 또는 `urljoin()` 사용. precheck 시스템이 런타임에 자동 수정합니다.
-- **🔴 Precheck: URL 연소 자동 수정** — `_precheck_python_code`가 이제 `*url* + "https://..."` 패턴을 실행 전 자동으로 감지하고 수정합니다. `SSLEOFError` 및 `MaxRetryError` 방지.
-- **🟠 Precheck: f-string 자동 수정** — Python 3.12 f-string 기능(같은 따옴표 dict subscript 등)에 대한 `SyntaxError` 처리 개선. 매 루프마다 나타나는 오탐 경고 억제.
+- **🔴 Rule 19: ReadTimeout = WAF silent drop** — SQL 인젝션 페이로드에서 `ReadTimeout` 발생 시 WAF 차단으로 인식하고 즉시 피벗.
+- **🔴 Rule 20: URL 구성 가드** — `base_url + "https://..."` 패턴 금지.
 - **🟡 다국어: 2개 신규 키** — `waf_timeout_detected`, `url_concat_fixed` (ko/zh/en).
 
 ## v2.3.26 신규 기능 — 하드 워치독 타임아웃, pymssql VPN 가드, Oracle 검증 *(2026-06)*

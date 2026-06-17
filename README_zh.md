@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.29 — 正式发布版**  
-> v2.3.29 是最新稳定版本。
+> **v2.3.30 — 正式发布版**  
+> v2.3.30 是最新稳定版本。
 
 </div>
 
@@ -136,14 +136,17 @@ bingo
 
 ---
 
-## v2.3.29 新功能 —— WAF ReadTimeout防护、URL拼接修复、f-string自动修复 *(2026-06)*
+## v2.3.30 新功能 —— 响应编码自动检测、Banner版本修复、Syntax Precheck误报修复 *(2026-06)*
 
-三层防护终止AI生成代码的重复错误：
+- **🔴 规则21: 响应编码自动检测** — AI不再直接使用`r.text`。自动检测EUC-KR/EUC-JP/GB2312等旧式韩日中网站编码，彻底解决乱码问题（`Է`等）。优先级：Content-Type头 → HTML meta charset → apparent_encoding → UTF-8。
+- **🔴 Precheck: `r.text` → `smart_decode()`自动注入** — `_precheck_python_code`检测到`requests.get/post` + `.text`用法时，自动插入`_smart_decode()`辅助函数并替换所有`.text`调用。
+- **🟠 Banner版本修复** — 终端Banner不再硬编码`v2.3.4`，改为动态读取`__version__`。
+- **🟠 Syntax Precheck误报修复** — `None`返回值同时表示"正常"和"错误"导致每次都显示警告的问题已修复，分离为`None`（正常）vs `__SYNTAX_ERR__`（真实错误）。
+- **🟡 多语言: 2个新增键** — `encoding_auto_detected`、`encoding_inject_notice`（ko/zh/en）。
 
-- **🔴 规则19: ReadTimeout = WAF静默丢弃** — 当SQL注入载荷（AND/OR/WAITFOR）触发`ReadTimeout`时，AI现在能正确识别这是WAF静默丢弃请求，而非time-based SQLi成功。强制行为：尝试编码后重试1次 → 仍超时 → 标记为WAF阻断，立即切换。防止无限重试循环。
-- **🔴 规则20: URL构建防护** — AI现在明确禁止`base_url + "https://..."`模式。该模式会产生`www.example.comhttps`等畸形主机名。强制要求：直接使用完整URL或使用`urljoin()`。precheck系统在运行时自动修复此问题。
-- **🔴 Precheck: URL拼接自动修复** — `_precheck_python_code`现在在执行前自动检测并修正`*url* + "https://..."`模式，防止`SSLEOFError`和`MaxRetryError`。
-- **🟠 Precheck: f-string自动修复** — 改进了Python 3.12 f-string功能（同类型引号dict下标等）的`SyntaxError`处理，抑制每次循环都出现的误报警告。
+## v2.3.29 —— WAF ReadTimeout防护、URL拼接修复、f-string自动修复 *(2026-06)*
+
+- **🔴 规则19/20** — ReadTimeout=WAF静默丢弃判断；禁止`base_url + "https://..."`。
 - **🟡 多语言: 2个新增键** — `waf_timeout_detected`、`url_concat_fixed`（ko/zh/en）。
 
 ## v2.3.26 新功能 —— 硬看门狗超时、pymssql VPN防护、Oracle验证 *(2026-06)*

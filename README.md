@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.29 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.29 is the latest stable, production-ready version.
+> **v2.3.30 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.30 is the latest stable, production-ready version.
 
 </div>
 
@@ -3070,6 +3070,14 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
+### v2.3.30 — Response Encoding Auto-Detection, Banner Version Fix, Syntax Precheck Fix *(2026-06)*
+
+- **🔴 Rule 21: Response Encoding Auto-Detect** — AI no longer uses `r.text` directly. Smart encoding detection injected automatically: checks `Content-Type` header → HTML meta charset → `apparent_encoding` → UTF-8 fallback. Fixes garbled EUC-KR/EUC-JP/GB2312 output on Korean/Japanese/Chinese legacy ASP sites.
+- **🔴 Precheck: `r.text` → `smart_decode()` auto-injection** — `_precheck_python_code` now detects `requests.get/post` + `.text` usage and injects a `_smart_decode()` helper automatically, replacing all `.text` calls before execution.
+- **🟠 Banner version fix** — Terminal banner now reads `__version__` dynamically instead of hardcoded `v2.3.4`.
+- **🟠 Syntax Precheck false-positive fix** — `None` return value was overloaded (OK + error), causing the warning to fire on every normal execution. Separated into `None` (OK) vs `__SYNTAX_ERR__` (real error).
+- **🟡 i18n: 2 new multilingual keys** — `encoding_auto_detected`, `encoding_inject_notice` (ko/zh/en).
+
 ### v2.3.29 — WAF ReadTimeout Guard, URL Concat Bug Fix, f-string Auto-Repair *(2026-06)*
 
 Three defensive layers to stop AI-generated code bugs that wasted tokens across every run:
@@ -5184,9 +5192,9 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
-## Runtime Infinite Loop Killer (**v2.3.29)
+## Runtime Infinite Loop Killer (**v2.3.30)
 
-v2.3.23 fixed the AI prompt rules — but the loop was already running. **v2.3.29 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
+v2.3.23 fixed the AI prompt rules — but the loop was already running. **v2.3.30 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
 
 ### New Runtime Protections (terminal.py)
 
@@ -5200,7 +5208,7 @@ v2.3.23 fixed the AI prompt rules — but the loop was already running. **v2.3.2
 
 **Before (v2.3.22)**: Script runs 28 minutes, prints `ARREO_SMS` 383 times, terminal watches helplessly.
 
-**After (**v2.3.29)**:
+**After (**v2.3.30)**:
 ```
 [U] ulsan$
 [U] ulsan$

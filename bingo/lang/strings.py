@@ -1663,6 +1663,14 @@ _STRINGS.update({
     "syntax_precheck_warn":      {"ko": "⚠ [SYNTAX PRECHECK #{n}] 문법 오류 감지 — 자동 수정 실패. f-string 백슬래시 또는 dict 키 따옴표 충돌 확인 필요.",
                                    "zh": "⚠ [SYNTAX PRECHECK #{n}] 检测到语法错误 — 自动修复失败。请检查f-string反斜杠或dict下标引号冲突。",
                                    "en": "⚠ [SYNTAX PRECHECK #{n}] SyntaxError detected — auto-fix failed. Check f-string backslash or dict subscript issues."},
+
+    # ── 인코딩 자동 감지 ──────────────────────────────────────────────
+    "encoding_auto_detected":    {"ko": "🔤 인코딩 자동 감지: {enc} (EUC-KR/UTF-8/등 구형 사이트 대응)",
+                                   "zh": "🔤 自动检测编码: {enc} (兼容EUC-KR/UTF-8等旧式网站)",
+                                   "en": "🔤 Encoding auto-detected: {enc} (EUC-KR/UTF-8/legacy site support)"},
+    "encoding_inject_notice":    {"ko": "🔤 [PRECHECK] r.text → smart_decode() 자동 교체 (인코딩 자동 감지)",
+                                   "zh": "🔤 [PRECHECK] r.text → smart_decode() 已自动替换 (自动检测编码)",
+                                   "en": "🔤 [PRECHECK] r.text → smart_decode() injected (auto encoding detection)"},
 })
 
 

@@ -612,6 +612,32 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   causing all requests to fail with SSLError or ConnectionError immediately.
   MANDATORY: Before using any URL in requests, verify it starts with exactly one https:// or http://
 
+  ── 21. Response Encoding — Auto-Detect, NEVER Assume UTF-8 ──
+  Korean/Japanese/Chinese sites often use EUC-KR, EUC-JP, GB2312, Shift-JIS.
+  NEVER use r.text directly on unknown targets — it may silently garble non-UTF-8 content.
+  ALWAYS use this pattern for response decoding:
+
+    def smart_decode(resp):
+        import re as _re
+        raw = resp.content
+        ct = resp.headers.get("Content-Type", "")
+        m = _re.search(r"charset\s*=\s*([^\s;,\"']+)", ct, _re.I)
+        enc = m.group(1).strip() if m else None
+        if not enc:
+            mm = _re.search(rb"charset\s*=\s*[\"']?([a-zA-Z0-9_\-]+)", raw[:4096], _re.I)
+            enc = mm.group(1).decode("ascii", errors="ignore").strip() if mm else None
+        for candidate in [enc, getattr(resp, "apparent_encoding", None), "utf-8"]:
+            if not candidate: continue
+            try: return raw.decode(candidate, errors="replace")
+            except (LookupError, UnicodeDecodeError): pass
+        return raw.decode("utf-8", errors="replace")
+
+    page = smart_decode(r)   # NOT r.text
+
+  EUC-KR alias list: euc-kr, euckr, ks_c_5601, ks_c_5601-1987, ksc5601
+  REASON: r.text uses detected encoding which defaults to ISO-8859-1 for many Korean ASP sites,
+  causing ??? or garbage characters in output.
+
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>
 Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.

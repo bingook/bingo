@@ -3502,7 +3502,7 @@ class BingoTerminal:
                 _vb_title = t("vbscript_not_sqli_title", "⚠️  VBScript error detected — these parameters are NOT SQL injectable")
                 _vb_detail = t("vbscript_not_sqli_detail", "Detected: {signals}\n→ NOT injectable\n→ STOP testing this parameter.").replace("{signals}", ", ".join(_vbscript_signals[:2]))
                 self.console.print(f"[{THEME['warn']}]{_vb_title}[/]")
-                self.console.print(f"[{THEME['muted']}]{_vb_detail}[/]")
+                self.console.print(f"[{THEME['dim']}]{_vb_detail}[/]")
                 _ip_block_hint += (
                     f"\n[VBSCRIPT_ERROR_DETECTED: {'; '.join(_vbscript_signals)}]\n"
                     "ACTION REQUIRED: STOP testing these parameters for SQL injection.\n"

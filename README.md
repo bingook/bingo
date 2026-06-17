@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.28 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.28 is the latest stable, production-ready version.
+> **v2.3.29 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.29 is the latest stable, production-ready version.
 
 </div>
 
@@ -3070,7 +3070,7 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
-### v2.3.28 — WAF ReadTimeout Guard, URL Concat Bug Fix, f-string Auto-Repair *(2026-06)*
+### v2.3.29 — WAF ReadTimeout Guard, URL Concat Bug Fix, f-string Auto-Repair *(2026-06)*
 
 Three defensive layers to stop AI-generated code bugs that wasted tokens across every run:
 
@@ -5184,9 +5184,9 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
-## Runtime Infinite Loop Killer (**v2.3.28)
+## Runtime Infinite Loop Killer (**v2.3.29)
 
-v2.3.23 fixed the AI prompt rules — but the loop was already running. **v2.3.28 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
+v2.3.23 fixed the AI prompt rules — but the loop was already running. **v2.3.29 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
 
 ### New Runtime Protections (terminal.py)
 
@@ -5200,7 +5200,7 @@ v2.3.23 fixed the AI prompt rules — but the loop was already running. **v2.3.2
 
 **Before (v2.3.22)**: Script runs 28 minutes, prints `ARREO_SMS` 383 times, terminal watches helplessly.
 
-**After (**v2.3.28)**:
+**After (**v2.3.29)**:
 ```
 [U] ulsan$
 [U] ulsan$

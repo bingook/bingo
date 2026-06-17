@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.28 — 正式发布版**  
-> v2.3.28 是最新稳定版本。
+> **v2.3.29 — 正式发布版**  
+> v2.3.29 是最新稳定版本。
 
 </div>
 
@@ -136,7 +136,7 @@ bingo
 
 ---
 
-## v2.3.28 新功能 —— WAF ReadTimeout防护、URL拼接修复、f-string自动修复 *(2026-06)*
+## v2.3.29 新功能 —— WAF ReadTimeout防护、URL拼接修复、f-string自动修复 *(2026-06)*
 
 三层防护终止AI生成代码的重复错误：
 

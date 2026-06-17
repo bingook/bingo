@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.3.25-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.26-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.25 — 공식 릴리스**  
-> v2.3.25이 최신 안정 버전입니다.
+> **v2.3.26 — 공식 릴리스**  
+> v2.3.26이 최신 안정 버전입니다.
 
 </div>
 
@@ -123,7 +123,7 @@ bingo
 - MSSQL / MySQL / PostgreSQL / Oracle 지원
 - Boolean blind, Time-based, Error-based, UNION 자동 선택
 - WAF 우회 페이로드 자동 생성
-- **v2.3.25 신규**: 무한 루프 방지 — 중복 결과 5회 → 즉시 프로세스 종료
+- **v2.3.26 신규**: 무한 루프 방지 — 중복 결과 5회 → 즉시 프로세스 종료
 
 ### WAF 우회
 - Cloudflare · Safe3 · D盾 · 云锁 지원
@@ -135,6 +135,17 @@ bingo
 - CAPTCHA (kcaptcha) 자동 OCR 해결
 
 ---
+
+## v2.3.26 신규 기능 — 하드 워치독 타임아웃, pymssql VPN 가드, Oracle 검증 *(2026-06)*
+
+### 버그 수정
+
+- **🔴 블로킹 소켓 무한 대기 수정 (pymssql 무한 루프)** — stdout 출력이 없는 경우에도 300초 후 `p.kill()`을 호출하는 전용 워치독 스레드 추가. 이전 타임아웃은 `for raw_line in p.stdout:` 루프 내에서만 작동해, pymssql 처럼 TCP 연결 중 아무 출력도 없으면 루프 자체가 진행되지 않아 타임아웃 체크가 실행되지 않았음.
+- **🔴 Rule 13: pymssql/pyodbc 필수 타임아웃** — AI는 반드시 `timeout=10, login_timeout=10` 설정 후 데몬 스레드(`join(timeout=15)`)로 실행해야 함. VPN NAT IP(`198.18.x.x`, `192.168.x.x` 등)를 SQL Server 타겟으로 절대 사용 금지.
+- **🟠 Rule 14: Boolean oracle 사전 검증** — 추출 루프 실행 전 TRUE/FALSE 응답 크기 차이 ≥ 10B 확인 필수. 동일하면 oracle 무효 → 다른 기법으로 전환.
+- **🟠 Rule 15: WAITFOR 엄격한 임계값** — `WAITFOR 5s`는 응답 시간 ≥ 4.0s일 때만 유효. 1.36s 응답은 오탐.
+- **🟡 Rule 16: 자격증명 우선 공격 순서** — DB 크리덴셜이 이미 추출된 경우, 복잡한 blind SQLi보다 로그인 폼 시도를 먼저 수행. `<input type="password">` 없는 페이지는 건너뜀.
+- **i18n: 신규 다국어 키 6개** — `script_watchdog_killed`, `pymssql_vpn_ip_warn`, `bool_oracle_invalid`, `waitfor_false_positive`, `cred_first_login_try`, `login_page_no_form` (ko/zh/en).
 
 ## v2.3.25 신규 기능 — SQLi 오라클 정밀도 개선 & UnboundLocalError 수정
 
@@ -148,10 +159,10 @@ bingo
 
 ---
 
-## v2.3.25 이전 — 무한 루프 킬러
+## v2.3.26 이전 — 무한 루프 킬러
 
 이전 버전에서 테이블 열거 루프가 28분 동안 동일한 테이블을 383번 출력하는 버그 발생.  
-v2.3.25에서 3단계 방어막 추가:
+v2.3.26에서 3단계 방어막 추가:
 
 | 단계 | 메커니즘 | 트리거 |
 |------|---------|--------|
@@ -159,7 +170,7 @@ v2.3.25에서 3단계 방어막 추가:
 | 실시간 KILL | 스트리밍 모니터 | 동일 줄 5회 반복 → 즉시 프로세스 종료 |
 | 타임아웃 | 하드 제한 | 스크립트 300초 초과 → 강제 종료 |
 
-**올바른 열거 패턴 (v2.3.25 필수)**:
+**올바른 열거 패턴 (v2.3.26 필수)**:
 ```python
 seen = set()
 last_hex = ''

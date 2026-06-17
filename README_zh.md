@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.3.25-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.26-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.25 — 正式发布版**  
-> v2.3.25 是最新稳定版本。
+> **v2.3.26 — 正式发布版**  
+> v2.3.26 是最新稳定版本。
 
 </div>
 
@@ -123,7 +123,7 @@ bingo
 - 支持 MSSQL / MySQL / PostgreSQL / Oracle
 - 自动选择 Boolean blind、Time-based、Error-based、UNION
 - 自动生成 WAF 绕过载荷
-- **v2.3.25 新增**: 无限循环防护 —— 重复结果 5 次 → 立即终止进程
+- **v2.3.26 新增**: 无限循环防护 —— 重复结果 5 次 → 立即终止进程
 
 ### WAF 绕过
 - 支持 Cloudflare · Safe3 · D盾 · 云锁
@@ -135,6 +135,17 @@ bingo
 - 云锁 → HTTP 参数污染
 
 ---
+
+## v2.3.26 新功能 —— 硬看门狗超时、pymssql VPN防护、Oracle验证 *(2026-06)*
+
+### 错误修复
+
+- **🔴 修复阻塞套接字无限等待（pymssql无限循环）** — 新增专用看门狗线程，即使子进程无任何stdout输出，也能在300秒后执行 `p.kill()`。旧版超时机制仅在 `for raw_line in p.stdout:` 循环内触发，当pymssql在TCP连接时无输出，循环永不推进，超时检查也永不执行。
+- **🔴 规则13：pymssql/pyodbc强制超时** — AI必须始终设置 `timeout=10, login_timeout=10`，并在守护线程（`join(timeout=15)`）中运行。绝不能将VPN NAT IP（`198.18.x.x`、`192.168.x.x`等）用作SQL Server目标。
+- **🟠 规则14：布尔Oracle事先验证** — 启动逐字符提取循环前，必须确认TRUE/FALSE响应大小差异 ≥ 10字节。相同则Oracle无效 → 切换技术。
+- **🟠 规则15：WAITFOR严格阈值** — `WAITFOR 5s` 仅在响应时间 ≥ 4.0s时有效。1.36s响应为误报。
+- **🟡 规则16：凭据优先攻击顺序** — 若已提取数据库凭据，必须先尝试所有识别到的登录表单，再继续复杂盲注。无 `<input type="password">` 的页面直接跳过。
+- **i18n: 新增6个多语言键** — `script_watchdog_killed`、`pymssql_vpn_ip_warn`、`bool_oracle_invalid`、`waitfor_false_positive`、`cred_first_login_try`、`login_page_no_form`（ko/zh/en）。
 
 ## v2.3.25 新功能 —— SQL注入Oracle精度改进 & UnboundLocalError修复
 
@@ -148,10 +159,10 @@ bingo
 
 ---
 
-## v2.3.25 早期功能 —— 无限循环终止器
+## v2.3.26 早期功能 —— 无限循环终止器
 
 旧版本中，表枚举循环曾连续运行 28 分钟，将同一张表输出 383 次。  
-v2.3.25 新增三层防护：
+v2.3.26 新增三层防护：
 
 | 层级 | 机制 | 触发条件 |
 |------|------|---------|
@@ -159,7 +170,7 @@ v2.3.25 新增三层防护：
 | 实时 KILL | 流式输出监控 | 同一行重复 5 次 → 立即终止进程 |
 | 超时限制 | 硬性限制 | 脚本超过 300 秒 → 强制终止 |
 
-**正确枚举模式（v2.3.25 强制要求）**：
+**正确枚举模式（v2.3.26 强制要求）**：
 ```python
 seen = set()
 last_hex = ''

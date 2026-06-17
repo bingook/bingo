@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.25-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.26-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.25 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.25 is the latest stable, production-ready version.
+> **v2.3.26 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.26 is the latest stable, production-ready version.
 
 </div>
 
@@ -3070,6 +3070,18 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 
 ## Changelog
 
+### v2.3.26 — Hard Watchdog Timeout, pymssql VPN Guard, Oracle Validation *(2026-06)*
+
+Critical runtime enforcement and SQL injection accuracy improvements:
+
+- **🔴 Fix: Blocking socket hang (pymssql infinite wait)** — Added a dedicated watchdog thread that fires `p.kill()` after 300 s even when the subprocess produces **zero stdout output** (e.g. pymssql connecting to a VPN NAT IP). The previous timeout only triggered inside the `for raw_line in p.stdout:` loop — which never advances if the process is silent.
+- **🔴 Rule 13: pymssql/pyodbc mandatory timeout** — AI must always set `timeout=10, login_timeout=10` on pymssql connections AND run them inside a daemon thread with `join(timeout=15)` to prevent indefinite blocking.
+- **🔴 Rule 13: VPN NAT IP guard** — AI must never use `198.18.x.x`, `192.168.x.x`, `172.16-31.x.x`, `10.x.x.x` as a SQL Server target IP. These are VPN internal NAT addresses. Always use the domain name directly.
+- **🟠 Rule 14: Boolean oracle validation required** — Before running any char-by-char extraction, the AI must confirm TRUE and FALSE payloads return **different** response sizes (diff ≥ 10 bytes). Identical responses → oracle invalid → switch technique.
+- **🟠 Rule 15: WAITFOR strict threshold** — `WAITFOR 5s` is confirmed only when `response_time ≥ 4.0s`. A 1.36 s response for a 5 s WAITFOR is a false positive.
+- **🟡 Rule 16: Credential-first attack priority** — If DB credentials were already extracted, the AI must attempt login on all identified login forms **before** continuing complex blind SQLi. Skip pages with no `<input type="password">`.
+- **i18n: 6 new multilingual keys** — `script_watchdog_killed`, `pymssql_vpn_ip_warn`, `bool_oracle_invalid`, `waitfor_false_positive`, `cred_first_login_try`, `login_page_no_form` (ko/zh/en).
+
 ### v2.3.25 — SQLi Oracle Precision & UnboundLocalError Fix *(2026-06)*
 
 Critical bug fix and SQL injection analysis accuracy improvements:
@@ -5162,9 +5174,9 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
-## Runtime Infinite Loop Killer (v2.3.25)
+## Runtime Infinite Loop Killer (v2.3.26)
 
-v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.25 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
+v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.26 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
 
 ### New Runtime Protections (terminal.py)
 
@@ -5178,7 +5190,7 @@ v2.3.23 fixed the AI prompt rules — but the loop was already running. v2.3.25 
 
 **Before (v2.3.22)**: Script runs 28 minutes, prints `ARREO_SMS` 383 times, terminal watches helplessly.
 
-**After (v2.3.25)**:
+**After (v2.3.26)**:
 ```
 [U] ulsan$
 [U] ulsan$

@@ -1595,6 +1595,31 @@ _STRINGS.update({
     "typed_param_skip":         {"ko": "⏭️  타입 지정 파라미터 — ORDER BY/UNION 열거 건너뜀 (type error 감지됨)",
                                   "zh": "⏭️  类型指定参数 — 跳过ORDER BY/UNION枚举（检测到类型错误）",
                                   "en": "⏭️  Typed parameter — skipping ORDER BY/UNION enumeration (type error detected)"},
+
+    # ── v2.3.26 신규: pymssql/VPN/oracle/WAITFOR 관련 ──
+    "script_watchdog_killed":   {"ko": "⏱️  [워치독] 스크립트 {sec}초 초과 (stdout 없는 블로킹 감지) → 강제 종료",
+                                  "zh": "⏱️  [看门狗] 脚本超过 {sec} 秒（检测到无输出阻塞）→ 强制终止",
+                                  "en": "⏱️  [WATCHDOG] Script exceeded {sec}s with no output (blocking socket detected) → KILLED"},
+
+    "pymssql_vpn_ip_warn":      {"ko": "⚠️  VPN NAT IP ({ip}) 감지 — 직접 연결 차단. 도메인명으로 재시도하세요.",
+                                  "zh": "⚠️  检测到VPN NAT IP ({ip}) — 直接连接被阻止。请使用域名重试。",
+                                  "en": "⚠️  VPN NAT IP ({ip}) detected — direct connection blocked. Retry with hostname."},
+
+    "bool_oracle_invalid":      {"ko": "❌  Boolean oracle 무효 — TRUE/FALSE 응답 크기 동일 ({size}B). 다른 기법으로 전환.",
+                                  "zh": "❌  布尔Oracle无效 — TRUE/FALSE响应大小相同 ({size}B)。切换到其他技术。",
+                                  "en": "❌  Boolean oracle INVALID — TRUE/FALSE return identical size ({size}B). Switch technique."},
+
+    "waitfor_false_positive":   {"ko": "⚠️  WAITFOR 오탐 — {sec}초 설정인데 응답 {rt:.2f}초 (<{threshold}초). 주입 미실행.",
+                                  "zh": "⚠️  WAITFOR误报 — 设置{sec}秒但响应{rt:.2f}秒 (<{threshold}秒). 注入未执行。",
+                                  "en": "⚠️  WAITFOR false positive — {sec}s delay set but response was {rt:.2f}s (<{threshold}s). Not executed."},
+
+    "cred_first_login_try":     {"ko": "🔑  추출된 자격증명으로 로그인 시도: {url}",
+                                  "zh": "🔑  使用提取的凭据尝试登录: {url}",
+                                  "en": "🔑  Trying extracted credentials on login: {url}"},
+
+    "login_page_no_form":       {"ko": "⏭️  로그인 폼 없음 ({size}B) — 건너뜀: {url}",
+                                  "zh": "⏭️  无登录表单 ({size}B) — 跳过: {url}",
+                                  "en": "⏭️  No login form ({size}B) — skipping: {url}"},
 })
 
 

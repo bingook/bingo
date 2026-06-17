@@ -3096,6 +3096,29 @@ class BingoTerminal:
                 _SCRIPT_TIMEOUT = 300  # 스크립트당 최대 300초 (5분)
                 _MAX_CONSEC_DUP = 5    # 동일 줄 5회 연속 → 루프 감지
 
+                # ── 하드 워치독: stdout 출력 없는 블로킹(pymssql 등)도 강제 종료 ──
+                _watchdog_fired = threading.Event()
+
+                def _hard_watchdog(proc: subprocess.Popen, deadline: float,
+                                   fired: threading.Event) -> None:
+                    """stdout 스트림에 관계없이 deadline 이후 프로세스를 강제 종료."""
+                    remaining = deadline - __import__("time").time()
+                    if remaining > 0:
+                        fired.wait(timeout=remaining)
+                    if not fired.is_set():
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+
+                _watchdog_deadline = _start_ts + _SCRIPT_TIMEOUT
+                _watchdog_th = threading.Thread(
+                    target=_hard_watchdog,
+                    args=(p, _watchdog_deadline, _watchdog_fired),
+                    daemon=True,
+                )
+                _watchdog_th.start()
+
                 for raw_line in p.stdout:
                     line = raw_line.decode("utf-8", "replace").rstrip()
                     if not line:
@@ -3138,6 +3161,15 @@ class BingoTerminal:
                     else:
                         _consec_count = 0
                         _last_stripped = _cur
+
+                # 워치독 종료 신호 (정상 완료 시)
+                _watchdog_fired.set()
+
+                # 워치독이 kill 했는지 확인 (stdout 없는 블로킹 타임아웃)
+                if not _killed_reason and (
+                    __import__("time").time() - _start_ts >= _SCRIPT_TIMEOUT - 1
+                ):
+                    _killed_reason = f"TIMEOUT_{_SCRIPT_TIMEOUT}s"
 
                 try:
                     p.wait(timeout=5)

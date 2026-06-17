@@ -5149,7 +5149,57 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
-## Username Harvesting + Smart Brute-Force (v2.3.18)
+## JSON API Exposure Detection via Admin Path Scan (v2.3.19)
+
+### The Problem
+
+Even after v2.3.18, `/api/coordinates` was missed when it returned `200 OK` with
+pure JSON because `check_admin_panels()` silently discarded responses that had no
+`<form>` or `<input type="password">` element:
+
+```
+# OLD logic — discarded JSON 200 silently ❌
+has_form = bool(re.search(r'<form|<input.*password', r.body))
+# API endpoints never have forms → was thrown away
+```
+
+### The Fix (v2.3.19)
+
+`check_admin_panels()` now classifies every response by `response_type` and returns
+a proper `is_json` flag. `01_recon.py` Step 6 auto-routes JSON 200 responses as
+**High-severity `api_endpoint`** findings before Step 7's dedicated API scan runs.
+
+| `response_type` | Status | Action |
+|-----------------|--------|--------|
+| `json` | 200/201 | **→ `api_endpoint` High** — "Unauthenticated JSON data exposure" |
+| `html_form` | 200 | → `admin_panel` High — login form found, brute-force queued |
+| `html` | 200 | → `admin_panel` Medium |
+| `redirect` | 301/302 | → `admin_panel` Medium |
+| `auth` | 401/403 | → `admin_panel` Low |
+
+### Before vs After
+
+```
+# BEFORE (v2.3.18)
+[6/8] Admin panel scan (80 paths)...
+  → /api/coordinates [200]  ← DISCARDED (no <form> found) ❌
+
+# AFTER (v2.3.19)
+[6/8] Admin panel scan (80 paths)...
+  ⚠ 미인증 JSON 노출: /api/coordinates [200]   ← HIGH finding ✅
+  → /admin/dashboard [200] html_form            ← admin panel ✅
+[7/8] API endpoint scan (59 paths, 1 already found via admin scan)...
+  → /api/users  [401]  ← exists but blocked
+```
+
+### Deduplication
+
+Paths already detected as JSON in Step 6 are excluded from Step 7's scan to
+avoid double-counting and wasted requests.
+
+---
+
+## Username Harvesting + Smart Brute-Force (v2.3.19)
 
 ### The Problem
 
@@ -5162,7 +5212,7 @@ were missed because:
 
 Bingo had no way to discover `lahyl` or generate `lahy2025` automatically.
 
-### The Fix (v2.3.18)
+### The Fix (v2.3.19)
 
 Three targeted improvements:
 

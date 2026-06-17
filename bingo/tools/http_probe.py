@@ -195,8 +195,20 @@ class HttpProbe:
         return found
 
     def check_admin_panels(self, extra_paths: list[str] | None = None) -> list[dict]:
-        """관리자 패널 탐색 — 동적 경로 지원 (extra_paths로 확장 가능)"""
-        # extra_paths가 없으면 기본 13개만 사용 (하위 호환)
+        """관리자 패널 탐색 — 동적 경로 지원 + 응답 유형 자동 분류
+
+        response_type 필드:
+          "json"       — 200 + JSON 응답 (API 데이터 노출 — High)
+          "html_form"  — 200 + <form> 포함 (로그인 패널)
+          "html"       — 200 + HTML (폼 없음)
+          "redirect"   — 301/302
+          "auth"       — 401/403 (존재하지만 인증 필요)
+
+        핵심 개선 (v2.3.19):
+          기존엔 JSON 200을 has_form=False로 버렸음.
+          이제 is_json + response_type 을 반환해 01_recon.py 가
+          "미인증 API 데이터 노출"로 별도 분류할 수 있음.
+        """
         paths = extra_paths if extra_paths else [
             "/admin/", "/admin/login/", "/admin/login/index.php",
             "/admin/index.php", "/admin.php", "/administrator/",
@@ -207,25 +219,59 @@ class HttpProbe:
         found = []
         for path in paths:
             r = self.get(path, timeout=8)
-            if r.status in (200, 301, 302, 401):
-                has_form = bool(re.search(r'<form|<input.*password', r.body, re.I))
+            if r.status in (200, 201):
+                # ── 응답 유형 판별 ──────────────────────────────────────
+                ct = r.headers.get("Content-Type", "")
+                body_stripped = r.body.lstrip()
+                is_json = (
+                    "application/json" in ct
+                    or body_stripped.startswith(("{", "["))
+                )
+                has_form = bool(re.search(r'<form|<input[^>]*type=["\']password', r.body, re.I))
                 title_m = re.search(r'<title>([^<]{1,80})</title>', r.body, re.I)
+
+                if is_json:
+                    rtype = "json"
+                elif has_form:
+                    rtype = "html_form"
+                else:
+                    rtype = "html"
+
                 found.append({
                     "path": path,
                     "status": r.status,
+                    "response_type": rtype,
+                    "is_json": is_json,
                     "has_login_form": has_form,
                     "title": title_m.group(1).strip() if title_m else "",
                     "url": self.base_url + path,
+                    "size": len(r.body),
+                    "preview": r.body[:200] if is_json else "",
                 })
-            elif r.status == 403:
-                # 403도 기록 — WAF가 차단하는 경로는 존재 가능성 높음
+            elif r.status in (301, 302):
                 found.append({
                     "path": path,
-                    "status": 403,
+                    "status": r.status,
+                    "response_type": "redirect",
+                    "is_json": False,
                     "has_login_form": False,
                     "title": "",
                     "url": self.base_url + path,
-                    "note": "Forbidden — possibly exists",
+                    "size": 0,
+                    "preview": "",
+                })
+            elif r.status in (401, 403):
+                found.append({
+                    "path": path,
+                    "status": r.status,
+                    "response_type": "auth",
+                    "is_json": False,
+                    "has_login_form": False,
+                    "title": "",
+                    "url": self.base_url + path,
+                    "size": 0,
+                    "preview": "",
+                    "note": "Forbidden / Unauthorized — exists but blocked",
                 })
             time.sleep(0.15)
         return found

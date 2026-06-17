@@ -2,6 +2,12 @@
 Phase 01 — 정찰 (Reconnaissance)
 서브도메인, 기술스택, DNS, 민감 파일, 관리자 패널
 
+v2.3.19 변경:
+  - check_admin_panels() 응답 유형 기반 자동 분류 도입
+  - JSON 200 → response_type="json" → api_endpoint High 로 자동 승격
+  - has_form 없다는 이유로 /api/coordinates 같은 JSON API 버리지 않음
+  - Step 6에서 잡힌 JSON 경로는 Step 7 중복 스캔에서 제외 (효율화)
+
 v2.3.18 변경:
   - harvest_usernames(): 사이트 이메일/author/Contact 페이지에서 실제 아이디 수집
   - 수집 아이디 × 공통 비밀번호 패턴 크로스조인 → lahyl:lahy12025 계열 커버
@@ -107,29 +113,69 @@ def run(target: str, session: RedTeamSession, on_progress=None) -> list[dict]:
         log(f"  → 민감 파일 {len(sensitive)}개 발견")
 
     # ── Step 6: 관리자 패널 탐색 (기술스택 기반 동적 경로 사용) ──────────
+    # v2.3.19: response_type 기반 자동 라우팅
+    #   json     → "api_endpoint" High (미인증 데이터 노출)
+    #   html_form → "admin_panel" High (로그인 폼 → 브루트포스 대상)
+    #   html/redirect → "admin_panel" Medium
+    #   auth      → "admin_panel" Low
     log(f"  [6/8] 관리자 패널 탐색 ({len(admin_paths)}개 경로)...")
     admin_panels = probe.check_admin_panels(extra_paths=admin_paths)
-    login_panels = []  # 브루트포스 대상
+    login_panels = []    # 브루트포스 대상
+    api_from_admin = []  # JSON 응답 → api_endpoint로 승격
     for panel in admin_panels:
-        sev = "high" if panel.get("has_login_form") else "medium"
-        if panel.get("status") == 403:
+        rtype = panel.get("response_type", "html")
+        status = panel.get("status", 0)
+
+        # JSON 200 → 미인증 API 데이터 노출 (check_admin_panels가 잡은 경우)
+        if rtype == "json" and status in (200, 201):
+            findings.append({
+                "type": "api_endpoint",
+                "severity": "high",
+                "title": f"미인증 API 데이터 노출: {panel['path']} [{status}] (JSON)",
+                "detail": (
+                    f"url={panel['url']} size={panel.get('size',0)} "
+                    f"preview={panel.get('preview','')[:120]}"
+                ),
+                "url": panel.get("url", ""),
+                "path": panel["path"],
+                "note": "Detected via admin path scan — unauthenticated JSON exposure",
+            })
+            api_from_admin.append(panel["path"])
+            log(f"  ⚠ 미인증 JSON 노출: {panel['path']} [{status}]")
+            continue
+
+        # HTML 폼 → 관리자 로그인 패널
+        if rtype == "html_form":
+            sev = "high"
+        elif rtype in ("html", "redirect"):
+            sev = "medium"
+        else:  # auth (401/403)
             sev = "low"
+
         findings.append({
             "type": "admin_panel",
             "severity": sev,
-            "title": f"관리자 패널: {panel['path']} [{panel['status']}]",
+            "title": f"관리자 패널: {panel['path']} [{status}]",
             "detail": str(panel),
         })
         if panel.get("has_login_form"):
             login_panels.append(panel)
+
     if admin_panels:
         accessible = [p for p in admin_panels if p.get("status") == 200]
-        log(f"  → 관리자 패널 {len(admin_panels)}개 발견 (접근 가능: {len(accessible)}개)")
+        json_count = len(api_from_admin)
+        log(
+            f"  → 관리자 패널 {len(admin_panels)}개 발견 "
+            f"(접근 가능: {len(accessible)}개"
+            + (f", JSON 노출: {json_count}개" if json_count else "")
+            + ")"
+        )
 
     # ── Step 7: API 엔드포인트 미인증 접근 탐색 ───────────────────────────
-    # 이용자 제보: /api/coordinates 탐지 못함 → 이제 사전 탐색
-    log(f"  [7/8] API 엔드포인트 탐색 ({len(api_paths)}개 경로)...")
-    api_found = probe.discover_api_endpoints(paths=api_paths)
+    # Step 6에서 이미 JSON 200으로 잡힌 경로는 중복 스캔 제외
+    api_paths_deduped = [p for p in api_paths if p not in api_from_admin]
+    log(f"  [7/8] API 엔드포인트 탐색 ({len(api_paths_deduped)}개 경로, {len(api_from_admin)}개 중복 제외)...")
+    api_found = probe.discover_api_endpoints(paths=api_paths_deduped)
     for ep in api_found:
         st = ep.get("status", 0)
         if st in (200, 201) and ep.get("is_json"):

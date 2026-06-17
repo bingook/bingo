@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.22-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.3.23-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -14,8 +14,8 @@
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
-> **v2.3.22 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.22 is the latest stable, production-ready version.
+> **v2.3.23 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. v2.3.23 is the latest stable, production-ready version.
 
 </div>
 
@@ -5146,6 +5146,60 @@ commonly found in real-world assessments.
 
 No user configuration needed — everything is automatic and controlled by the
 tech-stack fingerprint detected in Step 1.
+
+---
+
+## Runtime Infinite Loop Killer (v2.3.23)
+
+v2.3.22 fixed the AI prompt rules — but the loop was already running. v2.3.23 adds **execution-layer enforcement** that kills infinite loops immediately, regardless of what the AI generated.
+
+### New Runtime Protections (terminal.py)
+
+| Protection | Mechanism | Trigger |
+|-----------|-----------|---------|
+| **Real-time duplicate killer** | Streaming output monitor counts consecutive identical lines | Same line 5× in a row → `p.terminate()` immediately |
+| **Script timeout** | Per-script hard timeout | Script runs > 300s → killed |  
+| **Pre-execution loop block** | Static analysis before execution | `for`+`range`+`TOP 1` query+no `seen=set()` → **blocked before run** |
+
+### Before vs After
+
+**Before (v2.3.22)**: Script runs 28 minutes, prints `ARREO_SMS` 383 times, terminal watches helplessly.
+
+**After (v2.3.23)**:
+```
+[U] ulsan$
+[U] ulsan$
+[U] ulsan$
+[U] ulsan$
+[U] ulsan$
+🔁 Infinite loop: 'ulsan$' repeated 5x → KILLED
+
+[SCRIPT_KILLED: INFINITE_LOOP]
+MANDATORY FIX — cursor pagination pattern provided...
+```
+
+OR, if caught before execution:
+```
+🚫 [LOOP BLOCK #1] INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set()
+→ AI must rewrite with cursor pagination before any execution
+```
+
+### Correct Enumeration Pattern (enforced)
+
+```python
+seen = set()
+last_hex = ''
+while True:
+    cursor_clause = f' AND name > {last_hex}' if last_hex else ''
+    payload = f"AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55{cursor_clause})"
+    result = extract(payload)
+    if not result or result in seen:
+        break  # exit when duplicate or empty
+    seen.add(result)
+    last_hex = '0x' + result.encode().hex().upper()
+    print(result)
+# Output: 14 unique tables (not 383 duplicates)
+```
 
 ---
 

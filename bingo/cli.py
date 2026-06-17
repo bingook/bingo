@@ -240,7 +240,7 @@ def _run_waf_test(target: str, s: dict | None = None) -> None:
         console.print(f"[#00ff41]{s['cli_waf_none']}[/]")
 
 
-CURRENT_VERSION = "2.3.22"
+CURRENT_VERSION = "2.3.23"
 PYPI_PACKAGE    = "bingo-ai"
 PYPI_JSON_URL   = f"https://pypi.org/pypi/{PYPI_PACKAGE}/json"
 

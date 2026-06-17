@@ -2819,12 +2819,26 @@ class BingoTerminal:
 
         # ── 코드 사전 검증 헬퍼 (SyntaxError / NameError 예방) ──────────
         def _precheck_python_code(code: str) -> str | None:
-            """실행 전 Python 코드의 명백한 구문 오류를 감지.
-            문제 없으면 None, 있으면 수정된 코드 반환."""
+            """실행 전 Python 코드의 명백한 구문 오류 + 무한루프 패턴 감지.
+            문제 없으면 None, 구문 수정 시 수정된 코드, 차단 시 특수 문자열 '__BLOCKED__:reason' 반환."""
             import ast as _ast
             import re as _pre_re
 
             fixed = code
+
+            # 0. 무한루프 위험 패턴 감지 — 실행 전 차단
+            #    패턴: for/while 루프 + SQL query + seen=set() 없음
+            _has_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed) or _pre_re.search(r'\bwhile\s+True\b', fixed))
+            _has_query = bool(_pre_re.search(r'(requests\.(get|post)|urllib|query|extract|inject|sqli)', fixed, _pre_re.IGNORECASE))
+            _has_seen = bool(_pre_re.search(r'\bseen\s*=\s*set\s*\(', fixed))
+            _has_top1_no_cursor = bool(
+                _pre_re.search(r'TOP\s+1', fixed, _pre_re.IGNORECASE) and
+                not _pre_re.search(r'name\s*>\s*(last|cursor|prev)', fixed, _pre_re.IGNORECASE) and
+                not _pre_re.search(r'\bname\s*>\s*0x', fixed, _pre_re.IGNORECASE)
+            )
+            # FOR loop + DB query + TOP 1 without cursor + no seen set = infinite loop risk
+            if _has_loop and _has_query and _has_top1_no_cursor and not _has_seen:
+                return "__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever"
 
             # 1. f-string 내 백슬래시 탐지 및 수정
             #    f"...\\'..."  또는  f"...{d['key']}..."  → 임시변수로 분리
@@ -2875,9 +2889,16 @@ class BingoTerminal:
                 _hallucination_msgs.append(_hall)
                 continue
 
-            # 구문 사전 검증
+            # 구문 사전 검증 + 무한루프 패턴 차단
             _checked = _precheck_python_code(code)
-            if _checked is None:
+            if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
+                _block_reason = _checked[len("__BLOCKED__:"):]
+                self.console.print(
+                    f"[bold red]🚫 [LOOP BLOCK #{i+1}] {_block_reason[:120]}[/]"
+                )
+                _hallucination_msgs.append(f"LOOP_BLOCKED: {_block_reason}")
+                continue  # 이 코드블록 실행 건너뜀
+            elif _checked is None:
                 self.console.print(
                     f"[{THEME['warn']}]⚠ [SYNTAX PRECHECK #{i+1}] "
                     f"SyntaxError detected — auto-fix failed. "
@@ -2903,18 +2924,41 @@ class BingoTerminal:
 
         # 모든 블록이 환각으로 차단됐을 경우 → 강제 수정 메시지 반환
         if _hallucination_msgs and not tasks:
-            _hall_feedback = (
-                "[⛔ ALL CODE BLOCKS REJECTED — HALLUCINATION DETECTED]\n"
-                + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
-                + "\n\nYou MUST rewrite ALL code blocks with REAL Python HTTP requests:\n"
-                "  import requests\n"
-                "  url = 'https://TARGET/endpoint'\n"
-                "  r = requests.get(url, timeout=10, verify=False, "
-                "headers={'User-Agent': 'Mozilla/5.0'})\n"
-                "  print(f'[STATUS] {r.status_code}  {url}')\n"
-                "  print(r.text[:500])\n"
-                "NO JSON. NO dict literals. Write actual HTTP code NOW."
-            )
+            _has_loop_block = any("LOOP_BLOCKED" in m for m in _hallucination_msgs)
+            if _has_loop_block:
+                _hall_feedback = (
+                    "[⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED]\n"
+                    + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
+                    + "\n\nYour enumeration loop will print the SAME table name forever!\n"
+                    "ROOT CAUSE: SELECT TOP 1 without cursor + no seen=set()\n\n"
+                    "MANDATORY REWRITE — Use cursor pagination:\n"
+                    "  seen = set()\n"
+                    "  last_hex = ''\n"
+                    "  while True:\n"
+                    "      cursor_clause = f' AND name > {last_hex}' if last_hex else ''\n"
+                    "      payload = f\"AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55{cursor_clause})\"\n"
+                    "      result = extract_char_by_char(payload)  # your existing extract fn\n"
+                    "      if not result or result in seen:\n"
+                    "          break\n"
+                    "      seen.add(result)\n"
+                    "      last_hex = '0x' + result.encode().hex().upper()\n"
+                    "      print(result)\n\n"
+                    "DO NOT use: for i in range(N): query('SELECT TOP 1 name ... LIKE ...')\n"
+                    "Rewrite with the cursor pagination pattern above NOW."
+                )
+            else:
+                _hall_feedback = (
+                    "[⛔ ALL CODE BLOCKS REJECTED — HALLUCINATION DETECTED]\n"
+                    + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
+                    + "\n\nYou MUST rewrite ALL code blocks with REAL Python HTTP requests:\n"
+                    "  import requests\n"
+                    "  url = 'https://TARGET/endpoint'\n"
+                    "  r = requests.get(url, timeout=10, verify=False, "
+                    "headers={'User-Agent': 'Mozilla/5.0'})\n"
+                    "  print(f'[STATUS] {r.status_code}  {url}')\n"
+                    "  print(r.text[:500])\n"
+                    "NO JSON. NO dict literals. Write actual HTTP code NOW."
+                )
             return [_hall_feedback]
 
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
@@ -3041,7 +3085,14 @@ class BingoTerminal:
                 prefix = "PYTHON EXECUTION" if task["type"] == "python" else "REAL EXECUTION"
                 all_lines: list[str] = []
 
-                # 실시간 라인 스트리밍
+                # 실시간 라인 스트리밍 — 중복 감지 + 타임아웃
+                _consec_count = 0
+                _last_stripped = None
+                _killed_reason: str | None = None
+                _start_ts = __import__("time").time()
+                _SCRIPT_TIMEOUT = 300  # 스크립트당 최대 300초 (5분)
+                _MAX_CONSEC_DUP = 5    # 동일 줄 5회 연속 → 루프 감지
+
                 for raw_line in p.stdout:
                     line = raw_line.decode("utf-8", "replace").rstrip()
                     if not line:
@@ -3053,12 +3104,83 @@ class BingoTerminal:
                         except Exception:
                             self.console.out(line)
 
-                p.wait()
+                    # 전체 타임아웃 체크
+                    if __import__("time").time() - _start_ts > _SCRIPT_TIMEOUT:
+                        _killed_reason = f"TIMEOUT_{_SCRIPT_TIMEOUT}s"
+                        try:
+                            p.terminate()
+                        except Exception:
+                            pass
+                        break
+
+                    # 연속 중복 감지
+                    _cur = line.strip()
+                    if _cur and _cur == _last_stripped:
+                        _consec_count += 1
+                        if _consec_count >= _MAX_CONSEC_DUP:
+                            _killed_reason = f"INFINITE_LOOP:{_cur[:60]}"
+                            with _lock:
+                                _lang_lp = getattr(self.config, "lang", "en")
+                                _lp_msg = {
+                                    "ko": f"🔁 무한루프 감지: '{_cur[:40]}' {_consec_count}회 반복 → 강제 종료",
+                                    "zh": f"🔁 检测到无限循环: '{_cur[:40]}' 重复{_consec_count}次 → 强制终止",
+                                    "en": f"🔁 Infinite loop: '{_cur[:40]}' repeated {_consec_count}x → KILLED",
+                                }.get(_lang_lp, f"🔁 Loop killed: '{_cur[:40]}'")
+                                self.console.print(f"[bold red]{_lp_msg}[/]")
+                            try:
+                                p.terminate()
+                            except Exception:
+                                pass
+                            break
+                    else:
+                        _consec_count = 0
+                        _last_stripped = _cur
+
+                try:
+                    p.wait(timeout=5)
+                except Exception:
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
                 output = "\n".join(all_lines)
+                _kill_suffix = ""
+                if _killed_reason:
+                    if _killed_reason.startswith("INFINITE_LOOP:"):
+                        _dup_val = _killed_reason.split(":", 1)[1]
+                        _kill_suffix = (
+                            f"\n[SCRIPT_KILLED: INFINITE_LOOP detected]\n"
+                            f"Same value '{_dup_val}' repeated {_MAX_CONSEC_DUP}+ times.\n"
+                            "MANDATORY FIX — Your enumeration loop has NO deduplication.\n"
+                            "You MUST rewrite with cursor pagination pattern:\n"
+                            "  seen = set()\n"
+                            "  last_hex = ''\n"
+                            "  while True:\n"
+                            "      if last_hex:\n"
+                            "          payload = f'... AND name > {last_hex} ...'\n"
+                            "      result = extract(payload)\n"
+                            "      if not result or result in seen: break\n"
+                            "      seen.add(result)\n"
+                            "      last_hex = '0x' + result.encode().hex().upper()\n"
+                            "STOP using FOR loops with TOP 1 and no cursor.\n"
+                        )
+                    else:
+                        _kill_suffix = (
+                            f"\n[SCRIPT_KILLED: {_killed_reason}]\n"
+                            f"Script exceeded {_SCRIPT_TIMEOUT}s timeout and was forcibly terminated.\n"
+                            "Split the script into smaller blocks or optimize the loop.\n"
+                        )
                 if output.strip():
-                    results_text[slot] = f"=== {prefix} ({label}) ===\n{output.strip()}\n=== EXIT: {p.returncode} ==="
+                    results_text[slot] = (
+                        f"=== {prefix} ({label}) ===\n"
+                        f"{output.strip()}\n"
+                        f"=== EXIT: {p.returncode} ==={_kill_suffix}"
+                    )
                 else:
-                    results_text[slot] = f"=== {prefix} ({label}) ===\n(no output, exit={p.returncode})"
+                    results_text[slot] = (
+                        f"=== {prefix} ({label}) ===\n"
+                        f"(no output, exit={p.returncode}){_kill_suffix}"
+                    )
             except Exception as e:
                 with _lock:
                     self.console.print(f"[{THEME['error']}]  exec error:[/] {_resc(str(e))}")

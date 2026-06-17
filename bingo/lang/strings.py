@@ -1658,6 +1658,11 @@ _STRINGS.update({
     "url_concat_fixed":          {"ko": "🔧  URL 연소 버그 자동 수정: base_url + 'https://...' → 완전한 URL만 사용",
                                    "zh": "🔧  已修复URL拼接错误: base_url + 'https://...' → 仅使用完整URL",
                                    "en": "🔧  URL concat bug auto-fixed: base_url + 'https://...' → using full URL only"},
+
+    # ── Syntax Precheck 메시지 ────────────────────────────────────────
+    "syntax_precheck_warn":      {"ko": "⚠ [SYNTAX PRECHECK #{n}] 문법 오류 감지 — 자동 수정 실패. f-string 백슬래시 또는 dict 키 따옴표 충돌 확인 필요.",
+                                   "zh": "⚠ [SYNTAX PRECHECK #{n}] 检测到语法错误 — 自动修复失败。请检查f-string反斜杠或dict下标引号冲突。",
+                                   "en": "⚠ [SYNTAX PRECHECK #{n}] SyntaxError detected — auto-fix failed. Check f-string backslash or dict subscript issues."},
 })
 
 

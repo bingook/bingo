@@ -3041,11 +3041,8 @@ class BingoTerminal:
             elif _checked == "__SYNTAX_ERR__":
                 # 수정 불가 문법 오류 — 경고 출력 후 그래도 실행 시도
                 _checked = None
-                self.console.print(
-                    f"[{THEME['warn']}]⚠ [SYNTAX PRECHECK #{i+1}] "
-                    f"SyntaxError detected — auto-fix failed. "
-                    f"Check f-string backslash or dict subscript issues.[/]"
-                )
+                _sw_msg = t("syntax_precheck_warn", "⚠ [SYNTAX PRECHECK #{n}] SyntaxError detected — auto-fix failed.").replace("{n}", str(i + 1))
+                self.console.print(f"[{THEME['warn']}]{_sw_msg}[/]")
             elif _checked is None:
                 pass  # 코드 정상, 변경 없음 — 경고 없음
             elif _checked is not None and _checked != code:

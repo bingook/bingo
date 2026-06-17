@@ -217,7 +217,14 @@ def run(session: RedTeamSession, output_dir: str = ".", on_progress=None) -> str
     return str(md_file)
 
 
-def _get_recommendation(vuln_type: str) -> str:
+def _get_recommendation(finding_type: str) -> str:
+    """취약점 유형별 조치 권고 반환
+
+    v2.3.20 fix: 파라미터명 vuln_type → finding_type 통일,
+    cswsh_recs/redis_recs/autofill_recs/wcd_recs/ctr_recs 를
+    return 이후 dead code 블록에서 함수 레벨로 이동.
+    """
+    vuln_type = finding_type  # 하위 호환 alias
     recs = {
         "sqli": "1. Prepared Statement / Parameterized Query 사용\n2. WAF 적용\n3. DB 계정 최소 권한 부여",
         "xss": "1. 출력 시 HTML 인코딩 (htmlspecialchars)\n2. Content-Security-Policy 헤더 적용\n3. httpOnly 쿠키 설정",
@@ -355,8 +362,8 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in nextjs_recs:
         return nextjs_recs[finding_type]
 
-        # CSWSH + EXE Exposure + WebSocket RCE 권고
-        cswsh_recs = {
+    # CSWSH + EXE Exposure + WebSocket RCE 권고
+    cswsh_recs = {
             "js_exe_download": (
                 "1. EXE/설치파일 다운로드 엔드포인트에 인증 요구 — 익명 접근 차단\n"
                 "2. 다운로드 토큰 방식 적용 (1회용 서명 URL)\n"
@@ -395,8 +402,8 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in cswsh_recs:
         return cswsh_recs[finding_type]
 
-        # Redis DarkReplica CVE-2026-23631 권고
-        redis_recs = {
+    # Redis DarkReplica CVE-2026-23631 권고
+    redis_recs = {
             "redis_found": (
                 "1. Redis를 인터넷에 직접 노출하지 말 것 — 방화벽으로 6379 포트 차단\n"
                 "2. bind 127.0.0.1 설정으로 로컬 전용 접근 제한\n"
@@ -451,8 +458,8 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in redis_recs:
         return redis_recs[finding_type]
 
-        # HTML Autofill Steal 권고
-        autofill_recs = {
+    # HTML Autofill Steal 권고
+    autofill_recs = {
             "csp_detected": (
                 "1. CSP는 HTML Injection을 막지 않음 — 반사된 모든 파라미터를 컨텍스트별 인코딩 처리\n"
                 "2. <meta http-equiv> 및 <meta name=referrer> 태그 삽입을 차단하는 별도 필터 적용\n"
@@ -494,8 +501,8 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in autofill_recs:
         return autofill_recs[finding_type]
 
-        # Web Cache Deception + SameSite Lax Bypass 권고
-        wcd_recs = {
+    # Web Cache Deception + SameSite Lax Bypass 권고
+    wcd_recs = {
             "cache_header_detected": (
                 "1. 민감한 인증 응답 페이지에 Cache-Control: no-store, private 헤더 추가\n"
                 "2. CDN/리버스 프록시 설정에서 인증 필요 경로를 캐시 제외 목록에 등록\n"
@@ -545,8 +552,8 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in wcd_recs:
         return wcd_recs[finding_type]
 
-        # Cloud Token Recon 권고
-        ctr_recs = {
+    # Cloud Token Recon 권고
+    ctr_recs = {
             "open_dev_tool": (
                 "1. Grafana / Prometheus / Kibana / Jenkins 등 내부 DevTool에 인증 필수 적용\n"
                 "2. 내부 모니터링 도구를 인터넷에 직접 노출 금지 — VPN / IP 화이트리스트 필수\n"
@@ -958,7 +965,7 @@ def _get_recommendation(vuln_type: str) -> str:
     if finding_type in dompurify_pp_recs:
         return dompurify_pp_recs[finding_type]
 
-    return recs.get(vuln_type, "해당 취약점에 맞는 보안 패치 적용")
+    return recs.get(finding_type, recs.get(vuln_type, "해당 취약점에 맞는 보안 패치 적용"))
 
 
 def _build_html(session: RedTeamSession, findings: list[dict], stats: dict) -> str:

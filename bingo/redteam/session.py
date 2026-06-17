@@ -62,7 +62,7 @@ class RedTeamSession:
             "metadata": self.metadata,
             "phases": {k: asdict(v) for k, v in self.phases.items()},
         }
-        self._path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        self._path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     @classmethod
     def load(cls, session_id: str) -> "RedTeamSession | None":

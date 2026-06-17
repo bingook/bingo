@@ -2,6 +2,28 @@ from __future__ import annotations
 import sys
 import os
 
+# ── Windows GBK/CP949 → UTF-8 강제 (macOS/Linux는 이미 UTF-8이므로 무해) ──────
+# 한국어/중국어 출력이 Windows 콘솔에서 UnicodeEncodeError로 크래시되는 것을 방지
+if sys.platform == "win32":
+    import io
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+    else:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+    # locale도 UTF-8로 (Python 3.7+)
+    try:
+        import locale
+        locale.setlocale(locale.LC_ALL, ".UTF-8")
+    except Exception:
+        pass
+    # PYTHONIOENCODING 환경변수 반영
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -218,7 +240,7 @@ def _run_waf_test(target: str, s: dict | None = None) -> None:
         console.print(f"[#00ff41]{s['cli_waf_none']}[/]")
 
 
-CURRENT_VERSION = "2.3.19"
+CURRENT_VERSION = "2.3.20"
 PYPI_PACKAGE    = "bingo-ai"
 PYPI_JSON_URL   = f"https://pypi.org/pypi/{PYPI_PACKAGE}/json"
 

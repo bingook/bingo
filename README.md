@@ -5149,7 +5149,32 @@ tech-stack fingerprint detected in Step 1.
 
 ---
 
-## JSON API Exposure Detection via Admin Path Scan (v2.3.19)
+## Windows Compatibility Fixes (v2.3.20)
+
+Five bugs reported by Windows users — all fixed with macOS/Linux safety guaranteed.
+
+| # | File | Bug | Fix |
+|---|------|-----|-----|
+| 1 | `cli.py` | Korean/Chinese output causes `UnicodeEncodeError` on Windows GBK consoles | Force UTF-8 on `sys.stdout/stderr` at startup (`win32` only) |
+| 2 | `session.py` | `write_text()` without `encoding=` crashes writing reports with CJK characters | Added `encoding="utf-8"` |
+| 3 | `09_report.py` | Parameter named `vuln_type` but body uses `finding_type` → `NameError`; `cswsh_recs`, `redis_recs`, `autofill_recs`, `wcd_recs`, `ctr_recs` were dead code after `return` | Renamed param, moved all `_recs` dicts to function scope |
+| 4 | `03_exploit.py` | `pipeline.py` falls back to `mod.run()` on `AttributeError` but `run()` didn't exist | Added `run()` compatibility wrapper |
+
+### Platform Safety
+
+The UTF-8 enforcement in `cli.py` is **Windows-only** (`if sys.platform == "win32"`):
+
+```python
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+```
+
+macOS and Linux are already UTF-8 by default — this block is never executed on them.
+
+---
+
+## JSON API Exposure Detection via Admin Path Scan (v2.3.20)
 
 ### The Problem
 
@@ -5163,7 +5188,7 @@ has_form = bool(re.search(r'<form|<input.*password', r.body))
 # API endpoints never have forms → was thrown away
 ```
 
-### The Fix (v2.3.19)
+### The Fix (v2.3.20)
 
 `check_admin_panels()` now classifies every response by `response_type` and returns
 a proper `is_json` flag. `01_recon.py` Step 6 auto-routes JSON 200 responses as
@@ -5184,7 +5209,7 @@ a proper `is_json` flag. `01_recon.py` Step 6 auto-routes JSON 200 responses as
 [6/8] Admin panel scan (80 paths)...
   → /api/coordinates [200]  ← DISCARDED (no <form> found) ❌
 
-# AFTER (v2.3.19)
+# AFTER (v2.3.20)
 [6/8] Admin panel scan (80 paths)...
   ⚠ 미인증 JSON 노출: /api/coordinates [200]   ← HIGH finding ✅
   → /admin/dashboard [200] html_form            ← admin panel ✅
@@ -5199,7 +5224,7 @@ avoid double-counting and wasted requests.
 
 ---
 
-## Username Harvesting + Smart Brute-Force (v2.3.19)
+## Username Harvesting + Smart Brute-Force (v2.3.20)
 
 ### The Problem
 
@@ -5212,7 +5237,7 @@ were missed because:
 
 Bingo had no way to discover `lahyl` or generate `lahy2025` automatically.
 
-### The Fix (v2.3.19)
+### The Fix (v2.3.20)
 
 Three targeted improvements:
 

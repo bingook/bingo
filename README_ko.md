@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-3.0.3-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.0.4-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -420,6 +420,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v3.0.4 | 크리덴셜 확보 후: 관리자 페이지 자동 탐색 + IP 제한 우회 (헤더 스푸핑/SSRF/실IP) + 보고서 포함 |
 | v3.0.3 | DB 덤프: DbDumper 우선 시도 → 실패 또는 STEP 0 테이블 누락 시 수동 페이지네이션 자동 폴백 |
 | v3.0.2 | DB 덤프: 회원 테이블 판단 시 실제 샘플 데이터 확인 (SELECT LIMIT 5), 컬럼명만으로 판단 금지 |
 | v3.0.1 | 테이블 식별: 컬럼명 기반 + 난독화 테이블명 지원 |

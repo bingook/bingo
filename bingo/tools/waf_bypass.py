@@ -67,6 +67,37 @@ WAF_SIGNATURES: dict[str, dict] = {
         "status": [403],
         "body": ["yunsuo", "云锁"],
     },
+    # ── 신규 추가 WAF 시그니처 ──────────────────────────────────────
+    "dotdefender": {
+        "status": [403, 200],
+        "body": ["dotdefender", "break-in attempt detected", "site guard",
+                 "this request has been blocked"],
+        "header_key": "x-dotdefender-denied",
+    },
+    "imperva": {
+        "status": [403],
+        "body": ["imperva", "incapsula", "request denied by incapsula",
+                 "_imf", "incap_ses"],
+        "header_key": "x-iinfo",
+    },
+    "wallarm": {
+        "status": [403, 500],
+        "body": ["wallarm", "wallarm-node", "you have been blocked"],
+        "header_key": "x-wallarm-request-id",
+    },
+    "360wzws": {
+        "status": [403],
+        "body": ["360wzws", "wangzhan", "奇安信网站卫士"],
+    },
+    "anquanbao": {
+        "status": [403],
+        "body": ["anquanbao", "安全宝"],
+    },
+    "nginx_waf": {
+        "status": [400, 403],
+        "body": ["nginx waf", "bad request", "invalid request"],
+        "header_val": {"server": ["nginx"]},
+    },
     "generic": {
         "status": [403, 406, 501],
         "body": ["access denied", "forbidden", "blocked", "security", "firewall"],
@@ -355,6 +386,16 @@ class WafDetector:
             "safe3":            ["unicode", "encoding", "function", "space"],
             "d_shield":         ["unicode", "encoding", "function", "space"],
             "yunsuo":           ["unicode", "encoding", "function", "space"],
+            "360wzws":          ["unicode", "encoding", "function", "space"],
+            "anquanbao":        ["unicode", "encoding", "function", "space"],
+            # dotDefender: 헤더 위장 + 공백 우선 (실전: kar.or.kr 경험)
+            "dotdefender":      ["header", "space", "keyword", "chunked", "encoding"],
+            # Imperva/Incapsula: UA + 헤더 + 인코딩
+            "imperva":          ["ua", "header", "encoding", "space", "function"],
+            # Wallarm: 함수 대체 + 인코딩 우선
+            "wallarm":          ["function", "encoding", "space", "keyword", "header"],
+            # Nginx WAF: 공백 + 함수 대체
+            "nginx_waf":        ["space", "function", "keyword", "encoding"],
             # 범용
             "generic":          ["space", "keyword", "header", "encoding", "function"],
         }

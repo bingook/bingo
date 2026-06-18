@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.33 — 正式发布版**  
-> v2.3.33 是最新稳定版本。
+> **v2.4.0 — 正式发布版**  
+> v2.4.0 是最新稳定版本。
 
 </div>
 
@@ -135,6 +135,19 @@ bingo
 - 云锁 → HTTP 参数污染
 
 ---
+
+## v2.4.0 —— AI自动SQLi阶段切换 + 数据库提权 + Shell投放 + WAF++ *(2026-06)*
+
+**新增模块：**
+- `sqli_auto.py` — SQLi自动阶段切换引擎（报错→联合→布尔→时间→堆叠，按DB类型自动选择Payload）
+- `db_privesc.py` — 数据库权限提升自动化（xp_cmdshell启用、EXECUTE AS、INTO OUTFILE、COPY TO PROGRAM）
+- `shell_dropper.py` — Webshell投放 + 反弹Shell自动生成（certutil、PowerShell、bash/python/nc）
+
+**新WAF指纹：** dotDefender、Imperva、Wallarm、360wzws、安全宝、Nginx WAF — 专属绕过策略
+
+**多语言：** 14个新i18n字符串键（ko/zh/en）
+
+**系统提示词：** 新增 `=== v2.4.0 AUTO-ENGINE DECISION RULES ===` 章节
 
 ## v2.3.33 —— 报告幻觉修复：会话状态隔离 *(2026-06)*
 

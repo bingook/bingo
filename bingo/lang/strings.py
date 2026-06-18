@@ -1692,6 +1692,53 @@ _STRINGS.update({
     "session_current_confirmed": {"ko": "✅ 현재 세션 확인 항목",
                                    "zh": "✅ 本次会话已确认项目",
                                    "en": "✅ Confirmed in current session"},
+
+    # ── v2.4.0 SQLi 자동 단계 전환 ─────────────────────────────────────
+    "sqli_stage_detecting":      {"ko": "🔍 SQLi 최적 기법 자동 탐지 중 ({param})...",
+                                   "zh": "🔍 自动检测最优SQLi技术 ({param})...",
+                                   "en": "🔍 Auto-detecting best SQLi stage for param: {param}..."},
+    "sqli_stage_found":          {"ko": "✅ [SQLi] {stage} 기법 확인 — DB: {db_type}",
+                                   "zh": "✅ [SQLi] 已确认 {stage} 技术 — 数据库: {db_type}",
+                                   "en": "✅ [SQLi] Stage confirmed: {stage} — DB: {db_type}"},
+    "sqli_stage_failed":         {"ko": "❌ [SQLi] 모든 기법 실패 — 해당 파라미터 주입 불가",
+                                   "zh": "❌ [SQLi] 所有技术均失败 — 该参数不可注入",
+                                   "en": "❌ [SQLi] All stages exhausted — parameter not injectable"},
+    "sqli_db_detected":          {"ko": "🎯 DB 타입 감지: {db_type} (신뢰도: {confidence})",
+                                   "zh": "🎯 检测到数据库类型: {db_type} (置信度: {confidence})",
+                                   "en": "🎯 DB type detected: {db_type} (confidence: {confidence})"},
+
+    # ── v2.4.0 DB 권한 상승 ─────────────────────────────────────────────
+    "privesc_starting":          {"ko": "🔑 DB 권한 상승 자동 시도 시작 ({db_type})...",
+                                   "zh": "🔑 开始自动数据库权限提升 ({db_type})...",
+                                   "en": "🔑 Starting DB privilege escalation ({db_type})..."},
+    "privesc_success":           {"ko": "🎉 DB 권한 상승 성공! 방법: {method}",
+                                   "zh": "🎉 数据库权限提升成功！方法: {method}",
+                                   "en": "🎉 DB privilege escalation succeeded! Method: {method}"},
+    "privesc_failed":            {"ko": "⚠️ DB 권한 상승 실패 — 수동 시도 필요",
+                                   "zh": "⚠️ 数据库权限提升失败 — 需要手动尝试",
+                                   "en": "⚠️ DB privilege escalation failed — manual attempt required"},
+    "xp_cmdshell_enabled":       {"ko": "🚀 xp_cmdshell 활성화 성공 — OS 명령 실행 가능",
+                                   "zh": "🚀 xp_cmdshell 启用成功 — 可执行系统命令",
+                                   "en": "🚀 xp_cmdshell enabled — OS command execution available"},
+
+    # ── v2.4.0 웹쉘/리버스쉘 ───────────────────────────────────────────
+    "shell_drop_starting":       {"ko": "🐚 웹쉘 배포 자동 시도 ({method})...",
+                                   "zh": "🐚 开始自动部署WebShell ({method})...",
+                                   "en": "🐚 Auto-deploying webshell ({method})..."},
+    "shell_drop_success":        {"ko": "✅ 웹쉘 배포 성공: {url}  비번: {pwd}",
+                                   "zh": "✅ WebShell 部署成功: {url}  密码: {pwd}",
+                                   "en": "✅ Webshell deployed: {url}  password: {pwd}"},
+    "shell_drop_failed":         {"ko": "❌ 웹쉘 배포 실패 — 수동 certutil/echo 시도 필요",
+                                   "zh": "❌ WebShell 部署失败 — 需手动使用certutil/echo",
+                                   "en": "❌ Webshell deployment failed — manual certutil/echo required"},
+    "reverse_shell_ready":       {"ko": "🔄 리버스 쉘 페이로드 생성 완료 → nc -lvnp {lport}",
+                                   "zh": "🔄 反弹Shell载荷已生成 → nc -lvnp {lport}",
+                                   "en": "🔄 Reverse shell payload ready → nc -lvnp {lport}"},
+
+    # ── v2.4.0 WAF 신규 시그니처 ───────────────────────────────────────
+    "waf_new_detected":          {"ko": "🛡️ 신규 WAF 감지: {waf_type} — 전용 우회 전략 적용",
+                                   "zh": "🛡️ 检测到新型WAF: {waf_type} — 应用专属绕过策略",
+                                   "en": "🛡️ New WAF detected: {waf_type} — applying targeted bypass strategy"},
 })
 
 

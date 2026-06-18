@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.33 — 공식 릴리스**  
-> v2.3.33이 최신 안정 버전입니다.
+> **v2.4.0 — 공식 릴리스**  
+> v2.4.0이 최신 안정 버전입니다.
 
 </div>
 
@@ -135,6 +135,19 @@ bingo
 - CAPTCHA (kcaptcha) 자동 OCR 해결
 
 ---
+
+## v2.4.0 — AI 자동 SQLi 단계 전환 + DB 권한 상승 + 쉘 드로퍼 + WAF++ *(2026-06)*
+
+**신규 모듈:**
+- `sqli_auto.py` — SQLi 자동 단계 전환 엔진 (에러→유니온→불린→타임→스택 자동 선택, DB별 전용 페이로드)
+- `db_privesc.py` — DB 권한 상승 자동화 (xp_cmdshell 활성화, EXECUTE AS, INTO OUTFILE, COPY TO PROGRAM)
+- `shell_dropper.py` — 웹쉘 배포 + 리버스 쉘 자동 생성 (certutil, PowerShell, bash/python/nc)
+
+**신규 WAF 시그니처:** dotDefender, Imperva, Wallarm, 360wzws, anquanbao, Nginx WAF — 전용 우회 전략
+
+**다국어:** 14개 신규 i18n 키 (ko/zh/en)
+
+**시스템 프롬프트:** `=== v2.4.0 AUTO-ENGINE DECISION RULES ===` 섹션 추가
 
 ## v2.3.33 — 보고서 환각 수정: 세션 state 격리 *(2026-06)*
 

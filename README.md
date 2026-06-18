@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.9.4-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.5-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,7 +365,7 @@ bingo handles each step:
 
 ---
 
-## DB Dump (v2.9.4)
+## DB Dump (v2.9.5)
 
 Triggered automatically after confirmed SQLi / webshell / RCE:
 
@@ -385,7 +385,7 @@ Triggered automatically after confirmed SQLi / webshell / RCE:
 
 ---
 
-## XSS Scan (v2.9.4)
+## XSS Scan (v2.9.5)
 
 bingo detects reflected and stored XSS automatically:
 
@@ -394,7 +394,7 @@ bingo detects reflected and stored XSS automatically:
 - Loop detector distinguishes legitimate scan output from actual infinite loops
 - Outputs: `Reflection at: {param}={context}` + unique count
 
-**Why this matters:** some pages reflect the same XSS probe tens of times in a single response. Previous versions triggered the infinite-loop kill after 5 identical lines. v2.9.4 raises the threshold to 25 for scan result lines and enforces deduplication in the AI-generated scan code.
+**Why this matters:** some pages reflect the same XSS probe tens of times in a single response. Previous versions triggered the infinite-loop kill after 5 identical lines. v2.9.5 raises the threshold to 25 for scan result lines and enforces deduplication in the AI-generated scan code.
 
 ---
 
@@ -417,7 +417,7 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
-| v2.9.4 | XSS reflection dedup fix — prevent false infinite-loop kill on repeated reflections |
+| v2.9.5 | XSS reflection dedup fix — prevent false infinite-loop kill on repeated reflections |
 | v2.9.3 | DB dump: no row limit + Desktop save path (macOS/Windows auto-detect) |
 | v2.9.2 | CMS bias fix — fresh detection per target, zero assumptions |
 | v2.9.1 | Bug fixes: variable substitution, warning spam, false positives |

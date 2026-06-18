@@ -482,7 +482,7 @@ class BingoTerminal:
                 _ctrl_c_count += 1
                 if _ctrl_c_count >= 2:
                     # 연속 2회 Ctrl+C → 진짜 종료
-                    self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
+                self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
                     if self._session_log_path:
                         self.console.print(
                             f"[{THEME['dim']}]{self.s['session_done']}: {self._session_log_path}[/]"
@@ -1479,7 +1479,7 @@ class BingoTerminal:
         # ── 일반 대화 모드 감지 ────────────────────────────────────────
         full_response = ""  # 초기화 — UnboundLocalError 방지
         if self._is_general_question(text):
-            self.history.append(Message(role="user", content=text))
+        self.history.append(Message(role="user", content=text))
             self._append_to_session_log("user", text)
 
             # 임시로 시스템 메시지를 경량 일반대화 프롬프트로 교체
@@ -1860,7 +1860,7 @@ class BingoTerminal:
         import re as _re
         display = _re.sub(r"SKILL_LOAD:\s*[^\n]*\n?", "", display)
 
-        self.console.print()
+            self.console.print()
         try:
             _has_rich = "[dim]" in display or "[bold" in display
             _has_md   = "**" in display or "\n# " in display or "\n## " in display
@@ -2103,7 +2103,7 @@ class BingoTerminal:
                     "cookies": {}, "evidence": "", "active": False,
                 }
                 self._success("세션 초기화 완료.")
-            else:
+        else:
                 self._cmd_session()
         elif name == "/crack":
             self._cmd_crack(arg)
@@ -3425,6 +3425,24 @@ class BingoTerminal:
                 _start_ts = __import__("time").time()
                 _SCRIPT_TIMEOUT = 300  # 스크립트당 최대 300초 (5분)
                 _MAX_CONSEC_DUP = 5    # 동일 줄 5회 연속 → 루프 감지
+                _MAX_CONSEC_SCAN = 25  # 스캔 결과 줄은 25회까지 허용 (XSS 반사 등)
+                # 합법적 반복이 발생하는 스캔 결과 prefix — 더 높은 임계값 적용
+                _SCAN_OUTPUT_MARKERS: tuple[str, ...] = (
+                    # XSS 반사 위치
+                    "反射位置:", "반사 위치:", "Reflection at:", "반射位置:",
+                    # 발견/취약점 결과
+                    "발견:", "Found:", "发现:", "탐지:", "Detected:",
+                    "취약:", "Vulnerable:", "漏洞:", "CVE-",
+                    # 스캔 진행 상태
+                    "[+]", "[-]", "[*]", "[!]",
+                    # 파라미터/엔드포인트 열거
+                    "  →", "  -", "  ✅", "  ❌", "  ⚠",
+                )
+
+                def _is_scan_result_line(s: str) -> bool:
+                    """스캔 결과 라인이면 True — 높은 반복 임계값 사용."""
+                    t = s.strip()
+                    return any(t.startswith(m.strip()) for m in _SCAN_OUTPUT_MARKERS)
 
                 # ── 하드 워치독: stdout 출력 없는 블로킹(pymssql 등)도 강제 종료 ──
                 _watchdog_fired = threading.Event()
@@ -3469,11 +3487,12 @@ class BingoTerminal:
                             pass
                         break
 
-                    # 연속 중복 감지
+                    # 연속 중복 감지 (스캔 결과 라인은 더 높은 임계값 적용)
                     _cur = line.strip()
                     if _cur and _cur == _last_stripped:
                         _consec_count += 1
-                        if _consec_count >= _MAX_CONSEC_DUP:
+                        _loop_threshold = _MAX_CONSEC_SCAN if _is_scan_result_line(_cur) else _MAX_CONSEC_DUP
+                        if _consec_count >= _loop_threshold:
                             _killed_reason = f"INFINITE_LOOP:{_cur[:60]}"
                             with _lock:
                                 _lang_lp = getattr(self.config, "lang", "en")
@@ -5500,11 +5519,11 @@ class BingoTerminal:
 
             if not hs_matches and not local_results:
                 # ── 내장 DB 검색 (마지막 수단) ─────────────────────────
-                results = engine.search(keyword)
-                if results:
+            results = engine.search(keyword)
+            if results:
                     for r in results[:8]:
-                        self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
-                else:
+                    self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
+            else:
                     self.console.print(
                         f"[{THEME['dim']}]{self.s['skill_no_result'].format(kw=keyword)}[/]"
                     )

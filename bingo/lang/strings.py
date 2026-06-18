@@ -1583,6 +1583,17 @@ _STRINGS.update({
                                   "zh": "⚠️  检测到无限循环 — '{name}' 重复出现 {n} 次以上。疑似使用TOP 1查询而无游标分页。",
                                   "en": "⚠️  Infinite loop detected — '{name}' repeated {n}+ times. Likely TOP 1 query without cursor pagination."},
 
+    # ── XSS 반사 중복 제거 / XSS Reflection Deduplication (v2.9.4) ─────
+    "xss_reflect_dedup_fix":    {"ko": "필수 수정 — XSS 반사 위치를 중복 제거 없이 출력하고 있습니다.\nseen_ctx = set() 으로 고유 컨텍스트만 출력하세요.",
+                                  "zh": "强制修复 — XSS反射位置输出没有去重。\n请使用 seen_ctx = set() 仅输出唯一上下文。",
+                                  "en": "MANDATORY FIX — XSS reflection positions printed without deduplication.\nUse seen_ctx = set() to print unique contexts only."},
+    "xss_reflect_unique_count": {"ko": "총 고유 반사 위치: {n}개",
+                                  "zh": "唯一反射位置总计: {n} 处",
+                                  "en": "Total unique reflection positions: {n}"},
+    "xss_scan_result_prefix":   {"ko": "반사 위치",
+                                  "zh": "反射位置",
+                                  "en": "Reflection at"},
+
     # ── 혼합 SQLi 결과 (VBScript + OLE DB 동시 감지) / Mixed SQLi result ──
     "mixed_sqli_result_title":  {"ko": "🔍 혼합 결과 — VBScript 에러 + 진짜 OLE DB SQL 에러 동시 감지",
                                   "zh": "🔍 混合结果 — 同时检测到VBScript错误和真实OLE DB SQL错误",

@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.9.3-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.4-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,7 +365,7 @@ bingo가 각 단계를 처리합니다:
 
 ---
 
-## DB 덤프 (v2.9.3)
+## DB 덤프 (v2.9.4)
 
 SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 
@@ -382,6 +382,19 @@ SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 | macOS | `~/Desktop/dump/{타겟}_{타임스탬프}/` |
 | Windows | `~/Desktop/dump/{타겟}_{타임스탬프}/` (OneDrive 바탕화면 자동 감지) |
 | Linux | `~/Desktop/dump/{타겟}_{타임스탬프}/` (Desktop 없으면 `~/dump/` 사용) |
+
+---
+
+## XSS 스캔 (v2.9.4)
+
+bingo가 자동으로 반사형/저장형 XSS를 탐지합니다:
+
+- 모든 파라미터의 반사 컨텍스트 스캔 (HTML / 속성 / JS / URL)
+- **반사 위치 중복 제거** — 동일 파라미터가 HTML 응답에 여러 번 나타나도 고유 컨텍스트만 출력
+- 루프 감지기가 정상 스캔 출력과 실제 무한 루프를 구분
+- 출력 형식: `반사 위치: {파라미터}={컨텍스트}` + 고유 위치 수 요약
+
+**v2.9.4 수정 이유:** 일부 페이지는 XSS 프로브가 단일 응답에 수십 번 반사됩니다. 이전 버전은 동일한 줄이 5회 연속되면 무한루프로 판단해 강제 종료했습니다. v2.9.4는 스캔 결과 줄의 임계값을 25회로 높이고 AI 생성 코드에 중복 제거를 강제 적용합니다.
 
 ---
 
@@ -404,6 +417,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v2.9.4 | XSS 반사 중복 제거 수정 — 반복 반사로 인한 오탐 루프 종료 방지 |
 | v2.9.3 | DB 덤프: 행 수 제한 없음 + 바탕화면 자동 저장 (macOS/Windows) |
 | v2.9.2 | CMS 편향 수정 — 타겟별 신규 탐지, 무추정 |
 | v2.9.1 | 버그 수정: 변수 치환, 경고 스팸, 오탐 |

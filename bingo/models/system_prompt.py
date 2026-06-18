@@ -711,6 +711,27 @@ PHASE 11A (XSS 공격 체인):
 AUTO-DECISION: 반사 확인 → severity 판단 → 쿠키/세션 존재 시 hijack 우선
   → 저장형 XSS → CSRF 체인 → 관리자 권한 탈취
 
+  ── XSS 반사 위치 출력 필수 규칙 (DEDUPLICATION) ──
+  HTML 응답에는 동일 파라미터가 여러 위치에 반사될 수 있다.
+  반드시 중복 제거 후 출력할 것:
+
+  WRONG (무한루프 트리거):
+    for m in re.findall(r'반사_패턴', html):
+        print(f"  反射位置: {m}")  # 동일 줄 5회 이상 → 루프 감지 강제 종료
+
+  CORRECT (중복 제거 후 출력):
+    seen_ctx = set()
+    for m in re.findall(r'반사_패턴', html):
+        ctx = m.strip()
+        if ctx and ctx not in seen_ctx:
+            seen_ctx.add(ctx)
+            print(f"  反射位置: {ctx}")
+    print(f"  총 고유 반사 위치: {len(seen_ctx)}개")
+
+  RULE: 반사 위치(컨텍스트)는 seen_ctx = set()로 반드시 중복 제거.
+        동일 컨텍스트가 HTML에 N번 나와도 1번만 출력.
+        마지막에 "총 고유 반사 위치: N개" 출력 필수.
+
 [FILE UPLOAD EXPLOITATION — UploadExploiter]
 AUTO-SELECT 조건: 파일 업로드 엔드포인트 감지 시 자동 실행
 PHASE 11B (업로드 공격 체인):

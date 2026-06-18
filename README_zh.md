@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.9.3-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.4-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,7 +365,7 @@ bingo 自动处理每个步骤:
 
 ---
 
-## 数据库转储 (v2.9.3)
+## 数据库转储 (v2.9.4)
 
 确认 SQLi / Webshell / RCE 后自动触发:
 
@@ -382,6 +382,19 @@ bingo 自动处理每个步骤:
 | macOS | `~/Desktop/dump/{目标}_{时间戳}/` |
 | Windows | `~/Desktop/dump/{目标}_{时间戳}/` (自动检测 OneDrive 桌面) |
 | Linux | `~/Desktop/dump/{目标}_{时间戳}/` (无 Desktop 则使用 `~/dump/`) |
+
+---
+
+## XSS 扫描 (v2.9.4)
+
+bingo 自动检测反射型和存储型 XSS:
+
+- 扫描所有参数的反射上下文 (HTML / 属性 / JS / URL)
+- **反射位置去重** — 即使同一参数在 HTML 响应中出现多次，也只输出唯一上下文
+- 循环检测器区分合法扫描输出和真正的无限循环
+- 输出格式: `反射位置: {参数}={上下文}` + 唯一位置数量汇总
+
+**v2.9.4 修复原因:** 部分页面中 XSS 探针在单次响应中反射数十次。旧版本在同一行连续出现 5 次时判定为无限循环并强制终止。v2.9.4 将扫描结果行的阈值提高至 25 次，并在 AI 生成代码中强制执行去重逻辑。
 
 ---
 
@@ -404,6 +417,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 版本 | 摘要 |
 |------|------|
+| v2.9.4 | XSS 反射去重修复 — 防止重复反射误触无限循环终止 |
 | v2.9.3 | DB转储: 无行数限制 + 自动保存到桌面 (macOS/Windows) |
 | v2.9.2 | CMS 偏见修复 — 每个目标全新检测，零假设 |
 | v2.9.1 | Bug 修复: 变量替换、警告泛滥、误报 |

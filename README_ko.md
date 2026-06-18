@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.4.0 — 공식 릴리스**  
-> v2.4.0이 최신 안정 버전입니다.
+> **v2.5.0 — 공식 릴리스**  
+> v2.5.0이 최신 안정 버전입니다.
 
 </div>
 
@@ -133,6 +133,27 @@ bingo
 - GnuBoard, XpressEngine, Rhymix 자동 감지
 - 한국어 자격증명 사전 내장
 - CAPTCHA (kcaptcha) 자동 OCR 해결
+
+---
+
+## v2.5.0 — 완전 자동화 공격 스위트: JS/IDOR/인증/SSRF/XXE/업로드/보고서/CMS/후처리 *(2026-06)*
+
+**신규 모듈 (9개 엔진):**
+- `js_analyzer.py` — JS 자동 분석기: API 엔드포인트 추출, 하드코딩 시크릿 탐지 (AWS 키, JWT 시크릿, DB 비밀번호), 관리자 경로 발견, GraphQL/WebSocket 엔드포인트 열거
+- `idor_scanner.py` — IDOR/권한 상승 자동 스캐너: 수평 (사용자-사용자) + 수직 (사용자-관리자) IDOR 자동 탐지, ID 변이 테스트 (±1, ±2, 예측 ID)
+- `auth_bypass.py` — 인증 우회 자동화 엔진: JWT 취약점 (alg:none, 약한 시크릿 무차별 대입, kid 인젝션), OAuth redirect_uri 조작, 비밀번호 재설정 Host 헤더 인젝션, 세션 토큰 분석
+- `ssrf_scanner.py` — SSRF 자동 스캐너: 민감 URL 파라미터 탐지, 내부 IP/클라우드 메타데이터 탐침 (AWS/GCP/Azure 169.254.169.254), 프로토콜 래퍼 테스트, OOB 콜백
+- `xxe_scanner.py` — XXE 자동 스캐너: 인밴드 파일 읽기 페이로드, OOB DNS 콜백, SVG/DOCX XXE 페이로드 생성, SSRF-via-XXE 체이닝
+- `upload_bypass.py` — 업로드 우회 엔진: 이중 확장자/null 바이트/대소문자 변형, MIME 타입 조작, 매직 바이트 위조, polyglot GIF89a 웹쉘, RCE 확인
+- `report_builder.py` — 보고서 자동 생성기: CVSS v3.1 자동 스코어링, cURL PoC 자동 생성, 취약점 심각도 분류, Markdown/JSON 출력
+- `korean_cms.py` — 한국형 CMS 취약점 스캐너: GnuBoard5, XpressEngine, Rhymix, Cafe24, 영카트, WordPress 핑거프린팅, 관리자 패널 탐지, CMS별 SQLi/LFI/IDOR 점검
+- `post_exploit.py` — Post-Exploit 엔진: 자동 정보 수집 (시스템, 네트워크, 사용자, env vars, 히스토리), SUID/sudo/Docker 권한 상승 벡터 탐지, crontab/SSH 키/웹쉘 지속성
+
+**통합:**
+- 9개 모듈 모두 `bingo/tools/__init__.py` lazy import로 등록 (import 시간 0)
+- `system_prompt.py` — `=== v2.5.0 EXPANDED AUTO-ENGINE DECISION RULES ===` 추가: AI가 타겟 컨텍스트 기반 엔진 자동 선택
+
+**다국어:** 20개 신규 i18n 키 (ko/zh/en)
 
 ---
 

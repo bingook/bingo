@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.4.0 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. **v2.4.0 is the latest stable, production-ready version.**
+> **v2.5.0 — Official Release**  
+> Previous versions (≤ 2.0.x) were test/beta releases. **v2.5.0 is the latest stable, production-ready version.**
 
 </div>
 
@@ -3069,6 +3069,29 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.5.0 — Full Attack Automation Suite: JS/IDOR/Auth/SSRF/XXE/Upload/Report/CMS/PostExploit *(2026-06)*
+
+**New Modules (9 engines):**
+- `bingo/tools/js_analyzer.py` — JS Auto-Analyzer: API endpoint extraction, hardcoded secret detection (AWS keys, JWT secrets, passwords), admin path discovery, GraphQL/WebSocket endpoint enumeration from JS bundles
+- `bingo/tools/idor_scanner.py` — IDOR/Privilege Escalation Auto-Scanner: horizontal (user-to-user) and vertical (user-to-admin) IDOR detection with auto ID mutation (±1, ±2, common IDs), response comparison
+- `bingo/tools/auth_bypass.py` — Auth Bypass Automation Engine: JWT vulnerability testing (alg:none, weak secret brute-force, kid injection), OAuth redirect_uri manipulation, password reset Host header injection, session token analysis
+- `bingo/tools/ssrf_scanner.py` — SSRF Auto-Scanner: sensitive URL parameter detection, internal IP/cloud metadata probing (AWS/GCP/Azure 169.254.169.254), protocol wrapper testing (file://, dict://, gopher://), OOB callback support
+- `bingo/tools/xxe_scanner.py` — XXE Auto-Scanner: in-band file read payloads, OOB DNS callbacks, SVG/DOCX XXE payload generation, SSRF-via-XXE chaining
+- `bingo/tools/upload_bypass.py` — Upload Bypass Engine: extension variation attacks (double ext, null byte, case), MIME type manipulation, magic bytes forgery, polyglot GIF89a webshell, post-upload RCE verification
+- `bingo/tools/report_builder.py` — Report Auto-Builder: CVSS v3.1 auto-scoring, cURL PoC generation, severity classification, Markdown/JSON output, multi-vulnerability aggregation
+- `bingo/tools/korean_cms.py` — Korean CMS Vulnerability Scanner: GnuBoard5, XpressEngine, Rhymix, Cafe24, Young Cart, WordPress fingerprinting, admin panel detection, CMS-specific SQLi/LFI/IDOR checks
+- `bingo/tools/post_exploit.py` — Post-Exploit Engine: automated recon (system info, network, users, env vars, history), SUID/sudo/Docker socket privilege escalation vectors, crontab/SSH key/webshell persistence
+
+**Integration:**
+- All 9 modules registered in `bingo/tools/__init__.py` via lazy import (zero import-time cost)
+- `system_prompt.py` updated with `=== v2.5.0 EXPANDED AUTO-ENGINE DECISION RULES ===` — AI auto-selects engines based on target context
+
+**i18n:** 20 new string keys (ko/zh/en) for all new engines (`js_analyze_start`, `idor_found`, `auth_bypass_jwt`, `ssrf_found`, `xxe_found`, `upload_bypass_found`, `cms_detected`, `post_exploit_start`, `report_saved`, ...)
+
+**System Prompt:** Full engine orchestration guide — JS Analyzer runs first, feeds endpoints to IDOR/SSRF/SQLi scanners, secrets trigger immediate CRITICAL report, CMS detection auto-selects Korean CMS engine
+
+---
 
 ### v2.4.0 — AI Auto-Stage SQLi + DB Privesc + Shell Dropper + WAF++ *(2026-06)*
 

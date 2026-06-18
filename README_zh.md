@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.4.0 — 正式发布版**  
-> v2.4.0 是最新稳定版本。
+> **v2.5.0 — 正式发布版**  
+> v2.5.0 是最新稳定版本。
 
 </div>
 
@@ -133,6 +133,27 @@ bingo
 - Safe3 WAF → null byte unicode → overlong UTF-8 → 函数替换
 - D盾 → 关键字混淆
 - 云锁 → HTTP 参数污染
+
+---
+
+## v2.5.0 —— 全自动攻击套件：JS/IDOR/认证/SSRF/XXE/上传/报告/CMS/后渗透 *(2026-06)*
+
+**新增模块（9个引擎）：**
+- `js_analyzer.py` — JS自动分析器：API接口提取、硬编码密钥检测（AWS密钥、JWT Secret、数据库密码）、管理路径发现、GraphQL/WebSocket接口枚举
+- `idor_scanner.py` — IDOR/越权自动扫描器：水平越权（用户→用户）+ 垂直越权（用户→管理员）自动检测，ID变异测试（±1、±2、常见ID）
+- `auth_bypass.py` — 认证绕过自动化引擎：JWT漏洞（alg:none、弱密钥爆破、kid注入）、OAuth redirect_uri篡改、密码重置Host头注入、会话Token分析
+- `ssrf_scanner.py` — SSRF自动扫描器：敏感URL参数检测、内网IP/云元数据探测（AWS/GCP/Azure 169.254.169.254）、协议包装器测试（file://、dict://、gopher://）、OOB回调
+- `xxe_scanner.py` — XXE自动扫描器：带内文件读取Payload、OOB DNS回调、SVG/DOCX XXE Payload生成、SSRF-via-XXE链式利用
+- `upload_bypass.py` — 上传绕过引擎：双重扩展名/null字节/大小写变形、MIME类型篡改、魔术字节伪造、GIF89a polyglot Webshell、RCE验证
+- `report_builder.py` — 报告自动生成器：CVSS v3.1自动评分、cURL PoC自动生成、漏洞严重级别分类、Markdown/JSON输出
+- `korean_cms.py` — 韩国CMS漏洞扫描器：GnuBoard5、XpressEngine、Rhymix、Cafe24、영카트、WordPress指纹识别、管理后台探测、CMS专属SQLi/LFI/IDOR检测
+- `post_exploit.py` — 后渗透引擎：自动信息收集（系统、网络、用户、环境变量、历史命令）、SUID/sudo/Docker提权向量检测、crontab/SSH Key/Webshell持久化
+
+**集成：**
+- 9个模块均通过`bingo/tools/__init__.py`懒加载注册（零import开销）
+- `system_prompt.py`新增`=== v2.5.0 EXPANDED AUTO-ENGINE DECISION RULES ===`：AI根据目标上下文自动选择引擎
+
+**多语言：** 20个新i18n字符串键（ko/zh/en）
 
 ---
 

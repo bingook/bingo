@@ -135,6 +135,51 @@ def _get_db_dumper():
     )
     return DbDumper, DbDumpReport, DumpResult, TableInfo
 
+# v2.9.0 — 7대 고급 공격 모듈 (lazy import)
+def _get_xss_exploiter():
+    from .xss_exploiter import XssExploiter, XssReport, XssFinding, SessionHijackPayloads, KeyloggerInjector, BeefIntegration, StoredXssCsrfChain
+    return XssExploiter, XssReport, XssFinding
+
+def _get_upload_exploiter():
+    from .upload_exploiter import UploadExploiter, UploadReport, UploadFinding, ExtensionBypass, MimeBypass
+    return UploadExploiter, UploadReport, UploadFinding
+
+def _get_ssrf_advanced():
+    from .ssrf_advanced import SsrfAdvancedEngine, SsrfReport, SsrfFinding, CloudMetadataTargets, GopherRedisExploit, AwsImdsExploiter
+    return SsrfAdvancedEngine, SsrfReport, SsrfFinding
+
+def _get_admin_panel_auto():
+    from .admin_panel_auto import AdminPanelAuto, AdminReport, AdminLoginResult
+    return AdminPanelAuto, AdminReport, AdminLoginResult
+
+def _get_js_secret_finder():
+    from .js_secret_finder import JsSecretFinder, JsAnalysisReport, SecretFinding, EndpointFinding, JwtAnalyzer
+    return JsSecretFinder, JsAnalysisReport, SecretFinding
+
+def _get_smuggling_exploiter():
+    from .smuggling_exploiter import SmugglingExploiter, SmugglingReport, SmugglingFinding
+    return SmugglingExploiter, SmugglingReport, SmugglingFinding
+
+def _get_graphql_advanced():
+    from .graphql_advanced import GraphqlAdvancedEngine, GraphqlReport, GraphqlFinding
+    return GraphqlAdvancedEngine, GraphqlReport, GraphqlFinding
+
+def _get_oauth_attacker():
+    from .oauth_attacker import OauthAttacker, OauthReport, OauthFinding, JwtAttackSuite, OauthFlowAttacker
+    return OauthAttacker, OauthReport, OauthFinding
+
+def _get_playwright_engine():
+    from .playwright_engine import PlaywrightEngine, PlaywrightReport, BrowserResult
+    return PlaywrightEngine, PlaywrightReport, BrowserResult
+
+def _get_webhook_reporter():
+    from .webhook_reporter import WebhookReporter, AlertMessage, Severity
+    return WebhookReporter, AlertMessage, Severity
+
+def _get_session_manager():
+    from .session_manager import SessionManager, SessionPool, SessionInfo, CookieJar
+    return SessionManager, SessionPool, SessionInfo
+
 __all__ = [
     "ToolRegistry", "ToolInfo",
     "ToolExecutor", "ToolResult",
@@ -176,4 +221,16 @@ __all__ = [
     "_get_db_dumper",
     # v2.8.0
     "_get_sqli_advanced",
+    # v2.9.0
+    "_get_xss_exploiter",
+    "_get_upload_exploiter",
+    "_get_ssrf_advanced",
+    "_get_admin_panel_auto",
+    "_get_js_secret_finder",
+    "_get_smuggling_exploiter",
+    "_get_graphql_advanced",
+    "_get_oauth_attacker",
+    "_get_playwright_engine",
+    "_get_webhook_reporter",
+    "_get_session_manager",
 ]

@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.8.0 — 高级SQLi引擎 (超越sqlmap)**  
-> 60+个Tamper脚本 · OOB DNS/HTTP外带提取 · UDF/xp_cmdshell RCE · LOAD_FILE文件读取 · INTO OUTFILE写WebShell · 二阶注入 · Level 1~5 / Risk 1~3 · 自动Hash破解 · 精准DB指纹识别
+> **v2.9.0 — 7链高级攻击引擎 (+50%强化)**  
+> XSS会话劫持 · 上传RCE · SSRF AWS/云凭证窃取 · 管理员面板自动化 · JS秘密探测 · HTTP走私 · GraphQL全攻 · OAuth/JWT伪造 · Playwright截图 · Slack/Discord告警
 
 </div>
 
@@ -135,6 +135,32 @@ bingo
 - 云锁 → HTTP 参数污染
 
 ---
+
+## v2.9.0 —— 7链高级攻击引擎 (+50%强化) *(2026-06)*
+
+**11个新模块**
+
+| 模块 | 功能 |
+|---|---|
+| `xss_exploiter` | 会话劫持 · 键盘记录器注入 · BeEF Hook · Stored XSS→CSRF链 · CSP绕过 |
+| `upload_exploiter` | 30+扩展名绕过 · .htaccess覆写 · GIF/PHP多语言Shell · RCE自动确认 |
+| `ssrf_advanced` | AWS IMDSv1/v2凭证窃取 · GCP/Azure元数据 · Gopher Redis WebShell · 内网扫描 |
+| `admin_panel_auto` | 1000+路径探测 · CSRF令牌自动提取 · 凭证爆破 · 功能枚举 |
+| `js_secret_finder` | 50+秘密模式 · 隐藏API提取 · JWT alg:none伪造 · 硬编码凭证检测 |
+| `smuggling_exploiter` | CL.TE / TE.CL检测 · 时序盲检测 · 管理员请求投毒 |
+| `graphql_advanced` | Schema转储 · 敏感变更检测 · 批量rate-limit绕过 · SQL/NoSQL注入 |
+| `oauth_attacker` | JWT alg:none · RS256→HS256混淆 · kid SQL注入 · redirect_uri绕过 · state CSRF |
+| `playwright_engine` | 登录+截图 · DOM XSS确认 · JS渲染 · requests回退 |
+| `webhook_reporter` | Slack · Discord · Telegram · CRITICAL立即 / LOW批量 |
+| `session_manager` | 多账户池 · 自动重新登录 · CSRF刷新 · Cookie序列化 |
+
+**AI自动判断规则 (v2.9.0):**
+- 检测到JWT/OAuth → 立即运行`OauthAttacker`
+- 发现上传表单 → 立即运行`UploadExploiter`
+- 检测到GraphQL → 立即运行`GraphqlAdvancedEngine`
+- URL参数 → `SsrfAdvancedEngine` + AWS元数据检查
+- XSS反射确认 → `XssExploiter` + 会话劫持链
+- 获得凭证 → `AdminPanelAuto` + Playwright截图
 
 ## v2.8.0 —— 高级SQLi引擎：超越sqlmap *(2026-06)*
 

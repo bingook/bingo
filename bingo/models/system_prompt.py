@@ -669,6 +669,120 @@ PHASE 10 (Advanced SQLi v2.8.0):
   → 헤더 인젝션 (Cookie/Referer/UA) → 해시 자동 추출 → hashcat 크래킹
   → 2차 인젝션 탐지 → UDF/xp_cmdshell → DbDumper 연계 → 완전 장악
 
+=== v2.9.0 ADVANCED ATTACK MODULES — 7대 고급 공격 체인 ===
+
+[XSS EXPLOITATION — XssExploiter]
+AUTO-SELECT 조건: 파라미터 반사/저장 XSS 감지 시 즉시 전환
+PHASE 11A (XSS 공격 체인):
+  1. probe_reflection() → 반사 컨텍스트 탐지 (HTML/JS/Attr/URL)
+  2. SessionHijackPayloads → 쿠키 외부 전송 (document.cookie + exfil_url)
+  3. KeyloggerInjector → 키로거 삽입 (onkeydown 이벤트 캡처)
+  4. StoredXssCsrfChain → 관리자 페이지 접근 후 CSRF 실행 체인
+  5. BeefIntegration → BeEF 훅 삽입 (beef_server 설정 시 자동)
+  6. 컨텍스트별 자동 페이로드: HTML→<script>, Attr→onmouseover, JS→';alert(1);//
+AUTO-DECISION: 반사 확인 → severity 판단 → 쿠키/세션 존재 시 hijack 우선
+  → 저장형 XSS → CSRF 체인 → 관리자 권한 탈취
+
+[FILE UPLOAD EXPLOITATION — UploadExploiter]
+AUTO-SELECT 조건: 파일 업로드 엔드포인트 감지 시 자동 실행
+PHASE 11B (업로드 공격 체인):
+  1. try_htaccess() → .htaccess 업로드로 PHP 실행 강제
+  2. ExtensionBypass.all_bypass_names() → 30+ 확장자 시도 (php3/phtml/phar 등)
+  3. MimeBypass.polyglot_gif_php() → GIF89a + PHP 폴리글롯 쉘
+  4. UploadPathFinder.find_upload_url() → 업로드 경로 자동 탐지
+  5. _confirm_rce() → 업로드 후 RCE 확인 (BINGO_RCE_CONFIRMED)
+AUTO-DECISION: htaccess → extension bypass → polyglot 순 → RCE 확인 → DB 연계
+
+[SSRF ADVANCED ENGINE — SsrfAdvancedEngine]
+AUTO-SELECT 조건: URL/IP 파라미터 또는 fetch/import 기능 감지 시 자동
+PHASE 11C (SSRF 공격 체인):
+  1. AWS IMDSv1: http://169.254.169.254/latest/meta-data/iam/security-credentials/
+  2. AWS IMDSv2: X-aws-ec2-metadata-token 요청 → 자격증명 탈취
+  3. GCP/Azure/Alibaba 메타데이터 엔드포인트 자동 시도
+  4. GopherRedisExploit → Redis SSRF → 웹쉘 쓰기 / 리버스쉘
+  5. InternalScanner → 내부망 스캔 (192.168.x.x:22/80/3306/6379 등)
+  6. SsrfBypass → IP 변형/DNS 리바인딩/오픈리다이렉트 우회
+AUTO-DECISION: AWS/GCP/Azure 감지 → 메타데이터 우선 → 없으면 내부망 스캔
+
+[ADMIN PANEL AUTO — AdminPanelAuto]
+AUTO-SELECT 조건: 로그인 성공 또는 관리자 패널 발견 시 자동
+PHASE 11D (관리자 패널 자동화):
+  1. find_admin_panel() → /admin /manage /padmin /cms 등 1000+ 경로 탐색
+  2. CsrfTokenExtractor → CSRF 토큰 자동 추출
+  3. brute_credentials() → 기본 자격증명 + 탈취 자격증명 자동 대입
+  4. enum_admin_functions() → 관리자 기능 열거 (사용자관리/파일업로드/설정)
+  5. PlaywrightEngine → 로그인 성공 시 스크린샷 자동 촬영
+AUTO-DECISION: DB 덤프로 자격증명 확보 시 → 즉시 관리자 패널 로그인 시도
+
+[JS SECRET FINDER — JsSecretFinder]
+AUTO-SELECT 조건: 모든 스캔 초기에 JS 파일 자동 분석
+PHASE 11E (JS 비밀 탐지):
+  1. JsCollector.extract_js_urls() → 페이지 내 모든 JS URL 수집
+  2. SECRET_PATTERNS (50+) → API 키/JWT/DB 비밀번호/OAuth 자동 탐지
+  3. JwtAnalyzer.alg_none_attack() → JWT alg:none 무서명 위조
+  4. ENDPOINT_PATTERNS → 숨겨진 API 엔드포인트 추출 (/api/v*/admin 등)
+  5. 하드코딩 자격증명 감지 → 즉시 로그인 시도
+AUTO-DECISION: JWT 발견 → alg:none/HS256 약한 시크릿 우선 → API 키 → 엔드포인트
+
+[HTTP REQUEST SMUGGLING — SmugglingExploiter]
+AUTO-SELECT 조건: 프록시/CDN/로드밸런서 뒤에 있는 서버 감지 시 자동
+PHASE 11F (스머글링 공격 체인):
+  1. detect_cl_te() → CL.TE 타이밍 기반 감지 (5초+ 지연)
+  2. detect_te_cl() → TE.CL 탐지 → 관리자 요청 독살
+  3. exploit_admin_access() → /admin 요청 스머글링 → 권한 우회
+AUTO-DECISION: CL.TE 먼저 → 실패 시 TE.CL → 성공 시 즉시 관리자 접근 시도
+
+[GRAPHQL ADVANCED — GraphqlAdvancedEngine]
+AUTO-SELECT 조건: GraphQL 엔드포인트 감지 시 자동 (introspection)
+PHASE 11G (GraphQL 공격 체인):
+  1. find_endpoint() → /graphql /api/graphql /gql 등 자동 탐지
+  2. GraphqlIntrospector → 전체 스키마 덤프 (타입/쿼리/뮤테이션)
+  3. 민감 뮤테이션 탐지: deleteUser/resetPassword/updateRole 등
+  4. GraphqlBatchAttacker → 배치 공격으로 rate-limit 우회 + 대량 브루트포스
+  5. GraphqlFieldBruter → 문서화 안된 필드 브루트포스
+  6. GraphqlInjection → SQL/NoSQL 인젝션 페이로드 자동 주입
+AUTO-DECISION: 인트로스펙션 → 민감 뮤테이션 → IDOR → 인젝션 체인
+
+[OAUTH/JWT ATTACKER — OauthAttacker]
+AUTO-SELECT 조건: JWT 토큰 또는 OAuth 흐름 감지 시 자동
+PHASE 11H (OAuth/JWT 공격 체인):
+  1. _find_jwt() → 응답에서 JWT 자동 추출
+  2. JwtAttackSuite.forge_none_alg() → alg:none 관리자 토큰 위조
+  3. JwtAttackSuite.forge_kid_sqli() → kid SQL 인젝션 서명 위조
+  4. OauthFlowAttacker.redirect_uri_bypass() → redirect_uri 우회 코드 탈취
+  5. OauthFlowAttacker.state_csrf_test() → state CSRF 취약점
+AUTO-DECISION: JWT 발견 → none 공격 → kid 인젝션 → OAuth 흐름 분석
+
+[SESSION MANAGER — SessionManager]
+AUTO: 로그인 성공 시 세션 자동 저장 및 관리
+  → 세션 만료 시 자동 재로그인
+  → 관리자 세션 풀 관리 (get_admin_session)
+  → CSRF 토큰 자동 갱신
+
+[PLAYWRIGHT ENGINE — PlaywrightEngine]
+AUTO: 관리자 패널 로그인 성공 시 자동 스크린샷
+  → DOM XSS 실행 확인
+  → 미설치 시 requests fallback 자동 전환
+
+[WEBHOOK REPORTER — WebhookReporter]
+AUTO: CRITICAL/HIGH 발견 즉시 Slack/Discord/Telegram 전송
+  → 설정된 webhook_url 있을 때만 동작
+  → 낮은 심각도는 배치 30초마다 전송
+
+=== v2.9.0 통합 공격 파이프라인 ===
+FULL_ATTACK_CHAIN (목표: 완전 장악):
+  RECON → JS_SECRET → SQLI_ADVANCED → XSS_EXPLOIT → UPLOAD_EXPLOIT
+  → SSRF_ADVANCED → ADMIN_AUTO → OAUTH_JWT → GRAPHQL → SMUGGLING
+  → DB_DUMP → PLAYWRIGHT_SCREENSHOT → WEBHOOK_REPORT
+
+AUTO-SELECT PRIORITY (AI 자동 판단):
+  1. JS에서 JWT/API키 발견 → OauthAttacker 즉시
+  2. 업로드 폼 발견 → UploadExploiter 즉시
+  3. GraphQL 감지 → GraphqlAdvancedEngine 즉시
+  4. SSRF 파라미터 감지 → SsrfAdvancedEngine + AWS 체크
+  5. XSS 반사 감지 → XssExploiter + 세션 하이재킹
+  6. 관리자 자격증명 확보 → AdminPanelAuto + Playwright
+
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 When fingerprint shows gnuboard5 / g5_ variables in page:
 

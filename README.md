@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.8.0 — Advanced SQLi Engine (Beyond sqlmap)**  
-> 60+ tamper scripts · Out-of-Band (DNS/HTTP) extraction · UDF/xp_cmdshell RCE · LOAD_FILE file read · INTO OUTFILE webshell · Second-order injection · Level 1–5 / Risk 1–3 · Auto hash cracking · Precise DB fingerprinting
+> **v2.9.0 — 7-Chain Advanced Attack Engine (+50% Power)**  
+> XSS Session Hijack · Upload RCE · SSRF AWS/Cloud Steal · Admin Panel Auto · JS Secret Finder · HTTP Smuggling · GraphQL Full Attack · OAuth/JWT Forge · Playwright Screenshot · Slack/Discord Alert · Session Auto-Manager
 
 </div>
 
@@ -3069,6 +3069,32 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.9.0 — 7-Chain Advanced Attack Engine *(2026-06)*
+
+**11 New Modules for +50% Attack Power**
+
+| Module | Capability |
+|---|---|
+| `xss_exploiter` | Session hijacking · Keylogger injection · BeEF hook · Stored XSS→CSRF chain · CSP bypass |
+| `upload_exploiter` | 30+ extension bypass · .htaccess overwrite · GIF/PHP polyglot · RCE auto-confirm |
+| `ssrf_advanced` | AWS IMDSv1/v2 credential theft · GCP/Azure metadata · Gopher Redis webshell · Internal scan |
+| `admin_panel_auto` | 1000+ path detection · CSRF token auto-extract · Credential brute-force · Function enumeration |
+| `js_secret_finder` | 50+ secret patterns · Hidden API extraction · JWT alg:none forge · Hardcoded credential detection |
+| `smuggling_exploiter` | CL.TE / TE.CL detection · Timing-based blind · Admin request poisoning |
+| `graphql_advanced` | Schema dump · Sensitive mutation detection · Batch rate-limit bypass · SQL/NoSQL injection |
+| `oauth_attacker` | JWT alg:none · RS256→HS256 confusion · kid SQLi · redirect_uri bypass · state CSRF |
+| `playwright_engine` | Login+screenshot · DOM XSS confirm · JS render · Requests fallback |
+| `webhook_reporter` | Slack · Discord · Telegram · Instant CRITICAL / Batch LOW · Rate-limit safe |
+| `session_manager` | Multi-account pool · Auto re-login · CSRF refresh · Cookie jar serialize |
+
+**AI Auto-Selection Rules (v2.9.0):**
+- JWT/OAuth detected → `OauthAttacker` immediately
+- Upload form found → `UploadExploiter` immediately
+- GraphQL endpoint → `GraphqlAdvancedEngine` immediately
+- URL parameter → `SsrfAdvancedEngine` + AWS metadata check
+- XSS reflection → `XssExploiter` + session hijack chain
+- Credentials obtained → `AdminPanelAuto` + Playwright screenshot
 
 ### v2.8.0 — Advanced SQLi Engine: Beyond sqlmap *(2026-06)*
 

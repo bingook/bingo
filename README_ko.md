@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.8.0 — 고급 SQLi 엔진 (sqlmap 초과 수준)**  
-> 60+ Tamper 스크립트 · OOB DNS/HTTP 추출 · UDF/xp_cmdshell RCE · LOAD_FILE 파일 읽기 · INTO OUTFILE 웹쉘 쓰기 · 2차 인젝션 · Level 1~5 / Risk 1~3 · 해시 자동 크래킹 · 정밀 DB 핑거프린팅
+> **v2.9.0 — 7대 고급 공격 체인 (+50% 강화)**  
+> XSS 세션 하이재킹 · 업로드 RCE · SSRF AWS/클라우드 탈취 · 관리자 패널 자동화 · JS 비밀 탐지 · HTTP 스머글링 · GraphQL 풀 공격 · OAuth/JWT 위조 · Playwright 스크린샷 · Slack/Discord 알림
 
 </div>
 
@@ -135,6 +135,32 @@ bingo
 - CAPTCHA (kcaptcha) 자동 OCR 해결
 
 ---
+
+## v2.9.0 — 7대 고급 공격 체인 (+50% 강화) *(2026-06)*
+
+**11개 신규 모듈**
+
+| 모듈 | 기능 |
+|---|---|
+| `xss_exploiter` | 세션 하이재킹 · 키로거 삽입 · BeEF 훅 · Stored XSS→CSRF 체인 · CSP 우회 |
+| `upload_exploiter` | 30+ 확장자 우회 · .htaccess 덮어쓰기 · GIF/PHP 폴리글롯 · RCE 자동 확인 |
+| `ssrf_advanced` | AWS IMDSv1/v2 자격증명 탈취 · GCP/Azure 메타데이터 · Gopher Redis 웹쉘 · 내부망 스캔 |
+| `admin_panel_auto` | 1000+ 경로 탐지 · CSRF 토큰 자동 추출 · 자격증명 브루트포스 · 기능 열거 |
+| `js_secret_finder` | 50+ 비밀 패턴 · 숨겨진 API 추출 · JWT alg:none 위조 · 하드코딩 자격증명 탐지 |
+| `smuggling_exploiter` | CL.TE / TE.CL 탐지 · 타이밍 기반 블라인드 · 관리자 요청 독살 |
+| `graphql_advanced` | 스키마 덤프 · 민감 뮤테이션 탐지 · 배치 rate-limit 우회 · SQL/NoSQL 인젝션 |
+| `oauth_attacker` | JWT alg:none · RS256→HS256 혼동 · kid SQL인젝션 · redirect_uri 우회 · state CSRF |
+| `playwright_engine` | 로그인+스크린샷 · DOM XSS 확인 · JS 렌더링 · requests fallback |
+| `webhook_reporter` | Slack · Discord · Telegram · CRITICAL 즉시 전송 / LOW 배치 |
+| `session_manager` | 다중 계정 풀 · 자동 재로그인 · CSRF 갱신 · 쿠키 저장소 직렬화 |
+
+**AI 자동 판단 규칙 (v2.9.0):**
+- JWT/OAuth 감지 → `OauthAttacker` 즉시 실행
+- 업로드 폼 발견 → `UploadExploiter` 즉시 실행
+- GraphQL 감지 → `GraphqlAdvancedEngine` 즉시 실행
+- URL 파라미터 → `SsrfAdvancedEngine` + AWS 메타데이터 체크
+- XSS 반사 확인 → `XssExploiter` + 세션 하이재킹 체인
+- 자격증명 획득 → `AdminPanelAuto` + Playwright 스크린샷
 
 ## v2.8.0 — 고급 SQLi 엔진: sqlmap 초과 수준 *(2026-06)*
 

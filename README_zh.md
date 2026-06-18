@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.6.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.7.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,7 +16,7 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.6.0 — 高级攻击层**  
+> **v2.7.0 — DB全量自动转储**  
 > 15个新引擎（TIER 1/2/3）：SSTI、请求走私、竞争条件、GraphQL、2FA绕过、缓存投毒、反序列化、侦察、Nuclei、业务逻辑、DOM XSS、API版本枚举、云存储桶扫描器等
 
 </div>
@@ -133,6 +133,33 @@ bingo
 - Safe3 WAF → null byte unicode → overlong UTF-8 → 函数替换
 - D盾 → 关键字混淆
 - 云锁 → HTTP 参数污染
+
+---
+
+## v2.7.0 —— DB全量自动转储引擎 *(2026-06)*
+
+**新模块:**
+- `bingo/tools/db_dumper.py` — **DB自动转储引擎**: SQLi确认/WebShell上传/RCE成功后立即触发，零人工干预全量转储数据库
+
+**核心功能:**
+| 功能 | 详情 |
+|---|---|
+| 数据库支持 | MySQL, MSSQL, PostgreSQL, SQLite, Oracle |
+| 表自动分类 | 管理员(优先级100) → 会员(90) → 敏感(50) → 其他 |
+| 会员表检测 | `member/user/account/g5_member/xe_member/mb_` 等20+模式 |
+| 管理员表检测 | `admin/administrator/manager/g5_admin/xe_admin` 等 |
+| 敏感表检测 | `payment/card/order/session/token/config` 等 |
+| 凭据提取 | 自动识别ID/邮箱 + 密码/哈希列 → `CREDENTIALS_{table}.json` |
+| 批量分页 | 每次500行，每表最多50,000行 |
+| UNION SQLi转储 | `dump_via_sqli_union()` — GROUP_CONCAT + LIMIT/OFFSET分页 |
+| WebShell转储 | `gen_webshell_dump_cmd()` — 生成mysqldump/sqlcmd/psql命令 |
+| 保存格式 | 每表JSON + CSV (UTF-8 BOM) + DUMP_SUMMARY.txt |
+
+**转储后自动行动:**
+1. `CREDENTIALS_*.json` → 自动尝试在 `/admin`, `/manage` 登录管理员
+2. 检测到密码哈希 → 建议 `hashcat -m {mode}` 破解命令
+3. 会员邮件列表 → 记录用于凭据填充分析
+4. 全量转储路径 → 自动添加到渗透测试报告
 
 ---
 

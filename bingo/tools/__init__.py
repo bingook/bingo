@@ -116,6 +116,15 @@ def _get_cloud_bucket_scanner():
     from .cloud_bucket_scanner import CloudBucketScanner, BucketReport, BucketFinding
     return CloudBucketScanner, BucketReport, BucketFinding
 
+# v2.7.0 — DB 자동 전체 덤프 엔진
+def _get_db_dumper():
+    from .db_dumper import (
+        DbDumper, DbDumpReport, DumpResult, TableInfo,
+        MEMBER_TABLE_KEYWORDS, ADMIN_TABLE_KEYWORDS, SENSITIVE_TABLE_KEYWORDS,
+        DB_QUERIES,
+    )
+    return DbDumper, DbDumpReport, DumpResult, TableInfo
+
 __all__ = [
     "ToolRegistry", "ToolInfo",
     "ToolExecutor", "ToolResult",
@@ -153,4 +162,6 @@ __all__ = [
     "_get_dom_xss_scanner",
     "_get_api_version_enum",
     "_get_cloud_bucket_scanner",
+    # v2.7.0
+    "_get_db_dumper",
 ]

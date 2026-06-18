@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.6.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.7.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.6.0 — Advanced Attack Layer**  
-> 15 new engines across TIER 1/2/3: SSTI, Smuggling, Race Condition, GraphQL, 2FA Bypass, Cache Poisoning, Deserialization, Recon, Nuclei, BizLogic, DOM XSS, API Version Enum, Cloud Bucket Scanner + more.
+> **v2.7.0 — DB Full Auto-Dump**  
+> On exploit success (SQLi/WebShell/RCE), automatically dumps member DB + admin DB + sensitive tables, extracts credentials, and suggests hashcat cracking.
 
 </div>
 
@@ -3069,6 +3069,52 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.7.0 — DB Full Auto-Dump Engine *(2026-06)*
+
+**New Module:**
+- `bingo/tools/db_dumper.py` — **DB Auto-Dump Engine**: Immediately triggered after any successful exploitation (SQLi confirmed, WebShell uploaded, RCE achieved). Auto-dumps the entire database with zero manual effort.
+
+**Core Capabilities:**
+| Feature | Detail |
+|---|---|
+| DB Support | MySQL, MSSQL, PostgreSQL, SQLite, Oracle |
+| Auto Table Classification | admin (priority 100) → member (90) → sensitive (50) → other |
+| Member Table Detection | `member/user/account/customer/g5_member/xe_member/mb_` and 20+ variants |
+| Admin Table Detection | `admin/administrator/manager/staff/operator/g5_admin/xe_admin` |
+| Sensitive Table Detection | `payment/card/order/transaction/session/token/config` |
+| Credential Extraction | Auto-identifies ID/email + password/hash columns → `CREDENTIALS_{table}.json` |
+| Batch Pagination | 500 rows per request, up to 50,000 rows per table |
+| UNION SQLi Dump | `dump_via_sqli_union()` — paginates via `GROUP_CONCAT` + `LIMIT/OFFSET` |
+| WebShell Dump | `gen_webshell_dump_cmd()` — generates `mysqldump`/`sqlcmd`/`psql`/`sqlite3` commands |
+| Output Format | JSON + CSV (UTF-8 BOM) per table + `DUMP_SUMMARY.txt` |
+
+**Auto-Dump Pipeline:**
+```python
+# Triggered automatically by AI after any successful exploit
+dumper = DbDumper(query_fn=sql_exec, db_type="mysql", target=base_url)
+report = dumper.auto_dump(
+    dump_member=True,    # 회원 전체 덤프
+    dump_admin=True,     # 관리자 전체 덤프
+    dump_sensitive=True, # 결제/세션 덤프
+)
+# → CREDENTIALS_admin.json (관리자 ID/PW hash)
+# → admin login attempt auto-triggered
+# → hashcat cracking command suggested
+```
+
+**Post-Dump Actions (fully automated):**
+1. `CREDENTIALS_*.json` → auto-attempt admin login on `/admin`, `/manage`, `/adm`
+2. Password hash detected → suggest `hashcat -m {mode}` with rockyou.txt
+3. Member email list → note for credential stuffing analysis
+4. Full dump paths added to pentest report via `ReportBuilder`
+
+**Integration:**
+- `tools/__init__.py`: `_get_db_dumper()` lazy import
+- `system_prompt.py`: `=== v2.7.0 DB AUTO-DUMP ENGINE DECISION RULES ===` — PHASE 9 in auto pipeline
+- `strings.py`: 14 new i18n keys (ko/zh/en)
+
+---
 
 ### v2.6.0 — Advanced Attack Layer: 15 New Engines (SSTI/Smuggling/Recon/Nuclei/BizLogic/DOM-XSS/Buckets/...) *(2026-06)*
 

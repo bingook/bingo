@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.9.5-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.8-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,12 +365,12 @@ bingo가 각 단계를 처리합니다:
 
 ---
 
-## DB 덤프 (v2.9.5)
+## DB 덤프 (v2.9.6)
 
 SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 
 - 덤프 대상: `member` / `user` / `admin` / `g5_member` / `xe_member`
-- **행 수 제한 없음** — 전체 테이블 전량 덤프
+- **행 수 제한 없음** — `max_rows_per_table=0` (무제한), 전체 테이블 전량 덤프
 - 크레덴셜 저장 → `CREDENTIALS_{테이블}.json`
 - 해시 유형 자동 탐지 → `hashcat -m {모드}` 명령어 출력
 - 추출된 크레덴셜로 관리자 로그인 재시도
@@ -383,9 +383,12 @@ SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 | Windows | `~/Desktop/dump/{타겟}_{타임스탬프}/` (OneDrive 바탕화면 자동 감지) |
 | Linux | `~/Desktop/dump/{타겟}_{타임스탬프}/` (Desktop 없으면 `~/dump/` 사용) |
 
+> **v2.9.6 수정:** AI가 생성한 추출 코드가 `/tmp/`에 저장하고 DbDumper를 무시하는 버그 수정.
+> `/tmp/` 저장 완전 금지, Desktop 경로 강제, FLOOR 인젝션 `query_fn` 템플릿 추가.
+
 ---
 
-## XSS 스캔 (v2.9.5)
+## XSS 스캔 (v2.9.6)
 
 bingo가 자동으로 반사형/저장형 XSS를 탐지합니다:
 
@@ -417,6 +420,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v2.9.6 | DB 덤프: /tmp/ 저장 금지 강제, Desktop 경로 의무화, FLOOR 인젝션 query_fn 템플릿 추가 |
 | v2.9.5 | XSS 반사 중복 제거 수정 — 반복 반사로 인한 오탐 루프 종료 방지 |
 | v2.9.3 | DB 덤프: 행 수 제한 없음 + 바탕화면 자동 저장 (macOS/Windows) |
 | v2.9.2 | CMS 편향 수정 — 타겟별 신규 탐지, 무추정 |

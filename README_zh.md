@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.9.5-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.8-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,12 +365,12 @@ bingo 自动处理每个步骤:
 
 ---
 
-## 数据库转储 (v2.9.5)
+## 数据库转储 (v2.9.6)
 
 确认 SQLi / Webshell / RCE 后自动触发:
 
 - 转储对象: `member` / `user` / `admin` / `g5_member` / `xe_member`
-- **无行数限制** — 全量转储整张表
+- **无行数限制** — `max_rows_per_table=0`（无限制），全量转储整张表
 - 保存凭据 → `CREDENTIALS_{表名}.json`
 - 自动识别哈希类型 → 输出 `hashcat -m {模式}` 命令
 - 使用提取的凭据重新尝试管理员登录
@@ -383,9 +383,12 @@ bingo 自动处理每个步骤:
 | Windows | `~/Desktop/dump/{目标}_{时间戳}/` (自动检测 OneDrive 桌面) |
 | Linux | `~/Desktop/dump/{目标}_{时间戳}/` (无 Desktop 则使用 `~/dump/`) |
 
+> **v2.9.6 修复:** AI 生成的提取代码将数据保存到 `/tmp/` 并忽略 DbDumper 的问题已修复。
+> 现已强制禁止 `/tmp/` 路径，必须使用桌面路径，并新增 FLOOR 注入 `query_fn` 模板。
+
 ---
 
-## XSS 扫描 (v2.9.5)
+## XSS 扫描 (v2.9.6)
 
 bingo 自动检测反射型和存储型 XSS:
 
@@ -417,6 +420,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 版本 | 摘要 |
 |------|------|
+| v2.9.6 | DB转储: 禁止/tmp/保存，强制桌面路径，新增FLOOR注入query_fn模板 |
 | v2.9.5 | XSS 反射去重修复 — 防止重复反射误触无限循环终止 |
 | v2.9.3 | DB转储: 无行数限制 + 自动保存到桌面 (macOS/Windows) |
 | v2.9.2 | CMS 偏见修复 — 每个目标全新检测，零假设 |

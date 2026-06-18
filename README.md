@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.9.5-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.8-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,12 +365,12 @@ bingo handles each step:
 
 ---
 
-## DB Dump (v2.9.5)
+## DB Dump (v2.9.6)
 
 Triggered automatically after confirmed SQLi / webshell / RCE:
 
 - Dumps: `member` / `user` / `admin` / `g5_member` / `xe_member`
-- **No row limit** — entire table dumped regardless of size
+- **No row limit** — `max_rows_per_table=0` (unlimited), entire table dumped
 - Saves credentials → `CREDENTIALS_{table}.json`
 - Detects hash type → prints `hashcat -m {mode}` command
 - Re-attempts admin login with extracted credentials
@@ -383,9 +383,12 @@ Triggered automatically after confirmed SQLi / webshell / RCE:
 | Windows | `~/Desktop/dump/{target}_{timestamp}/` (OneDrive Desktop auto-detected) |
 | Linux | `~/Desktop/dump/{target}_{timestamp}/` (falls back to `~/dump/` if no Desktop) |
 
+> **v2.9.6 fix:** AI-generated extraction code was saving to `/tmp/` and ignoring DbDumper.
+> Now enforced: `/tmp/` forbidden, Desktop path mandatory, FLOOR injection `query_fn` template added.
+
 ---
 
-## XSS Scan (v2.9.5)
+## XSS Scan (v2.9.6)
 
 bingo detects reflected and stored XSS automatically:
 
@@ -417,6 +420,7 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v2.9.6 | DB dump: forbid /tmp/ save, enforce Desktop path, add FLOOR injection query_fn template |
 | v2.9.5 | XSS reflection dedup fix — prevent false infinite-loop kill on repeated reflections |
 | v2.9.3 | DB dump: no row limit + Desktop save path (macOS/Windows auto-detect) |
 | v2.9.2 | CMS bias fix — fresh detection per target, zero assumptions |

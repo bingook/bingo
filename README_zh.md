@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.9.8-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.0.2-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -420,6 +420,11 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 版本 | 摘要 |
 |------|------|
+| v3.0.2 | DB转储: 通过实际样本数据验证会员表 (SELECT LIMIT 5)，禁止仅凭列名判断 |
+| v3.0.1 | 表识别: 基于列名检测 + 支持混淆表名 |
+| v3.0.0 | DbDumper 灵活使用 — AI 按情境选择方法 (无WAF / 有WAF / WebShell) |
+| v2.9.8 | 简化保存规则: /tmp/ 允许中间文件，仅最终结果存至桌面 |
+| v2.9.7 | 所有最终输出文件强制保存至 Desktop/dump/目标名/ |
 | v2.9.6 | DB转储: 禁止/tmp/保存，强制桌面路径，新增FLOOR注入query_fn模板 |
 | v2.9.5 | XSS 反射去重修复 — 防止重复反射误触无限循环终止 |
 | v2.9.3 | DB转储: 无行数限制 + 自动保存到桌面 (macOS/Windows) |

@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.9.8-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.0.2-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -420,6 +420,11 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v3.0.2 | DB 덤프: 회원 테이블 판단 시 실제 샘플 데이터 확인 (SELECT LIMIT 5), 컬럼명만으로 판단 금지 |
+| v3.0.1 | 테이블 식별: 컬럼명 기반 + 난독화 테이블명 지원 |
+| v3.0.0 | DbDumper 유연 사용 — AI가 상황별 방법 선택 (WAF 없음 / WAF 있음 / WebShell) |
+| v2.9.8 | 저장 규칙 단순화: /tmp/는 중간 파일 허용, 최종 결과만 Desktop 저장 |
+| v2.9.7 | 모든 최종 출력 파일 Desktop/dump/타겟명/ 강제 저장 |
 | v2.9.6 | DB 덤프: /tmp/ 저장 금지 강제, Desktop 경로 의무화, FLOOR 인젝션 query_fn 템플릿 추가 |
 | v2.9.5 | XSS 반사 중복 제거 수정 — 반복 반사로 인한 오탐 루프 종료 방지 |
 | v2.9.3 | DB 덤프: 행 수 제한 없음 + 바탕화면 자동 저장 (macOS/Windows) |

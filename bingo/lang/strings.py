@@ -2103,6 +2103,42 @@ _STRINGS.update({
                                    "zh": "📋 管理员面板扫描 | 面板:{panel} | 登录:{login} | 功能:{funcs}",
                                    "en": "📋 Admin panel scan | Panel:{panel} | Login:{login} | Functions:{funcs}"},
 
+    # v3.0.4 — Post-Credential: Admin Page Discovery + IP Restriction Bypass
+    # ──────────────────────────────────────────────────────────────────────────
+    "post_cred_start":           {"ko": "🔑 크리덴셜 확보 완료 — 관리자 패널 탐색 시작",
+                                   "zh": "🔑 凭据确认 — 开始搜索管理员面板",
+                                   "en": "🔑 Credentials confirmed — starting admin panel discovery"},
+    "admin_page_searching":      {"ko": "🔍 관리자 페이지 경로 탐색 중... ({count}개 경로 시도)",
+                                   "zh": "🔍 正在搜索管理员页面路径... (尝试{count}条路径)",
+                                   "en": "🔍 Searching admin page paths... ({count} paths tested)"},
+    "admin_page_not_found":      {"ko": "⚠️ 관리자 페이지 경로 미발견 ({count}개 경로 소진) — 크리덴셜만 확보된 상태",
+                                   "zh": "⚠️ 未找到管理员页面路径 (已尝试{count}条) — 仅持有凭据",
+                                   "en": "⚠️ Admin page not found ({count} paths exhausted) — credentials obtained only"},
+    "ip_restrict_detected":      {"ko": "🚫 IP 제한 감지됨: {msg} — 우회 시도 시작",
+                                   "zh": "🚫 检测到IP限制: {msg} — 开始尝试绕过",
+                                   "en": "🚫 IP restriction detected: {msg} — attempting bypass"},
+    "ip_bypass_trying":          {"ko": "🔄 IP 우회 시도 [{idx}/{total}]: {header}: {value}",
+                                   "zh": "🔄 尝试IP绕过 [{idx}/{total}]: {header}: {value}",
+                                   "en": "🔄 Trying IP bypass [{idx}/{total}]: {header}: {value}"},
+    "ip_bypass_success":         {"ko": "✅ IP 제한 우회 성공! 헤더: {header}: {value}",
+                                   "zh": "✅ IP限制绕过成功！标头: {header}: {value}",
+                                   "en": "✅ IP restriction bypassed! Header: {header}: {value}"},
+    "ip_bypass_failed":          {"ko": "❌ 모든 IP 우회 방법 실패 ({count}개 시도) — 보고서에 기재됨",
+                                   "zh": "❌ 所有IP绕过方法失败 (已尝试{count}种) — 已记录至报告",
+                                   "en": "❌ All IP bypass methods failed ({count} tried) — recorded in report"},
+    "ip_bypass_ssrf":            {"ko": "🔀 SSRF로 내부 관리자 접근 시도: {admin_url}",
+                                   "zh": "🔀 通过SSRF尝试内部管理员访问: {admin_url}",
+                                   "en": "🔀 Attempting admin access via SSRF: {admin_url}"},
+    "ip_bypass_realip":          {"ko": "🌐 Cloudflare 우회: 실서버 IP {real_ip} 직접 접근 시도",
+                                   "zh": "🌐 Cloudflare绕过: 直接访问真实服务器IP {real_ip}",
+                                   "en": "🌐 Cloudflare bypass: direct access to real server IP {real_ip}"},
+    "cred_only_report":          {"ko": "📄 [CRITICAL] 관리자 크리덴셜 탈취 — 관리자 페이지 접근 대기 중\n  ID: {admin_id}\n  PW: {admin_pw}\n  덤프 위치: {dump_path}",
+                                   "zh": "📄 [CRITICAL] 管理员凭据已窃取 — 等待管理员页面访问\n  ID: {admin_id}\n  PW: {admin_pw}\n  转储位置: {dump_path}",
+                                   "en": "📄 [CRITICAL] Admin credentials stolen — admin panel access pending\n  ID: {admin_id}\n  PW: {admin_pw}\n  Dump: {dump_path}"},
+    "ip_restrict_report":        {"ko": "📄 [CRITICAL] 관리자 크리덴셜 탈취 + IP 제한 우회 실패\n  관리자 페이지: {admin_url}\n  시도한 우회: {bypass_methods}\n  크리덴셜 자체가 CRITICAL 증거",
+                                   "zh": "📄 [CRITICAL] 管理员凭据已窃取 + IP限制绕过失败\n  管理员页面: {admin_url}\n  尝试的绕过: {bypass_methods}\n  凭据本身即为CRITICAL证据",
+                                   "en": "📄 [CRITICAL] Admin creds stolen + IP restriction bypass failed\n  Admin page: {admin_url}\n  Bypass tried: {bypass_methods}\n  Credentials alone are CRITICAL evidence"},
+
     # ──────────────────────────────────────────────────────────────────────────
     # v2.9.0 — JS Secret Finder
     # ──────────────────────────────────────────────────────────────────────────

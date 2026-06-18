@@ -393,6 +393,132 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   4. gen_persistence_cmds() → cron, bashrc, authorized_keys, win registry
   5. Lateral movement: use internal_ips → scan_param_basic() → chain SSRF
 
+=== v2.6.0 ADVANCED ATTACK LAYER DECISION RULES ===
+
+[RECON ENGINE — bingo.tools.recon_engine]  ← PHASE 0 (always first)
+  Priority: RUN BEFORE all other engines on new target
+  1. ReconEngine(request_fn, domain).full_recon() → assets, subdomains, tech, WAF, CDN
+  2. enum_subdomains_crtsh() → certificate transparency subdomain list
+  3. port_scan(host) → find admin panels, API ports, dev servers
+  4. fingerprint_tech(url) → stack detection (Spring/Laravel/Django/Korean CMS)
+  5. Output feeds: subdomains → SubdomainTakeoverScanner, open ports → targeted testing
+
+[SUBDOMAIN TAKEOVER — bingo.tools.subdomain_takeover]
+  Trigger: ANY new target (always check after recon)
+  1. SubdomainTakeoverScanner(request_fn, domain).scan_all() → dangling CNAME check
+  2. 23 service signatures: AWS S3, GitHub Pages, Heroku, Azure, Netlify, Vercel, Cafe24...
+  3. takeover_possible=True → auto-generate claim instructions
+  Severity: CRITICAL (S3/GitHub/Azure) | HIGH (Shopify/Fastly/Netlify)
+
+[NUCLEI RUNNER — bingo.tools.nuclei_runner]  ← Quick Win Engine
+  Trigger: After recon, before deep manual testing
+  1. NucleiRunner(request_fn, target).scan() → runs nuclei binary OR 15 builtin templates
+  2. Builtin checks: .env, wp-config.bak, phpinfo, git/.git, Jenkins, Kibana, Swagger, admin panel
+  3. CVE checks: CVE-2021-41773 (Apache), CVE-2022-22965 (Spring4Shell)
+  4. Nuclei binary: auto-runs if installed (critical+high severity, 100 rps)
+  5. Always run before SQLi — quick wins save time
+
+[SSTI AUTO-ENGINE — bingo.tools.ssti_scanner]
+  Trigger: any parameter reflected in response, template syntax in URL, error mentioning template engine
+  1. Probe polyglot: ${{<%[%'"}}%\ → error reveals engine type
+  2. PROBE_MAP: Jinja2/Twig/Freemarker/Smarty/Velocity/Mako/Pebble/Thymeleaf
+  3. SstiScanner.test_param(url, param) → confirm engine + generate RCE chain
+  4. Confirmed → RCE_CHAINS[engine] → try each until id/whoami output
+  Severity: CRITICAL (always RCE potential)
+
+[PARAM DISCOVERY — bingo.tools.param_discovery]
+  Trigger: any endpoint with sparse parameters or 403/404 response
+  1. ParamDiscovery.fuzz_params(url, html=html) → 200+ common params + HTML-extracted params
+  2. test_header_bypass(url) → X-Forwarded-For, X-Original-URL, X-Rewrite-URL bypass
+  3. test_hpp(url, param) → HTTP Parameter Pollution
+  4. Found params → feed into SQLi/SSRF/SSTI scanners
+  Priority: test_header_bypass first (403→200 is immediate HIGH)
+
+[HTTP REQUEST SMUGGLING — bingo.tools.smuggling_scanner]
+  Trigger: any target using reverse proxy, CDN, load balancer (Cloudflare, Nginx, HAProxy)
+  1. SmugglingScanner(base_url).scan() → CL.TE + TE.CL + TE.TE tests
+  2. TE.TE obfuscation variants: 6 different header encodings
+  3. Timing attack: response > 8s = likely TE.CL
+  4. Confirmed → escalate to auth bypass, request hijacking, cache poisoning
+  Severity: CRITICAL
+
+[RACE CONDITION ENGINE — bingo.tools.race_condition]
+  Trigger: coupon apply, point redemption, transfer, voting, one-time token
+  1. RaceConditionEngine.thread_burst(url, method, body, concurrency=20)
+  2. last_byte_sync(url) → HTTP/1.1 synchronized last-byte technique
+  3. Status variation (200+409 or 200+200 with different amounts) = CONFIRMED
+  4. Test endpoints: /coupon/apply, /point/use, /pay, /transfer, /vote
+
+[GRAPHQL DEEP TESTER — bingo.tools.graphql_tester]
+  Trigger: /graphql, /api/graphql, __schema in response, GraphQL errors
+  1. GraphQLTester.full_scan() → introspection + schema dump + sensitive fields
+  2. test_batch_dos(count=100) → timing attack
+  3. test_alias_bypass(query_name, count=50) → rate limit bypass
+  4. Extract: query_types, mutation_types, sensitive_fields (password/token/secret patterns)
+  5. IDOR test: replace numeric IDs in queries
+
+[2FA BYPASS ENGINE — bingo.tools.twofa_bypass]
+  Trigger: OTP input field, /verify, /2fa, /mfa, /totp endpoints
+  1. brute_force_otp(endpoint, otp_param) → test common codes (no rate limiting check)
+  2. test_response_manipulation() → detect "success":false in JSON (Burp intercept hint)
+  3. test_step_skip(protected_url, step1_session) → bypass 2FA entirely
+  4. check_backup_code_exposure(url) → 8-digit code patterns in response
+
+[CACHE POISONING — bingo.tools.cache_poison]
+  Trigger: CDN/reverse proxy detected (Cloudflare, Fastly, Varnish), X-Cache headers
+  1. test_header_poisoning(url) → 14 unkeyed headers × POISON_DOMAIN reflection check
+  2. test_fat_get(url) → GET with body injection
+  3. test_cache_deception(auth_url) → path suffix (/profile.css, /data.js) → cache sensitive data
+  4. Two-request verification: poison → deliver (no poison header)
+
+[DESERIALIZATION TESTER — bingo.tools.deserialize_tester]
+  Trigger: rO0AB in cookies/body (Java), O:8: in params (PHP), __VIEWSTATE in HTML (.NET)
+  1. detect_in_response(url) → magic byte and pattern detection (passive)
+  2. check_viewstate_mac(url) → ViewState without MAC validation
+  3. test_java_error_based(url, param) → broken serial → Java error disclosure
+  4. Confirmed → output ysoserial command for CommonsCollections chain
+
+[DOM XSS SCANNER — bingo.tools.dom_xss_scanner]
+  Trigger: SPA (React/Vue/Angular), URL hash/fragment used, location.search referenced
+  1. DomXssScanner.full_scan() → extract JS files, analyze source/sink pairs
+  2. Source detection: location.hash/search/href, document.URL, window.name, postMessage
+  3. Sink detection: innerHTML, eval, document.write, location.href, setTimeout(string)
+  4. test_url_fragment_reflection(url) → URL#<img src=x onerror=alert(1)>
+  5. detect_vuln_libs(html) → jQuery < 1.9, AngularJS < 1.6, Bootstrap 3.x
+
+[API VERSION ENUMERATOR — bingo.tools.api_version_enum]
+  Trigger: any API target (/api/, /v1/, REST API detected)
+  1. ApiVersionEnumerator.scan() → 30+ version paths (/v1-v6, /api/v1-v4, /beta, /alpha)
+  2. _check_auth_bypass(url) → test each version without auth headers
+  3. _detect_regression(resp) → SQL errors, stack traces, debug data, swagger exposure
+  4. Old versions often lack auth → immediate CRITICAL + enumerate with old token/no auth
+
+[CLOUD BUCKET SCANNER — bingo.tools.cloud_bucket_scanner]
+  Trigger: any target (always check for bucket exposure)
+  1. CloudBucketScanner.full_scan() → S3 + GCS + Azure Blob
+  2. extract_bucket_urls_from_html(html) → find hardcoded bucket URLs
+  3. Name permutation: {company}-assets/backup/dev/staging/prod etc. (20+ variants)
+  4. is_listable=True → list all files → check for .env, .sql, .key, backup files
+  Severity: CRITICAL (sensitive files) | HIGH (listable) | MEDIUM (public access)
+
+[BIZLOGIC FUZZER — bingo.tools.bizlogic_fuzzer]
+  Trigger: e-commerce, payment, reward points, coupon, subscription
+  1. test_negative_amount(endpoint, price_param) → -1, -0.01, 2147483648 (INT overflow)
+  2. test_workflow_skip() → direct access to checkout confirmation
+  3. test_coupon_abuse(endpoint, coupon_param) → ADMIN/TEST/FREE/NULL codes
+  4. test_quantity_manipulation() → 0, -1, 99999, NaN, Infinity
+
+=== AUTO ORCHESTRATION (v2.6.0 FULL PIPELINE) ===
+PHASE 0 (Recon):        ReconEngine → SubdomainTakeoverScanner
+PHASE 1 (Quick Win):    NucleiRunner (builtin 15 templates)
+PHASE 2 (Surface):      JsAutoAnalyzer → ParamDiscovery → ApiVersionEnum → CloudBucketScanner
+PHASE 3 (Auth):         JwtAnalysis → TwofaBypassEngine → AuthBypassEngine
+PHASE 4 (Injection):    SqliAutoEngine → SstiScanner → XxeScanner → GraphQLTester
+PHASE 5 (Logic):        BizlogicFuzzer → RaceConditionEngine → UploadBypassEngine
+PHASE 6 (Protocol):     SmugglingScanner → CachePoisonTester → IdorScanner
+PHASE 7 (Client):       DomXssScanner → SsrfScanner
+PHASE 8 (Post-Exploit): PostExploitEngine → ReportBuilder
+
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 When fingerprint shows gnuboard5 / g5_ variables in page:
 

@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.3.32-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.6.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.5.0 — Official Release**  
-> Previous versions (≤ 2.0.x) were test/beta releases. **v2.5.0 is the latest stable, production-ready version.**
+> **v2.6.0 — Advanced Attack Layer**  
+> 15 new engines across TIER 1/2/3: SSTI, Smuggling, Race Condition, GraphQL, 2FA Bypass, Cache Poisoning, Deserialization, Recon, Nuclei, BizLogic, DOM XSS, API Version Enum, Cloud Bucket Scanner + more.
 
 </div>
 
@@ -3069,6 +3069,50 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.6.0 — Advanced Attack Layer: 15 New Engines (SSTI/Smuggling/Recon/Nuclei/BizLogic/DOM-XSS/Buckets/...) *(2026-06)*
+
+**New Modules — TIER 1 (Core Attack Primitives):**
+- `bingo/tools/ssti_scanner.py` — SSTI Auto-Engine: polyglot probing across 8 template engines (Jinja2, Twig, Freemarker, Velocity, Smarty, Mako, Pebble, Thymeleaf), confirmed RCE chains per engine
+- `bingo/tools/param_discovery.py` — Parameter Auto-Discovery: hidden param fuzzing (200+ wordlist + HTML/JS extraction), header injection bypass (X-Forwarded-For, X-Original-URL), HTTP Parameter Pollution
+- `bingo/tools/subdomain_takeover.py` — Subdomain Takeover Scanner: dangling CNAME detection, 23 service fingerprints (AWS S3, GitHub Pages, Heroku, Netlify, Vercel, Azure, Cafe24, Naver Blog...)
+- `bingo/tools/smuggling_scanner.py` — HTTP Request Smuggling: CL.TE / TE.CL / TE.TE via raw socket requests, timing-based detection, 6 TE.TE obfuscation variants
+- `bingo/tools/race_condition.py` — Race Condition Engine: thread burst (20 concurrent) + last-byte synchronization for TOCTOU attacks on coupons, points, payments
+
+**New Modules — TIER 2 (Protocol & Auth Depth):**
+- `bingo/tools/graphql_tester.py` — GraphQL Deep Tester: introspection dump, batching DoS, alias-based rate limit bypass, schema-aware IDOR detection
+- `bingo/tools/twofa_bypass.py` — 2FA/OTP Bypass: brute-force, response manipulation hints, OTP reuse, backup code exposure, authentication step-skipping
+- `bingo/tools/cache_poison.py` — Cache Poisoning/Deception: 14 unkeyed headers, Fat GET injection, path-suffix cache deception (/profile.css, /data.js)
+- `bingo/tools/deserialize_tester.py` — Deserialization Tester: Java/PHP/Python Pickle/.NET ViewState/AMF magic-byte detection, ysoserial command generation
+- `bingo/tools/recon_engine.py` — Domain Recon Engine: crt.sh subdomain CT enumeration, port scan, tech fingerprinting, WAF/CDN detection, email harvesting
+
+**New Modules — TIER 3 (Wide-Coverage Automation):**
+- `bingo/tools/nuclei_runner.py` — Nuclei CVE Runner: nuclei binary integration OR 15 built-in templates (.env, phpinfo, git, wp-config, Jenkins, Kibana, Swagger, Spring4Shell, Apache path traversal...)
+- `bingo/tools/bizlogic_fuzzer.py` — Business Logic Fuzzer: negative/overflow amounts, workflow skip, coupon abuse (ADMIN/FREE/TEST/NULL), quantity manipulation (0/-1/INT_MAX)
+- `bingo/tools/dom_xss_scanner.py` — DOM XSS Scanner: static source/sink analysis across JS files, vulnerable library detection (jQuery/AngularJS/Bootstrap), URL fragment reflection testing
+- `bingo/tools/api_version_enum.py` — API Version Enumerator: 30+ version paths, auth bypass per version, security regression detection (SQL errors, debug info, swagger leaks)
+- `bingo/tools/cloud_bucket_scanner.py` — Cloud Bucket Scanner: AWS S3/GCS/Azure Blob public access & listability check, 20+ name permutations, sensitive file detection (.env/.sql/.key/backup)
+
+**Integration:**
+- All 15 modules registered in `bingo/tools/__init__.py` via lazy import
+- `system_prompt.py` updated: `=== v2.6.0 ADVANCED ATTACK LAYER DECISION RULES ===` + Full 8-Phase Pipeline (`PHASE 0: Recon → PHASE 8: PostExploit`)
+
+**i18n:** 40 new string keys (ko/zh/en) for all 15 new engines
+
+**Auto-Orchestration Pipeline (v2.6.0):**
+```
+PHASE 0: ReconEngine → SubdomainTakeover
+PHASE 1: NucleiRunner (quick wins)
+PHASE 2: JsAnalyzer → ParamDiscovery → ApiVersionEnum → CloudBucketScanner
+PHASE 3: JWT/2FA/AuthBypass
+PHASE 4: SQLi → SSTI → XXE → GraphQL
+PHASE 5: BizLogic → RaceCondition → UploadBypass
+PHASE 6: Smuggling → CachePoison → IDOR
+PHASE 7: DomXSS → SSRF
+PHASE 8: PostExploit → ReportBuilder
+```
+
+---
 
 ### v2.5.0 — Full Attack Automation Suite: JS/IDOR/Auth/SSRF/XXE/Upload/Report/CMS/PostExploit *(2026-06)*
 

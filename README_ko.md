@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.3.32-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.6.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.5.0 — 공식 릴리스**  
-> v2.5.0이 최신 안정 버전입니다.
+> **v2.6.0 — 고급 공격 레이어**  
+> 15개 신규 엔진 (TIER 1/2/3): SSTI, 스머글링, 레이스 컨디션, GraphQL, 2FA 우회, 캐시 포이즈닝, 역직렬화, 레콘, Nuclei, 비즈로직, DOM XSS, API 버전 열거, 클라우드 버킷 스캐너 등
 
 </div>
 
@@ -133,6 +133,50 @@ bingo
 - GnuBoard, XpressEngine, Rhymix 자동 감지
 - 한국어 자격증명 사전 내장
 - CAPTCHA (kcaptcha) 자동 OCR 해결
+
+---
+
+## v2.6.0 — 고급 공격 레이어: 15개 신규 엔진 (SSTI/스머글링/레콘/Nuclei/비즈로직/DOM-XSS/버킷...) *(2026-06)*
+
+**신규 모듈 — TIER 1 (핵심 공격 프리미티브):**
+- `ssti_scanner.py` — SSTI 자동 엔진: 8개 템플릿 엔진 폴리글롯 탐지 (Jinja2, Twig, Freemarker, Velocity, Smarty, Mako, Pebble, Thymeleaf), 엔진별 확인된 RCE 체인
+- `param_discovery.py` — 파라미터 자동 발견: 200+ 워드리스트 + HTML/JS 추출 퍼징, 헤더 인젝션 우회 (X-Forwarded-For, X-Original-URL), HTTP 파라미터 폴루션
+- `subdomain_takeover.py` — 서브도메인 탈취 스캐너: CNAME 댕글링 탐지, 23개 서비스 핑거프린트 (AWS S3, GitHub Pages, Heroku, Netlify, Vercel, Azure, Cafe24, 네이버 블로그...)
+- `smuggling_scanner.py` — HTTP 요청 스머글링: CL.TE / TE.CL / TE.TE 원시 소켓 요청, 타이밍 기반 탐지, TE.TE 난독화 6가지 변형
+- `race_condition.py` — 레이스 컨디션 엔진: 스레드 버스트 (20개 동시) + 마지막 바이트 동기화로 쿠폰/포인트/결제 TOCTOU 공격
+
+**신규 모듈 — TIER 2 (프로토콜 및 인증 심화):**
+- `graphql_tester.py` — GraphQL 심층 테스터: 인트로스펙션 덤프, 배칭 DoS, 별칭 기반 레이트리밋 우회, 스키마 인식 IDOR 탐지
+- `twofa_bypass.py` — 2FA/OTP 우회: 무차별 대입, 응답 조작 힌트, OTP 재사용, 백업 코드 노출, 인증 단계 스킵
+- `cache_poison.py` — 캐시 포이즈닝/디셉션: 14개 비키 헤더, Fat GET 인젝션, 경로 접미사 캐시 디셉션 (/profile.css, /data.js)
+- `deserialize_tester.py` — 역직렬화 테스터: Java/PHP/Python Pickle/.NET ViewState/AMF 매직 바이트 탐지, ysoserial 명령어 자동 생성
+- `recon_engine.py` — 도메인 레콘 엔진: crt.sh 서브도메인 CT 열거, 포트 스캔, 기술 핑거프린팅, WAF/CDN 탐지, 이메일 수집
+
+**신규 모듈 — TIER 3 (광범위 자동화):**
+- `nuclei_runner.py` — Nuclei CVE 러너: nuclei 바이너리 통합 OR 15개 내장 템플릿 (.env, phpinfo, git, wp-config, Jenkins, Kibana, Swagger, Spring4Shell, Apache 경로 순회...)
+- `bizlogic_fuzzer.py` — 비즈니스 로직 퍼저: 음수/오버플로우 금액, 워크플로우 스킵, 쿠폰 남용 (ADMIN/FREE/TEST/NULL), 수량 조작 (0/-1/INT_MAX)
+- `dom_xss_scanner.py` — DOM XSS 스캐너: JS 파일 전체 소스/싱크 정적 분석, 취약 라이브러리 탐지 (jQuery/AngularJS/Bootstrap), URL 프래그먼트 반사 테스트
+- `api_version_enum.py` — API 버전 열거기: 30+ 버전 경로, 버전별 인증 우회, 보안 회귀 탐지 (SQL 오류, 디버그 정보, 스웨거 유출)
+- `cloud_bucket_scanner.py` — 클라우드 버킷 스캐너: AWS S3/GCS/Azure Blob 공개 접근 & 목록 조회 확인, 20+ 이름 변형, 민감 파일 탐지 (.env/.sql/.key/backup)
+
+**통합:**
+- 15개 모듈 모두 `bingo/tools/__init__.py` lazy import로 등록
+- `system_prompt.py` 업데이트: `=== v2.6.0 ADVANCED ATTACK LAYER DECISION RULES ===` + 8단계 전체 파이프라인
+
+**다국어:** 40개 신규 i18n 키 (ko/zh/en)
+
+**자동 오케스트레이션 파이프라인 (v2.6.0):**
+```
+PHASE 0: ReconEngine → SubdomainTakeover
+PHASE 1: NucleiRunner (빠른 성과)
+PHASE 2: JsAnalyzer → ParamDiscovery → ApiVersionEnum → CloudBucketScanner
+PHASE 3: JWT/2FA/AuthBypass
+PHASE 4: SQLi → SSTI → XXE → GraphQL
+PHASE 5: BizLogic → RaceCondition → UploadBypass
+PHASE 6: Smuggling → CachePoison → IDOR
+PHASE 7: DomXSS → SSRF
+PHASE 8: PostExploit → ReportBuilder
+```
 
 ---
 

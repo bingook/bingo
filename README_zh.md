@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.3.32-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.6.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.5.0 — 正式发布版**  
-> v2.5.0 是最新稳定版本。
+> **v2.6.0 — 高级攻击层**  
+> 15个新引擎（TIER 1/2/3）：SSTI、请求走私、竞争条件、GraphQL、2FA绕过、缓存投毒、反序列化、侦察、Nuclei、业务逻辑、DOM XSS、API版本枚举、云存储桶扫描器等
 
 </div>
 
@@ -133,6 +133,50 @@ bingo
 - Safe3 WAF → null byte unicode → overlong UTF-8 → 函数替换
 - D盾 → 关键字混淆
 - 云锁 → HTTP 参数污染
+
+---
+
+## v2.6.0 —— 高级攻击层：15个新引擎（SSTI/走私/侦察/Nuclei/业务逻辑/DOM-XSS/存储桶...） *(2026-06)*
+
+**新增模块 — TIER 1（核心攻击原语）：**
+- `ssti_scanner.py` — SSTI自动引擎：8个模板引擎多语言探测（Jinja2、Twig、Freemarker、Velocity、Smarty、Mako、Pebble、Thymeleaf），已验证RCE链
+- `param_discovery.py` — 参数自动发现：200+词表+HTML/JS提取爆破、Header注入绕过（X-Forwarded-For、X-Original-URL）、HTTP参数污染
+- `subdomain_takeover.py` — 子域名接管扫描器：悬空CNAME检测、23个服务指纹（AWS S3、GitHub Pages、Heroku、Netlify、Vercel、Azure、Cafe24...）
+- `smuggling_scanner.py` — HTTP请求走私：CL.TE / TE.CL / TE.TE 原始Socket请求、时序检测、TE.TE混淆6种变体
+- `race_condition.py` — 竞争条件引擎：线程并发（20个同时）+ 最后字节同步，针对优惠券/积分/支付的TOCTOU攻击
+
+**新增模块 — TIER 2（协议与认证深度）：**
+- `graphql_tester.py` — GraphQL深度测试器：内省转储、批量DoS、别名速率限制绕过、Schema感知IDOR检测
+- `twofa_bypass.py` — 2FA/OTP绕过：暴力破解、响应篡改提示、OTP重用、备份码泄露、认证步骤跳过
+- `cache_poison.py` — 缓存投毒/欺骗：14个非关键缓存头、Fat GET注入、路径后缀缓存欺骗（/profile.css、/data.js）
+- `deserialize_tester.py` — 反序列化测试器：Java/PHP/Python Pickle/.NET ViewState/AMF魔术字节检测、ysoserial命令自动生成
+- `recon_engine.py` — 域名侦察引擎：crt.sh子域名CT枚举、端口扫描、技术指纹识别、WAF/CDN检测、邮箱收集
+
+**新增模块 — TIER 3（广覆盖自动化）：**
+- `nuclei_runner.py` — Nuclei CVE运行器：nuclei二进制集成 OR 15个内置模板（.env、phpinfo、git、wp-config、Jenkins、Kibana、Swagger、Spring4Shell、Apache路径遍历...）
+- `bizlogic_fuzzer.py` — 业务逻辑Fuzzer：负数/溢出金额、工作流跳过、优惠券滥用（ADMIN/FREE/TEST/NULL）、数量操控（0/-1/INT_MAX）
+- `dom_xss_scanner.py` — DOM XSS扫描器：JS文件Source/Sink静态分析、易受攻击库检测（jQuery/AngularJS/Bootstrap）、URL片段反射测试
+- `api_version_enum.py` — API版本枚举器：30+版本路径、各版本认证绕过、安全回归检测（SQL错误、调试信息、Swagger泄露）
+- `cloud_bucket_scanner.py` — 云存储桶扫描器：AWS S3/GCS/Azure Blob公开访问与可列举性检查、20+名称排列、敏感文件检测（.env/.sql/.key/backup）
+
+**集成：**
+- 15个模块均通过`bingo/tools/__init__.py`懒加载注册
+- `system_prompt.py`更新：`=== v2.6.0 ADVANCED ATTACK LAYER DECISION RULES ===` + 8阶段完整流水线
+
+**多语言：** 40个新i18n字符串键（ko/zh/en）
+
+**自动化编排流水线（v2.6.0）：**
+```
+PHASE 0: ReconEngine → SubdomainTakeover
+PHASE 1: NucleiRunner（快速收益）
+PHASE 2: JsAnalyzer → ParamDiscovery → ApiVersionEnum → CloudBucketScanner
+PHASE 3: JWT/2FA/AuthBypass
+PHASE 4: SQLi → SSTI → XXE → GraphQL
+PHASE 5: BizLogic → RaceCondition → UploadBypass
+PHASE 6: Smuggling → CachePoison → IDOR
+PHASE 7: DomXSS → SSRF
+PHASE 8: PostExploit → ReportBuilder
+```
 
 ---
 

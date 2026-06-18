@@ -55,6 +55,67 @@ def _get_post_exploit():
     from .post_exploit import PostExploitEngine
     return PostExploitEngine
 
+# v2.6.0 — TIER 1/2/3 신규 15개 모듈 (lazy import)
+def _get_ssti_scanner():
+    from .ssti_scanner import SstiScanner, SstiFinding, SstiReport, RCE_CHAINS
+    return SstiScanner, SstiFinding, SstiReport, RCE_CHAINS
+
+def _get_param_discovery():
+    from .param_discovery import ParamDiscovery, ParamFinding, ParamReport, BYPASS_HEADERS
+    return ParamDiscovery, ParamFinding, ParamReport, BYPASS_HEADERS
+
+def _get_subdomain_takeover():
+    from .subdomain_takeover import SubdomainTakeoverScanner, TakeoverReport, TakeoverFinding
+    return SubdomainTakeoverScanner, TakeoverReport, TakeoverFinding
+
+def _get_smuggling_scanner():
+    from .smuggling_scanner import SmugglingScanner, SmugglingReport, quick_smuggle_check
+    return SmugglingScanner, SmugglingReport, quick_smuggle_check
+
+def _get_race_condition():
+    from .race_condition import RaceConditionEngine, RaceReport, RaceFinding
+    return RaceConditionEngine, RaceReport, RaceFinding
+
+def _get_graphql_tester():
+    from .graphql_tester import GraphQLTester, GraphQLReport, GraphQLFinding
+    return GraphQLTester, GraphQLReport, GraphQLFinding
+
+def _get_twofa_bypass():
+    from .twofa_bypass import TwofaBypassEngine, TwofaReport, TwofaFinding
+    return TwofaBypassEngine, TwofaReport, TwofaFinding
+
+def _get_cache_poison():
+    from .cache_poison import CachePoisonTester, CacheReport, CacheFinding
+    return CachePoisonTester, CacheReport, CacheFinding
+
+def _get_deserialize_tester():
+    from .deserialize_tester import DeserializeTester, DeserializeReport, DeserializeFinding
+    return DeserializeTester, DeserializeReport, DeserializeFinding
+
+def _get_recon_engine():
+    from .recon_engine import ReconEngine, ReconReport, ReconAsset
+    return ReconEngine, ReconReport, ReconAsset
+
+def _get_nuclei_runner():
+    from .nuclei_runner import NucleiRunner, NucleiReport, NucleiFinding, BUILTIN_TEMPLATES
+    return NucleiRunner, NucleiReport, NucleiFinding, BUILTIN_TEMPLATES
+
+def _get_bizlogic_fuzzer():
+    from .bizlogic_fuzzer import BizlogicFuzzer, BizlogicReport, BizlogicFinding
+    return BizlogicFuzzer, BizlogicReport, BizlogicFinding
+
+def _get_dom_xss_scanner():
+    from .dom_xss_scanner import DomXssScanner, DomXssReport, DomXssFinding
+    return DomXssScanner, DomXssReport, DomXssFinding
+
+def _get_api_version_enum():
+    from .api_version_enum import ApiVersionEnumerator, ApiVersionReport, ApiVersionFinding
+    return ApiVersionEnumerator, ApiVersionReport, ApiVersionFinding
+
+def _get_cloud_bucket_scanner():
+    from .cloud_bucket_scanner import CloudBucketScanner, BucketReport, BucketFinding
+    return CloudBucketScanner, BucketReport, BucketFinding
+
 __all__ = [
     "ToolRegistry", "ToolInfo",
     "ToolExecutor", "ToolResult",
@@ -76,4 +137,20 @@ __all__ = [
     "_get_report_builder",
     "_get_korean_cms",
     "_get_post_exploit",
+    # v2.6.0
+    "_get_ssti_scanner",
+    "_get_param_discovery",
+    "_get_subdomain_takeover",
+    "_get_smuggling_scanner",
+    "_get_race_condition",
+    "_get_graphql_tester",
+    "_get_twofa_bypass",
+    "_get_cache_poison",
+    "_get_deserialize_tester",
+    "_get_recon_engine",
+    "_get_nuclei_runner",
+    "_get_bizlogic_fuzzer",
+    "_get_dom_xss_scanner",
+    "_get_api_version_enum",
+    "_get_cloud_bucket_scanner",
 ]

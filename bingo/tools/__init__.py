@@ -116,6 +116,16 @@ def _get_cloud_bucket_scanner():
     from .cloud_bucket_scanner import CloudBucketScanner, BucketReport, BucketFinding
     return CloudBucketScanner, BucketReport, BucketFinding
 
+# v2.8.0 — sqlmap 초과 수준 고급 SQLi 엔진
+def _get_sqli_advanced():
+    from .sqli_advanced import (
+        SqliAdvancedEngine, SqliAdvancedReport, SqliAdvancedFinding,
+        TamperLibrary, OobChannel, StackedQueryEngine, UdfInjector,
+        FileSystemEngine, SecondOrderEngine, SqliLevelRisk,
+        HashAnalyzer, HashInfo, DbFingerprinter,
+    )
+    return SqliAdvancedEngine, SqliAdvancedReport, TamperLibrary, HashAnalyzer
+
 # v2.7.0 — DB 자동 전체 덤프 엔진
 def _get_db_dumper():
     from .db_dumper import (
@@ -164,4 +174,6 @@ __all__ = [
     "_get_cloud_bucket_scanner",
     # v2.7.0
     "_get_db_dumper",
+    # v2.8.0
+    "_get_sqli_advanced",
 ]

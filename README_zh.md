@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.7.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.7.0 — DB全量自动转储**  
-> 15个新引擎（TIER 1/2/3）：SSTI、请求走私、竞争条件、GraphQL、2FA绕过、缓存投毒、反序列化、侦察、Nuclei、业务逻辑、DOM XSS、API版本枚举、云存储桶扫描器等
+> **v2.8.0 — 高级SQLi引擎 (超越sqlmap)**  
+> 60+个Tamper脚本 · OOB DNS/HTTP外带提取 · UDF/xp_cmdshell RCE · LOAD_FILE文件读取 · INTO OUTFILE写WebShell · 二阶注入 · Level 1~5 / Risk 1~3 · 自动Hash破解 · 精准DB指纹识别
 
 </div>
 
@@ -133,6 +133,29 @@ bingo
 - Safe3 WAF → null byte unicode → overlong UTF-8 → 函数替换
 - D盾 → 关键字混淆
 - 云锁 → HTTP 参数污染
+
+---
+
+## v2.8.0 —— 高级SQLi引擎：超越sqlmap *(2026-06)*
+
+**新增模块:** `bingo/tools/sqli_advanced.py` — **SqliAdvancedEngine**
+
+| 功能 | 详细说明 |
+|---|---|
+| Tamper脚本 | 60+个：空格替换(10+) · 编码(10+) · 关键字处理(15+) · WAF特化(韩国WAPPLES/GENIAN/Cloudbric/GnuBoard) |
+| WAF自动匹配 | 检测WAF → 自动选择最优Tamper链（无需手动配置）|
+| OOB外带提取 | DNS外带(MySQL LOAD_FILE UNC / MSSQL xp_dirtree / Oracle UTL_HTTP / PG COPY PROGRAM) |
+| Level系统 | 1(仅GET) → 3(含Headers) → 5(全面+重量级Payload) |
+| Risk系统 | 1(只读) → 2(OR型+写WebShell) → 3(破坏性:DROP/TRUNCATE) |
+| LOAD_FILE | 自动读取/etc/passwd · /etc/my.cnf · config.php · wp-config.php · database.php |
+| INTO OUTFILE | 自动尝试7个路径写入PHP WebShell |
+| Stacked RCE | MSSQL xp_cmdshell · PG COPY TO PROGRAM · MySQL general_log Shell |
+| UDF注入 | MySQL UDF DLL → sys_exec() OS命令执行 |
+| 二阶注入 | 注册存储Payload → 个人中心/管理员页面触发 |
+| Hash分析器 | 自动分类18种Hash类型(MD5/SHA1/bcrypt/MySQL-hash/PHPass等) |
+| 快速破解 | 内存字典破解(含韩语常见密码) |
+| DB指纹识别 | 精准版本/OS/架构检测 + MySQL漏洞CVE匹配 |
+| Header注入 | Cookie · Referer · User-Agent · X-Forwarded-For · Host (Level≥3) |
 
 ---
 

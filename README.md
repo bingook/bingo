@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.7.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,8 +17,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.7.0 — DB Full Auto-Dump**  
-> On exploit success (SQLi/WebShell/RCE), automatically dumps member DB + admin DB + sensitive tables, extracts credentials, and suggests hashcat cracking.
+> **v2.8.0 — Advanced SQLi Engine (Beyond sqlmap)**  
+> 60+ tamper scripts · Out-of-Band (DNS/HTTP) extraction · UDF/xp_cmdshell RCE · LOAD_FILE file read · INTO OUTFILE webshell · Second-order injection · Level 1–5 / Risk 1–3 · Auto hash cracking · Precise DB fingerprinting
 
 </div>
 
@@ -3069,6 +3069,74 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.8.0 — Advanced SQLi Engine: Beyond sqlmap *(2026-06)*
+
+**New Module:** `bingo/tools/sqli_advanced.py` — **SqliAdvancedEngine**  
+Fully autonomous advanced SQL injection engine surpassing sqlmap in automation, WAF bypass coverage, and post-exploitation depth.
+
+**Core Capabilities:**
+| Feature | Detail |
+|---|---|
+| Tamper Scripts | 60+ tampers: space substitution (10+), encoding (10+), keyword manipulation (15+), WAF-specific (Korean WAPPLES/GENIAN/Cloudbric + Cloudflare/ModSecurity/F5/Imperva/Akamai) |
+| WAF Auto-Match | Detects WAF → auto-selects optimal tamper chain (no manual config) |
+| OOB Extraction | DNS exfiltration (MySQL LOAD_FILE UNC / MSSQL xp_dirtree / Oracle UTL_HTTP / PG COPY PROGRAM) |
+| Level System | 1 (GET only) → 3 (headers) → 5 (all surfaces + heavy payloads) |
+| Risk System | 1 (read-only) → 2 (OR-based + webshell write) → 3 (destructive: DROP/TRUNCATE) |
+| LOAD_FILE | Auto-reads /etc/passwd, /etc/my.cnf, config.php, wp-config.php, database.php (GnuBoard/WP/CI) |
+| INTO OUTFILE | Writes PHP webshell to 7 candidate paths automatically |
+| Stacked RCE | MSSQL → xp_cmdshell / OLE Automation; PostgreSQL → COPY TO PROGRAM; MySQL → general_log shell |
+| UDF Injection | MySQL UDF DLL upload → `sys_exec()` OS shell; MSSQL CLR assembly |
+| Second-Order | Detects 2nd-order injection: stores payload in register/profile → triggers in mypage/dashboard |
+| Hash Analyzer | Auto-classifies MD5/SHA1/SHA256/bcrypt/MySQL-hash/MSSQL-hash/PHPass/SHA512crypt (18 types) |
+| Quick Crack | In-memory dictionary crack for common passwords (including Korean patterns) |
+| DB Fingerprint | Precise version/OS/arch detection + CVE matching for vulnerable MySQL versions |
+| Header Injection | Tests Cookie, Referer, User-Agent, X-Forwarded-For, Host (Level ≥ 3) |
+
+**Advanced SQLi Pipeline:**
+```python
+engine = SqliAdvancedEngine(
+    request_fn=request_fn,
+    db_type="mysql",       # or "unknown" → auto-detect
+    waf_type="wapples",    # → korean_waf_bypass + space2comment + versionedmorekeywords
+    level=3,               # Test GET/POST/Cookie/Headers
+    risk=2,                # Include webshell write
+    oob_domain="xxx.oastify.com",  # Enable DNS OOB
+)
+report = engine.auto_scan(url, params=["id", "search", "category"])
+# → error-based → time-based → UNION → LOAD_FILE → webshell → stacked RCE
+# → header injection → hash extraction → hashcat commands
+# → auto-triggers DbDumper (v2.7.0) on success
+```
+
+**Tamper Auto-Selection by WAF:**
+| WAF | Auto-Selected Tampers |
+|---|---|
+| Cloudflare | space2comment + randomcase + versionedmorekeywords + charencode |
+| WAPPLES (한국) | korean_waf_bypass + space2comment + versionedmorekeywords |
+| GENIAN (한국) | korean_comment_bypass + space2hash + randomcase |
+| Cloudbric (한국) | korean_waf_bypass + space2mysqlblank + randomcomments |
+| GnuBoard | gnuboard_bypass + space2comment + randomcase |
+| ModSecurity | modsecurityversioned + space2comment + randomcase |
+| Imperva | securesphere + space2comment + versionedmorekeywords |
+| Unknown | space2comment + randomcase + charencode + versionedmorekeywords |
+
+**Hash Auto-Cracking:**
+```
+MD5(32)      → hashcat -m 0   (instant for common passwords)
+SHA1(40)     → hashcat -m 100
+MySQL-hash   → hashcat -m 300
+bcrypt       → hashcat -m 3200
+MSSQL 2012+  → hashcat -m 1731
+PHPass/WP    → hashcat -m 400
+```
+
+**Integration:**
+- `tools/__init__.py`: `_get_sqli_advanced()` lazy import
+- `system_prompt.py`: PHASE 10 in auto-orchestration pipeline
+- `strings.py`: 18 new i18n keys (ko/zh/en)
+
+---
 
 ### v2.7.0 — DB Full Auto-Dump Engine *(2026-06)*
 

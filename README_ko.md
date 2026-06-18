@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.7.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.8.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,8 +16,8 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.7.0 — DB 자동 전체 덤프**  
-> 침투 성공(SQLi/WebShell/RCE) 즉시 회원 DB + 관리자 DB + 민감 테이블 자동 전체 덤프, 크리덴셜 추출, 해시 크래킹 제안까지 완전 자동화.
+> **v2.8.0 — 고급 SQLi 엔진 (sqlmap 초과 수준)**  
+> 60+ Tamper 스크립트 · OOB DNS/HTTP 추출 · UDF/xp_cmdshell RCE · LOAD_FILE 파일 읽기 · INTO OUTFILE 웹쉘 쓰기 · 2차 인젝션 · Level 1~5 / Risk 1~3 · 해시 자동 크래킹 · 정밀 DB 핑거프린팅
 
 </div>
 
@@ -133,6 +133,38 @@ bingo
 - GnuBoard, XpressEngine, Rhymix 자동 감지
 - 한국어 자격증명 사전 내장
 - CAPTCHA (kcaptcha) 자동 OCR 해결
+
+---
+
+## v2.8.0 — 고급 SQLi 엔진: sqlmap 초과 수준 *(2026-06)*
+
+**신규 모듈:** `bingo/tools/sqli_advanced.py` — **SqliAdvancedEngine**
+
+| 기능 | 세부사항 |
+|---|---|
+| Tamper 스크립트 | 60+개: 공백치환(10+) · 인코딩(10+) · 키워드조작(15+) · WAF별 특화(한국 WAPPLES/GENIAN/Cloudbric/GnuBoard) |
+| WAF 자동 매칭 | WAF 탐지 → 최적 tamper 체인 자동 선택 (수동 설정 불필요) |
+| OOB 추출 | DNS 외부채널 (MySQL LOAD_FILE UNC · MSSQL xp_dirtree · Oracle UTL_HTTP · PG COPY PROGRAM) |
+| Level 시스템 | 1(GET만) → 3(헤더) → 5(전체 표면 + 무거운 페이로드) |
+| Risk 시스템 | 1(읽기전용) → 2(OR기반 + 웹쉘쓰기) → 3(파괴적: DROP/TRUNCATE) |
+| LOAD_FILE | /etc/passwd · /etc/my.cnf · config.php · wp-config.php · database.php 자동 읽기 |
+| INTO OUTFILE | 7개 경로에 PHP 웹쉘 자동 쓰기 시도 |
+| Stacked RCE | MSSQL xp_cmdshell / OLE Automation · PG COPY TO PROGRAM · MySQL general_log 쉘 |
+| UDF 인젝션 | MySQL UDF DLL → sys_exec() OS 쉘 · MSSQL CLR 어셈블리 |
+| 2차 인젝션 | 회원가입에 페이로드 저장 → 마이페이지/프로필/관리자에서 트리거 |
+| 해시 분석기 | MD5/SHA1/SHA256/bcrypt/MySQL-hash/MSSQL-hash/PHPass/SHA512crypt 18종 자동 분류 |
+| 빠른 크래킹 | 인메모리 딕셔너리 크래킹 (한국어 패턴 포함) |
+| DB 핑거프린팅 | 버전/OS/아키텍처 정밀 탐지 + 취약 MySQL 버전 CVE 매칭 |
+| 헤더 인젝션 | Cookie · Referer · User-Agent · X-Forwarded-For · Host (Level ≥ 3) |
+
+**한국 WAF 특화 Tamper:**
+| WAF | 자동 선택 Tamper |
+|---|---|
+| WAPPLES | korean_waf_bypass + space2comment + versionedmorekeywords |
+| GENIAN | korean_comment_bypass + space2hash + randomcase |
+| Cloudbric | korean_waf_bypass + space2mysqlblank + randomcomments |
+| GnuBoard | gnuboard_bypass + space2comment + randomcase |
+| Cloudflare | space2comment + randomcase + versionedmorekeywords + charencode |
 
 ---
 

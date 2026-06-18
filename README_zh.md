@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.9.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.1-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,7 +16,7 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.9.0 — 7链高级攻击引擎 (+50%强化)**  
+> **v2.9.1 — 缺陷修复：软404误报过滤 / SSL警告抑制**  
 > XSS会话劫持 · 上传RCE · SSRF AWS/云凭证窃取 · 管理员面板自动化 · JS秘密探测 · HTTP走私 · GraphQL全攻 · OAuth/JWT伪造 · Playwright截图 · Slack/Discord告警
 
 </div>
@@ -133,6 +133,25 @@ bingo
 - Safe3 WAF → null byte unicode → overlong UTF-8 → 函数替换
 - D盾 → 关键字混淆
 - 云锁 → HTTP 参数污染
+
+---
+
+## v2.9.1 —— 缺陷修复版本 *(2026-06)*
+
+**3项关键修复**
+
+| # | 缺陷 | 修复方案 |
+|---|---|---|
+| 1 | `session_saved` i18n键被覆盖 — `{name}` / `{role}` 显示为原始占位符 | v2.9.0键重命名为`session_mgr_saved`；原始`session_saved`键已恢复 |
+| 2 | `InsecureRequestWarning`垃圾信息淹没扫描日志 | `tools_header`自动注入`urllib3.disable_warnings()`到所有AI生成脚本 |
+| 3 | 误报 — `/admin/` · `/bbs/` 返回200但实为"页面不存在"内容 | `http_probe`+`recon_tools`增加软404内容过滤器 |
+
+**软404检测逻辑 (v2.9.1):**
+```
+触发关键词: 404 / not found / 페이지를 찾을 수 없 / 页面不存在 / 找不到页面
+            该页面不存在 / page not found / error 404
+响应体<500字节 且无<form>/<input> → 自动标记为误报并过滤
+```
 
 ---
 

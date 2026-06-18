@@ -194,20 +194,43 @@ class HttpProbe:
             time.sleep(0.2)
         return found
 
+    # ── Soft 404 키워드 (이 패턴 중 하나라도 매칭되면 False Positive 판정) ──
+    _SOFT_404_PATTERNS = re.compile(
+        r'(?:404|not\s*found|페이지를?\s*찾을\s*수\s*없|존재하지\s*않|'
+        r'없는\s*페이지|잘못된\s*주소|页面不存在|找不到页面|该页面不存在|'
+        r'page\s*not\s*found|no\s*such\s*page|this\s*page\s*doesn[\'"]?t\s*exist|'
+        r'404\s*error|error\s*404|오류\s*페이지|에러\s*페이지)',
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def _is_soft_404(cls, body: str, path: str) -> bool:
+        """소프트 404 판정 — 200이지만 실제 오류 페이지인 경우 True 반환.
+
+        판정 기준:
+          1. 응답 본문에 404/not-found 키워드 존재
+          2. 본문이 500바이트 미만이고 <form> / <input> 없음 (빈 redirect 껍데기)
+          3. 메인 페이지와 동일 제목 (커스텀 오류 페이지)
+        """
+        if cls._SOFT_404_PATTERNS.search(body):
+            return True
+        if len(body.strip()) < 500 and not re.search(r'<form|<input', body, re.I):
+            return True
+        return False
+
     def check_admin_panels(self, extra_paths: list[str] | None = None) -> list[dict]:
         """관리자 패널 탐색 — 동적 경로 지원 + 응답 유형 자동 분류
 
         response_type 필드:
           "json"       — 200 + JSON 응답 (API 데이터 노출 — High)
           "html_form"  — 200 + <form> 포함 (로그인 패널)
-          "html"       — 200 + HTML (폼 없음)
+          "html"       — 200 + HTML (폼 없음, 실제 내용 존재)
           "redirect"   — 301/302
           "auth"       — 401/403 (존재하지만 인증 필요)
 
-        핵심 개선 (v2.3.19):
-          기존엔 JSON 200을 has_form=False로 버렸음.
-          이제 is_json + response_type 을 반환해 01_recon.py 가
-          "미인증 API 데이터 노출"로 별도 분류할 수 있음.
+        v2.9.1 개선:
+          Soft 404 감지 — 200 응답이지만 "페이지 없음" 내용인 경우 제외.
+          이 경우 response_type = "soft_404" 로 표시 후 found 목록에서 제외.
         """
         paths = extra_paths if extra_paths else [
             "/admin/", "/admin/login/", "/admin/login/index.php",
@@ -220,6 +243,12 @@ class HttpProbe:
         for path in paths:
             r = self.get(path, timeout=8)
             if r.status in (200, 201):
+                # ── Soft 404 필터 (v2.9.1) ─────────────────────────────
+                if self._is_soft_404(r.body, path):
+                    # False Positive — 실제 내용 없는 200 응답, 수집하지 않음
+                    time.sleep(0.1)
+                    continue
+
                 # ── 응답 유형 판별 ──────────────────────────────────────
                 ct = r.headers.get("Content-Type", "")
                 body_stripped = r.body.lstrip()

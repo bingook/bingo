@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.9.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.1-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,7 +17,7 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.9.0 — 7-Chain Advanced Attack Engine (+50% Power)**  
+> **v2.9.1 — Bug Fix: Soft-404 False Positive / SSL Warning Suppression**  
 > XSS Session Hijack · Upload RCE · SSRF AWS/Cloud Steal · Admin Panel Auto · JS Secret Finder · HTTP Smuggling · GraphQL Full Attack · OAuth/JWT Forge · Playwright Screenshot · Slack/Discord Alert · Session Auto-Manager
 
 </div>
@@ -3069,6 +3069,25 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.9.1 — Bug Fix Release *(2026-06)*
+
+**3 Critical Fixes**
+
+| # | Bug | Fix |
+|---|---|---|
+| 1 | `session_saved` i18n key override — `{name}` / `{role}` shown as raw placeholder | Renamed v2.9.0 key to `session_mgr_saved`; original `session_saved` restored |
+| 2 | `InsecureRequestWarning` spam flooding every scan log | `tools_header` now auto-injects `urllib3.disable_warnings()` into all AI-generated scripts |
+| 3 | False Positive `/admin/` & `/bbs/` — sites returning HTTP 200 but "page not found" content | `http_probe.check_admin_panels()` + `recon_tools.check_path()` now apply Soft-404 body filter |
+
+**Soft-404 Detection Logic (v2.9.1):**
+```
+Trigger phrases: 404 / not found / 페이지를 찾을 수 없 / 존재하지 않 / 없는 페이지
+                 잘못된 주소 / 页面不存在 / 找不到页面
+Body size < 500 bytes AND no <form>/<input> → automatic false-positive removal
+```
+
+---
 
 ### v2.9.0 — 7-Chain Advanced Attack Engine *(2026-06)*
 

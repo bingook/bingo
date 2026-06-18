@@ -306,11 +306,29 @@ class Recon:
         found = []
         print(f"[DIR] Brute forcing {len(targets)} paths...")
 
+        # ── Soft 404 패턴 (v2.9.1) ───────────────────────────────────────────
+        _SOFT_404_RE = re.compile(
+            r'(?:404|not\s*found|페이지를?\s*찾을\s*수\s*없|존재하지\s*않|없는\s*페이지|'
+            r'잘못된\s*주소|页面不存在|找不到页面|page\s*not\s*found|'
+            r'no\s*such\s*page|this\s*page\s*doesn[\'"]?t\s*exist|error\s*404)',
+            re.IGNORECASE,
+        )
+
+        def _is_soft_404(body: str) -> bool:
+            if _SOFT_404_RE.search(body):
+                return True
+            if len(body.strip()) < 500 and not re.search(r'<form|<input', body, re.I):
+                return True
+            return False
+
         def check_path(path: str) -> dict | None:
             url = f"{self.base_url}/{path.lstrip('/')}"
             try:
                 r = _CLIENT.get(url)
                 if r.status_code not in (404, 400, 410):
+                    # v2.9.1: Soft 404 필터 — 200이어도 오류 페이지 내용이면 제외
+                    if r.status_code == 200 and _is_soft_404(r.text):
+                        return None
                     item = {"url": url, "status": r.status_code, "size": len(r.text)}
                     print(f"[DIR] {r.status_code} {url} ({len(r.text)}B)")
                     return item

@@ -3214,8 +3214,16 @@ class BingoTerminal:
                 code = _checked
 
             tools_header = (
-                "import sys as _sys, os as _os\n"
+                "import sys as _sys, os as _os, warnings as _warnings\n"
                 "_sys.path.insert(0, _os.path.expanduser('~/.bingo'))\n"
+                "# ── SSL/InsecureRequestWarning 전역 억제 ─────────────────────\n"
+                "_warnings.filterwarnings('ignore', message='Unverified HTTPS request')\n"
+                "_warnings.filterwarnings('ignore', category=DeprecationWarning)\n"
+                "try:\n"
+                "    import urllib3 as _urllib3\n"
+                "    _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)\n"
+                "except Exception:\n"
+                "    pass\n"
             )
             if "agent_tools" not in code and "from agent_tools" not in code:
                 code = tools_header + code

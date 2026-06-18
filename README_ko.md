@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.9.0-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.1-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,7 +16,7 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.9.0 — 7대 고급 공격 체인 (+50% 강화)**  
+> **v2.9.1 — 버그 픽스: Soft-404 오탐 제거 / SSL 경고 스팸 억제**  
 > XSS 세션 하이재킹 · 업로드 RCE · SSRF AWS/클라우드 탈취 · 관리자 패널 자동화 · JS 비밀 탐지 · HTTP 스머글링 · GraphQL 풀 공격 · OAuth/JWT 위조 · Playwright 스크린샷 · Slack/Discord 알림
 
 </div>
@@ -133,6 +133,25 @@ bingo
 - GnuBoard, XpressEngine, Rhymix 자동 감지
 - 한국어 자격증명 사전 내장
 - CAPTCHA (kcaptcha) 자동 OCR 해결
+
+---
+
+## v2.9.1 — 버그 픽스 릴리스 *(2026-06)*
+
+**3가지 핵심 수정**
+
+| # | 버그 | 수정 내용 |
+|---|---|---|
+| 1 | `session_saved` i18n 키 중복 오버라이드 — `{name}` / `{role}` 미치환 | v2.9.0 키를 `session_mgr_saved`로 이름 변경; 원본 `session_saved` 복원 |
+| 2 | `InsecureRequestWarning` 스팸 — 스캔 로그 가득 채움 | `tools_header`에 `urllib3.disable_warnings()` 자동 주입 |
+| 3 | False Positive — `/admin/` · `/bbs/` 경로가 200이지만 실제로 없는 페이지 | `http_probe` + `recon_tools` Soft-404 본문 필터 추가 |
+
+**Soft-404 탐지 기준 (v2.9.1):**
+```
+감지 키워드: 404 / not found / 페이지를 찾을 수 없 / 존재하지 않 / 없는 페이지
+             잘못된 주소 / 页面不存在 / 找不到页面
+본문 500바이트 미만 + <form>/<input> 없음 → 자동 오탐 제거
+```
 
 ---
 

@@ -2171,7 +2171,7 @@ _STRINGS.update({
     # ──────────────────────────────────────────────────────────────────────────
     # v2.9.0 — Session Manager / Playwright / Webhook
     # ──────────────────────────────────────────────────────────────────────────
-    "session_saved":             {"ko": "💾 세션 저장 완료: {name} (역할:{role})",
+    "session_mgr_saved":         {"ko": "💾 세션 저장 완료: {name} (역할:{role})",
                                    "zh": "💾 会话保存完成: {name} (角色:{role})",
                                    "en": "💾 Session saved: {name} (role:{role})"},
     "session_expired":           {"ko": "⚠️ 세션 만료 감지 → 자동 재로그인 시도",
@@ -2189,6 +2189,22 @@ _STRINGS.update({
     "webhook_batch":             {"ko": "📦 배치 알림 전송: {count}건",
                                    "zh": "📦 批量通知发送: {count}条",
                                    "en": "📦 Batch notification sent: {count} alerts"},
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # v2.9.1 — Bug Fix keys
+    # ──────────────────────────────────────────────────────────────────────────
+    "ssl_warn_suppressed":       {"ko": "🔇 SSL 인증서 경고 억제 (verify=False 스크립트)",
+                                   "zh": "🔇 SSL证书警告已抑制 (verify=False脚本)",
+                                   "en": "🔇 SSL certificate warnings suppressed (verify=False scripts)"},
+    "soft_404_detected":         {"ko": "⚠️ Soft 404 감지 — {path} (200이지만 오류 페이지 내용)",
+                                   "zh": "⚠️ 检测到软404 — {path} (返回200但内容为错误页面)",
+                                   "en": "⚠️ Soft 404 detected — {path} (200 but error page content)"},
+    "admin_confirmed":           {"ko": "✅ 관리자 패널 확인: {path} (실제 콘텐츠 존재)",
+                                   "zh": "✅ 管理员面板已确认: {path} (存在真实内容)",
+                                   "en": "✅ Admin panel confirmed: {path} (real content exists)"},
+    "admin_false_positive":      {"ko": "🚫 False Positive 제거: {path} (Soft 404 — 실제 관리자 패널 없음)",
+                                   "zh": "🚫 误报已过滤: {path} (软404 — 无真实管理面板)",
+                                   "en": "🚫 False positive removed: {path} (Soft 404 — no real admin panel)"},
 })
 
 

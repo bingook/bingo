@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.9.1-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.2-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,7 +16,7 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.9.1 — 缺陷修复：软404误报过滤 / SSL警告抑制**  
+> **v2.9.2 — 缺陷修复：CMS偏见消除 / 每目标独立检测**  
 > XSS会话劫持 · 上传RCE · SSRF AWS/云凭证窃取 · 管理员面板自动化 · JS秘密探测 · HTTP走私 · GraphQL全攻 · OAuth/JWT伪造 · Playwright截图 · Slack/Discord告警
 
 </div>
@@ -133,6 +133,31 @@ bingo
 - Safe3 WAF → null byte unicode → overlong UTF-8 → 函数替换
 - D盾 → 关键字混淆
 - 云锁 → HTTP 参数污染
+
+---
+
+## v2.9.2 —— 缺陷修复：CMS偏见消除 *(2026-06)*
+
+**问题**：AI基于历史扫描记录，对新目标自动假设Gnuboard/韩国CMS，
+未获取HTML证据便尝试`/bbs/board.php`、`bo_table`等路径。
+
+**2项核心修复**
+
+| # | 缺陷 | 修复方案 |
+|---|---|---|
+| 1 | 仅凭`.kr`域名假设Gnuboard — 无HTML证据便执行韩国CMS专项逻辑 | 系统提示：新增`ZERO CMS BIAS`铁律规则块 + Gnuboard区段条件门控 |
+| 2 | 切换目标时旧对话的CMS上下文残留，污染AI推断 | `terminal.py`：目标变更时仅保留最后4轮历史 + 注入`NEW TARGET RESET`通知 |
+
+**零CMS偏见规则 (v2.9.2):**
+```
+每个新目标 → CMS = 完全未知 (UNKNOWN)
+Gnuboard区段 → 仅在以下条件之一确认后适用：
+  (a) check_gnuboard(TARGET) → True
+  (b) CONFIRMED_TECH_STACK 显示 "Gnuboard"
+  (c) HTML源码含 "bo_table=" 或 "/bbs/"
+  (d) 响应体含 "gnuboard" 或 "g5_" 模式
+.kr顶级域名单独存在 ≠ 证据。确认前视为自定义开发站点。
+```
 
 ---
 

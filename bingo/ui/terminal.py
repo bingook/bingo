@@ -1507,18 +1507,38 @@ class BingoTerminal:
         skill_context = self._get_skill_context(text)
 
         # URL 감지 시 실제 WAF 스캔 실행
-        # 새 타겟 URL이면 agent_state 초기화
+        # 새 타겟 URL이면 agent_state 초기화 + 대화 히스토리 CMS 오염 방지
         import re as _re
         _urls = _re.findall(r"https?://[^\s\"'<>]+", text)
+        _target_changed = False
         if _urls:
             new_target = _urls[0].rstrip("/?,")
             if self._agent_state.get("target") != new_target:
+                _target_changed = True
                 self._reset_agent_state()
                 self._agent_state["target"] = new_target
                 self._exec_loop_count = 0
                 self._stuck_count = 0
                 self._recent_results = []
+                # ── v2.9.2: 새 타겟 전환 시 대화 히스토리에서 이전 CMS/그누보드
+                #    관련 메시지가 AI를 오염시키지 않도록 히스토리 트리밍
+                #    (마지막 4턴만 유지하여 과거 컨텍스트 제거)
+                if len(self.history) > 8:
+                    self.history = self.history[-4:]
         waf_context = self._auto_waf_scan(text)
+        # ── v2.9.2: 새 타겟 전환 시 AI에게 명시적으로 컨텍스트 리셋 알림
+        if _target_changed and _urls:
+            _new_target_notice = (
+                "=== 🆕 NEW TARGET — FULL CONTEXT RESET (v2.9.2) ===\n"
+                f"New target: {_urls[0]}\n"
+                "ALL previous CMS/framework assumptions are VOID.\n"
+                "CMS = COMPLETELY UNKNOWN until actual HTTP evidence is collected.\n"
+                "DO NOT assume Gnuboard, XE, or any Korean CMS.\n"
+                "DO NOT reference any paths (/bbs/, /xe/, /wp-admin/) without seeing them in recon.\n"
+                "Start fresh: fetch homepage → analyze HTML → detect CMS from evidence only.\n"
+                "=== END RESET NOTICE ===\n\n"
+            )
+            text = _new_target_notice + text
 
         # PentAGI식 XML 태스크 래핑 (보안 관련 요청만)
         _security_keywords = (

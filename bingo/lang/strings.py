@@ -2205,6 +2205,20 @@ _STRINGS.update({
     "admin_false_positive":      {"ko": "🚫 False Positive 제거: {path} (Soft 404 — 실제 관리자 패널 없음)",
                                    "zh": "🚫 误报已过滤: {path} (软404 — 无真实管理面板)",
                                    "en": "🚫 False positive removed: {path} (Soft 404 — no real admin panel)"},
+    # v2.9.2 — CMS Bias Fix keys
+    # ──────────────────────────────────────────────────────────────────────────
+    "new_target_reset":          {"ko": "🆕 새 타겟 감지 — CMS 컨텍스트 완전 초기화 (이전 스캔 기록 무효)",
+                                   "zh": "🆕 检测到新目标 — CMS上下文完全重置 (先前扫描记录已失效)",
+                                   "en": "🆕 New target detected — CMS context fully reset (prior scan history voided)"},
+    "cms_bias_blocked":          {"ko": "🚫 CMS 편향 차단: {cms} 추정 근거 없음 (HTML 증거 필요)",
+                                   "zh": "🚫 CMS偏见已阻止: 无{cms}推断依据 (需要HTML证据)",
+                                   "en": "🚫 CMS bias blocked: no evidence for {cms} (HTML proof required)"},
+    "cms_detected_fresh":        {"ko": "✅ CMS 탐지 완료 (신규 스캔): {cms}",
+                                   "zh": "✅ CMS检测完成 (新鲜扫描): {cms}",
+                                   "en": "✅ CMS detected (fresh scan): {cms}"},
+    "history_trimmed":           {"ko": "✂️ 타겟 전환 — 대화 히스토리 정리 (CMS 오염 방지)",
+                                   "zh": "✂️ 目标切换 — 对话历史已清理 (防止CMS污染)",
+                                   "en": "✂️ Target switched — conversation history trimmed (CMS contamination prevention)"},
 })
 
 

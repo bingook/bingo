@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.9.1-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.2-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,7 +17,7 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.9.1 — Bug Fix: Soft-404 False Positive / SSL Warning Suppression**  
+> **v2.9.2 — Bug Fix: CMS Bias Elimination / Zero-Assumption Fresh Scan Per Target**  
 > XSS Session Hijack · Upload RCE · SSRF AWS/Cloud Steal · Admin Panel Auto · JS Secret Finder · HTTP Smuggling · GraphQL Full Attack · OAuth/JWT Forge · Playwright Screenshot · Slack/Discord Alert · Session Auto-Manager
 
 </div>
@@ -3069,6 +3069,31 @@ Anthropic cache TTL: 5 minutes (refreshed on each read). DeepSeek: automatic, no
 ---
 
 ## Changelog
+
+### v2.9.2 — Bug Fix Release: CMS Bias Elimination *(2026-06)*
+
+**Problem**: AI kept assuming Gnuboard/Korean CMS on every new target based on past scan history,
+instead of doing fresh detection per target.
+
+**2 Core Fixes**
+
+| # | Bug | Fix |
+|---|---|---|
+| 1 | AI pre-assumed Gnuboard/XE for any `.kr` domain without HTML evidence | System prompt: added `ZERO CMS BIAS` iron rule block + gate check before Gnuboard section |
+| 2 | Switching targets kept old CMS context in conversation history | `terminal.py`: history trimmed to last 4 turns on target change + `NEW TARGET RESET` notice injected |
+
+**Zero CMS Bias Rules (v2.9.2):**
+```
+Every new target → CMS = COMPLETELY UNKNOWN
+Gnuboard section → applies ONLY when:
+  (a) check_gnuboard(TARGET) → True
+  (b) CONFIRMED_TECH_STACK shows "Gnuboard"
+  (c) HTML source contains "bo_table=" or "/bbs/"
+  (d) response body contains "gnuboard" or "g5_" patterns
+.kr TLD alone = NOT sufficient evidence. Custom-built until proven.
+```
+
+---
 
 ### v2.9.1 — Bug Fix Release *(2026-06)*
 

@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.9.1-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.2-brightgreen?logo=github)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -16,7 +16,7 @@
 **🌐 Language / 언어 / 语言:**
 [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
-> **v2.9.1 — 버그 픽스: Soft-404 오탐 제거 / SSL 경고 스팸 억제**  
+> **v2.9.2 — 버그 픽스: CMS 편향 완전 제거 / 타겟별 독립 탐지**  
 > XSS 세션 하이재킹 · 업로드 RCE · SSRF AWS/클라우드 탈취 · 관리자 패널 자동화 · JS 비밀 탐지 · HTTP 스머글링 · GraphQL 풀 공격 · OAuth/JWT 위조 · Playwright 스크린샷 · Slack/Discord 알림
 
 </div>
@@ -133,6 +133,31 @@ bingo
 - GnuBoard, XpressEngine, Rhymix 자동 감지
 - 한국어 자격증명 사전 내장
 - CAPTCHA (kcaptcha) 자동 OCR 해결
+
+---
+
+## v2.9.2 — 버그 픽스: CMS 편향 제거 *(2026-06)*
+
+**문제**: AI가 이전 스캔 기록을 바탕으로 새 타겟에서도 그누보드/한국 CMS를 자동 가정,
+실제 HTML 증거 없이 `/bbs/board.php`, `bo_table` 등을 시도.
+
+**2가지 핵심 수정**
+
+| # | 버그 | 수정 내용 |
+|---|---|---|
+| 1 | `.kr` 도메인만으로 그누보드 가정 — HTML 증거 없이 한국 CMS 특화 로직 실행 | 시스템 프롬프트: `ZERO CMS BIAS` 철칙 블록 추가 + 그누보드 섹션 조건 게이트 |
+| 2 | 타겟 전환 시 이전 대화의 CMS 컨텍스트가 히스토리에 남아 AI 오염 | `terminal.py`: 타겟 변경 감지 시 히스토리 마지막 4턴만 유지 + `NEW TARGET RESET` 메시지 주입 |
+
+**Zero CMS Bias 규칙 (v2.9.2):**
+```
+모든 새 타겟 → CMS = 완전 미지 (UNKNOWN)
+그누보드 섹션 → 다음 중 하나가 확인될 때만 적용:
+  (a) check_gnuboard(TARGET) → True
+  (b) CONFIRMED_TECH_STACK에 "Gnuboard" 표시
+  (c) HTML 소스에 "bo_table=" 또는 "/bbs/" 존재
+  (d) 응답 본문에 "gnuboard" 또는 "g5_" 패턴 포함
+.kr TLD 단독 = 증거 아님. 확인 전까지 커스텀 개발 사이트로 취급.
+```
 
 ---
 

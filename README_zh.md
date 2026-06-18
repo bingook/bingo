@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-2.9.2-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.3-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,14 +365,23 @@ bingo 自动处理每个步骤:
 
 ---
 
-## 数据库转储 (v2.7)
+## 数据库转储 (v2.9.3)
 
 确认 SQLi / Webshell / RCE 后自动触发:
 
 - 转储对象: `member` / `user` / `admin` / `g5_member` / `xe_member`
+- **无行数限制** — 全量转储整张表
 - 保存凭据 → `CREDENTIALS_{表名}.json`
 - 自动识别哈希类型 → 输出 `hashcat -m {模式}` 命令
 - 使用提取的凭据重新尝试管理员登录
+
+**保存位置 (自动检测 OS):**
+
+| 操作系统 | 路径 |
+|----------|------|
+| macOS | `~/Desktop/dump/{目标}_{时间戳}/` |
+| Windows | `~/Desktop/dump/{目标}_{时间戳}/` (自动检测 OneDrive 桌面) |
+| Linux | `~/Desktop/dump/{目标}_{时间戳}/` (无 Desktop 则使用 `~/dump/`) |
 
 ---
 
@@ -395,6 +404,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 版本 | 摘要 |
 |------|------|
+| v2.9.3 | DB转储: 无行数限制 + 自动保存到桌面 (macOS/Windows) |
 | v2.9.2 | CMS 偏见修复 — 每个目标全新检测，零假设 |
 | v2.9.1 | Bug 修复: 变量替换、警告泛滥、误报 |
 | v2.9.0 | 11 个新模块: HTTP 走私、GraphQL、OAuth/JWT、Playwright、告警 |

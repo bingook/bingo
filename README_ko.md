@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-2.9.2-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.3-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,14 +365,23 @@ bingo가 각 단계를 처리합니다:
 
 ---
 
-## DB 덤프 (v2.7)
+## DB 덤프 (v2.9.3)
 
 SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 
 - 덤프 대상: `member` / `user` / `admin` / `g5_member` / `xe_member`
+- **행 수 제한 없음** — 전체 테이블 전량 덤프
 - 크레덴셜 저장 → `CREDENTIALS_{테이블}.json`
 - 해시 유형 자동 탐지 → `hashcat -m {모드}` 명령어 출력
 - 추출된 크레덴셜로 관리자 로그인 재시도
+
+**저장 위치 (OS 자동 감지):**
+
+| OS | 경로 |
+|----|------|
+| macOS | `~/Desktop/dump/{타겟}_{타임스탬프}/` |
+| Windows | `~/Desktop/dump/{타겟}_{타임스탬프}/` (OneDrive 바탕화면 자동 감지) |
+| Linux | `~/Desktop/dump/{타겟}_{타임스탬프}/` (Desktop 없으면 `~/dump/` 사용) |
 
 ---
 
@@ -395,6 +404,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v2.9.3 | DB 덤프: 행 수 제한 없음 + 바탕화면 자동 저장 (macOS/Windows) |
 | v2.9.2 | CMS 편향 수정 — 타겟별 신규 탐지, 무추정 |
 | v2.9.1 | 버그 수정: 변수 치환, 경고 스팸, 오탐 |
 | v2.9.0 | 11개 신규 모듈: HTTP 스머글링, GraphQL, OAuth/JWT, Playwright, 알림 |

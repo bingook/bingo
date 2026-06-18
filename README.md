@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-2.9.2-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-2.9.3-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -365,14 +365,23 @@ bingo handles each step:
 
 ---
 
-## DB Dump (v2.7)
+## DB Dump (v2.9.3)
 
 Triggered automatically after confirmed SQLi / webshell / RCE:
 
 - Dumps: `member` / `user` / `admin` / `g5_member` / `xe_member`
+- **No row limit** — entire table dumped regardless of size
 - Saves credentials → `CREDENTIALS_{table}.json`
 - Detects hash type → prints `hashcat -m {mode}` command
 - Re-attempts admin login with extracted credentials
+
+**Save location (auto-detected by OS):**
+
+| OS | Path |
+|----|------|
+| macOS | `~/Desktop/dump/{target}_{timestamp}/` |
+| Windows | `~/Desktop/dump/{target}_{timestamp}/` (OneDrive Desktop auto-detected) |
+| Linux | `~/Desktop/dump/{target}_{timestamp}/` (falls back to `~/dump/` if no Desktop) |
 
 ---
 
@@ -395,6 +404,7 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v2.9.3 | DB dump: no row limit + Desktop save path (macOS/Windows auto-detect) |
 | v2.9.2 | CMS bias fix — fresh detection per target, zero assumptions |
 | v2.9.1 | Bug fixes: variable substitution, warning spam, false positives |
 | v2.9.0 | 11 new modules: HTTP smuggling, GraphQL, OAuth/JWT, Playwright, alerts |

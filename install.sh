@@ -75,77 +75,9 @@ check_pip() {
 }
 
 install_deps() {
-    step "Installing dependencies..."
-
-    # 임시 파일로 저장 후 실행 — heredoc + set -e 충돌 방지
-    local _tmp_py
-    _tmp_py="$(mktemp /tmp/bingo_deps_XXXXXX.py)"
-
-    cat > "$_tmp_py" << 'PYEOF'
-import subprocess, sys, importlib
-
-deps = [
-    ('rich',               'rich'),
-    ('prompt_toolkit',     'prompt_toolkit'),
-    ('httpx',              'httpx'),
-    ('pydantic',           'pydantic'),
-    ('requests',           'requests'),
-    ('urllib3',            'urllib3'),
-    ('beautifulsoup4',     'bs4'),
-    ('lxml',               'lxml'),
-    ('chardet',            'chardet'),
-    ('charset-normalizer', 'charset_normalizer'),
-    ('fake-useragent',     'fake_useragent'),
-    ('python-dotenv',      'dotenv'),
-    ('PyJWT',              'jwt'),
-    ('cryptography',       'cryptography'),
-    ('dnspython',          'dns'),
-    ('colorama',           'colorama'),
-    ('tldextract',         'tldextract'),
-    ('html5lib',           'html5lib'),
-    ('cssselect',          'cssselect'),
-    ('aiohttp',            'aiohttp'),
-    ('certifi',            'certifi'),
-    ('hatchling',          'hatchling'),
-]
-
-try:
-    import importlib.metadata as _meta
-    def _ver(name):
-        try:    return _meta.version(name)
-        except: return '?'
-except ImportError:
-    def _ver(name): return '?'
-
-installed = 0
-skipped   = 0
-
-for pip_name, imp_name in deps:
-    try:
-        importlib.import_module(imp_name)
-        ver = _ver(pip_name)
-        print(f'  \033[2m[--] already installed  {pip_name:<30} {ver}\033[0m')
-        skipped += 1
-    except ImportError:
-        print(f'  \033[33m[>>] installing         {pip_name}\033[0m', end='', flush=True)
-        r = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '-q', pip_name],
-            capture_output=True, text=True
-        )
-        if r.returncode == 0:
-            ver = _ver(pip_name)
-            print(f'\r  \033[32m[OK] installed          {pip_name:<30} {ver}\033[0m')
-            installed += 1
-        else:
-            print(f'\r  \033[31m[!!] failed             {pip_name}\033[0m')
-
-print()
-print(f'  Dependencies: {installed} installed / {skipped} already present')
-PYEOF
-
-    "$PY" "$_tmp_py"
-    rm -f "$_tmp_py"
-    ok "Dependencies done"
+    step "Installing dependencies (rich · prompt_toolkit · httpx · pydantic)"
+    "$PY" -m pip install --quiet --upgrade rich prompt_toolkit httpx pydantic hatchling
+    ok "Dependencies installed"
 }
 
 install_bingo() {

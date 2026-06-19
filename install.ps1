@@ -81,68 +81,18 @@ Step "Installing bingo and dependencies..."
 
 # Python 스크립트로 pip 실행 — NativeCommandError 발생 안 함
 $installPy = @"
-import subprocess, sys, importlib
+import subprocess, sys, os
 
-# (pip_name, import_name)
-deps = [
-    ('rich',               'rich'),
-    ('prompt_toolkit',     'prompt_toolkit'),
-    ('httpx',              'httpx'),
-    ('pydantic',           'pydantic'),
-    ('requests',           'requests'),
-    ('urllib3',            'urllib3'),
-    ('beautifulsoup4',     'bs4'),
-    ('lxml',               'lxml'),
-    ('chardet',            'chardet'),
-    ('charset-normalizer', 'charset_normalizer'),
-    ('fake-useragent',     'fake_useragent'),
-    ('python-dotenv',      'dotenv'),
-    ('PyJWT',              'jwt'),
-    ('cryptography',       'cryptography'),
-    ('dnspython',          'dns'),
-    ('colorama',           'colorama'),
-    ('tldextract',         'tldextract'),
-    ('html5lib',           'html5lib'),
-    ('cssselect',          'cssselect'),
-    ('aiohttp',            'aiohttp'),
-    ('certifi',            'certifi'),
-    ('hatchling',          'hatchling'),
-]
+deps = ['rich', 'prompt_toolkit', 'httpx', 'pydantic', 'openai', 'anthropic']
 dest = r'$dest'
 
-installed = 0
-skipped   = 0
-
-for pip_name, imp_name in deps:
-    try:
-        importlib.import_module(imp_name)
-        import importlib.metadata as meta
-        try:
-            ver = meta.version(pip_name)
-        except Exception:
-            ver = '?'
-        print(f'  [--] already installed  {pip_name}  {ver}')
-        skipped += 1
-    except ImportError:
-        print(f'  [>>] installing         {pip_name} ...', end='', flush=True)
-        r = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '-q', pip_name],
-            capture_output=True, text=True
-        )
-        if r.returncode == 0:
-            try:
-                import importlib.metadata as meta
-                ver = meta.version(pip_name)
-            except Exception:
-                ver = ''
-            print(f'\r  [OK] installed          {pip_name}  {ver}')
-            installed += 1
-        else:
-            print(f'\r  [!!] failed             {pip_name}')
-
-print()
-print(f'  Dependencies: {installed} installed / {skipped} already present')
-print()
+for d in deps:
+    print(f'  {d}...', end='', flush=True)
+    r = subprocess.run(
+        [sys.executable, '-m', 'pip', 'install', '-q', d],
+        capture_output=True, text=True
+    )
+    print(' OK' if r.returncode == 0 else ' (warn)')
 
 print('  bingo...', end='', flush=True)
 r = subprocess.run(

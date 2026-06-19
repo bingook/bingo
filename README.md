@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.0.4-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.0.6-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -420,6 +420,8 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v3.0.6 | SQLi extraction: auto IP-ban detection + X-Forwarded-For rotation (12 headers), partial dump on exhaustion |
+| v3.0.5 | Fix: final report now saved to Desktop/dump/target/ instead of ~/.config/bingo/reports/ |
 | v3.0.4 | Post-credential: admin page discovery + IP restriction bypass (header spoofing/SSRF/real-IP) + report |
 | v3.0.3 | DB dump: DbDumper first → auto fallback to manual pagination if DbDumper fails or misses STEP 0 tables |
 | v3.0.2 | DB dump: AI verifies member tables via actual sample data (SELECT LIMIT 5), not just column names |

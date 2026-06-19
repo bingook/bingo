@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-3.0.4-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.0.6-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -420,6 +420,8 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 版本 | 摘要 |
 |------|------|
+| v3.0.6 | SQLi提取: 自动检测IP封禁 + 12种X-Forwarded-For头部轮换，耗尽时保存部分数据 |
+| v3.0.5 | 修复: 最终报告现在保存到 Desktop/dump/目标名/ (修复 ~/.config/bingo/reports/ 错误路径) |
 | v3.0.4 | 凭据获取后: 自动发现管理页面 + IP限制绕过(头部欺骗/SSRF/真实IP直连) + 报告输出 |
 | v3.0.3 | DB转储: 优先DbDumper → 失败或遗漏STEP 0表时自动回退至手动分页提取 |
 | v3.0.2 | DB转储: 通过实际样本数据验证会员表 (SELECT LIMIT 5)，禁止仅凭列名判断 |

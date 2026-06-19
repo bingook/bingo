@@ -4227,7 +4227,7 @@ class BingoTerminal:
         _state = self._agent_state
         target = _state.get("target", "unknown")
 
-        # 보고서 저장 경로 — BINGO_REPORTS_DIR 환경변수 우선, 없으면 기본값
+        # 보고서 저장 경로 — BINGO_REPORTS_DIR 환경변수 우선, 없으면 Desktop/dump/타겟명/
         import os as _os_report
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_target = (target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:30]
@@ -4235,7 +4235,26 @@ class BingoTerminal:
         if _env_dir:
             report_dir = Path(_env_dir)
         else:
-            report_dir = Path.home() / ".config" / "bingo" / "reports"
+            # Desktop/dump/타겟명/ 에 저장 (get_desktop_dump_dir와 동일 규칙)
+            import platform as _plat_report
+            _raw_target = (target or "unknown").replace("https://", "").replace("http://", "").rstrip("/")
+            _target_name = _raw_target.replace("/", "_").replace(":", "_")[:50]
+            if _plat_report.system() == "Darwin":
+                _desktop = Path.home() / "Desktop"
+            elif _plat_report.system() == "Windows":
+                import winreg as _wr
+                try:
+                    _k = _wr.OpenKey(_wr.HKEY_CURRENT_USER,
+                                     r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
+                    _desktop = Path(_wr.QueryValueEx(_k, "Desktop")[0])
+                except Exception:
+                    _desktop = Path.home() / "Desktop"
+            else:
+                _desktop = Path(
+                    _os_report.environ.get("XDG_DESKTOP_DIR",
+                                           str(Path.home() / "Desktop"))
+                )
+            report_dir = _desktop / "dump" / _target_name
         try:
             report_dir.mkdir(parents=True, exist_ok=True)
         except Exception as _mkdir_err:
@@ -4250,7 +4269,7 @@ class BingoTerminal:
         self.console.print(
             f"\n[{THEME['warn']}]📁 REPORT SAVE PATH:\n"
             f"   [bold white]{report_path.absolute()}[/bold white]\n"
-            f"   (set BINGO_REPORTS_DIR env var to change location)[/]\n"
+            f"   (set BINGO_REPORTS_DIR env var to override location)[/]\n"
         )
 
         # AI에게 보고서 생성 요청 (히스토리 오염 없이)
@@ -4354,13 +4373,25 @@ class BingoTerminal:
                 ))
                 # 파일로 저장
                 report_path.write_text(full.strip(), encoding="utf-8")
+                _rp_str   = str(report_path.absolute())
+                _ok_label = self.s.get("report_save_ok",   "💾 REPORT SAVED SUCCESSFULLY")
+                _pt_label = self.s.get("report_save_path", "PATH")
+                _title_text = f"  {_ok_label}"
+                _path_text  = f"  {_pt_label}: {_rp_str}"
+                _box_w  = max(len(_title_text), len(_path_text)) + 4
+                _inner  = _box_w - 2
+                _top    = "╔" + "═" * _inner + "╗"
+                _mid    = "╠" + "═" * _inner + "╣"
+                _bot    = "╚" + "═" * _inner + "╝"
+                _pad_t  = _inner - len(_title_text)
+                _title_row = "║" + _title_text + " " * _pad_t + "║"
                 self.console.print(
                     f"\n[{THEME['success']}]"
-                    f"╔══════════════════════════════════════════════════╗\n"
-                    f"║  💾 REPORT SAVED SUCCESSFULLY                    ║\n"
-                    f"╠══════════════════════════════════════════════════╣\n"
-                    f"║  PATH: [bold]{str(report_path.absolute())[:46]}[/bold]\n"
-                    f"╚══════════════════════════════════════════════════╝"
+                    f"{_top}\n"
+                    f"{_title_row}\n"
+                    f"{_mid}\n"
+                    f"║  {_pt_label}: [bold]{_rp_str}[/bold]\n"
+                    f"{_bot}"
                     f"[/]\n"
                 )
                 self.console.print(

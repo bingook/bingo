@@ -3480,7 +3480,7 @@ class BingoTerminal:
                 _last_stripped = None
                 _killed_reason: str | None = None
                 _start_ts = __import__("time").time()
-                _SCRIPT_TIMEOUT = 180  # 스크립트당 최대 180초 (3분) — SLEEP(3) 캡 적용 시 충분
+                _SCRIPT_TIMEOUT = 300  # 스크립트당 최대 300초 (5분)
                 _MAX_CONSEC_DUP = 5    # 동일 줄 5회 연속 → 루프 감지
                 _MAX_CONSEC_SCAN = 25  # 스캔 결과 줄은 25회까지 허용 (XSS 반사 등)
                 # 합법적 반복이 발생하는 스캔 결과 prefix — 더 높은 임계값 적용

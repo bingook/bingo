@@ -3041,7 +3041,7 @@ class BingoTerminal:
                 fixed
             )
             if fixed != _before_0e:
-                _applied_fix_names.append("is/is not → ==/!=")
+                _applied_fix_names.append("fix_is_not_str")
 
             # ── 1. requests.get/post/put/delete — timeout 자동 주입 ─────────
             def _add_kwarg(call_str: str, kwarg: str) -> str:
@@ -3068,7 +3068,7 @@ class BingoTerminal:
             _before_1 = fixed
             fixed = _pre_re.sub(_req_pattern, _inject_requests_timeout, fixed)
             if fixed != _before_1:
-                _applied_fix_names.append("requests timeout=30 주입")
+                _applied_fix_names.append("fix_requests_timeout")
 
             # ── 2. pymssql/pyodbc.connect — timeout 주입 ────────────────────
             def _inject_db_timeout(m: "_pre_re.Match") -> str:
@@ -3088,7 +3088,7 @@ class BingoTerminal:
                 _inject_db_timeout, fixed
             )
             if fixed != _before_2:
-                _applied_fix_names.append("DB connect timeout 주입")
+                _applied_fix_names.append("fix_db_timeout")
 
             # ── 3. socket — settimeout 주입 ──────────────────────────────────
             # socket.connect() 전에 settimeout이 없으면 주입
@@ -3102,7 +3102,7 @@ class BingoTerminal:
                         fixed, count=1
                     )
             if fixed != _before_3:
-                _applied_fix_names.append("socket.settimeout(10) 주입")
+                _applied_fix_names.append("fix_socket_timeout")
 
             # ── 3-B. urljoin() timeout 인자 제거 ────────────────────────────
             # urllib.parse.urljoin(base, url)는 timeout= 인자를 받지 않음
@@ -3114,7 +3114,7 @@ class BingoTerminal:
                 fixed,
             )
             if fixed != _before_3b:
-                _applied_fix_names.append("urljoin timeout 인자 제거")
+                _applied_fix_names.append("fix_urljoin_timeout")
 
             # ── 4. URL 연소 버그 감지 및 수정 ────────────────────────────────
             # 패턴: some_var + "https://..." → 완전한 URL을 잘못 이어붙임
@@ -3142,7 +3142,7 @@ class BingoTerminal:
                 flags=_pre_re.IGNORECASE
             )
             if fixed != _before_4:
-                _applied_fix_names.append("URL 연소 버그 수정")
+                _applied_fix_names.append("fix_url_concat")
 
             # ── 4-B. f-string dict subscript 자동 수정 ───────────────────────
             # Python 3.10/3.11: f"...{d['key']}..." → SyntaxError
@@ -3167,7 +3167,7 @@ class BingoTerminal:
             _before_4b = fixed
             fixed = _pre_re.sub(r"f'[^']*\{[^}]*'[^}]*\}[^']*'", _fix_fstring_subscript, fixed)
             if fixed != _before_4b:
-                _applied_fix_names.append("f-string 따옴표 충돌 수정")
+                _applied_fix_names.append("fix_fstring_quote")
 
             # ── 0-C. SQL SLEEP 과대값 캡 — SLEEP(N>5) → SLEEP(3) ──────────
             # AI가 SLEEP(30) 같은 큰 값을 쓰면 요청당 30초 걸려 추출이 극도로 느려짐
@@ -3178,7 +3178,7 @@ class BingoTerminal:
                 fixed
             )
             if fixed != _before_0c:
-                _applied_fix_names.append("SQL SLEEP 과대값 캡(→3s)")
+                _applied_fix_names.append("fix_sql_sleep_cap")
 
             # ── 0-D. time.sleep(a, b) → time.sleep(random.uniform(a, b)) ──
             # AI가 time.sleep(2.0, 3.5) 처럼 2개 인자를 전달하는 경우 자동 수정
@@ -3193,7 +3193,7 @@ class BingoTerminal:
                 fixed
             )
             if fixed != _before_0d:
-                _applied_fix_names.append("time.sleep(a,b) → random.uniform")
+                _applied_fix_names.append("fix_time_sleep_uniform")
             # random.uniform을 썼지만 import random 누락된 경우 자동 주입
             if "random.uniform" in fixed and not _pre_re.search(r'\bimport\s+random\b', fixed):
                 _first_import_m = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
@@ -3259,7 +3259,7 @@ class BingoTerminal:
                 if _fixed_se:
                     try:
                         compile(fixed, "<bingo_precheck2>", "exec")
-                        _applied_fix_names.append("f-string SyntaxError 복구")
+                        _applied_fix_names.append("fix_fstring_syntax")
                         return fixed, _applied_fix_names
                     except SyntaxError:
                         pass
@@ -3353,7 +3353,7 @@ class BingoTerminal:
                 )[-1]
                 # _applied_fix_names 에 수집된 수정 항목을 구체적으로 출력
                 if _applied_fix_names:
-                    _fix_detail = ", ".join(_applied_fix_names)
+                    _fix_detail = ", ".join(t(k, k) for k in _applied_fix_names)
                     self.console.print(
                         f"[{THEME['secondary']}]🔧 [AUTO-FIX] {_fix_detail}[/]"
                     )

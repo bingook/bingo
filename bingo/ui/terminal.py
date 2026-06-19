@@ -3576,6 +3576,10 @@ class BingoTerminal:
                 def _is_scan_result_line(s: str) -> bool:
                     """스캔 결과 라인이면 True — 높은 반복 임계값 사용."""
                     t = s.strip()
+                    # HTML 태그 라인 (<input>, <br>, <td>, <li> 등)은 페이지 분석 시
+                    # 속성 없는 태그가 연속으로 출력될 수 있음 — 무한루프 아님
+                    if t.startswith("<") and t.endswith(">"):
+                        return True
                     return any(t.startswith(m.strip()) for m in _SCAN_OUTPUT_MARKERS)
 
                 # ── 하드 워치독: stdout 출력 없는 블로킹(pymssql 등)도 강제 종료 ──
@@ -3995,12 +3999,27 @@ class BingoTerminal:
                 ("readtimeout", "ReadTimeout — WAF silent drop"),
                 ("connecttimeout", "ConnectTimeout — server/WAF blocking"),
                 ("blocked", "Block detected"),
-                ("captcha", "CAPTCHA detected"),
                 ("banned", "Possible IP ban"),
                 ("access denied", "Access denied"),
                 ("temporarily unavailable", "Temporarily unavailable"),
             ]
             _detected_blocks = [label for sig, label in _ip_block_signals if sig in _raw_lower]
+
+            # ── CAPTCHA는 실제 차단 컨텍스트에서만 감지 ──────────────────────
+            # form name="captcha" 같은 HTML 필드 이름은 제외
+            # 실제 CAPTCHA 챌린지: "captcha required", reCAPTCHA, hcaptcha 등
+            import re as _cre
+            _captcha_block = bool(_cre.search(
+                r'(?:'
+                r'captcha\s+(?:required|detected|blocked|verification|solve|complete|error)'
+                r'|(?:enter|complete|fill|verify|solve)\s+(?:the\s+)?captcha'
+                r'|(?:recaptcha|hcaptcha|turnstile|cloudflare.*challenge)'
+                r'|g-recaptcha|h-captcha'
+                r')',
+                _raw_lower,
+            ))
+            if _captcha_block:
+                _detected_blocks.append("CAPTCHA detected")
 
             # VBScript 에러 감지 — SQL 인젝션 시도 중단 신호
             _vbscript_no_sqli_patterns = [

@@ -1626,6 +1626,21 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     RULE: timeout= belongs ONLY in requests.get() / requests.post() calls.
     If you need timeout on a request: requests.get(urljoin(base, path), timeout=10)
 
+  ▸ RULE 26-G: set objects are NOT subscriptable — never use set[index].
+    Python sets have NO guaranteed order and do NOT support index access.
+    WRONG:  endpoints = set(); endpoint = endpoints[0]  ← TypeError: 'set' object is not subscriptable
+    WRONG:  results = re.findall(...); results = set(results); print(results[0])
+    CORRECT: Use a list for ordered/indexed access:
+      endpoints = []
+      if new_item not in endpoints:
+          endpoints.append(new_item)
+      endpoint = endpoints[0]  # OK — list is subscriptable
+    OR convert set to list before indexing:
+      results_list = list(set(re.findall(...)))
+      print(results_list[0])  # OK
+    RULE: If you need deduplication AND index access, keep data as list with manual dedup,
+    OR convert set→list immediately after dedup: `items = sorted(set(raw_items))`.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

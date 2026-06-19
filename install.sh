@@ -75,8 +75,14 @@ check_pip() {
 }
 
 install_deps() {
-    step "Installing dependencies (rich · prompt_toolkit · httpx · pydantic)"
-    "$PY" -m pip install --quiet --upgrade rich prompt_toolkit httpx pydantic hatchling
+    step "Installing dependencies..."
+    "$PY" -m pip install --quiet --upgrade \
+        rich prompt_toolkit httpx pydantic \
+        requests urllib3 beautifulsoup4 lxml \
+        chardet charset-normalizer fake-useragent \
+        python-dotenv PyJWT cryptography dnspython \
+        colorama tldextract html5lib cssselect \
+        aiohttp certifi hatchling
     ok "Dependencies installed"
 }
 

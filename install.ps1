@@ -83,7 +83,14 @@ Step "Installing bingo and dependencies..."
 $installPy = @"
 import subprocess, sys, os
 
-deps = ['rich', 'prompt_toolkit', 'httpx', 'pydantic', 'openai', 'anthropic']
+deps = [
+    'rich', 'prompt_toolkit', 'httpx', 'pydantic',
+    'requests', 'urllib3', 'beautifulsoup4', 'lxml',
+    'chardet', 'charset-normalizer', 'fake-useragent',
+    'python-dotenv', 'PyJWT', 'cryptography', 'dnspython',
+    'colorama', 'tldextract', 'html5lib', 'cssselect',
+    'aiohttp', 'certifi',
+]
 dest = r'$dest'
 
 for d in deps:

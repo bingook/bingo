@@ -23,7 +23,6 @@ BANNER
 
 step() { echo -e "${GREEN}▸${RESET} ${BOLD}$*${RESET}"; }
 ok()   { echo -e "${GREEN}  ✔  $*${RESET}"; }
-skip() { echo -e "${DIM}  --  $*${RESET}"; }
 warn() { echo -e "${YELLOW}  ⚠  $*${RESET}"; }
 err()  { echo -e "${RED}  ✖  $*${RESET}"; exit 1; }
 info() { echo -e "${DIM}  $*${RESET}"; }
@@ -72,43 +71,75 @@ check_pip() {
         warn "pip not found — trying ensurepip"
         "$PY" -m ensurepip --upgrade 2>/dev/null || err "Failed to install pip"
     fi
-    ok "pip $("$PY" -m pip --version | awk '{print $2}')"
+    ok "pip $(${PY} -m pip --version | awk '{print $2}')"
 }
 
 install_deps() {
     step "Installing dependencies..."
 
-    # 전체 패키지 목록
-    ALL_PKGS=(
-        rich prompt_toolkit httpx pydantic
-        requests urllib3 beautifulsoup4 lxml
-        chardet charset-normalizer fake-useragent
-        python-dotenv PyJWT cryptography dnspython
-        colorama tldextract html5lib cssselect
-        aiohttp certifi hatchling
-    )
+    # Python 스크립트로 실행 — 이미 설치된 항목 표시 포함
+    "$PY" - << 'PYEOF'
+import subprocess, sys, importlib, importlib.metadata as meta
 
-    _inst=0
-    _skip=0
+# (pip_name, import_name)
+deps = [
+    ('rich',               'rich'),
+    ('prompt_toolkit',     'prompt_toolkit'),
+    ('httpx',              'httpx'),
+    ('pydantic',           'pydantic'),
+    ('requests',           'requests'),
+    ('urllib3',            'urllib3'),
+    ('beautifulsoup4',     'bs4'),
+    ('lxml',               'lxml'),
+    ('chardet',            'chardet'),
+    ('charset-normalizer', 'charset_normalizer'),
+    ('fake-useragent',     'fake_useragent'),
+    ('python-dotenv',      'dotenv'),
+    ('PyJWT',              'jwt'),
+    ('cryptography',       'cryptography'),
+    ('dnspython',          'dns'),
+    ('colorama',           'colorama'),
+    ('tldextract',         'tldextract'),
+    ('html5lib',           'html5lib'),
+    ('cssselect',          'cssselect'),
+    ('aiohttp',            'aiohttp'),
+    ('certifi',            'certifi'),
+    ('hatchling',          'hatchling'),
+]
 
-    for pkg in "${ALL_PKGS[@]}"; do
-        _ver=$("$PY" -m pip show "$pkg" 2>/dev/null | grep "^Version:" | awk '{print $2}')
-        if [[ -n "$_ver" ]]; then
-            printf "  ${DIM}[--] already installed  %-30s %s${RESET}\n" "$pkg" "$_ver"
-            ((_skip++))
-        else
-            printf "  ${YELLOW}[>>] installing        %s${RESET}\n" "$pkg"
-            if "$PY" -m pip install --quiet "$pkg" 2>/dev/null; then
-                _ver2=$("$PY" -m pip show "$pkg" 2>/dev/null | grep "^Version:" | awk '{print $2}')
-                printf "  ${GREEN}[OK] installed         %-30s %s${RESET}\n" "$pkg" "$_ver2"
-                ((_inst++))
-            else
-                printf "  ${RED}[!!] failed            %s${RESET}\n" "$pkg"
-            fi
-        fi
-    done
+installed = 0
+skipped   = 0
 
-    ok "Dependencies: ${_inst} installed / ${_skip} already present"
+for pip_name, imp_name in deps:
+    try:
+        importlib.import_module(imp_name)
+        try:
+            ver = meta.version(pip_name)
+        except Exception:
+            ver = '?'
+        print(f'  \033[2m[--] already installed  {pip_name:<30} {ver}\033[0m')
+        skipped += 1
+    except ImportError:
+        print(f'  \033[33m[>>] installing         {pip_name}\033[0m', end='', flush=True)
+        r = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '-q', pip_name],
+            capture_output=True, text=True
+        )
+        if r.returncode == 0:
+            try:
+                ver = meta.version(pip_name)
+            except Exception:
+                ver = ''
+            print(f'\r  \033[32m[OK] installed          {pip_name:<30} {ver}\033[0m')
+            installed += 1
+        else:
+            print(f'\r  \033[31m[!!] failed             {pip_name}\033[0m')
+
+print()
+print(f'  Dependencies: {installed} installed / {skipped} already present')
+PYEOF
+
+    ok "Dependencies done"
 }
 
 install_bingo() {
@@ -184,14 +215,16 @@ install_bingo
 setup_path
 verify
 
-# ── EXE Phase 0 deps ─────────────────────────────────────────────
+# ── EXE Phase 0 deps — Playwright 스타일 자동 설치 ──────────────
 echo ""
 echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
 echo -e "${CYAN}  EXE Phase 0 — Windows PE Analysis Libs${RESET}"
 echo -e "${DIM}  pefile · lief · yara-python · ssdeep · requests${RESET}"
+echo -e "${DIM}  Used for static analysis of EXE/DLL/SYS files${RESET}"
 echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
 echo ""
 
+# Playwright 스타일: 이미 설치된 항목은 표시, 없는 것만 설치
 _exe_deps=("pefile:pefile:required" "lief:lief:optional" "yara-python:yara:optional" "ssdeep:ssdeep:optional" "requests:requests:optional")
 
 _all_ok=true
@@ -202,10 +235,10 @@ for _entry in "${_exe_deps[@]}"; do
     _tag="${_rest#*:}"
 
     if "$PY" -c "import ${_mod}" &>/dev/null 2>&1; then
-        skip "already installed  ${_pip}"
+        ok "already installed  ${_pip}"
     else
         _all_ok=false
-        echo -e "${YELLOW}  [>>] will install   ${_pip}  ${DIM}(${_tag})${RESET}"
+        echo -e "${YELLOW}  📦  will install   ${_pip}  ${DIM}(${_tag})${RESET}"
     fi
 done
 
@@ -220,23 +253,24 @@ if ! $_all_ok; then
         _tag="${_rest#*:}"
 
         if "$PY" -c "import ${_mod}" &>/dev/null 2>&1; then
-            continue
+            continue   # already installed
         fi
 
-        printf "  ${YELLOW}[>>] Installing${RESET}  %-20s" "${_pip} ..."
+        printf "    ${YELLOW}📦  Installing${RESET}  %-20s" "${_pip} ..."
         if "$PY" -m pip install --quiet "${_pip}" 2>/dev/null; then
-            echo -e "\r  ${GREEN}[OK] Installed  ${RESET}  ${_pip}              "
+            echo -e "\r    ${GREEN}✅  Installed  ${RESET}  ${_pip}              "
         else
             if [ "${_tag}" = "required" ]; then
-                echo -e "\r  ${RED}[X]  Failed (required)${RESET}  ${_pip}"
+                echo -e "\r    ${RED}❌  Failed (required)${RESET}  ${_pip}"
             else
-                echo -e "\r  ${YELLOW}[!!] Failed (optional)${RESET}  ${_pip} — skipping"
+                echo -e "\r    ${YELLOW}⚠   Failed (optional)${RESET}  ${_pip} — skipping"
             fi
         fi
     done
     echo ""
 fi
 
+# 최종 상태 표시
 echo -e "${DIM}  EXE Phase 0 status:${RESET}"
 for _entry in "${_exe_deps[@]}"; do
     _pip="${_entry%%:*}"
@@ -244,12 +278,12 @@ for _entry in "${_exe_deps[@]}"; do
     _mod="${_rest%%:*}"
     _tag="${_rest#*:}"
     if "$PY" -c "import ${_mod}" &>/dev/null 2>&1; then
-        echo -e "    ${GREEN}[OK]${RESET}  ${_pip}"
+        echo -e "    ${GREEN}✅${RESET}  ${_pip}"
     else
         if [ "${_tag}" = "required" ]; then
-            echo -e "    ${RED}[X] ${RESET}  ${_pip}  ${DIM}← pip install ${_pip}${RESET}"
+            echo -e "    ${RED}❌${RESET}  ${_pip}  ${DIM}← pip install ${_pip}${RESET}"
         else
-            echo -e "    ${YELLOW}[--]${RESET}  ${_pip}  ${DIM}(optional)${RESET}"
+            echo -e "    ${YELLOW}⚠ ${RESET}  ${_pip}  ${DIM}(optional)${RESET}"
         fi
     fi
 done
@@ -258,12 +292,13 @@ done
 echo ""
 echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
 echo -e "${CYAN}  Optional: Playwright (JS rendering)${RESET}"
+echo -e "${DIM}  Enables recon on JavaScript-heavy / SPA sites${RESET}"
 echo -e "${DIM}  Requires ~150MB Chromium download${RESET}"
 echo -e "${CYAN}  ══════════════════════════════════════${RESET}"
 echo ""
-
+# 이미 설치 여부 확인
 _pw_installed=false
-if "$PY" -c "import playwright" &>/dev/null 2>&1; then
+if python3 -c "import playwright" &>/dev/null 2>&1; then
     _pw_installed=true
 fi
 
@@ -273,12 +308,12 @@ else
     read -r -p "  Install Playwright? [y/N] " _pw_answer </dev/tty || _pw_answer=""
     if [[ "${_pw_answer,,}" == "y" ]]; then
         step "Installing Playwright"
-        if "$PY" -m pip install playwright -q; then
+        if python3 -m pip install playwright -q; then
             ok "playwright package installed"
         else
             warn "playwright pip install failed"
         fi
-        if "$PY" -m playwright install chromium; then
+        if python3 -m playwright install chromium; then
             ok "Chromium browser installed"
         else
             warn "chromium install failed"

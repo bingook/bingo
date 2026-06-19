@@ -10,7 +10,6 @@ $ErrorActionPreference = "Continue"
 
 function Step  { Write-Host "`n>> $args" -ForegroundColor Cyan }
 function OK    { Write-Host "  [OK] $args" -ForegroundColor Green }
-function SKIP  { Write-Host "  [--] $args" -ForegroundColor DarkGreen }
 function Warn  { Write-Host "  [!!] $args" -ForegroundColor Yellow }
 function Fail  { Write-Host "  [X]  $args" -ForegroundColor Red; Read-Host "Press Enter"; exit 1 }
 
@@ -77,48 +76,93 @@ if (Test-Path "$dest\pyproject.toml") {
     OK "Downloaded to $dest"
 }
 
-# ── 4. Python 의존성 설치 (패키지별 설치 여부 표시) ──────────────
-Step "Installing dependencies..."
+# ── 4+5. Python으로 직접 설치 (PowerShell pip 오류 완전 우회) ─────
+Step "Installing bingo and dependencies..."
 
-$allPkgs = @(
-    "rich", "prompt_toolkit", "httpx", "pydantic",
-    "requests", "urllib3", "beautifulsoup4", "lxml",
-    "chardet", "charset-normalizer", "fake-useragent",
-    "python-dotenv", "PyJWT", "cryptography", "dnspython",
-    "colorama", "tldextract", "html5lib", "cssselect",
-    "aiohttp", "certifi", "hatchling"
+# Python 스크립트로 pip 실행 — NativeCommandError 발생 안 함
+$installPy = @"
+import subprocess, sys, importlib
+
+# (pip_name, import_name)
+deps = [
+    ('rich',               'rich'),
+    ('prompt_toolkit',     'prompt_toolkit'),
+    ('httpx',              'httpx'),
+    ('pydantic',           'pydantic'),
+    ('requests',           'requests'),
+    ('urllib3',            'urllib3'),
+    ('beautifulsoup4',     'bs4'),
+    ('lxml',               'lxml'),
+    ('chardet',            'chardet'),
+    ('charset-normalizer', 'charset_normalizer'),
+    ('fake-useragent',     'fake_useragent'),
+    ('python-dotenv',      'dotenv'),
+    ('PyJWT',              'jwt'),
+    ('cryptography',       'cryptography'),
+    ('dnspython',          'dns'),
+    ('colorama',           'colorama'),
+    ('tldextract',         'tldextract'),
+    ('html5lib',           'html5lib'),
+    ('cssselect',          'cssselect'),
+    ('aiohttp',            'aiohttp'),
+    ('certifi',            'certifi'),
+    ('hatchling',          'hatchling'),
+]
+dest = r'$dest'
+
+installed = 0
+skipped   = 0
+
+for pip_name, imp_name in deps:
+    try:
+        importlib.import_module(imp_name)
+        import importlib.metadata as meta
+        try:
+            ver = meta.version(pip_name)
+        except Exception:
+            ver = '?'
+        print(f'  [--] already installed  {pip_name}  {ver}')
+        skipped += 1
+    except ImportError:
+        print(f'  [>>] installing         {pip_name} ...', end='', flush=True)
+        r = subprocess.run(
+            [sys.executable, '-m', 'pip', 'install', '-q', pip_name],
+            capture_output=True, text=True
+        )
+        if r.returncode == 0:
+            try:
+                import importlib.metadata as meta
+                ver = meta.version(pip_name)
+            except Exception:
+                ver = ''
+            print(f'\r  [OK] installed          {pip_name}  {ver}')
+            installed += 1
+        else:
+            print(f'\r  [!!] failed             {pip_name}')
+
+print()
+print(f'  Dependencies: {installed} installed / {skipped} already present')
+print()
+
+print('  bingo...', end='', flush=True)
+r = subprocess.run(
+    [sys.executable, '-m', 'pip', 'install', '-q', '-e', dest],
+    capture_output=True, text=True
 )
+if r.returncode != 0:
+    r = subprocess.run(
+        [sys.executable, '-m', 'pip', 'install', '-q', dest],
+        capture_output=True, text=True
+    )
+print(' OK' if r.returncode == 0 else ' (warn)')
+"@
 
-$pkgInstalled = 0
-$pkgSkipped   = 0
-
-foreach ($pkg in $allPkgs) {
-    $check = & $py -m pip show $pkg 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $ver = ($check | Select-String "^Version:") -replace "Version:\s*", ""
-        SKIP "already installed  $pkg  $ver"
-        $pkgSkipped++
-    } else {
-        Write-Host "  [>>] installing    $pkg ..." -ForegroundColor Yellow -NoNewline
-        $r = & $py -m pip install --quiet $pkg 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            $ver2 = (& $py -m pip show $pkg 2>&1 | Select-String "^Version:") -replace "Version:\s*", ""
-            Write-Host "`r  [OK] installed     $pkg  $ver2          " -ForegroundColor Green
-            $pkgInstalled++
-        } else {
-            Write-Host "`r  [!!] failed        $pkg               " -ForegroundColor Red
-        }
-    }
-}
-OK "Dependencies: $pkgInstalled installed / $pkgSkipped already present"
-
-# ── 5. bingo 설치 ─────────────────────────────────────────────────
-Step "Installing bingo..."
-$r = & $py -m pip install --quiet -e $dest 2>&1
-if ($LASTEXITCODE -ne 0) {
-    $r = & $py -m pip install --quiet $dest 2>&1
-}
-OK "bingo installed"
+# 임시 파일로 저장 후 실행
+$tmpPy = "$env:TEMP\bingo_install_deps.py"
+$installPy | Out-File -FilePath $tmpPy -Encoding UTF8
+& $py $tmpPy
+Remove-Item $tmpPy -Force -ErrorAction SilentlyContinue
+OK "Installation complete"
 
 # ── 6. PATH 등록 ──────────────────────────────────────────────────
 Step "Configuring PATH..."
@@ -133,17 +177,19 @@ try {
     } else { OK "PATH already set" }
 } catch { Warn "PATH config failed — run: python -m bingo" }
 
-# ── EXE Phase 0 deps ──────────────────────────────────────────────
+# ── EXE Phase 0 deps — Playwright 스타일 자동 설치 ───────────────
 Write-Host ""
 Write-Host "  ===========================================" -ForegroundColor Cyan
 Write-Host "  EXE Phase 0 — Windows PE Analysis Libs" -ForegroundColor Cyan
 Write-Host "  pefile · lief · yara-python · ssdeep · requests" -ForegroundColor DarkGray
+Write-Host "  Used for static analysis of EXE/DLL/SYS files" -ForegroundColor DarkGray
 Write-Host "  ===========================================" -ForegroundColor Cyan
 Write-Host ""
 
 $exePy = @"
 import subprocess, sys, importlib
 
+# (pip_name, import_name, required)
 EXE_DEPS = [
     ("pefile",      "pefile",   True),
     ("lief",        "lief",     False),
@@ -156,29 +202,41 @@ needs_install = []
 for pip_name, imp, req in EXE_DEPS:
     try:
         importlib.import_module(imp)
-        print(f'  [--] already installed  {pip_name}')
+        print(f'    OK  already installed  {pip_name}')
     except ImportError:
         tag = '(required)' if req else '(optional)'
-        print(f'  [>>] will install       {pip_name}  {tag}')
+        print(f'    --  will install       {pip_name}  {tag}')
         needs_install.append((pip_name, imp, req))
 
 if not needs_install:
     print()
-    print('  All EXE Phase 0 dependencies already installed!')
+    print('    All EXE Phase 0 dependencies already installed!')
     sys.exit(0)
 
 print()
 for pip_name, imp, req in needs_install:
-    print(f'  [>>] Installing {pip_name} ...', end='', flush=True)
+    print(f'    >> Installing {pip_name} ...', end='', flush=True)
     r = subprocess.run(
         [sys.executable, '-m', 'pip', 'install', '-q', pip_name],
         capture_output=True, text=True
     )
     if r.returncode == 0:
-        print(f'\r  [OK] Installed   {pip_name}              ')
+        print(f'\r    OK  Installed   {pip_name}              ')
     else:
-        label = 'FAILED (required)' if req else 'failed (optional)'
-        print(f'\r  [X]  {label}: {pip_name}')
+        if req:
+            print(f'\r    X   Failed (required): {pip_name}')
+        else:
+            print(f'\r    !   Failed (optional): {pip_name} -- skipping')
+
+print()
+print('  EXE Phase 0 status:')
+for pip_name, imp, req in EXE_DEPS:
+    try:
+        importlib.import_module(imp)
+        print(f'    [OK] {pip_name}')
+    except ImportError:
+        tag = 'MISSING (required)' if req else 'not installed (optional)'
+        print(f'    [--] {pip_name}  <- {tag}')
 "@
 
 $tmpExePy = "$env:TEMP\bingo_exe_deps.py"
@@ -191,6 +249,7 @@ OK "EXE Phase 0 dependency check complete"
 Write-Host ""
 Write-Host "  ===========================================" -ForegroundColor Cyan
 Write-Host "  Optional: Playwright (JS rendering recon)" -ForegroundColor Cyan
+Write-Host "  Enables recon on JavaScript-heavy / SPA sites" -ForegroundColor DarkGray
 Write-Host "  Requires ~150MB Chromium download" -ForegroundColor DarkGray
 Write-Host "  ===========================================" -ForegroundColor Cyan
 Write-Host ""

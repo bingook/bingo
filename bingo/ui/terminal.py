@@ -3121,6 +3121,14 @@ class BingoTerminal:
 
             fixed = _pre_re.sub(r"f'[^']*\{[^}]*'[^}]*\}[^']*'", _fix_fstring_subscript, fixed)
 
+            # ── 0-C. SQL SLEEP 과대값 캡 — SLEEP(N>5) → SLEEP(3) ──────────
+            # AI가 SLEEP(30) 같은 큰 값을 쓰면 요청당 30초 걸려 추출이 극도로 느려짐
+            fixed = _pre_re.sub(
+                r'\bSLEEP\s*\(\s*(\d+)\s*\)',
+                lambda _sm: "SLEEP(3)" if int(_sm.group(1)) > 5 else _sm.group(0),
+                fixed
+            )
+
             # ── 5. SyntaxError 체크 + 자동 수정 시도 ────────────────────────
             try:
                 compile(fixed, "<bingo_precheck>", "exec")
@@ -3138,21 +3146,59 @@ class BingoTerminal:
                         _lines[_line - 1] = bad_line.replace("\\'", "'").replace('\\"', '"')
                         fixed = "\n".join(_lines)
                         _fixed_se = True
-                    # 시도 2: dict subscript 따옴표 충돌
-                    elif _pre_re.search(r'f"[^"]*\{[^}]*"[^}]*\}', bad_line):
+                    # 시도 2: 이중따옴표 f-string 내부 이중따옴표 단일따옴표로 교체
+                    # f"...{data["key"]}..." → f"...{data['key']}..."
+                    elif _pre_re.search(r'f"[^"\\]*\{[^}]*"[^}]*\}', bad_line):
+                        def _fix_inner_dq(m2):
+                            return "{" + m2.group(1).replace('"', "'") + "}"
                         _lines[_line - 1] = _pre_re.sub(
-                            r'(f")([^"]*\{[^}]*)"([^}]*\})',
-                            lambda bm: bm.group(1) + bm.group(2) + "'" + bm.group(3),
-                            bad_line
+                            r'\{([^}]*"[^}]*)\}', _fix_inner_dq, bad_line
                         )
                         fixed = "\n".join(_lines)
                         _fixed_se = True
+                    # 시도 3: 단일따옴표 f-string 내부 단일따옴표 이중따옴표로 교체
+                    # f'...{data['key']}...' → f'...{data["key"]}...'
+                    elif _pre_re.search(r"f'[^'\\]*\{[^}]*'[^}]*\}", bad_line):
+                        def _fix_inner_sq(m3):
+                            return "{" + m3.group(1).replace("'", '"') + "}"
+                        _lines[_line - 1] = _pre_re.sub(
+                            r"\{([^}]*'[^}]*)\}", _fix_inner_sq, bad_line
+                        )
+                        fixed = "\n".join(_lines)
+                        _fixed_se = True
+                    # 시도 4: f-string 전체를 .format()으로 변환
+                    # f"... {expr} ..." → "... {} ...".format(expr)
+                    elif _pre_re.search(r'^(\s*)(.+?)\s*=\s*f(["\'])(.+)\3\s*$', bad_line):
+                        _fmatch = _pre_re.match(r'^(\s*)(.+?)\s*=\s*f(["\'])(.+)\3\s*$', bad_line)
+                        if _fmatch:
+                            _indent, _var, _q, _body = _fmatch.groups()
+                            # {expr} → {} 변환 + expr 목록 추출
+                            _exprs = _pre_re.findall(r'\{([^{}]+)\}', _body)
+                            _tmpl  = _pre_re.sub(r'\{[^{}]+\}', '{}', _body)
+                            if _exprs:
+                                _lines[_line - 1] = (
+                                    f'{_indent}{_var} = '
+                                    f'"{_tmpl}".format({", ".join(_exprs)})'
+                                )
+                                fixed = "\n".join(_lines)
+                                _fixed_se = True
                 if _fixed_se:
                     try:
                         compile(fixed, "<bingo_precheck2>", "exec")
                         return fixed
                     except SyntaxError:
                         pass
+
+                # ── 핵심 수정: injected 헬퍼 코드에 의한 오탐 방지 ────────────
+                # compile(fixed) 실패 시 원본 code도 확인:
+                # 원본이 OK → 문제는 주입된 헬퍼(smart_decode 등)에 있음 → 원본 그대로 실행
+                if fixed != code:
+                    try:
+                        compile(code, "<bingo_precheck_orig>", "exec")
+                        return None  # 원본 코드는 정상 — 주입 없이 실행
+                    except SyntaxError:
+                        pass  # 원본도 오류 → 아래서 진짜 SYNTAX_ERR 처리
+
                 # Python 3.12 호환 f-string 패턴은 경고만 (실행은 시도)
                 _is_py312_fstring = bool(_pre_re.search(
                     r'f["\'][^"\']*\{[^}]*["\'][^}]*\}', fixed
@@ -3198,10 +3244,21 @@ class BingoTerminal:
                 # Python 3.12 호환 f-string (실행은 시도, 조용한 안내만)
                 _checked = None
             elif _checked == "__SYNTAX_ERR__":
-                # 수정 불가 문법 오류 — 경고 출력 후 그래도 실행 시도
-                _checked = None
-                _sw_msg = t("syntax_precheck_warn", "⚠ [SYNTAX PRECHECK #{n}] SyntaxError detected — auto-fix failed.").replace("{n}", str(i + 1))
+                # 수정 불가 문법 오류 — 스크립트를 건너뛰고 AI에 에러 내용 통보
+                _sw_msg = t("syntax_precheck_warn", "⚠ [SYNTAX PRECHECK #{n}] SyntaxError detected — auto-fix failed. Check f-string backslash or dict subscript issues.").replace("{n}", str(i + 1))
                 self.console.print(f"[{THEME['warn']}]{_sw_msg}[/]")
+                # 스크립트 실행을 건너뛰고 AI가 즉시 수정하도록 피드백 주입
+                _se_feedback = (
+                    f"[SYNTAX_ERR SCRIPT #{i+1} SKIPPED]\n"
+                    f"Python syntax error detected in generated code — script was NOT executed.\n"
+                    f"Common causes: f-string with same-type quotes inside {{}} (Python <3.12), "
+                    f"backslash inside f-string expression, or unclosed brackets.\n"
+                    f"Fix: use temp variable to extract complex expressions out of f-strings, "
+                    f"e.g. _k='key'; f\"{{_k}}\" instead of f\"{{d['key']}}\".\n"
+                    f"Regenerate the code block with correct syntax."
+                )
+                _hallucination_msgs.append(_se_feedback)
+                continue  # 이 코드블록 실행 건너뜀
             elif _checked is None:
                 pass  # 코드 정상, 변경 없음 — 경고 없음
             elif _checked is not None and _checked != code:
@@ -3423,7 +3480,7 @@ class BingoTerminal:
                 _last_stripped = None
                 _killed_reason: str | None = None
                 _start_ts = __import__("time").time()
-                _SCRIPT_TIMEOUT = 300  # 스크립트당 최대 300초 (5분)
+                _SCRIPT_TIMEOUT = 180  # 스크립트당 최대 180초 (3분) — SLEEP(3) 캡 적용 시 충분
                 _MAX_CONSEC_DUP = 5    # 동일 줄 5회 연속 → 루프 감지
                 _MAX_CONSEC_SCAN = 25  # 스캔 결과 줄은 25회까지 허용 (XSS 반사 등)
                 # 합법적 반복이 발생하는 스캔 결과 prefix — 더 높은 임계값 적용

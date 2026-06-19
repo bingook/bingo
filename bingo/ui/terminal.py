@@ -3022,6 +3022,20 @@ class BingoTerminal:
                     if not _has_break and not _has_exit:
                         return "__BLOCKED__:INFINITE_LOOP_RISK: while True loop has no break/return/raise — will run forever"
 
+            # ── 0-E. "is not" / "is" 문자열 리터럴 비교 자동 수정 ──────────
+            # AI가 `result is not "blocked"` 처럼 is/is not 으로 문자열 비교 → SyntaxWarning + 오동작
+            # → `result != "blocked"` / `result == "blocked"` 으로 치환
+            fixed = _pre_re.sub(
+                r'\bis\s+not\s+(["\'][^"\']*["\'])',
+                lambda m: f"!= {m.group(1)}",
+                fixed
+            )
+            fixed = _pre_re.sub(
+                r'(?<![!=<>])\bis\s+(["\'][^"\']*["\'])',
+                lambda m: f"== {m.group(1)}",
+                fixed
+            )
+
             # ── 1. requests.get/post/put/delete — timeout 자동 주입 ─────────
             def _add_kwarg(call_str: str, kwarg: str) -> str:
                 """call_str의 닫는 괄호 앞에 kwarg 추가. 이미 있으면 그대로 반환."""
@@ -3128,6 +3142,26 @@ class BingoTerminal:
                 lambda _sm: "SLEEP(3)" if int(_sm.group(1)) > 5 else _sm.group(0),
                 fixed
             )
+
+            # ── 0-D. time.sleep(a, b) → time.sleep(random.uniform(a, b)) ──
+            # AI가 time.sleep(2.0, 3.5) 처럼 2개 인자를 전달하는 경우 자동 수정
+            # time.sleep() 은 인자가 1개만 허용됨 — TypeError 방지
+            def _fix_sleep_two_args(m: "_pre_re.Match") -> str:
+                a, b = m.group(1).strip(), m.group(2).strip()
+                return f"time.sleep(random.uniform({a}, {b}))"
+            fixed = _pre_re.sub(
+                r'\btime\.sleep\s*\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)',
+                _fix_sleep_two_args,
+                fixed
+            )
+            # random.uniform을 썼지만 import random 누락된 경우 자동 주입
+            if "random.uniform" in fixed and not _pre_re.search(r'\bimport\s+random\b', fixed):
+                _first_import_m = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
+                if _first_import_m:
+                    _fip2 = _first_import_m.start()
+                    fixed = fixed[:_fip2] + "import random\n" + fixed[_fip2:]
+                else:
+                    fixed = "import random\n" + fixed
 
             # ── 5. SyntaxError 체크 + 자동 수정 시도 ────────────────────────
             try:

@@ -1582,6 +1582,43 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   REASON: r.text uses detected encoding which defaults to ISO-8859-1 for many Korean ASP sites,
   causing ??? or garbage characters in output.
 
+  ── 26. Python Code Quality — Mandatory Rules to Prevent Runtime Errors ──
+
+  ▸ RULE 26-A: time.sleep() takes EXACTLY ONE argument.
+    WRONG:  time.sleep(2.0, 3.5)          ← TypeError!
+    CORRECT: time.sleep(random.uniform(2.0, 3.5))
+    Always pair with: import time, random
+
+  ▸ RULE 26-B: String comparison MUST use == or !=, NEVER "is" / "is not".
+    WRONG:  if result is not "blocked":   ← SyntaxWarning + always True (identity check)
+    CORRECT: if result != "blocked":
+    WRONG:  if status is "ok":
+    CORRECT: if status == "ok":
+
+  ▸ RULE 26-C: Dictionary keys MUST be English-only, consistent throughout the script.
+    WRONG:  results["布尔TRUE"] = ...   # stored in Chinese
+            diff = results["TRUE"]      # accessed in English → KeyError
+    CORRECT: Always use the same English key everywhere:
+             results["TRUE"] = ...
+             diff = results["TRUE"]
+    Rule: Define all dict keys as English constants at the top, never mix languages.
+
+  ▸ RULE 26-D: to_hex() is ONLY for SQL injection payload construction.
+    NEVER apply to_hex() to already-extracted database values (passwords, hashes, usernames).
+    WRONG:  passwd = extract_via_sqli(...)
+            print(f"passwd: {to_hex(passwd)}")  # outputs garbage hex — not the real hash
+    CORRECT: print(f"passwd: {passwd}")  # print the raw extracted value directly
+    Reason: Applying to_hex() to a hex hash like "6a6b73886e90c9f7" produces
+            "36613662..." which looks like an MD5 — causing wrong hash cracking attempts.
+
+  ▸ RULE 26-E: f-string expressions must NOT contain backslash escapes (Python < 3.12).
+    WRONG:  f"val={name.strip(\"'\")}"    ← SyntaxError
+    CORRECT: Strip complex expressions out to a temp variable first:
+             _stripped = name.strip("'")
+             f"val={_stripped}"
+    WRONG:  f"key={d['k']}"   (when outer f-string uses single quote)
+    CORRECT: _v = d['k']; f"key={_v}"
+
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>
 Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.

@@ -125,6 +125,9 @@ def detect_hash_type(h: str) -> HashInfo:
         return HashInfo(h, "sha512crypt", "sha512crypt", 1800)
     if re.match(r"^\*[0-9A-Fa-f]{40}$", h):
         return HashInfo(h, "mysql41", "mysql41", 300)
+    if re.match(r"^[0-9A-Fa-f]{16}$", h):
+        # MySQL OLD_PASSWORD() — 16-char hex (MySQL 3.x / 4.0 스타일)
+        return HashInfo(h, "mysql_old", "mysql_old_password", None)
     if re.match(r"^[0-9A-Fa-f]{32}$", h):
         # NTLM은 대문자, MD5는 소문자 경향
         if h == h.upper():
@@ -178,6 +181,50 @@ def _crack_mysql41(hash_info: HashInfo, wordlist_path: Path | None,
                                error=str(e), elapsed=time.time() - start)
 
     return CrackResult(hash_info.raw, "mysql41", False,
+                       method="exhausted", elapsed=time.time() - start)
+
+
+def _crack_mysql_old(hash_info: HashInfo, wordlist_path: Path | None,
+                     log: Callable[[str], None]) -> CrackResult:
+    """MySQL OLD_PASSWORD() — 16-char hash (MySQL 3.x / 4.0 알고리즘)"""
+    start = time.time()
+    target = hash_info.raw.lower()
+
+    def _mysql_old_hash(pwd: str) -> str:
+        # MySQL 3.x OLD_PASSWORD 알고리즘
+        nr, nr2, add = 1345345333, 305419889, 7
+        for c in pwd:
+            if c == " " or c == "\t":
+                continue
+            tmp = ord(c)
+            nr ^= (((nr & 63) + add) * tmp) + ((nr << 8) & 0xFFFFFFFF)
+            nr2 += ((nr2 << 8) & 0xFFFFFFFF) ^ nr
+            add += tmp
+        r1 = nr & 0x7FFFFFFF
+        r2 = nr2 & 0x7FFFFFFF
+        return f"{r1:08x}{r2:08x}"
+
+    for pwd in _BUILTIN_PASSWORDS:
+        if _mysql_old_hash(pwd) == target:
+            return CrackResult(hash_info.raw, "mysql_old", True,
+                               pwd, "builtin_list", time.time() - start)
+
+    if wordlist_path:
+        log(f"  [crack] Loading wordlist for mysql_old: {wordlist_path} ...")
+        try:
+            with open(wordlist_path, "r", encoding="latin-1", errors="ignore") as f:
+                for i, line in enumerate(f):
+                    pwd = line.rstrip("\n")
+                    if _mysql_old_hash(pwd) == target:
+                        return CrackResult(hash_info.raw, "mysql_old", True,
+                                           pwd, "wordlist", time.time() - start)
+                    if i % 500_000 == 0 and i > 0:
+                        log(f"  [crack] mysql_old {i:,} tried...")
+        except Exception as e:
+            return CrackResult(hash_info.raw, "mysql_old", False,
+                               error=str(e), elapsed=time.time() - start)
+
+    return CrackResult(hash_info.raw, "mysql_old", False,
                        method="exhausted", elapsed=time.time() - start)
 
 
@@ -353,6 +400,8 @@ class HashCracker:
             return _crack_bcrypt(info, self.wordlist, self.log)
         elif info.hash_type == "mysql41":
             return _crack_mysql41(info, self.wordlist, self.log)
+        elif info.hash_type == "mysql_old":
+            return _crack_mysql_old(info, self.wordlist, self.log)
         elif info.hash_type in ("md5", "sha1", "sha256", "sha512", "ntlm", "md5crypt"):
             return _crack_simple(info, self.wordlist, self.log)
         else:
@@ -490,10 +539,17 @@ def extract_hashes_from_text(text: str, strict: bool = True) -> list[str]:
         r"(?<![0-9a-fA-F])[0-9a-f]{64}(?![0-9a-fA-F])",    # SHA-256
         r"(?<![0-9a-fA-F])[0-9a-f]{40}(?![0-9a-fA-F])",    # SHA-1
         r"(?<![0-9a-fA-F])[0-9a-fA-F]{32}(?![0-9a-fA-F])", # MD5 / NTLM
+        # MySQL OLD_PASSWORD(): 16-char hex (컨텍스트 기반 — passwd= 앞뒤 등)
+        r"(?<![0-9a-fA-F])[0-9a-fA-F]{16}(?![0-9a-fA-F])", # OLD_PASSWORD (idx 8)
     ]
 
     # $2y$…, $1$…, $6$…, *MySQL 패턴은 구조가 뚜렷해서 컨텍스트 필터 불필요
     _STRUCTURED_PATTERNS = {0, 1, 2, 3}
+
+    # OLD_PASSWORD 16-char: 컨텍스트 키워드 필요 (오탐 방지)
+    _OLD_PW_CONTEXT_RE = re.compile(
+        r'(?:old_password|passwd|password|hash|pwd|pw)\s*[:=]', re.IGNORECASE
+    )
 
     found = []
     for idx, pat in enumerate(patterns):
@@ -501,6 +557,14 @@ def extract_hashes_from_text(text: str, strict: bool = True) -> list[str]:
             candidate = m.group(0).strip("| \t\n")
             if not candidate:
                 continue
+
+            # OLD_PASSWORD 16-char(idx 8): passwd=/hash= 같은 컨텍스트 키워드 필수
+            if idx == 8:
+                ctx_start = max(0, m.start() - 60)
+                ctx_end   = min(len(text), m.end() + 20)
+                context_window = text[ctx_start:ctx_end]
+                if not _OLD_PW_CONTEXT_RE.search(context_window):
+                    continue  # 컨텍스트 없으면 오탐 — 건너뜀
 
             # 구조적 패턴(bcrypt/mysql 등)은 필터 건너뜀
             if strict and idx not in _STRUCTURED_PATTERNS:

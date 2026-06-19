@@ -726,12 +726,12 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
     _xff_idx = [0]   # 현재 사용 중인 헤더 인덱스
 
     def _is_ip_banned(exc_or_resp):
-        """예외 메시지 또는 응답 텍스트에서 차단 신호 탐지"""
+        # 예외 메시지 또는 응답 텍스트에서 차단 신호 탐지
         text = str(exc_or_resp).lower()
         return any(sig in text for sig in IP_BAN_SIGNALS)
 
     def _next_xff_headers():
-        """다음 X-Forwarded-For 헤더 반환 (순환)"""
+        # 다음 X-Forwarded-For 헤더 반환 (순환)
         h = XFF_POOL[_xff_idx[0] % len(XFF_POOL)]
         _xff_idx[0] += 1
         return h
@@ -743,12 +743,10 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
     _current_extra_headers = [{}]   # 현재 적용 중인 우회 헤더
 
     def _safe_request(method, url, **kwargs):
-        """
-        IP 차단 자동 감지 + 헤더 로테이션 래퍼
-        - 정상 응답: 그대로 반환
-        - 차단 감지: XFF 헤더 교체 후 재시도 (최대 len(XFF_POOL)회)
-        - 모든 헤더 소진 시: None 반환 → 호출부에서 처리
-        """
+        # IP 차단 자동 감지 + 헤더 로테이션 래퍼
+        # - 정상 응답: 그대로 반환
+        # - 차단 감지: XFF 헤더 교체 후 재시도 (최대 len(XFF_POOL)회)
+        # - 모든 헤더 소진 시: None 반환 -> 호출부에서 처리
         import time as _time
         headers = {**BASE_HEADERS, **_current_extra_headers[0]}
         kwargs.setdefault("timeout", 30)

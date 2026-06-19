@@ -2931,8 +2931,9 @@ class BingoTerminal:
             return None
 
         # ── 코드 사전 검증 헬퍼 (SyntaxError / NameError 예방) ──────────
-        def _precheck_python_code(code: str) -> str | None:
+        def _precheck_python_code(code: str) -> "tuple[str | None, list[str]]":
             """실행 전 Python 코드의 명백한 구문 오류 + 무한루프 패턴 감지 + 타임아웃 자동 주입.
+            반환: (결과코드 or None or '__BLOCKED__:...' or '__SYNTAX_ERR__', 적용된 수정 이름 리스트)
             문제 없으면 None, 수정/주입 시 수정된 코드, 차단 시 '__BLOCKED__:reason' 반환."""
             import re as _pre_re
 
@@ -3008,7 +3009,7 @@ class BingoTerminal:
                 not _pre_re.search(r'\bname\s*>\s*0x', fixed, _pre_re.IGNORECASE)
             )
             if _has_range_loop and _has_query and _has_top1_no_cursor and not _has_seen:
-                return "__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever"
+                return ("__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever", [])
 
             # ── 0-B. 무한루프: while True + break 없음 ─────────────────────
             if _pre_re.search(r'\bwhile\s+True\s*:', fixed):
@@ -3020,11 +3021,15 @@ class BingoTerminal:
                     _has_break = bool(_pre_re.search(r'\bbreak\b', _after))
                     _has_exit = bool(_pre_re.search(r'\b(sys\.exit|raise\s+\w+Error|return)\b', _after))
                     if not _has_break and not _has_exit:
-                        return "__BLOCKED__:INFINITE_LOOP_RISK: while True loop has no break/return/raise — will run forever"
+                        return ("__BLOCKED__:INFINITE_LOOP_RISK: while True loop has no break/return/raise — will run forever", [])
+
+            # ── fix 추적 리스트 (어떤 수정이 적용됐는지 메시지에 표시) ────────
+            _applied_fix_names: list[str] = []
 
             # ── 0-E. "is not" / "is" 문자열 리터럴 비교 자동 수정 ──────────
             # AI가 `result is not "blocked"` 처럼 is/is not 으로 문자열 비교 → SyntaxWarning + 오동작
             # → `result != "blocked"` / `result == "blocked"` 으로 치환
+            _before_0e = fixed
             fixed = _pre_re.sub(
                 r'\bis\s+not\s+(["\'][^"\']*["\'])',
                 lambda m: f"!= {m.group(1)}",
@@ -3035,6 +3040,8 @@ class BingoTerminal:
                 lambda m: f"== {m.group(1)}",
                 fixed
             )
+            if fixed != _before_0e:
+                _applied_fix_names.append("is/is not → ==/!=")
 
             # ── 1. requests.get/post/put/delete — timeout 자동 주입 ─────────
             def _add_kwarg(call_str: str, kwarg: str) -> str:
@@ -3058,13 +3065,17 @@ class BingoTerminal:
                 r'[^)]*'
                 r'\)'
             )
+            _before_1 = fixed
             fixed = _pre_re.sub(_req_pattern, _inject_requests_timeout, fixed)
+            if fixed != _before_1:
+                _applied_fix_names.append("requests timeout=30 주입")
 
             # ── 2. pymssql/pyodbc.connect — timeout 주입 ────────────────────
             def _inject_db_timeout(m: "_pre_re.Match") -> str:
                 return _add_kwarg(m.group(0), "login_timeout=10, timeout=10"
                                   ) if "login_timeout" not in m.group(0) else m.group(0)
             # pymssql/pyodbc 단순 connect 패턴
+            _before_2 = fixed
             fixed = _pre_re.sub(r'pymssql\.connect\s*\([^)]*\)', _inject_db_timeout, fixed)
             fixed = _pre_re.sub(r'pyodbc\.connect\s*\([^)]*\)', _inject_db_timeout, fixed)
 
@@ -3076,9 +3087,12 @@ class BingoTerminal:
                 r'pyodbc\.connect\s*\([^)]*\)',
                 _inject_db_timeout, fixed
             )
+            if fixed != _before_2:
+                _applied_fix_names.append("DB connect timeout 주입")
 
             # ── 3. socket — settimeout 주입 ──────────────────────────────────
             # socket.connect() 전에 settimeout이 없으면 주입
+            _before_3 = fixed
             if _pre_re.search(r'socket\.connect\s*\(', fixed):
                 if not _pre_re.search(r'socket\.settimeout\s*\(', fixed):
                     # import socket 다음 줄에 settimeout 추가
@@ -3087,6 +3101,8 @@ class BingoTerminal:
                         r'\1socket.setdefaulttimeout(10)\n',
                         fixed, count=1
                     )
+            if fixed != _before_3:
+                _applied_fix_names.append("socket.settimeout(10) 주입")
 
             # ── 4. URL 연소 버그 감지 및 수정 ────────────────────────────────
             # 패턴: some_var + "https://..." → 완전한 URL을 잘못 이어붙임
@@ -3097,6 +3113,7 @@ class BingoTerminal:
                 return m.group(2)  # 완전한 URL 부분만 반환
 
             # url/base/host/domain 변수에 https:// 가 붙는 경우 수정
+            _before_4 = fixed
             fixed = _pre_re.sub(
                 r'\b(\w*(?:url|base|host|domain|site|target)\w*)\s*\+\s*'
                 r'(f?["\']https?://[^"\']{4,}["\'])',
@@ -3112,6 +3129,8 @@ class BingoTerminal:
                 fixed,
                 flags=_pre_re.IGNORECASE
             )
+            if fixed != _before_4:
+                _applied_fix_names.append("URL 연소 버그 수정")
 
             # ── 4-B. f-string dict subscript 자동 수정 ───────────────────────
             # Python 3.10/3.11: f"...{d['key']}..." → SyntaxError
@@ -3133,15 +3152,21 @@ class BingoTerminal:
                     return result
                 return fstr
 
+            _before_4b = fixed
             fixed = _pre_re.sub(r"f'[^']*\{[^}]*'[^}]*\}[^']*'", _fix_fstring_subscript, fixed)
+            if fixed != _before_4b:
+                _applied_fix_names.append("f-string 따옴표 충돌 수정")
 
             # ── 0-C. SQL SLEEP 과대값 캡 — SLEEP(N>5) → SLEEP(3) ──────────
             # AI가 SLEEP(30) 같은 큰 값을 쓰면 요청당 30초 걸려 추출이 극도로 느려짐
+            _before_0c = fixed
             fixed = _pre_re.sub(
                 r'\bSLEEP\s*\(\s*(\d+)\s*\)',
                 lambda _sm: "SLEEP(3)" if int(_sm.group(1)) > 5 else _sm.group(0),
                 fixed
             )
+            if fixed != _before_0c:
+                _applied_fix_names.append("SQL SLEEP 과대값 캡(→3s)")
 
             # ── 0-D. time.sleep(a, b) → time.sleep(random.uniform(a, b)) ──
             # AI가 time.sleep(2.0, 3.5) 처럼 2개 인자를 전달하는 경우 자동 수정
@@ -3149,11 +3174,14 @@ class BingoTerminal:
             def _fix_sleep_two_args(m: "_pre_re.Match") -> str:
                 a, b = m.group(1).strip(), m.group(2).strip()
                 return f"time.sleep(random.uniform({a}, {b}))"
+            _before_0d = fixed
             fixed = _pre_re.sub(
                 r'\btime\.sleep\s*\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)',
                 _fix_sleep_two_args,
                 fixed
             )
+            if fixed != _before_0d:
+                _applied_fix_names.append("time.sleep(a,b) → random.uniform")
             # random.uniform을 썼지만 import random 누락된 경우 자동 주입
             if "random.uniform" in fixed and not _pre_re.search(r'\bimport\s+random\b', fixed):
                 _first_import_m = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
@@ -3167,7 +3195,7 @@ class BingoTerminal:
             try:
                 compile(fixed, "<bingo_precheck>", "exec")
                 # 코드가 수정된 경우 수정본 반환, 아니면 None(변경없음 = 정상)
-                return fixed if fixed != code else None
+                return (fixed if fixed != code else None), _applied_fix_names
             except SyntaxError as _se:
                 _line = _se.lineno or 0
                 _lines = fixed.splitlines()
@@ -3219,7 +3247,8 @@ class BingoTerminal:
                 if _fixed_se:
                     try:
                         compile(fixed, "<bingo_precheck2>", "exec")
-                        return fixed
+                        _applied_fix_names.append("f-string SyntaxError 복구")
+                        return fixed, _applied_fix_names
                     except SyntaxError:
                         pass
 
@@ -3229,7 +3258,7 @@ class BingoTerminal:
                 if fixed != code:
                     try:
                         compile(code, "<bingo_precheck_orig>", "exec")
-                        return None  # 원본 코드는 정상 — 주입 없이 실행
+                        return None, _applied_fix_names  # 원본 코드는 정상 — 주입 없이 실행
                     except SyntaxError:
                         pass  # 원본도 오류 → 아래서 진짜 SYNTAX_ERR 처리
 
@@ -3238,7 +3267,7 @@ class BingoTerminal:
                     r'f["\'][^"\']*\{[^}]*["\'][^}]*\}', fixed
                 ))
                 # "__SYNTAX_ERR__" = 수정 불가 문법 오류 (None 과 다름: None = 정상)
-                return "__WARN_SYNTAX__" if _is_py312_fstring else "__SYNTAX_ERR__"
+                return ("__WARN_SYNTAX__" if _is_py312_fstring else "__SYNTAX_ERR__"), _applied_fix_names
 
         python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
         _hallucination_msgs: list[str] = []
@@ -3257,7 +3286,7 @@ class BingoTerminal:
                 continue
 
             # 구문 사전 검증 + 무한루프 패턴 차단
-            _checked = _precheck_python_code(code)
+            _checked, _applied_fix_names = _precheck_python_code(code)
             # urllib.parse 자동 주입 감지
             if isinstance(_checked, str) and _checked.startswith("__URLLIB_INJECTED__\n"):
                 _checked = _checked[len("__URLLIB_INJECTED__\n"):]
@@ -3310,7 +3339,13 @@ class BingoTerminal:
                     )) else None) and
                     code.count("https://") != _checked.count("https://")
                 )[-1]
-                if _timeout_injected:
+                # _applied_fix_names 에 수집된 수정 항목을 구체적으로 출력
+                if _applied_fix_names:
+                    _fix_detail = ", ".join(_applied_fix_names)
+                    self.console.print(
+                        f"[{THEME['secondary']}]🔧 [AUTO-FIX] {_fix_detail}[/]"
+                    )
+                elif _timeout_injected:
                     _to_msg = t("requests_timeout_injected",
                                 "⚠️  Auto-injected timeout=30 into requests calls (prevents server hang)")
                     self.console.print(f"[{THEME['warn']}]{_to_msg}[/]")
@@ -3318,10 +3353,6 @@ class BingoTerminal:
                     _uf_msg = t("url_concat_fixed",
                                 "🔧  URL concat bug auto-fixed: base_url + 'https://...' → using full URL only")
                     self.console.print(f"[{THEME['warn']}]{_uf_msg}[/]")
-                else:
-                    self.console.print(
-                        f"[{THEME['secondary']}]🔧 [SYNTAX AUTO-FIX #{i+1}] Applied.[/]"
-                    )
                 code = _checked
 
             tools_header = (

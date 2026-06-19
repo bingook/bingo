@@ -3104,6 +3104,18 @@ class BingoTerminal:
             if fixed != _before_3:
                 _applied_fix_names.append("socket.settimeout(10) 주입")
 
+            # ── 3-B. urljoin() timeout 인자 제거 ────────────────────────────
+            # urllib.parse.urljoin(base, url)는 timeout= 인자를 받지 않음
+            # AI가 urljoin(base, path, timeout=30) 처럼 잘못 생성하는 패턴 수정
+            _before_3b = fixed
+            fixed = _pre_re.sub(
+                r'\burljoin\s*\(([^)]+?),\s*timeout\s*=\s*[\d.]+\s*\)',
+                lambda m3b: "urljoin(" + m3b.group(1).rstrip(",").rstrip() + ")",
+                fixed,
+            )
+            if fixed != _before_3b:
+                _applied_fix_names.append("urljoin timeout 인자 제거")
+
             # ── 4. URL 연소 버그 감지 및 수정 ────────────────────────────────
             # 패턴: some_var + "https://..." → 완전한 URL을 잘못 이어붙임
             # 예: base_url + "https://www.kar.or.kr/login.asp"

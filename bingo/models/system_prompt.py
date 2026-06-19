@@ -1619,6 +1619,67 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     WRONG:  f"key={d['k']}"   (when outer f-string uses single quote)
     CORRECT: _v = d['k']; f"key={_v}"
 
+  ▸ RULE 26-F: urllib.parse.urljoin() accepts EXACTLY TWO positional arguments.
+    SIGNATURE: urljoin(base, url)  — NO timeout, NO extra kwargs.
+    WRONG:  urljoin(base_url, '/robots.txt', timeout=30)  ← TypeError!
+    CORRECT: urljoin(base_url, '/robots.txt')
+    RULE: timeout= belongs ONLY in requests.get() / requests.post() calls.
+    If you need timeout on a request: requests.get(urljoin(base, path), timeout=10)
+
+  ── 27. SQLi Extraction & Oracle Quality ──
+
+  ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.
+    MySQL error-based injection places extracted data inside the error message:
+      XPATH syntax error: '~<DATA>'
+    To extract the data, search the response HTML for exactly:
+      r"XPATH syntax error: '~([^']+)'"     (Python regex)
+    If this pattern is NOT found in the response body, the server has PHP error
+    display disabled — the injection ran but the error is invisible.
+    In that case: report "ERROR SUPPRESSED — error-based injection not viable",
+    switch to time-based or blind injection immediately.
+    NEVER report generic HTML differences, JavaScript library versions, or jQuery
+    version strings (e.g. "1.11.3") as "extracted values" from EXTRACTVALUE.
+    The extracted value MUST come from the MySQL error message pattern above.
+
+  ▸ RULE 27-B: Version/DB/User extraction regex — never use r'\d+\.\d+\.\d+' on full HTML.
+    The pattern r'\d+\.\d+\.\d+' matches JavaScript library versions (jQuery 1.11.3,
+    Bootstrap 3.3.7, etc.) appearing in <script src="..."> or comment blocks.
+    WRONG:  version = re.findall(r'\d+\.\d+\.\d+', response.text)  # picks up jQuery!
+    CORRECT: Only apply version regex AFTER confirming the MySQL error pattern exists:
+             m = re.search(r"XPATH syntax error: '~([^']+)'", response.text)
+             if m:
+                 extracted = m.group(1)  # this is the real MySQL data
+    If the MySQL error format is not found, report it as suppressed and move on.
+
+  ▸ RULE 27-C: Boolean oracle MUST be stable — validate before using.
+    A boolean oracle is only valid if the same condition produces the same result
+    on REPEATED identical requests. Dynamic page elements like view counters,
+    read counts, timestamps, session tokens, or random nonces INVALIDATE the oracle.
+    MANDATORY VALIDATION PROCEDURE:
+      Step 1 — Send the base request (no injection) 3 times.
+               If any of {size, specific content} differs between runs → page is dynamic.
+      Step 2 — Identify the CAUSE of dynamism (e.g., 조회수 counter in HTML).
+      Step 3 — Build an oracle that EXCLUDES the dynamic element:
+               Option A: Strip the dynamic section before comparing (regex replace counter).
+               Option B: Compare only a STATIC portion of the page (e.g., article title only).
+               Option C: Use EXIST/NOT-EXIST of specific static content as the oracle.
+      Step 4 — Re-validate the stripped/static oracle with AND 1=1 vs AND 1=2.
+               Only proceed to extraction when oracle gives consistent TRUE/FALSE.
+    NEVER continue binary search extraction when VERSION()[1] = (ASCII 32) or
+    DATABASE() returns empty — these indicate a broken oracle, not real data.
+    When oracle is broken, stop and report it, then try a different approach.
+
+  ▸ RULE 27-D: Admin / login page detection — strict criteria only.
+    Only label a page as an admin page when it meets AT LEAST ONE of:
+      • URL contains: /admin/, /manager/, /adm/, /manage/, /wp-admin/, /backend/
+      • Page contains a login form with id/password fields AND the page is NOT the
+        main site login (i.e., it is a separate admin login page)
+      • HTTP 401/403 response with WWW-Authenticate header (HTTP Basic Auth)
+      • Page title explicitly contains: 관리자, 관리, 어드민, admin panel, manager
+    Public board, notice, or information pages (e.g., /home/notice/, /home/edu/,
+    /home/law/) are NOT admin pages even if they contain forms or are large.
+    Do NOT label a page as admin just because it is accessible or large.
+
 === SKILL SYSTEM ===
 You have 348 skills available. Load with: SKILL_LOAD: <name>
 Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.

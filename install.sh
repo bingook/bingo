@@ -77,11 +77,13 @@ check_pip() {
 install_deps() {
     step "Installing dependencies..."
 
-    # Python 스크립트로 실행 — 이미 설치된 항목 표시 포함
-    "$PY" - << 'PYEOF'
-import subprocess, sys, importlib, importlib.metadata as meta
+    # 임시 파일로 저장 후 실행 — heredoc + set -e 충돌 방지
+    local _tmp_py
+    _tmp_py="$(mktemp /tmp/bingo_deps_XXXXXX.py)"
 
-# (pip_name, import_name)
+    cat > "$_tmp_py" << 'PYEOF'
+import subprocess, sys, importlib
+
 deps = [
     ('rich',               'rich'),
     ('prompt_toolkit',     'prompt_toolkit'),
@@ -107,16 +109,21 @@ deps = [
     ('hatchling',          'hatchling'),
 ]
 
+try:
+    import importlib.metadata as _meta
+    def _ver(name):
+        try:    return _meta.version(name)
+        except: return '?'
+except ImportError:
+    def _ver(name): return '?'
+
 installed = 0
 skipped   = 0
 
 for pip_name, imp_name in deps:
     try:
         importlib.import_module(imp_name)
-        try:
-            ver = meta.version(pip_name)
-        except Exception:
-            ver = '?'
+        ver = _ver(pip_name)
         print(f'  \033[2m[--] already installed  {pip_name:<30} {ver}\033[0m')
         skipped += 1
     except ImportError:
@@ -126,10 +133,7 @@ for pip_name, imp_name in deps:
             capture_output=True, text=True
         )
         if r.returncode == 0:
-            try:
-                ver = meta.version(pip_name)
-            except Exception:
-                ver = ''
+            ver = _ver(pip_name)
             print(f'\r  \033[32m[OK] installed          {pip_name:<30} {ver}\033[0m')
             installed += 1
         else:
@@ -139,6 +143,8 @@ print()
 print(f'  Dependencies: {installed} installed / {skipped} already present')
 PYEOF
 
+    "$PY" "$_tmp_py"
+    rm -f "$_tmp_py"
     ok "Dependencies done"
 }
 

@@ -1327,6 +1327,163 @@ AI AUTO-SELECT DECISION TREE (v3.0.0):
   첫 10 요청 내 IP 차단 → 즉시 Pillar 1 (SLOW-SCAN) 전환
   JS에서 시크릿 발견    → 즉시 CRITICAL 보고 + 인증 시도
 
+=== v3.1.7 NETWORK VULN — AI AUTO-SELECT (PILLAR 6/7/8) ===
+
+╔══════════════════════════════════════════════════════════════════════╗
+║  Claude 터미널 분석에서 bingo가 놓친 취약점 3가지를 자동 탐지한다.  ║
+║  서버 핑거프린팅 직후 아래 3가지 검사를 병렬 실행한다.             ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+────────────────────────────────────────────────────────────────────────
+[PILLAR 6 — GHOSTCAT AJP SCANNER (CVE-2020-1938)]
+────────────────────────────────────────────────────────────────────────
+TRIGGER (자동):
+  • Server 헤더에 "Tomcat", "mod_jk", "Apache-Coyote" 포함
+  • robots.txt / 404 에러 페이지에 "Tomcat" 버전 노출
+  • 포트 스캔에서 8009 포트 감지
+  • URL 경로에 /WEB-INF/, /META-INF/, JSP 파일 존재
+
+EXECUTION:
+  from bingo.tools.ghostcat_scanner import scan_ghostcat, ghostcat_report
+  r = scan_ghostcat(TARGET)
+  print(ghostcat_report(r))
+
+AUTO-FLOW:
+  1. TCP connect → 8009 포트 열림 확인
+  2. AJPv13 CPing → CPong 응답으로 서비스 활성 검증
+  3. WEB-INF/web.xml 파일 읽기 시도 (Forward Request)
+  4. /server-info, /server-status, /manager/html 노출 확인
+  5. CRITICAL 발견 시 → 즉시 보고 + WEB-INF 내 credentials 추출 시도
+
+SEVERITY 매핑:
+  AJP port open only        → HIGH
+  CPong confirmed           → CRITICAL
+  WEB-INF/web.xml 읽기 성공 → CRITICAL (RCE 가능성 명시)
+  /manager 노출             → HIGH
+
+STATUS OUTPUT (다국어 키 사용):
+  ko: "🦈 AJP 포트 {port} 열림 감지 — Ghostcat CVE-2020-1938 검증 중..."
+  zh: "🦈 检测到AJP端口 {port} — 验证Ghostcat CVE-2020-1938..."
+  en: "🦈 AJP port {port} open — verifying Ghostcat CVE-2020-1938..."
+
+────────────────────────────────────────────────────────────────────────
+[PILLAR 7 — SSL DEEP SCAN + HEARTBLEED (CVE-2014-0160)]
+────────────────────────────────────────────────────────────────────────
+TRIGGER (자동):
+  • HTTPS 서비스인 경우 항상 실행 (모든 타겟)
+  • Server 헤더에 "OpenSSL/1.0.1" 계열 감지 → Heartbleed 즉시 시도
+  • TLS 협상 시 구버전 프로토콜 수락 감지
+
+EXECUTION:
+  from bingo.tools.ssl_deep_scanner import scan_ssl_deep, ssl_report
+  r = scan_ssl_deep(TARGET)
+  print(ssl_report(r))
+
+AUTO-FLOW:
+  1. HTTPS 확인 + OpenSSL 버전 추출 (Server 헤더)
+  2. SSL 인증서 정보 (만료일, CN, 발급기관)
+  3. 약한 프로토콜 수락 여부 (TLS 1.0, TLS 1.1)
+  4. HSTS 헤더 미설정 탐지
+  5. Heartbleed PoC: malformed heartbeat 패킷 전송 → 메모리 누수 확인
+  6. CRITICAL 발견 시 → 누출 데이터 샘플 보고
+
+SEVERITY 매핑:
+  HSTS missing              → MEDIUM
+  TLS 1.0/1.1 지원          → HIGH
+  인증서 만료               → HIGH
+  OpenSSL 1.0.1 계열        → HIGH (취약 버전)
+  Heartbleed 메모리 누출     → CRITICAL
+
+IMPORTANT:
+  OpenSSL 버전이 다음에 해당하면 Heartbleed 자동 시도:
+    1.0.1a ~ 1.0.1f  → 무조건 CRITICAL 시도
+    1.0.2 미만        → CRITICAL 시도
+    기타 HTTPS 타겟   → 기본 시도 (결과 없으면 INFO)
+
+STATUS OUTPUT (다국어 키 사용):
+  ko: "🔐 SSL/TLS 심층 분석 시작 — Heartbleed 검증 포함..."
+  zh: "🔐 开始深度SSL/TLS分析 — 包括Heartbleed验证..."
+  en: "🔐 Deep SSL/TLS scan started — Heartbleed check included..."
+
+────────────────────────────────────────────────────────────────────────
+[PILLAR 8 — CSRF DEEP SCANNER v2]
+────────────────────────────────────────────────────────────────────────
+TRIGGER (자동):
+  • 모든 타겟에 기본 실행 (POST 폼 발견 즉시)
+  • 로그인/회원가입/비밀번호 변경/결제 폼 포함 페이지
+  • API 엔드포인트에서 상태 변경 메서드(POST/PUT/DELETE) 사용 시
+
+EXECUTION:
+  from bingo.tools.csrf_scanner import scan_csrf, csrf_report
+  r = scan_csrf(TARGET)
+  print(csrf_report(r))
+
+AUTO-FLOW:
+  1. 메인 페이지 + 내부 링크 크롤 → POST 폼 발견
+  2. CSRF 토큰 유무 + 강도 분석 (엔트로피, 길이, 패턴)
+  3. Referer/Origin 헤더 제거/위조 POST → 200 응답 여부
+  4. text/plain Content-Type으로 JSON CSRF 시도
+  5. SameSite 쿠키 속성 미설정 감지
+  6. CORS + Access-Control-Allow-Credentials: true 조합 감지
+  7. 관리자/결제/비밀번호변경 API 무토큰 POST 허용 여부
+
+SEVERITY 매핑:
+  토큰 없는 POST 폼 (단순)           → HIGH
+  Referer/Origin 우회 성공           → CRITICAL
+  CORS + credentials = true          → CRITICAL
+  SameSite 미설정 (세션 쿠키)        → MEDIUM
+  민감 API 무토큰 허용               → HIGH
+  약한 CSRF 토큰 (짧음/예측가능)     → MEDIUM
+
+CRITICAL RULE:
+  단순히 토큰이 없다고 CRITICAL 보고 금지.
+  실제 Referer/Origin 우회가 성공해야 CRITICAL 승격.
+
+STATUS OUTPUT (다국어 키 사용):
+  ko: "🛡️ CSRF 심층 분석 시작 — 토큰/Origin/CORS/SameSite 전체 검증..."
+  zh: "🛡️ 开始深度CSRF分析 — 验证Token/Origin/CORS/SameSite..."
+  en: "🛡️ Deep CSRF scan — Token/Origin/CORS/SameSite verification..."
+
+────────────────────────────────────────────────────────────────────────
+[PILLAR 6/7/8 AI 통합 실행 순서]
+────────────────────────────────────────────────────────────────────────
+
+PHASE 0 — 핑거프린팅 단계에서 동시 감지:
+  → Tomcat 감지 → Pillar 6 (Ghostcat) 즉시 추가
+  → HTTPS 확인  → Pillar 7 (SSL Deep) 즉시 추가
+  → 폼 발견     → Pillar 8 (CSRF Deep) 즉시 추가
+
+병렬 실행 (asyncio 사용 권장):
+  import asyncio
+  from bingo.tools.ghostcat_scanner import scan_ghostcat
+  from bingo.tools.ssl_deep_scanner  import scan_ssl_deep
+  from bingo.tools.csrf_scanner      import scan_csrf
+
+  # 기존 SQL/IDOR 스캔과 동시에 실행
+  loop.run_until_complete(asyncio.gather(
+      asyncio.to_thread(scan_ghostcat, TARGET),
+      asyncio.to_thread(scan_ssl_deep, TARGET),
+      asyncio.to_thread(scan_csrf, TARGET),
+  ))
+
+결과 우선순위:
+  CRITICAL 발견 → 즉시 상단 보고 (SQL 결과보다 먼저)
+  HIGH 발견     → 취약점 목록 상단 배치
+  MEDIUM/LOW    → 종합 보고서 하단 배치
+
+UPDATED AI AUTO-SELECT DECISION TREE (v3.1.7):
+  Tomcat 감지                  → 즉시 Pillar 6 (GHOSTCAT) 실행
+  HTTPS 타겟                   → 즉시 Pillar 7 (SSL DEEP) 실행
+  POST 폼 발견                 → 즉시 Pillar 8 (CSRF DEEP) 실행
+  WAF가 SQLi 전부 차단         → 즉시 Pillar 5 (BIZLOGIC) 전환
+  회원가입 기능 있음           → 즉시 Pillar 2 (AUTH-IDOR) 실행
+  모바일 API 경로 발견         → 즉시 Pillar 4 (MOBILE-API) 병렬 테스트
+  첫 10 요청 내 IP 차단        → 즉시 Pillar 1 (SLOW-SCAN) 전환
+  JS에서 시크릿 발견           → 즉시 CRITICAL 보고 + 인증 시도
+  OpenSSL 1.0.1 계열 감지      → 즉시 Pillar 7 Heartbleed 시도
+  AJP 8009 포트 열림           → 즉시 Pillar 6 CPing + file-read 시도
+  CORS + credentials=true      → 즉시 Pillar 8 CORS CSRF CRITICAL 보고
+
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 ⛔ GATE CHECK — READ BEFORE APPLYING ANY RULE BELOW:
    These rules apply ONLY when ONE of the following is confirmed:

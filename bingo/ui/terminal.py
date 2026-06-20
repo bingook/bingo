@@ -1511,19 +1511,37 @@ class BingoTerminal:
         import re as _re
         _urls = _re.findall(r"https?://[^\s\"'<>]+", text)
         # 裸域名 fallback: http(s):// 없이 입력한 경우 (예: gomdon.com.vn)
-        # → 정규식이 못 잡아 _agent_state["target"] 미갱신되는 버그 수정
+        # → 실제 연결로 https/http 자동 감지 후 target 설정
         if not _urls:
             _bare = _re.findall(
                 r"(?<![.@/\w])([a-zA-Z0-9][a-zA-Z0-9\-]*(?:\.[a-zA-Z0-9][a-zA-Z0-9\-]*)+(?:/[^\s\"'<>]*)?)",
                 text,
             )
-            # TLD 2자 이상 + 숫자로만 시작하는 버전(3.1.8 등) 제외
+            # TLD 2자 이상 + 숫자로만 시작하는 버전(3.1.9 등) 제외
             _bare = [
                 b for b in _bare
                 if _re.search(r"\.[a-zA-Z]{2,}(?:[./]|$)", b) and not _re.match(r"^\d", b)
             ]
             if _bare:
-                _urls = ["https://" + _bare[0]]
+                # https → http 순서로 실제 연결 시도해서 살아있는 프로토콜 선택
+                def _detect_proto(domain: str) -> str:
+                    import urllib.request, ssl
+                    _ctx = ssl.create_default_context()
+                    _ctx.check_hostname = False
+                    _ctx.verify_mode = ssl.CERT_NONE
+                    for _scheme in ("https", "http"):
+                        try:
+                            _req = urllib.request.Request(
+                                f"{_scheme}://{domain}",
+                                headers={"User-Agent": "Mozilla/5.0"},
+                                method="HEAD",
+                            )
+                            urllib.request.urlopen(_req, timeout=4, context=_ctx if _scheme == "https" else None)
+                            return f"{_scheme}://{domain}"
+                        except Exception:
+                            continue
+                    return f"https://{domain}"  # 둘 다 실패해도 https 기본값
+                _urls = [_detect_proto(_bare[0])]
         _target_changed = False
         if _urls:
             new_target = _urls[0].rstrip("/?,")

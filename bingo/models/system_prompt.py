@@ -2025,6 +2025,19 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     RULE: If you need deduplication AND index access, keep data as list with manual dedup,
     OR convert set→list immediately after dedup: `items = sorted(set(raw_items))`.
 
+  ▸ RULE 26-H: NEVER print numeric status codes or "429"/"403"/"503" as plain text
+    in script output UNLESS they are from a real HTTP response to the TARGET.
+    APK/smali analysis output MUST NOT include HTTP status codes as constants.
+    WRONG (causes false block detection):
+      print(f"HTTP code: 429")         ← bingo misreads as Rate Limit
+      const_val = "429"                ← smali constant triggers false positive
+      print("Error code = 429")
+    CORRECT — only print status if from real requests.get():
+      resp = requests.get(url)
+      print(f"[STATUS] {resp.status_code}")  # OK — only real responses
+    RULE: When scanning smali/APK constants, NEVER print numeric HTTP codes
+    directly. Instead use labels: print(f"Smali constant: TOO_MANY_REQUESTS")
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

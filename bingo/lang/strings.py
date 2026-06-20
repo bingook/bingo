@@ -2327,6 +2327,12 @@ _STRINGS.update({
     "none_target_fallback":      {"ko": "⚠️  타겟 값이 None — 기본값 'target'으로 대체",
                                    "zh": "⚠️  目标值为None — 使用默认值'target'替代",
                                    "en": "⚠️  target value is None — fallback to 'target'"},
+    # ── v3.2.4 — 429 오탐 방지 / 차단 감지 정확도 개선 ──────────────────
+    "block_detect_false_positive": {
+        "ko": "⚠️  차단 오탐 방지: HTTP 컨텍스트 패턴 매칭으로 업그레이드",
+        "zh": "⚠️  误报防止: 已升级为HTTP上下文模式匹配",
+        "en": "⚠️  False positive prevention: upgraded to HTTP context pattern matching",
+    },
 
     # ──────────────────────────────────────────────────────────────────────────
     # v3.0.0 — Five-Pillar Enhancement 다국어 키

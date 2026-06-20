@@ -4097,25 +4097,88 @@ class BingoTerminal:
             self._save_history()
 
             # ── IP 차단 / Rate Limit 자동 감지 및 대기 ────────────────────
+            # ⚠️  v3.2.4: 오탐 방지 강화
+            #   - "429" 단독 소문자 매칭 제거 → HTTP 컨텍스트 regex 필수
+            #   - 이유: smali const-string, HTML id, 쿼리스트링 등 수천 곳에
+            #           "429"가 무관하게 등장해 Rate Limit 오탐이 발생했음
+            #   - "blocked", "banned", "access denied" 도 맥락 없이 HTML 본문에서
+            #     오탐 가능 → HTTP 응답 라인 또는 에러 메시지 패턴에서만 감지
             _ip_block_hint = ""
             _raw_lower = raw_results.lower()
-            _ip_block_signals = [
-                ("429", "Rate limit (429) detected"),
-                ("too many requests", "Too Many Requests"),
-                ("rate limit", "Rate limit hit"),
-                ("403 forbidden", "403 Forbidden — possible IP block"),
-                ("503 service", "503 Service Unavailable"),
-                ("connection refused", "Connection refused"),
-                ("connection reset", "Connection reset"),
-                ("timed out", "Request timeout — possible WAF silent drop"),
-                ("readtimeout", "ReadTimeout — WAF silent drop"),
-                ("connecttimeout", "ConnectTimeout — server/WAF blocking"),
-                ("blocked", "Block detected"),
-                ("banned", "Possible IP ban"),
-                ("access denied", "Access denied"),
-                ("temporarily unavailable", "Temporarily unavailable"),
-            ]
-            _detected_blocks = [label for sig, label in _ip_block_signals if sig in _raw_lower]
+            import re as _bre
+
+            # 정확한 HTTP 429 패턴 — "status: 429", "http/1 429", "[429]", "= 429 " 등
+            _has_429 = bool(_bre.search(
+                r'(?:'
+                r'status[:\s]+429'          # "status: 429", "状态: 429"
+                r'|http/\d[.\d]*\s+429'     # "HTTP/1.1 429"
+                r'|\[\s*429\s*\]'           # "[429]"
+                r'|response.*429'           # "response code: 429"
+                r'|error.*429'              # "error 429"
+                r'|code[=:\s]+429'          # "code=429", "code: 429"
+                r'|429.*too.many'           # "429 Too Many"
+                r'|too.many.requests'       # "Too Many Requests" (HTTP 헤더/본문)
+                r')',
+                _raw_lower,
+            ))
+
+            # "rate limit" — 단독으로도 충분히 명확
+            _has_ratelimit = bool(_bre.search(r'rate[\s_-]?limit', _raw_lower))
+
+            # 403 — "403 forbidden" 패턴 (단순 "403" 숫자는 제외)
+            _has_403 = bool(_bre.search(
+                r'(?:403\s+forbidden|status[:\s]+403|http/\d[.\d]*\s+403)', _raw_lower))
+
+            # 503
+            _has_503 = bool(_bre.search(
+                r'(?:503\s+service|status[:\s]+503|http/\d[.\d]*\s+503)', _raw_lower))
+
+            # 연결 오류 — 충분히 명확한 exception 메시지들
+            _has_conn = bool(_bre.search(
+                r'(?:connectionrefused|connection\s+refused'
+                r'|connectionreset|connection\s+reset\s+by\s+peer)',
+                _raw_lower,
+            ))
+
+            # 타임아웃 — requests exception 클래스명 기준
+            _has_timeout = bool(_bre.search(
+                r'(?:readtimeout|connecttimeout|requests.*timed\s+out'
+                r'|socket\.timeout|connectiontimeout)',
+                _raw_lower,
+            ))
+
+            # "blocked" / "banned" / "access denied" — HTML id/class가 아닌
+            # 에러 메시지 맥락에서만 (e.g., "[BLOCKED]", "IP blocked", "access denied")
+            _has_blocked = bool(_bre.search(
+                r'(?:\bip\s+block(?:ed|ing)\b'
+                r'|\[blocked\]'
+                r'|your\s+(?:ip|request|access).*block'
+                r'|access\s+denied'
+                r'|you\s+have\s+been\s+ban'
+                r'|\bip\s+ban(?:ned)?\b)',
+                _raw_lower,
+            ))
+
+            _has_unavail = bool(_bre.search(
+                r'temporarily\s+unavailable', _raw_lower))
+
+            _detected_blocks: list[str] = []
+            if _has_429:
+                _detected_blocks.append("Rate limit (429) detected")
+            if _has_ratelimit and not _has_429:
+                _detected_blocks.append("Rate limit hit")
+            if _has_403:
+                _detected_blocks.append("403 Forbidden — possible IP block")
+            if _has_503:
+                _detected_blocks.append("503 Service Unavailable")
+            if _has_conn:
+                _detected_blocks.append("Connection refused/reset")
+            if _has_timeout:
+                _detected_blocks.append("Request timeout — possible WAF silent drop")
+            if _has_blocked:
+                _detected_blocks.append("IP block/ban detected")
+            if _has_unavail:
+                _detected_blocks.append("Temporarily unavailable")
 
             # ── CAPTCHA는 실제 차단 컨텍스트에서만 감지 ──────────────────────
             # form name="captcha" 같은 HTML 필드 이름은 제외

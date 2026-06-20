@@ -3097,24 +3097,30 @@ class BingoTerminal:
 
             # ── 1. requests.get/post/put/delete — timeout 자동 주입 ─────────
             def _add_kwarg(call_str: str, kwarg: str) -> str:
-                """call_str의 닫는 괄호 앞에 kwarg 추가. 이미 있으면 그대로 반환."""
+                """call_str의 닫는 괄호 앞에 kwarg 추가. 이미 있으면 그대로 반환.
+                중첩 괄호가 있으면 원본 그대로 반환 (오주입 방지).
+                """
                 if kwarg.split("=")[0] in call_str:
                     return call_str
                 if not call_str.endswith(")"):
                     return call_str
-                inner = call_str[:-1]  # 닫는 ) 제거
-                paren_idx = inner.rindex("(")
-                has_args = bool(inner[paren_idx + 1:].strip())
+                # 첫 번째 ( 이후 내용에 ( 가 있으면 중첩 괄호 → 주입 건너뜀
+                first_open = call_str.index("(")
+                inner_content = call_str[first_open + 1:-1]
+                if "(" in inner_content:
+                    return call_str  # str()/urljoin() 등 중첩 호출 → 오주입 방지
+                has_args = bool(inner_content.strip())
                 sep = ", " if has_args else ""
-                return inner.rstrip() + sep + kwarg + ")"
+                return call_str[:-1].rstrip() + sep + kwarg + ")"
 
             def _inject_requests_timeout(m: "_pre_re.Match") -> str:
                 return _add_kwarg(m.group(0), "timeout=30")
 
-            # requests.get/post/put/delete/head 호출 패턴 (괄호 중첩 없는 단순 호출)
+            # requests.get/post/put/delete/head 호출 패턴
+            # [^()]* : 중첩 괄호 포함 호출 제외 — str()/urljoin() 등에 timeout 오주입 방지
             _req_pattern = (
                 r'requests\.(get|post|put|delete|head|request)\s*\('
-                r'[^)]*'
+                r'[^()]*'
                 r'\)'
             )
             _before_1 = fixed

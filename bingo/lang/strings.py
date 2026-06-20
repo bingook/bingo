@@ -2334,6 +2334,18 @@ _STRINGS.update({
         "en": "⚠️  False positive prevention: upgraded to HTTP context pattern matching",
     },
 
+    # ── v3.2.5 — 무한루프 감지 오탐 수정 ──────────────────────────────
+    "loop_detect_false_positive": {
+        "ko": "⚠️  무한루프 오탐 방지: UI 키워드/접두어 라인 필터링 강화",
+        "zh": "⚠️  无限循环误报防止: 已增强UI关键词/前缀行过滤",
+        "en": "⚠️  Infinite loop false positive prevention: enhanced UI keyword/prefix line filtering",
+    },
+    "loop_detect_skip_ui": {
+        "ko": "ℹ️  반복 감지 건너뜀: '{val}' — UI 피드백 키워드 (SQL 데이터 아님)",
+        "zh": "ℹ️  跳过重复检测: '{val}' — UI反馈关键词(非SQL数据)",
+        "en": "ℹ️  Loop detection skipped: '{val}' — UI feedback keyword (not SQL data)",
+    },
+
     # ──────────────────────────────────────────────────────────────────────────
     # v3.0.0 — Five-Pillar Enhancement 다국어 키
     # ──────────────────────────────────────────────────────────────────────────

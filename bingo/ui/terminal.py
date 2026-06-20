@@ -4257,12 +4257,46 @@ class BingoTerminal:
                     "DO NOT use SELECT in stacked queries — it causes the 800a0cc1 recordset error.\n"
                 )
 
-            # 무한 루프 경고 — 같은 테이블 이름이 반복 출력 감지
+            # 무한 루프 경고 — 같은 SQL 데이터값이 반복 출력 감지
+            # ⚠️  v3.2.5: 오탐 방지 강화
+            #   - "消息: alert", "message: error", "msg: ok" 같은 UI 피드백 라인 제외
+            #   - 4글자 이하 단어(alert, ok, no, yes, true, false 등) 제외
+            #   - 흔한 웹/JS/HTML 키워드는 SQL 데이터로 취급하지 않음
+            #   - 오직 의미 있는 SQL 데이터 추출값(≥5자, 비UI 키워드)만 감지
+            _UI_PREFIXES = (
+                "消息:", "message:", "msg:", "메시지:", "알림:", "info:",
+                "alert:", "warn:", "error:", "status:", "状态:", "상태:",
+                "result:", "결과:", "output:", "출력:", "log:", "로그:",
+            )
+            _UI_KEYWORDS = {
+                "alert", "error", "ok", "yes", "no", "true", "false",
+                "none", "null", "undefined", "success", "fail", "failed",
+                "warning", "warn", "info", "debug", "notice", "done",
+                "complete", "completed", "finish", "finished", "end",
+                "start", "begin", "pass", "skip", "ignore", "n/a",
+                "200", "404", "500", "400", "401", "403",
+            }
             _lines = trimmed.split("\n")
-            _table_lines = [l.strip() for l in _lines if l.strip() and not l.startswith("[") and not l.startswith("⏱") and not l.startswith("=") and not l.startswith("步") and not l.startswith("表")]
+            _table_lines = []
+            for _l in _lines:
+                _ls = _l.strip()
+                if not _ls:
+                    continue
+                # 구분자/헤더/타이머 라인 제외
+                if _ls.startswith(("[", "⏱", "=", "步", "表", "---", ">>>", "<<<", "#")):
+                    continue
+                # UI 피드백 접두어 라인 제외 ("消息: alert" 같은 것)
+                if any(_ls.lower().startswith(p.lower()) for p in _UI_PREFIXES):
+                    continue
+                # 4글자 이하 단어나 흔한 UI 키워드이면 제외
+                _val = _ls.split(":", 1)[-1].strip().lower() if ":" in _ls else _ls.lower()
+                if _val in _UI_KEYWORDS or len(_val) <= 4:
+                    continue
+                _table_lines.append(_ls)
+
             if len(_table_lines) >= 6:
                 _last_five = _table_lines[-5:]
-                if len(set(_last_five)) == 1:  # 마지막 5줄이 모두 동일
+                if len(set(_last_five)) == 1:  # 마지막 5줄이 모두 동일한 의미있는 값
                     _dup_val = _last_five[0]
                     _dup_msg = t("infinite_loop_warning", "⚠️  Infinite loop detected — '{name}' repeated {n}+ times.").replace("{name}", _dup_val).replace("{n}", "5")
                     self.console.print(f"[bold red]{_dup_msg}[/]")

@@ -2038,6 +2038,30 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     RULE: When scanning smali/APK constants, NEVER print numeric HTTP codes
     directly. Instead use labels: print(f"Smali constant: TOO_MANY_REQUESTS")
 
+  ── 26-I. Script Output — Loop Detection False Positive Prevention ──
+
+  ▸ RULE 26-I: NEVER print the same message line repeatedly in a loop unless
+    it contains unique, changing data (different table name / column value each iteration).
+    The bingo engine detects infinite loops by watching for 5+ identical consecutive output lines.
+    COMMON FALSE POSITIVE TRIGGERS (things that look like loops but aren't):
+      - Login form scanning prints "消息: alert" for each alert() found in HTML/JS
+      - Authentication error messages printed once per request
+      - "message: error" / "msg: ok" for each form field tested
+    RULES:
+      ① During login form testing, do NOT print generic keywords (alert, error, ok, fail)
+         as repeated lines. Instead:
+         WRONG:  for m in re.findall(r'alert\(', html): print("消息: alert")
+         CORRECT: alerts = re.findall(r'alert\(([^)]+)\)', html)
+                  if alerts: print(f"JS alerts ({len(alerts)}): {alerts[:3]}")
+      ② When iterating requests in a loop, always include a UNIQUE identifier per line:
+         WRONG:  print("테스트 중...")  # same every iteration
+         CORRECT: print(f"[{i}/{total}] {endpoint} → {status}")
+      ③ If scanning multiple forms/pages/inputs and getting same result, print summary:
+         WRONG:  for form in forms: print("消息: alert")
+         CORRECT: print(f"폼 {len(forms)}개 스캔 완료 — alert 포함: {alert_count}개")
+      ④ SELECT TOP 1 without cursor IS a real bug — fix it per RULE 27-D (cursor pagination).
+         But "消息: alert" repeated ≠ TOP 1 cursor bug.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

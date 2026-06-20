@@ -1524,7 +1524,12 @@ class BingoTerminal:
             ]
             if _bare:
                 # https → http 순서로 실제 연결 시도해서 살아있는 프로토콜 선택
-                def _detect_proto(domain: str) -> str:
+                _domain = _bare[0]
+                self.console.print(
+                    f"  [{THEME['dim']}]{self.s['proto_detecting'].format(domain=_domain)}[/]"
+                )
+                def _detect_proto(domain: str) -> tuple:
+                    """(url, success) 반환. success=False면 fallback"""
                     import urllib.request, ssl
                     _ctx = ssl.create_default_context()
                     _ctx.check_hostname = False
@@ -1536,12 +1541,24 @@ class BingoTerminal:
                                 headers={"User-Agent": "Mozilla/5.0"},
                                 method="HEAD",
                             )
-                            urllib.request.urlopen(_req, timeout=4, context=_ctx if _scheme == "https" else None)
-                            return f"{_scheme}://{domain}"
+                            urllib.request.urlopen(
+                                _req, timeout=4,
+                                context=_ctx if _scheme == "https" else None,
+                            )
+                            return (f"{_scheme}://{domain}", True)
                         except Exception:
                             continue
-                    return f"https://{domain}"  # 둘 다 실패해도 https 기본값
-                _urls = [_detect_proto(_bare[0])]
+                    return (f"https://{domain}", False)  # 둘 다 실패 → https 기본값
+                _detected, _ok = _detect_proto(_domain)
+                if _ok:
+                    self.console.print(
+                        f"  [{THEME['success']}]{self.s['proto_detected'].format(url=_detected)}[/]"
+                    )
+                else:
+                    self.console.print(
+                        f"  [{THEME['warn']}]{self.s['proto_fallback'].format(url=_detected)}[/]"
+                    )
+                _urls = [_detected]
         _target_changed = False
         if _urls:
             new_target = _urls[0].rstrip("/?,")

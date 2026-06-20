@@ -213,6 +213,16 @@ _STRINGS = {
     "waf_analyzing":        {"ko": "WAF 분석",                  "zh": "WAF 分析",                "en": "WAF analysis"},
     "waf_detecting":        {"ko": "WAF 탐지 중...",             "zh": "WAF 检测中...",            "en": "Detecting WAF..."},
     "waf_priority":         {"ko": "우선 우회 전략",             "zh": "优先绕过策略",             "en": "Priority bypass strategies"},
+    # ── 프로토콜 자동 감지 ────────────────────────────────────────────
+    "proto_detecting":      {"ko": "🔍 프로토콜 자동 감지 중... ({domain})",
+                             "zh": "🔍 自动检测协议中... ({domain})",
+                             "en": "🔍 Auto-detecting protocol... ({domain})"},
+    "proto_detected":       {"ko": "✅ 프로토콜 감지 완료: {url}",
+                             "zh": "✅ 协议检测完成: {url}",
+                             "en": "✅ Protocol detected: {url}"},
+    "proto_fallback":       {"ko": "⚠️  연결 실패 — https:// 기본값 사용: {url}",
+                             "zh": "⚠️  连接失败 — 使用默认 https://: {url}",
+                             "en": "⚠️  Connection failed — using https:// default: {url}"},
     "waf_auto_bypass":      {"ko": "자동 우회 시도 중...",       "zh": "自动绕过尝试中...",        "en": "Attempting auto bypass..."},
     "waf_ai_request":       {"ko": "AI 분석 요청 중...",         "zh": "请求 AI 分析中...",        "en": "Requesting AI analysis..."},
 

@@ -2346,6 +2346,18 @@ _STRINGS.update({
         "en": "ℹ️  Loop detection skipped: '{val}' — UI feedback keyword (not SQL data)",
     },
 
+    # ── v3.2.6 — Python 3.12 regex / re.compile dict 오류 방지 ──────────
+    "regex_flag_autofix": {
+        "ko": "🔧 [AUTO-FIX] Python 3.12 regex (?i) 플래그 위치 자동 수정",
+        "zh": "🔧 [AUTO-FIX] Python 3.12正则表达式(?i)标志位置已自动修复",
+        "en": "🔧 [AUTO-FIX] Python 3.12 regex (?i) flag position auto-fixed",
+    },
+    "regex_compile_rule": {
+        "ko": "⚠️  regex dict 오류: re.compile() 없이 raw string 저장 → AttributeError 발생",
+        "zh": "⚠️  正则字典错误: 未使用re.compile()存储原始字符串 → AttributeError",
+        "en": "⚠️  Regex dict error: raw string stored without re.compile() → AttributeError",
+    },
+
     # ──────────────────────────────────────────────────────────────────────────
     # v3.0.0 — Five-Pillar Enhancement 다국어 키
     # ──────────────────────────────────────────────────────────────────────────

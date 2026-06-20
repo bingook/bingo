@@ -2062,6 +2062,61 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       ④ SELECT TOP 1 without cursor IS a real bug — fix it per RULE 27-D (cursor pagination).
          But "消息: alert" repeated ≠ TOP 1 cursor bug.
 
+  ── 26-J. Python 3.12 Regex Inline Flag Compatibility ──
+
+  ▸ RULE 26-J: Python 3.12+ BREAKS inline regex flags (?i), (?m), (?s) when they
+    appear ANYWHERE except at the very start of the pattern.
+    ERROR: re.error: global flags not at the start of the expression at position N
+    ROOT CAUSE: Python 3.12 enforces strict placement of inline flags.
+
+    WRONG — flag in middle of pattern (causes re.error in Python 3.12):
+      re.finditer(r'const-string\s+\w+,\s*"(?i)(password|token)"', content)
+      re.compile(r'<tag>(?i)value</tag>')
+      re.finditer(r'prefix_(?i)suffix', content)
+
+    CORRECT — two safe alternatives:
+      ① Move flag to START of pattern:
+         re.finditer(r'(?i)const-string\s+\w+,\s*"(password|token)"', content)
+      ② Use re.IGNORECASE flag argument (PREFERRED — clearest intent):
+         re.finditer(r'const-string\s+\w+,\s*"(password|token)"', content, re.IGNORECASE)
+         re.compile(r'prefix_suffix', re.IGNORECASE)
+
+    MANDATORY RULE: NEVER embed (?i)/(?m)/(?s)/(?x) inside a pattern string
+    unless it is the very first character group. Always use flag arguments instead.
+    This applies to ALL regex operations: re.finditer, re.search, re.match,
+    re.compile, re.findall, re.sub, re.split.
+
+  ── 26-K. Regex Pattern Dict — Always Use re.compile() ──
+
+  ▸ RULE 26-K: When storing regex patterns in a dict or list for reuse,
+    ALWAYS store compiled regex objects (re.compile()), NEVER raw strings or lists.
+    Calling .finditer()/.search()/.match() on a string or list causes AttributeError.
+
+    WRONG — stores raw string, calling .finditer() crashes:
+      SECRET_PATTERNS = {
+          "email": r'[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}',   ← raw string
+          "token": [r'token', r'api_key'],                        ← list
+      }
+      for m in SECRET_PATTERNS["email"].finditer(content):  ← AttributeError!
+      for m in SECRET_PATTERNS["token"].finditer(content):  ← AttributeError!
+
+    CORRECT — always compile first:
+      SECRET_PATTERNS = {
+          "email": re.compile(r'[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}', re.IGNORECASE),
+          "token": re.compile(r'(token|api_key|apikey|secret)', re.IGNORECASE),
+      }
+      for m in SECRET_PATTERNS["email"].finditer(content):  ← works correctly
+
+    If you need multiple patterns per category, use a list of compiled patterns:
+      SECRET_PATTERNS = {
+          "multi": [
+              re.compile(r'pattern1', re.IGNORECASE),
+              re.compile(r'pattern2', re.IGNORECASE),
+          ]
+      }
+      for pat in SECRET_PATTERNS["multi"]:
+          for m in pat.finditer(content):  ← iterate list, call on each pattern
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

@@ -1999,6 +1999,17 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     RULE: timeout= belongs ONLY in requests.get() / requests.post() calls.
     If you need timeout on a request: requests.get(urljoin(base, path), timeout=10)
 
+  ▸ RULE 26-G-0: dict.get() CAN return None — ALWAYS guard before subscripting/slicing.
+    WRONG:  _target = state.get("target"); body = f"{_target[:40]}"  ← TypeError if None
+    WRONG:  _url = state.get("url"); print(_url.split("/")[2])       ← AttributeError if None
+    CORRECT: _target = state.get("target") or "unknown"
+    CORRECT: _target = state.get("target", "unknown")
+    CORRECT: _t40 = str(state.get("target") or "")[:40]
+    RULE: Any value retrieved from a dict with .get() that is later sliced, split, or
+    formatted MUST be guarded with `or <default>` or `if _val is not None` BEFORE use.
+    The AUTO-FIX system cannot reliably detect None-slice bugs at generation time —
+    you MUST write safe code from the start.
+
   ▸ RULE 26-G: set objects are NOT subscriptable — never use set[index].
     Python sets have NO guaranteed order and do NOT support index access.
     WRONG:  endpoints = set(); endpoint = endpoints[0]  ← TypeError: 'set' object is not subscriptable

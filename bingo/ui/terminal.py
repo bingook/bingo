@@ -4338,10 +4338,11 @@ class BingoTerminal:
             # 작업 완료
             if "TASK_COMPLETE" in followup_response or "MISSION_COMPLETE" in followup_response:
                 self.console.print(f"\n[{THEME['success']}]✅ {_s.get('agent_done', 'Agent task complete')}[/]\n")
-                _target = self._agent_state.get("target", "target")
+                _target = self._agent_state.get("target") or "target"
                 _lang = getattr(self.config, "lang", "en")
                 _notif_title = {"ko": "BINGO — 작업 완료", "zh": "BINGO — 任务完成", "en": "BINGO — Task Complete"}.get(_lang, "BINGO — Done")
-                _notif_body = {"ko": f"침투 테스트 완료: {_target[:40]}", "zh": f"渗透测试完成: {_target[:40]}", "en": f"Pentest complete: {_target[:40]}"}.get(_lang, f"Done: {_target[:40]}")
+                _t40 = str(_target)[:40]
+                _notif_body = {"ko": f"침투 테스트 완료: {_t40}", "zh": f"渗透测试完成: {_t40}", "en": f"Pentest complete: {_t40}"}.get(_lang, f"Done: {_t40}")
                 self._send_notification(_notif_title, _notif_body, critical=False)
                 self._auto_generate_report()
                 break

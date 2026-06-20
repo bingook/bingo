@@ -2323,6 +2323,10 @@ _STRINGS.update({
     "fix_escape_seq":            {"ko": "잘못된 escape sequence 수정 (\\b\\E 등 → \\\\)",
                                    "zh": "修复无效转义序列 (\\b\\E等 → \\\\)",
                                    "en": "invalid escape sequences fixed (\\b\\E etc → \\\\)"},
+    # ── v3.2.3 — None target fallback 다국어 ─────────────────────────────
+    "none_target_fallback":      {"ko": "⚠️  타겟 값이 None — 기본값 'target'으로 대체",
+                                   "zh": "⚠️  目标值为None — 使用默认值'target'替代",
+                                   "en": "⚠️  target value is None — fallback to 'target'"},
 
     # ──────────────────────────────────────────────────────────────────────────
     # v3.0.0 — Five-Pillar Enhancement 다국어 키

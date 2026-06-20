@@ -2117,6 +2117,30 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       for pat in SECRET_PATTERNS["multi"]:
           for m in pat.finditer(content):  ← iterate list, call on each pattern
 
+  ▸ RULE 26-L: When printing lists of URLs, links, or file paths extracted from HTML/JS,
+    ALWAYS deduplicate before printing. The same URL appearing multiple times in JS
+    (e.g., redirect targets in if/else branches) is normal — do NOT print each occurrence.
+
+    WRONG — prints same URL 6 times, triggers false-positive loop detector:
+      urls = re.findall(r'["\']([^"\']+\.aspx[^"\']*)["\']', script_content)
+      for url in urls:
+          print(f"  URL: {url}")   ← "URL: index_mobile.aspx" x6 = loop alarm!
+
+    CORRECT — deduplicate first:
+      urls = list(dict.fromkeys(re.findall(r'["\']([^"\']+\.aspx[^"\']*)["\']', script_content)))
+      for url in urls:
+          print(f"  URL: {url}")   ← appears once
+
+    CORRECT alternative using set (order-preserving with dict.fromkeys is preferred):
+      seen = set()
+      for url in re.findall(r'["\']([^"\']+)["\']', script_content):
+          if url not in seen:
+              seen.add(url)
+              print(f"  URL: {url}")
+
+    This applies to ALL collection types: URLs, domains, IPs, file paths, class names, etc.
+    If you are iterating over extracted items from HTML/JS/APK content, always deduplicate.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

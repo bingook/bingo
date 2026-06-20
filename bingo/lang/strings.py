@@ -2358,6 +2358,18 @@ _STRINGS.update({
         "en": "⚠️  Regex dict error: raw string stored without re.compile() → AttributeError",
     },
 
+    # ── v3.2.7: URL 중복출력 오탐 수정 ──
+    "url_dedup_autofix": {
+        "ko": "[AUTO-FIX] URL 중복 감지: 동일 URL이 {n}회 반복 출력됨 → 루프감지 오탐 방지를 위해 중복제거 규칙 적용",
+        "zh": "[AUTO-FIX] 检测到URL重复: 相同URL输出{n}次 → 应用去重规则以防止误报无限循环检测",
+        "en": "[AUTO-FIX] URL dedup: same URL printed {n} times → dedup rule applied to prevent false-positive loop detection",
+    },
+    "loop_detect_url_skip": {
+        "ko": "⚡ 무한루프 감지 건너뜀: '{val}'은 URL/경로 패턴 → SQL 데이터 추출 루프가 아님",
+        "zh": "⚡ 跳过无限循环检测: '{val}'是URL/路径模式 → 不是SQL数据提取循环",
+        "en": "⚡ Loop detect skipped: '{val}' is URL/path pattern — not SQL extraction loop",
+    },
+
     # ──────────────────────────────────────────────────────────────────────────
     # v3.0.0 — Five-Pillar Enhancement 다국어 키
     # ──────────────────────────────────────────────────────────────────────────

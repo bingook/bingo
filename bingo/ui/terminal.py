@@ -4259,14 +4259,21 @@ class BingoTerminal:
 
             # 무한 루프 경고 — 같은 SQL 데이터값이 반복 출력 감지
             # ⚠️  v3.2.5: 오탐 방지 강화
-            #   - "消息: alert", "message: error", "msg: ok" 같은 UI 피드백 라인 제외
+            #   - "消息: alert", "URL: index_mobile.aspx" 같은 분석 출력 라인 제외
             #   - 4글자 이하 단어(alert, ok, no, yes, true, false 등) 제외
             #   - 흔한 웹/JS/HTML 키워드는 SQL 데이터로 취급하지 않음
-            #   - 오직 의미 있는 SQL 데이터 추출값(≥5자, 비UI 키워드)만 감지
+            #   - URL/파일경로/파일확장자 패턴을 가진 값은 SQL 데이터로 취급하지 않음
+            #   - 오직 의미 있는 SQL 데이터 추출값(≥5자, 비UI 키워드, 비URL)만 감지
+            # ⚠️  v3.2.7: URL 패턴 오탐 수정
+            #   - "URL:", "链接:", "링크:", "Link:", "→" 접두어 라인 제외
+            #   - 값에 파일확장자(.aspx/.php/.html/.js/.css 등)나 "/" "://" 포함 → 제외
             _UI_PREFIXES = (
                 "消息:", "message:", "msg:", "메시지:", "알림:", "info:",
                 "alert:", "warn:", "error:", "status:", "状态:", "상태:",
                 "result:", "결과:", "output:", "출력:", "log:", "로그:",
+                # v3.2.7: URL/링크 출력 접두어 추가
+                "url:", "URL:", "链接:", "링크:", "link:", "Link:",
+                "→ http", "→ https", "→ ./", "→ //",
             )
             _UI_KEYWORDS = {
                 "alert", "error", "ok", "yes", "no", "true", "false",
@@ -4276,6 +4283,13 @@ class BingoTerminal:
                 "start", "begin", "pass", "skip", "ignore", "n/a",
                 "200", "404", "500", "400", "401", "403",
             }
+            # v3.2.7: URL/경로 패턴 감지용 (파일확장자, 프로토콜)
+            import re as _re
+            _URL_PATTERN = _re.compile(
+                r'(https?://|://|\.aspx|\.php|\.html?|\.jsp|\.do|'
+                r'\.js|\.css|\.json|\.xml|\.asp|\.cfm|/[a-z])',
+                _re.IGNORECASE
+            )
             _lines = trimmed.split("\n")
             _table_lines = []
             for _l in _lines:
@@ -4285,12 +4299,16 @@ class BingoTerminal:
                 # 구분자/헤더/타이머 라인 제외
                 if _ls.startswith(("[", "⏱", "=", "步", "表", "---", ">>>", "<<<", "#")):
                     continue
-                # UI 피드백 접두어 라인 제외 ("消息: alert" 같은 것)
+                # UI/분석 출력 접두어 라인 제외 ("消息: alert", "URL: index.aspx" 같은 것)
                 if any(_ls.lower().startswith(p.lower()) for p in _UI_PREFIXES):
                     continue
                 # 4글자 이하 단어나 흔한 UI 키워드이면 제외
-                _val = _ls.split(":", 1)[-1].strip().lower() if ":" in _ls else _ls.lower()
-                if _val in _UI_KEYWORDS or len(_val) <= 4:
+                _val = _ls.split(":", 1)[-1].strip() if ":" in _ls else _ls
+                _val_lower = _val.lower()
+                if _val_lower in _UI_KEYWORDS or len(_val_lower) <= 4:
+                    continue
+                # v3.2.7: URL/파일경로 패턴 값이면 SQL 데이터 아님 → 제외
+                if _URL_PATTERN.search(_val):
                     continue
                 _table_lines.append(_ls)
 

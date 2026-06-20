@@ -1510,6 +1510,20 @@ class BingoTerminal:
         # 새 타겟 URL이면 agent_state 초기화 + 대화 히스토리 CMS 오염 방지
         import re as _re
         _urls = _re.findall(r"https?://[^\s\"'<>]+", text)
+        # 裸域名 fallback: http(s):// 없이 입력한 경우 (예: gomdon.com.vn)
+        # → 정규식이 못 잡아 _agent_state["target"] 미갱신되는 버그 수정
+        if not _urls:
+            _bare = _re.findall(
+                r"(?<![.@/\w])([a-zA-Z0-9][a-zA-Z0-9\-]*(?:\.[a-zA-Z0-9][a-zA-Z0-9\-]*)+(?:/[^\s\"'<>]*)?)",
+                text,
+            )
+            # TLD 2자 이상 + 숫자로만 시작하는 버전(3.1.8 등) 제외
+            _bare = [
+                b for b in _bare
+                if _re.search(r"\.[a-zA-Z]{2,}(?:[./]|$)", b) and not _re.match(r"^\d", b)
+            ]
+            if _bare:
+                _urls = ["https://" + _bare[0]]
         _target_changed = False
         if _urls:
             new_target = _urls[0].rstrip("/?,")

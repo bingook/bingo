@@ -1982,6 +1982,16 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     WRONG:  f"key={d['k']}"   (when outer f-string uses single quote)
     CORRECT: _v = d['k']; f"key={_v}"
 
+  ▸ RULE 26-F-0: NEVER use backslash paths/patterns inside regular (non-raw) string literals.
+    Windows paths and regex patterns with backslashes MUST use raw strings or double backslashes.
+    WRONG:  "yii\base\ErrorException"   ← \b = backspace, \E = invalid → SyntaxWarning
+    WRONG:  "C:\new_folder\test.txt"    ← \n \t are escape sequences → data corruption
+    CORRECT: r"yii\base\ErrorException"   ← raw string, backslash treated literally
+    CORRECT: "yii\\base\\ErrorException" ← escaped backslash
+    CORRECT: r"C:\new_folder\test.txt"
+    Rule: ANY string containing a backslash NOT followed by n/t/r/\\/'/" → use r"..." prefix.
+    The AUTO-FIX system will attempt to repair invalid escapes, but ALWAYS write raw strings.
+
   ▸ RULE 26-F: urllib.parse.urljoin() accepts EXACTLY TWO positional arguments.
     SIGNATURE: urljoin(base, url)  — NO timeout, NO extra kwargs.
     WRONG:  urljoin(base_url, '/robots.txt', timeout=30)  ← TypeError!

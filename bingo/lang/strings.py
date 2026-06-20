@@ -2319,6 +2319,10 @@ _STRINGS.update({
     "fix_fstring_syntax":        {"ko": "f-string SyntaxError 복구",
                                    "zh": "f-string语法错误已恢复",
                                    "en": "f-string SyntaxError recovered"},
+    # ── v3.2.2 — escape sequence AUTO-FIX 다국어 ─────────────────────────
+    "fix_escape_seq":            {"ko": "잘못된 escape sequence 수정 (\\b\\E 등 → \\\\)",
+                                   "zh": "修复无效转义序列 (\\b\\E等 → \\\\)",
+                                   "en": "invalid escape sequences fixed (\\b\\E etc → \\\\)"},
 
     # ──────────────────────────────────────────────────────────────────────────
     # v3.0.0 — Five-Pillar Enhancement 다국어 키

@@ -3095,6 +3095,60 @@ class BingoTerminal:
             if fixed != _before_0e:
                 _applied_fix_names.append("fix_is_not_str")
 
+            # ── 0-F. 잘못된 escape sequence 자동 수정 ────────────────────────
+            # AI가 "yii\base\ErrorException" 처럼 백슬래시 경로/패턴을 raw string 아닌
+            # 일반 문자열에 쓰면 Python이 SyntaxWarning 발생 → \b=백스페이스, \E=미정의 등
+            # 전략: 문자열 리터럴 내부에서 유효하지 않은 escape sequence → 이중 백슬래시 치환
+            # 유효한 escape: \n \t \r \\ \' \" \a \b \f \v \0 \x \u \U \N \ooo
+            _before_0f = fixed
+
+            def _fix_invalid_escapes(m_esc: "_pre_re.Match") -> str:
+                """문자열 리터럴 내 잘못된 escape sequence → 이중 백슬래시로 치환"""
+                full = m_esc.group(0)
+                # raw string(r"..." 또는 r'...')은 건드리지 않음
+                if full.startswith(("r'", 'r"', "r'''", 'r"""', "rb'", 'rb"')):
+                    return full
+                # 유효한 Python escape sequence 목록
+                _valid = set('nrtabfv\\\'\"0xuUN\n\r')
+                # 문자열 내용 부분만 추출 (따옴표 종류 판별)
+                if full.startswith('"""') or full.startswith("'''"):
+                    _q = full[:3]
+                    _inner = full[3:-3]
+                    _prefix = ""
+                elif full.startswith('"') or full.startswith("'"):
+                    _q = full[0]
+                    _inner = full[1:-1]
+                    _prefix = ""
+                elif full[0] in ('b', 'f', 'u') and len(full) > 1:
+                    _prefix = full[0]
+                    _rest = full[1:]
+                    if _rest.startswith('"""') or _rest.startswith("'''"):
+                        _q = _rest[:3]
+                        _inner = _rest[3:-3]
+                    else:
+                        _q = _rest[0]
+                        _inner = _rest[1:-1]
+                else:
+                    return full  # 알 수 없는 형태 → 그대로
+
+                def _replace_esc(me: "_pre_re.Match") -> str:
+                    char = me.group(1)
+                    if char and char[0] in _valid:
+                        return me.group(0)  # 유효한 escape → 그대로
+                    return '\\\\' + (char if char else '')
+
+                _fixed_inner = _pre_re.sub(r'\\(.?)', _replace_esc, _inner)
+                return _prefix + _q + _fixed_inner + _q
+
+            # 일반 문자열 리터럴 패턴 (r"" 제외, 멀티라인 제외, 간단한 단일/이중 따옴표)
+            _str_pat = (
+                r'(?<![rRbBfFuU\\])'    # raw/bytes prefix 없는
+                r'(?:""".*?"""|\'\'\'.*?\'\'\'|"[^"\n\\]*(?:\\.[^"\n\\]*)*"|\'[^\'\\n]*(?:\\.[^\'\\n]*)*\')'
+            )
+            fixed = _pre_re.sub(_str_pat, _fix_invalid_escapes, fixed)
+            if fixed != _before_0f:
+                _applied_fix_names.append("fix_escape_seq")
+
             # ── 1. requests.get/post/put/delete — timeout 자동 주입 ─────────
             def _add_kwarg(call_str: str, kwarg: str) -> str:
                 """call_str의 닫는 괄호 앞에 kwarg 추가. 이미 있으면 그대로 반환.

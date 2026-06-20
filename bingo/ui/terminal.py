@@ -2517,7 +2517,7 @@ class BingoTerminal:
 
     def _cmd_lang(self) -> None:
         self.console.print(f"\n[{THEME['primary']}]{self.s['select_lang']}[/]")
-        lang_list = list(SUPPORTED_LANGS.keys())   # ["ko", "zh", "en"]
+        lang_list = list(SUPPORTED_LANGS.items())  # [("ko","한국어"), ("zh","中文"), ("en","English")]
         for i, (code, label) in enumerate(lang_list, 1):
             self.console.print(f"  [{THEME['secondary']}]{i}[/] — {label}  [{THEME['dim']}]({code})[/]")
         self.console.print()
@@ -2528,23 +2528,26 @@ class BingoTerminal:
         ).strip().lower()
 
         # 번호 입력 시 코드로 변환
-        num_map = {str(i + 1): code for i, code in enumerate(lang_list)}
+        num_map = {str(i + 1): code for i, (code, _label) in enumerate(lang_list)}
         lang = num_map.get(raw, raw)
 
         if lang not in SUPPORTED_LANGS:
             self._warn(self.s["lang_invalid"].format(raw=raw))
             return
 
-            self.config.lang = lang
-            self.config.save()
-            self.s = get_strings(lang)
+        # 설정 저장 + strings 갱신
+        self.config.lang = lang
+        self.config.save()
+        self.s = get_strings(lang)
+
         # 전역 i18n 동기화
         try:
             from ..i18n import set_lang as _set_lang
             _set_lang(lang)
         except Exception:
             pass
-            self._success(self.s["lang_saved"])
+
+        self._success(self.s["lang_saved"])
         self.console.print(
             f"  [{THEME['dim']}]{self.s['lang_changed'].format(lang=SUPPORTED_LANGS[lang])}[/]"
         )

@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-3.0.6-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.18-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -36,7 +36,7 @@ git clone https://github.com/bingook/bingo.git
 cd bingo && bash install.sh
 ```
 
-**Windows (PowerShell 관리자 실행):**
+**Windows (PowerShell 관리자 권한):**
 ```powershell
 irm https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
 ```
@@ -52,27 +52,27 @@ bingo --version
 bingo --reset
 ```
 
-첫 실행: 언어 선택 → API 키 입력 → 시작.
+최초 실행: 언어 선택 → API 키 입력 → 시작.
 
 ---
 
-## 사용 방법
+## 사용법
 
-채팅창에 타겟과 작업 내용을 입력하면 됩니다. 별도 명령어 불필요.
+채팅창에 타겟과 할 일을 입력하면 됩니다. 명령어 불필요.
 
-**예시 프롬프트 (bingo에 붙여넣기):**
+**예시 프롬프트:**
 ```
 타겟: https://example.com
 
-작업 우선순위:
-1. 전체 정보 수집 — WAF, DB 종류, 기술 스택 탐지
-2. SQLi — 에러 기반 → 유니온 → 블라인드 → 타임 기반
-3. 관리자 계정 탈취 — admin/user/member 테이블 덤프
-4. 관리자 패널 로그인 — 스크린샷 증거
-5. DB 전체 덤프 — SQLi 성공 후 DbDumper 자동 실행
+작업:
+1. 전체 레콘 — WAF, DB 종류, 기술 스택 탐지
+2. SQL 인젝션 — error → union → blind → time-based
+3. 관리자 계정 — admin/user/member 테이블 덤프
+4. 관리자 로그인 — 스크린샷 증거
+5. DB 전체 덤프 — 성공 후 DbDumper 실행
 ```
 
-> 원하는 내용을 설명하면 AI가 자동으로 판단하여 실행합니다.
+> 원하는 것만 말하면 AI가 모든 것을 자동으로 결정합니다.
 
 ---
 
@@ -80,21 +80,238 @@ bingo --reset
 
 | 영역 | bingo가 하는 일 |
 |------|----------------|
-| **정보 수집** | WAF 탐지, 기술 스택 핑거프린팅, 전체 페이지/JS/API 크롤링 |
-| **SQLi** | 에러 기반 → 유니온 → 불리언 블라인드 → 타임 기반 (모든 DB) |
+| **레콘** | WAF 탐지, 기술 핑거프린팅, 모든 페이지/JS/API 엔드포인트 크롤링 |
+| **SQLi** | Error-based → Union → Boolean blind → Time-based (전 DB 종류) |
 | **WAF 우회** | Cloudflare / AWS WAF / ModSecurity — 자동 선택 우회 |
 | **XSS** | Stored / Reflected / DOM — 성공 시 세션 하이재킹 |
-| **SSRF** | 클라우드 메타데이터 (AWS/GCP/Azure) 엔드포인트 테스트 |
+| **SSRF** | 클라우드 메타데이터(AWS/GCP/Azure) 엔드포인트 테스트 |
 | **파일 업로드** | 확장자 우회, 웹쉘 업로드 |
-| **인증 공격** | 로그인 브루트포스, SQLi 인증 우회, CAPTCHA 자동 풀기 |
+| **인증 공격** | 로그인 브루트포스, SQLi 인증 우회, CAPTCHA 자동 해결 |
 | **IDOR/BOLA** | 오브젝트 ID 열거, 수평 권한 상승 |
-| **JWT/OAuth** | alg:none, 약한 시크릿, redirect_uri 남용 |
+| **JWT/OAuth** | alg:none, 약한 비밀키, redirect_uri 악용 |
 | **GraphQL** | 인트로스펙션, 배치 공격, 필드 인젝션 |
 | **HTTP 스머글링** | CL.TE / TE.CL 디싱크 |
-| **크레덴셜 덤프** | 해시 추출 → hashcat 명령어 자동 제안 |
-| **DB 덤프** | SQLi 확인 후 전체 테이블 덤프 (DbDumper v2.7) |
+| **자격증명 덤프** | 해시 추출 → hashcat 명령 자동 제안 |
+| **DB 덤프** | 확인된 SQLi 후 전체 테이블 덤프 (DbDumper v2.7) |
 | **스크린샷** | Playwright로 관리자 패널 자동 스크린샷 |
-| **리포트** | CVSS 점수 포함 마크다운 리포트 자동 저장 |
+| **보고서** | CVSS 점수 포함 마크다운 보고서 자동 저장 |
+
+---
+
+## 🌐 프록시 풀 로테이션 (v3.2.18) — 신규
+
+WAF 밴, 속도 제한, IP 차단을 자동으로 우회합니다.
+
+### 지원 프록시 타입
+
+| 타입 | 형식 | 비고 |
+|------|------|------|
+| HTTP | `http://ip:port` | 기본 프록시 |
+| HTTP + 인증 | `http://user:pass@ip:port` | 계정 포함 |
+| HTTPS | `https://ip:port` | SSL 터널 |
+| SOCKS5 | `socks5://ip:port` | PySocks 필요 |
+| SOCKS5h | `socks5h://ip:port` | DNS도 프록시 통해 해석 (더 익명) |
+| Tor | `socks5h://127.0.0.1:9050` | Tor 데몬 필요 |
+| API 자동 수집 | URL | ProxyScrape, Webshare, 커스텀 |
+
+### 빠른 시작
+
+```bash
+# 프록시 1개 수동 추가
+/proxy add socks5://1.2.3.4:1080
+
+# Tor 모드 활성화 (먼저 Tor 실행 필요: brew install tor && tor)
+/proxy tor
+
+# API에서 무료 프록시 자동 수집
+/proxy api
+
+# 파일에서 일괄 로드 (한 줄에 1개)
+/proxy file ~/proxies.txt
+
+# 풀 상태 확인
+/proxy list
+```
+
+### 모든 `/proxy` 서브커맨드
+
+| 커맨드 | 설명 |
+|--------|------|
+| `/proxy list` | 풀 상태 + 전체 프록시 목록 표시 |
+| `/proxy add <url>` | 프록시 1개 수동 추가 |
+| `/proxy file <경로>` | 텍스트 파일에서 일괄 로드 (한 줄에 1개) |
+| `/proxy api [url]` | API URL에서 자동 수집 또는 프리셋 선택 |
+| `/proxy tor [비밀번호]` | Tor 모드 활성화 (선택: 제어 포트 비밀번호) |
+| `/proxy rotate` | 즉시 다음 프록시로 강제 전환 |
+| `/proxy test` | 현재 프록시 연결 확인 (지연 시간 측정) |
+| `/proxy unban` | 밴된 프록시 전부 해제 (실패 기록 초기화) |
+| `/proxy clear` | 풀 전체 초기화 |
+| `/proxy off` | 프록시 비활성화 (직접 요청) |
+
+### 자동 로테이션 동작 원리
+
+bingo가 밴을 감지하면 (HTTP 429, 403, IP 차단, 연결 리셋):
+
+```
+1. 현재 프록시를 BANNED로 표시
+2. 다음 사용 가능한 프록시로 자동 전환
+3. Tor 모드인 경우: NEWNYM 신호 → 새 Tor 회로 (새 IP)
+4. AI 힌트에 새 프록시 URL 주입 → 다음 스크립트가 자동으로 사용
+5. 대기 시간 15초 → 3초로 단축 후 재시도
+```
+
+AI 생성 스크립트에 자동으로 삽입되는 코드:
+```python
+# [PROXY_ROTATED: now using socks5://5.6.7.8:9090]
+PROXIES = {'http': 'socks5://5.6.7.8:9090', 'https': 'socks5://5.6.7.8:9090'}
+session.get(url, proxies=PROXIES, timeout=15, verify=False)
+```
+
+### Tor 설정 가이드
+
+**1단계 — Tor 설치:**
+```bash
+# macOS
+brew install tor && brew services start tor
+
+# Ubuntu / Debian
+sudo apt install tor && sudo systemctl start tor
+
+# Windows: Tor Browser 설치 (tor 데몬 포함)
+```
+
+**2단계 — (선택) Tor 제어 포트 활성화:**
+
+`/etc/tor/torrc` (Linux) 또는 `/usr/local/etc/tor/torrc` (macOS) 편집:
+```
+ControlPort 9051
+CookieAuthentication 1
+```
+재시작: `sudo systemctl restart tor`
+
+**3단계 — bingo에서 Tor 활성화:**
+```bash
+/proxy tor              # 비밀번호 없음 (쿠키 인증)
+/proxy tor mypassword   # HashedControlPassword 사용 시
+```
+
+**4단계 — stem 설치 (회로 교체용):**
+```bash
+pip install stem
+```
+`stem` 없이도 Tor는 동작하지만, IP 밴 시 회로 자동 교체(새 IP 획득)가 비활성화됩니다.
+
+> **Tor 사용 팁:**  
+> - `socks5h://` 사용 시 DNS도 Tor를 통해 해석 → 더 강력한 익명성  
+> - Tor가 실행 중인지 확인: `curl --socks5-hostname 127.0.0.1:9050 https://check.torproject.org/api/ip`  
+> - 회로 교체 간격: 최소 10초 권장 (Tor 정책)
+
+### API 프리셋으로 자동 수집
+
+```bash
+/proxy api
+```
+선택창이 나타납니다:
+```
+1. ProxyScrape (SOCKS5) — 무료, 5000+ 프록시
+2. ProxyScrape (HTTP)   — 무료, HTTP 프록시
+3. ProxyScrape (SOCKS4) — 무료, SOCKS4 프록시
+4. GeoNode Free         — 필터링됨, 업타임 90%+
+0. 직접 입력            — 커스텀 API URL
+```
+
+또는 URL 직접 지정:
+```bash
+/proxy api https://api.proxyscrape.com/v3/...
+/proxy api https://나의-프록시-서버.com/list.txt
+```
+
+지원 응답 형식:
+- 텍스트 (한 줄에 1개: `ip:port` 또는 `scheme://ip:port`)
+- JSON 배열: `["socks5://1.2.3.4:1080", ...]`
+
+### 파일로 프록시 관리
+
+```bash
+# proxies.txt 형식 (주석은 # 사용)
+# HTTP 프록시
+http://1.2.3.4:3128
+http://user:pass@5.6.7.8:3128
+
+# SOCKS5 프록시
+socks5://9.10.11.12:1080
+socks5h://13.14.15.16:1080
+
+# Tor (로컬)
+socks5h://127.0.0.1:9050
+```
+
+```bash
+/proxy file ~/proxies.txt
+```
+
+### AI 스크립트에서 프록시 사용
+
+`/proxy` 활성화 시, AI가 생성하는 모든 Python 스크립트에 자동으로 포함:
+
+```python
+import requests
+
+# [bingo v3.2.18: PROXY ACTIVE — 아래 PROXIES 반드시 포함]
+PROXIES = {'http': 'socks5://1.2.3.4:1080', 'https': 'socks5://1.2.3.4:1080'}
+
+s = requests.Session()
+s.proxies.update(PROXIES)
+s.verify = False   # Tor / 자체 서명 인증서 필수
+
+r = s.get("https://target.com/api/...", timeout=15)
+print(f"[GET {r.url} → {r.status_code}/{len(r.content)}B]")
+```
+
+### 실전 시나리오
+
+**시나리오 1: 기본 프록시 풀 → WAF 우회**
+```bash
+/proxy api              # 무료 프록시 100개+ 수집
+bingo> https://target.com SQL 인젝션 실행해줘
+# → 밴 감지 시 자동으로 다음 프록시 사용
+```
+
+**시나리오 2: Tor + 회로 교체**
+```bash
+brew services start tor  # Tor 시작
+pip install stem         # 회로 교체 지원
+/proxy tor               # bingo에서 Tor 활성화
+bingo> https://target.com 인증 우회 테스트
+# → 밴될 때마다 새 IP(Tor 회로) 자동 획득
+```
+
+**시나리오 3: 구매한 프록시 서비스 연동**
+```bash
+# Webshare, ProxyEmpire 등 서비스의 API URL 사용
+/proxy api https://proxy.webshare.io/api/v2/proxy/list/?format=txt
+# 또는 다운로드한 파일 로드
+/proxy file ~/Downloads/webshare_proxies.txt
+```
+
+### 요구사항
+
+```bash
+pip install PySocks  # SOCKS5 프록시 지원 (자동 설치)
+pip install stem     # Tor 회로 교체 (선택 사항)
+```
+
+두 패키지 모두 `pyproject.toml`에 포함되어 bingo와 함께 자동 설치됩니다.
+
+### 트러블슈팅
+
+| 증상 | 해결책 |
+|------|--------|
+| `SOCKS5 not supported` | `pip install PySocks` |
+| Tor 연결 실패 | `brew services start tor` 또는 `sudo systemctl start tor` |
+| 회로 교체 안 됨 | `pip install stem` + torrc에 `ControlPort 9051` 추가 |
+| 프록시 소진 | `/proxy unban` 또는 `/proxy api` 로 새로 수집 |
+| 특정 프록시 제거 | `/proxy clear` 후 다시 추가 |
 
 ---
 
@@ -107,261 +324,129 @@ bingo --reset
 | DeepSeek | `deepseek-chat`, `deepseek-reasoner` |
 | GLM | `glm-4`, `glm-5` |
 | Qwen | `qwen-max`, `qwen-plus` |
-| Ollama | 로컬 모델 전부 |
-| Custom | OpenAI 호환 엔드포인트 전부 |
+| Ollama | 모든 로컬 모델 |
+| Custom | OpenAI 호환 엔드포인트 |
 
 ---
 
 ## WAF 우회 — 자동 선택
 
-| WAF | 적용 우회 기법 |
-|-----|--------------|
+| WAF | 사용되는 우회 기법 |
+|-----|------------------|
 | Cloudflare | 이중 URL 인코딩 → 유니코드 → UA 스푸핑 |
 | AWS WAF | 인코딩 → SLEEP→서브쿼리 → XFF 헤더 |
-| ModSecurity | 공백/**/ → IF→CASE WHEN → 대소문자 혼합 |
+| ModSecurity | Space/**/ → IF→CASE WHEN → 대소문자 혼합 |
 | Nginx/OpenResty | `%0a` 개행 → 주석 → 난독화 |
-| 중국 WAF | 널바이트 → 오버롱 UTF-8 → 함수 치환 |
+| 중국 WAF | 널 바이트 → 과장된 UTF-8 → 함수 치환 |
 
 ---
 
-## 환각 방지 — 4단계 검증
+## 환각 방지 — 4단계 가드
 
-AI 응답은 4가지 검사를 모두 통과해야 출력됩니다:
+모든 AI 응답은 4가지 검사를 통과해야 출력됩니다:
 
-1. **코드 블록 가드** — 빈 스텁, JSON 플랜 차단
-2. **텍스트 인터셉트** — AI 자기고백 차단
-3. **가짜 크레덴셜 차단** — HTTP 증거 없이 계정/비번 출력 차단
-4. **미검증 결론 차단** — 코드 실행 없이 "SQLi 확인" 출력 차단
+1. **코드 블록 가드** — 빈 스텁, JSON 계획 거부
+2. **텍스트 인터셉트** — AI 자기 고백 거부
+3. **가짜 자격증명 차단** — HTTP 증거 없는 크레덴셜 차단
+4. **미검증 결론 차단** — 코드 실행 없는 "SQLi 확인됨" 차단
 
-리포트 증거 레이블:
+보고서 증거 레이블:
 
 | 레이블 | 의미 |
 |--------|------|
 | `✅ VERIFIED` | 실제 HTTP 응답으로 확인됨 |
-| `🟡 LIKELY` | 부분적 증거 있음 |
+| `🟡 LIKELY` | 부분적 증거 |
 | `🔍 INFERRED` | 추론만 — 수동 검증 필요 |
 
 ---
 
-## `bingo scan` — 전체 자동 파이프라인
+## `bingo scan` — 완전 자동 파이프라인
 
 ```bash
 bingo scan https://target.com
 ```
 
-5단계를 자동으로 실행합니다. 조작 불필요:
+5단계 자동 실행, 상호작용 불필요:
 
-| 단계 | 내용 |
-|------|------|
-| 1. 정보 수집 | 기술 핑거프린트, WAF 탐지, 엔드포인트 맵핑 |
-| 2. 수집 | 관리자 패널, 민감 파일, 파라미터 발견 |
-| 3. 테스트 | SQLi / LFI / XSS / SSRF / IDOR 프로빙 |
-| 4. 익스플로잇 | WAF 우회, 데이터 추출, 크레덴셜 덤프 |
-| 5. 리포트 | CVSS 점수 + 증거 포함 마크다운 리포트 |
+| 단계 | 수행 내용 |
+|------|----------|
+| 1. 레콘 | 기술 핑거프린팅, WAF 탐지, 엔드포인트 맵 |
+| 2. 수집 | 관리자 패널, 민감한 파일, 파라미터 발견 |
+| 3. 테스트 | SQLi / LFI / XSS / SSRF / IDOR 탐지 |
+| 4. 익스플로잇 | WAF 우회, 데이터 추출, 자격증명 덤프 |
+| 5. 보고서 | CVSS 점수 + 증거 포함 마크다운 보고서 |
 
-리포트 저장 위치: `~/.config/bingo/reports/report_<domain>.md`
+보고서 저장 위치: `~/.config/bingo/reports/report_<domain>.md`
 
 ---
 
-## 명령어
+## 명령어 목록
 
-채팅창에서 `/` 입력 시 명령어 메뉴가 열립니다 (방향키로 탐색).
+채팅창에서 `/`를 입력하면 명령어 메뉴가 열립니다 (방향키로 탐색).
 
 | 명령어 | 기능 |
 |--------|------|
 | `/scan <url>` | 전체 레드팀 파이프라인 |
 | `/waf <url>` | WAF 탐지 + 우회만 |
-| `/crack [hash]` | 해시 크랙 — 온라인 → 오프라인 |
+| `/crack [hash]` | 해시 크랙 — 온라인 조회 → 오프라인 |
+| `/proxy [서브]` | **프록시 풀 로테이션** (v3.2.18 신규) |
 | `/stop` | 실행 중인 작업 중지 |
-| `/tools` | 전체 도구 목록 + 설치 현황 |
-| `/tools install <이름>` | 특정 도구 설치 |
-| `/tools install all` | 누락된 도구 전부 설치 |
+| `/tools` | 전체 도구 + 설치 상태 |
+| `/tools install <name>` | 특정 도구 설치 |
+| `/tools install all` | 누락된 모든 도구 한번에 설치 |
 | `/model` | AI 모델 추가/변경 |
 | `/skill <키워드>` | 스킬 지식베이스 검색 |
 | `/history` | 대화 기록 보기 |
-| `/export` | 대화 내용 `.md`로 저장 |
+| `/export` | 대화를 `.md`로 저장 |
 | `/config` | 현재 설정 보기 |
 | `/lang` | 언어 변경 (ko / zh / en) |
-| `/clear` | 화면 지우기 |
+| `/clear` | 화면 초기화 |
 | `/quit` | 종료 |
-
-**도구 설치 예시:**
-```bash
-/tools                        # 전체 도구 보기
-/tools install nmap           # nmap 자동 설치
-/tools install nuclei ffuf    # 여러 도구 설치
-/tools install all            # 모두 설치
-```
-
-**해시 크랙 예시:**
-```bash
-/crack                              # 마지막 응답에서 자동 추출
-/crack $2y$10$Eix...               # 특정 해시 크랙
-/crack -w ~/rockyou.txt             # 커스텀 워드리스트
-```
-
----
-
-## 설정 및 데이터 저장
-
-| 경로 | 내용 |
-|------|------|
-| `~/.config/bingo/config.json` | API 키, 모델, 언어 |
-| `~/.config/bingo/reports/` | 자동 저장 스캔 리포트 |
-| `~/.config/bingo/sessions/` | 채팅 세션 기록 |
-| `~/.bingo/tools/` | 자동 다운로드된 Go 도구 |
-| `BINGO_REPORTS_DIR` | 리포트 경로 변경 (환경 변수) |
-
-**OS별 설정 파일 위치:**
-
-| OS | 경로 |
-|----|------|
-| macOS | `~/Library/Application Support/bingo/config.json` |
-| Linux | `~/.config/bingo/config.json` |
-| Windows | `%APPDATA%\bingo\config.json` |
 
 ---
 
 ## 모바일 — APK / IPA 분석 (v2.2.8)
 
-채팅창에서 Android APK 및 iOS IPA 파일을 직접 분석할 수 있습니다.
+채팅창에서 직접 Android APK 및 iOS IPA 파일을 분석할 수 있습니다.
 
 ### Android APK
 
 ```bash
-# bingo 채팅창에서
 bingo> analyze target.apk
-bingo> target.apk secret scan
+bingo> target.apk 시크릿 스캔
 bingo> pentest com.example.app
 ```
 
-| 방식 | 속도 | 명령어 |
-|------|------|--------|
-| TruffleHog 네이티브 | ⚡ 9배 빠름 | `bingo> target.apk trufflehog` |
-| jadx 전체 디컴파일 | 정밀 | `bingo> target.apk jadx full scan` |
-
-**CLI / Python:**
-```bash
-trufflehog filesystem target.apk --json --no-verification
-# Docker (설치 불필요):
-docker run -v $(pwd):/work trufflesecurity/trufflehog:latest filesystem /work/target.apk --json
-```
-
-**TruffleHog 설치:**
-```bash
-brew install trufflesecurity/trufflehog/trufflehog   # macOS
-curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin  # Linux
-```
+| 방법 | 속도 | 명령 |
+|------|------|------|
+| TruffleHog native | ⚡ 9배 빠름 | `bingo> target.apk trufflehog` |
+| jadx 전체 디컴파일 | 철저함 | `bingo> target.apk jadx full scan` |
 
 ### iOS IPA
 
 ```bash
-# bingo 채팅창에서
 bingo> analyze target.ipa
 bingo> ios swift decompile target.ipa
-bingo> malimite target.ipa
 ```
 
-**필요 사항:** Java 17+ 및 Malimite.jar
+**필요사항:** Java 17+ 및 Malimite.jar
 ```bash
 brew install openjdk@17
-# Malimite.jar 다운로드: https://github.com/LaurieWired/Malimite/releases
-mkdir -p ~/tools && mv ~/Downloads/Malimite.jar ~/tools/
+# Malimite.jar: https://github.com/LaurieWired/Malimite/releases
 java -jar ~/tools/Malimite.jar target.ipa --output ./decompiled/
-trufflehog filesystem ./decompiled/ --json --no-verification
 ```
 
-### 자동 탐지 (APK 또는 IPA)
-
-```bash
-bingo> auto scan target.apk    # AI가 적합한 방법 자동 선택
-bingo> auto scan target.ipa
-```
-
-### bingo가 추출하는 항목
+### 추출 항목
 
 | 항목 | 상세 |
 |------|------|
 | 하드코딩된 시크릿 | AWS 키, Google API, Firebase, Stripe, JWT, GitHub 토큰 |
-| 권한 | 선언된 전체 + 위험 권한 |
+| 권한 | 선언된 모든 권한 + 위험 권한 |
 | 익스포트된 컴포넌트 | Activities, Services, Receivers, Providers |
 | 딥링크 / URL 스킴 | Intent 필터, 커스텀 스킴 핸들러 |
-| 네트워크 엔드포인트 | 코드 + 에셋에서 추출된 API URL |
+| 네트워크 엔드포인트 | 코드+에셋에서 추출된 API URL |
 | SSL 피닝 | 탐지 → 우회 가이드 자동 생성 |
 | 서드파티 SDK | Firebase, Sentry, Analytics 등 |
-
----
-
-## Windows EXE — 독립 실행 파일 빌드
-
-Python 없이 실행되는 `.exe` 파일 생성:
-
-```bash
-pip install pyinstaller
-pyinstaller --onefile --name bingo bingo/__main__.py
-# 출력: dist/bingo.exe
-```
-
-`dist/bingo.exe`를 아무 Windows PC에 복사 — Python 불필요.  
-실행: `bingo.exe` 또는 `bingo.exe scan https://target.com`
-
----
-
-## EXE Phase 0 — Windows PE 정적 분석 (v2.3.5)
-
-Windows 실행 파일(EXE / DLL / SYS)을 **실행하지 않고** 분석합니다.
-
-```bash
-# bingo 채팅창에서
-bingo> analyze malware.exe
-bingo> pe static analysis sample.dll
-bingo> check this exe: payload.exe
-```
-
-| 분석 항목 | 상세 |
-|-----------|------|
-| 아키텍처 | x86 / x64 / ARM, 컴파일 타임스탬프 |
-| 섹션 엔트로피 | >7.0 = 패킹/암호화/난독화 |
-| 임포트 테이블 | 30+ 공격 기법별 의심 Windows API |
-| 문자열 | C2 URL, 하드코딩 IP, API 키, 뮤텍스, Base64 블롭 |
-| 패커 탐지 | UPX, Themida, VMProtect, MPRESS, ASPack |
-| 디지털 서명 | Authenticode 유효성 확인 |
-| YARA 스캔 | 내장 룰 + 커스텀 룰 파일 지원 |
-| 위험도 점수 | 자동: LOW / MEDIUM / HIGH |
-| 해시 | MD5, SHA1, SHA256, ImpHash, SSDeep |
-| VirusTotal | VT API를 통한 해시 조회 (선택) |
-
----
-
-## 사후 침투 — 웹쉘 배포 (v2.2.5)
-
-SQLi 확인 후 bingo가 전체 사후 침투 체인을 자동 실행합니다:
-
-**체인:** `SQLi 로그인 우회 → 파일 업로드 → 웹쉘 → AntSword 연결`
-
-```bash
-# bingo 채팅창에서 — 목표만 설명하면 됩니다
-bingo> https://target.com/login 에서 SQLi 있음 — 관리자 접근 후 웹쉘 배포해줘
-```
-
-bingo가 각 단계를 처리합니다:
-
-| 단계 | 내용 |
-|------|------|
-| 1. SQLi 인증 우회 | `admin'--` / `' OR 1=1--` 로그인 폼에 인젝션 |
-| 2. 세션 캡처 | 인증 쿠키 자동 저장 |
-| 3. 파일 업로드 | 인증된 업로드 엔드포인트로 웹쉘 업로드 |
-| 4. 웹쉘 테스트 | `id`, `whoami`, `uname -a` 실행으로 RCE 확인 |
-| 5. AntSword 설정 | AntSword C2 연결 문자열 출력 |
-| 6. DB 전체 덤프 | 쉘 확인 후 DbDumper 자동 실행 |
-
-**웹쉘 유형 자동 선택:**
-
-| 백엔드 | 웹쉘 |
-|--------|------|
-| PHP | `<?php system($_GET['cmd']); ?>` |
-| JSP | Runtime.exec() 쉘 |
-| ASPX | ProcessStartInfo 쉘 |
 
 ---
 
@@ -370,34 +455,18 @@ bingo가 각 단계를 처리합니다:
 SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 
 - 덤프 대상: `member` / `user` / `admin` / `g5_member` / `xe_member`
-- **행 수 제한 없음** — `max_rows_per_table=0` (무제한), 전체 테이블 전량 덤프
-- 크레덴셜 저장 → `CREDENTIALS_{테이블}.json`
-- 해시 유형 자동 탐지 → `hashcat -m {모드}` 명령어 출력
-- 추출된 크레덴셜로 관리자 로그인 재시도
+- **행 제한 없음** — `max_rows_per_table=0` (전체 테이블 덤프)
+- 자격증명 저장 → `CREDENTIALS_{table}.json`
+- 해시 타입 탐지 → `hashcat -m {mode}` 명령 출력
+- 추출된 자격증명으로 관리자 로그인 재시도
 
-**저장 위치 (OS 자동 감지):**
+**저장 위치:**
 
 | OS | 경로 |
 |----|------|
-| macOS | `~/Desktop/dump/{타겟}_{타임스탬프}/` |
-| Windows | `~/Desktop/dump/{타겟}_{타임스탬프}/` (OneDrive 바탕화면 자동 감지) |
-| Linux | `~/Desktop/dump/{타겟}_{타임스탬프}/` (Desktop 없으면 `~/dump/` 사용) |
-
-> **v2.9.6 수정:** AI가 생성한 추출 코드가 `/tmp/`에 저장하고 DbDumper를 무시하는 버그 수정.
-> `/tmp/` 저장 완전 금지, Desktop 경로 강제, FLOOR 인젝션 `query_fn` 템플릿 추가.
-
----
-
-## XSS 스캔 (v2.9.6)
-
-bingo가 자동으로 반사형/저장형 XSS를 탐지합니다:
-
-- 모든 파라미터의 반사 컨텍스트 스캔 (HTML / 속성 / JS / URL)
-- **반사 위치 중복 제거** — 동일 파라미터가 HTML 응답에 여러 번 나타나도 고유 컨텍스트만 출력
-- 루프 감지기가 정상 스캔 출력과 실제 무한 루프를 구분
-- 출력 형식: `반사 위치: {파라미터}={컨텍스트}` + 고유 위치 수 요약
-
-**v2.9.5 수정 이유:** 일부 페이지는 XSS 프로브가 단일 응답에 수십 번 반사됩니다. 이전 버전은 동일한 줄이 5회 연속되면 무한루프로 판단해 강제 종료했습니다. v2.9.5는 스캔 결과 줄의 임계값을 25회로 높이고 AI 생성 코드에 중복 제거를 강제 적용합니다.
+| macOS | `~/Desktop/dump/{target}_{timestamp}/` |
+| Windows | `~/Desktop/dump/{target}_{timestamp}/` |
+| Linux | `~/Desktop/dump/{target}_{timestamp}/` |
 
 ---
 
@@ -406,13 +475,33 @@ bingo가 자동으로 반사형/저장형 XSS를 탐지합니다:
 ```python
 import requests, urllib3
 urllib3.disable_warnings()
-REAL_IP = "x.x.x.x"  # SPF/DNS 레코드에서 확인
+REAL_IP = "x.x.x.x"  # SPF/DNS 레코드에서 찾은 실제 IP
 s = requests.Session()
 s.verify = False
 r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 ```
 
-실제 IP 찾기: `dig TXT target.com` → SPF 레코드의 IP 확인.
+실제 IP 찾기: `dig TXT target.com` → SPF 레코드 IP 확인.
+
+---
+
+## 설정 및 데이터 저장
+
+| 경로 | 내용 |
+|------|------|
+| `~/.config/bingo/config.json` | API 키, 모델, 언어 |
+| `~/.config/bingo/reports/` | 자동 저장 스캔 보고서 |
+| `~/.config/bingo/sessions/` | 채팅 세션 기록 |
+| `~/.bingo/tools/` | 자동 다운로드 Go 도구 |
+| `BINGO_REPORTS_DIR` | 보고서 경로 오버라이드 (환경변수) |
+
+---
+
+## 요구사항
+
+- Python 3.10+
+- 지원 모델 중 하나의 API 키
+- (선택) VPN 또는 프록시 — 자동 감지 및 표시
 
 ---
 
@@ -420,59 +509,19 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
-| v3.0.6 | SQLi 추출 중 IP 차단 자동 감지 + X-Forwarded-For 12종 헤더 자동 로테이션, 소진 시 부분 덤프 저장 |
-| v3.0.5 | 버그수정: 최종 보고서를 Desktop/dump/타겟명/ 에 저장 (~/.config/bingo/reports/ 오류 수정) |
-| v3.0.4 | 크리덴셜 확보 후: 관리자 페이지 자동 탐색 + IP 제한 우회 (헤더 스푸핑/SSRF/실IP) + 보고서 포함 |
-| v3.0.3 | DB 덤프: DbDumper 우선 시도 → 실패 또는 STEP 0 테이블 누락 시 수동 페이지네이션 자동 폴백 |
-| v3.0.2 | DB 덤프: 회원 테이블 판단 시 실제 샘플 데이터 확인 (SELECT LIMIT 5), 컬럼명만으로 판단 금지 |
-| v3.0.1 | 테이블 식별: 컬럼명 기반 + 난독화 테이블명 지원 |
-| v3.0.0 | DbDumper 유연 사용 — AI가 상황별 방법 선택 (WAF 없음 / WAF 있음 / WebShell) |
-| v2.9.8 | 저장 규칙 단순화: /tmp/는 중간 파일 허용, 최종 결과만 Desktop 저장 |
-| v2.9.7 | 모든 최종 출력 파일 Desktop/dump/타겟명/ 강제 저장 |
-| v2.9.6 | DB 덤프: /tmp/ 저장 금지 강제, Desktop 경로 의무화, FLOOR 인젝션 query_fn 템플릿 추가 |
-| v2.9.5 | XSS 반사 중복 제거 수정 — 반복 반사로 인한 오탐 루프 종료 방지 |
-| v2.9.3 | DB 덤프: 행 수 제한 없음 + 바탕화면 자동 저장 (macOS/Windows) |
-| v2.9.2 | CMS 편향 수정 — 타겟별 신규 탐지, 무추정 |
-| v2.9.1 | 버그 수정: 변수 치환, 경고 스팸, 오탐 |
-| v2.9.0 | 11개 신규 모듈: HTTP 스머글링, GraphQL, OAuth/JWT, Playwright, 알림 |
-| v2.8.0 | SQLi 엔진 전면 개편 — sqlmap 수준 정밀도 |
-| v2.7.0 | 침투 성공 후 DB 자동 덤프 |
-| v2.3.0 | Burp Engine — 순수 Python으로 Repeater/Intruder/Scanner 구현 |
+| v3.2.18 | **프록시 풀 로테이션** — HTTP/HTTPS/SOCKS5/Tor/API, 밴 시 자동 교체, RULE 26-T |
+| v3.2.17 | 오탐 수정: `Body: <!DOCTYPE html>` 루프 감지기, RULE 26-S |
+| v3.2.16 | CAPTCHA 오탐 수정 — 스크립트 태그 제외 |
+| v3.2.15 | `NameError` 방지: RULE 26-Q — 변수 사용 전 초기화 의무 |
+| v3.2.14 | 로그인 효율성: 3회 HTTP 500 후 JS 분석 피벗 (RULE 26-P) |
+| v3.0.6 | SQLi 추출: IP 밴 자동 감지 + XFF 로테이션(12개 헤더) |
+| v3.0.5 | 수정: 최종 보고서가 Desktop/dump/target/에 저장되도록 |
+| v2.9.6 | DB 덤프: /tmp/ 저장 금지, Desktop 경로 강제, FLOOR 인젝션 템플릿 추가 |
+| v2.9.5 | XSS 반사 중복 제거 — 반복 반사로 인한 오탐 루프 킬 방지 |
+| v2.9.0 | 11개 신규 모듈: HTTP 스머글링, GraphQL, OAuth/JWT, Playwright |
+| v2.8.0 | SQLi 엔진 전면 개편 |
+| v2.7.0 | 성공적인 침투 후 DB 자동 덤프 |
 | v2.2.0 | Pentest Precision Engine — WAF 우회, CAPTCHA OCR |
-| v2.1.0 | API 퍼징, 리포트 후 인터랙티브 액션 |
-
----
-
-## 언어 설정
-
-```bash
-/lang        # 채팅에서 언어 변경
-```
-
-| 언어 | 코드 |
-|------|------|
-| English | `en` |
-| 한국어 | `ko` |
-| 中文 | `zh` |
-
----
-
-## 요구 사항
-
-- Python 3.10+
-- 지원 모델 중 하나의 API 키
-- (선택) VPN — 자동 탐지 후 표시됨
-
----
-
-## 기여하기
-
-```bash
-git clone https://github.com/bingook/bingo.git
-cd bingo && bash install.sh
-```
-
-PR 환영합니다. 큰 변경사항은 먼저 이슈를 열어주세요.
 
 ---
 
@@ -484,6 +533,6 @@ MIT © 2026 bingook
 
 <div align="center">
 
-**타겟만 입력하면 bingo가 나머지를 처리합니다.**
+**타겟을 입력하세요. bingo가 나머지를 합니다.**
 
 </div>

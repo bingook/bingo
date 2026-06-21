@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.0.6-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.18-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -163,6 +163,159 @@ Report saved to: `~/.config/bingo/reports/report_<domain>.md`
 
 ---
 
+## Proxy Pool Rotation (v3.2.18)
+
+Automatically rotates IP addresses to bypass WAF bans, rate limits, and IP blocks.
+
+### Supported Proxy Types
+
+| Type | Format | Notes |
+|------|--------|-------|
+| HTTP | `http://ip:port` | Basic proxy |
+| HTTP + Auth | `http://user:pass@ip:port` | With credentials |
+| HTTPS | `https://ip:port` | SSL tunnel |
+| SOCKS5 | `socks5://ip:port` | Requires PySocks |
+| SOCKS5h | `socks5h://ip:port` | DNS also through proxy (more anonymous) |
+| Tor | `socks5h://127.0.0.1:9050` | Tor Browser / `tor` daemon |
+| API | URL string | Auto-fetch from ProxyScrape, Webshare, custom |
+
+### Quick Start
+
+```bash
+# Add a single proxy
+/proxy add socks5://1.2.3.4:1080
+
+# Enable Tor (must have Tor running: brew install tor && tor)
+/proxy tor
+
+# Fetch free proxies from API presets automatically
+/proxy api
+
+# Load a proxy list file (one proxy per line)
+/proxy file ~/proxies.txt
+
+# Check pool status
+/proxy list
+```
+
+### All `/proxy` Sub-commands
+
+| Command | Description |
+|---------|-------------|
+| `/proxy list` | Show pool status + all proxies |
+| `/proxy add <url>` | Add a single proxy manually |
+| `/proxy file <path>` | Load proxies from text file (one per line) |
+| `/proxy api [url]` | Auto-fetch from API URL or choose preset |
+| `/proxy tor [password]` | Enable Tor mode (optional: control port password) |
+| `/proxy rotate` | Force immediate switch to next proxy |
+| `/proxy test` | Test current proxy connection (latency check) |
+| `/proxy unban` | Unban all banned proxies (reset fail marks) |
+| `/proxy clear` | Clear entire pool |
+| `/proxy off` | Disable proxy (requests go direct) |
+
+### How Auto-Rotation Works
+
+When bingo detects a ban (HTTP 429, 403, IP block, connection reset):
+
+```
+1. ProxyManager.report_ban() marks current proxy as BANNED
+2. Switches to the next available proxy automatically
+3. If Tor mode: sends NEWNYM signal → new Tor circuit (new IP)
+4. Injects new proxy URL into AI hint so next script uses it
+5. Waits 3s (vs 15s without proxy) and retries
+```
+
+AI-generated scripts automatically receive:
+```python
+# [PROXY_ROTATED: now using socks5://5.6.7.8:9090]
+PROXIES = {'http': 'socks5://5.6.7.8:9090', 'https': 'socks5://5.6.7.8:9090'}
+session.get(url, proxies=PROXIES, timeout=15, verify=False)
+```
+
+### Tor Setup Guide
+
+**Step 1 — Install Tor:**
+```bash
+# macOS
+brew install tor && brew services start tor
+
+# Ubuntu/Debian
+sudo apt install tor && sudo systemctl start tor
+
+# Windows: download Tor Browser (includes tor daemon)
+```
+
+**Step 2 — (Optional) Enable Tor Control Port:**  
+Edit `/etc/tor/torrc` (Linux) or `/usr/local/etc/tor/torrc` (macOS):
+```
+ControlPort 9051
+CookieAuthentication 1
+```
+Then restart: `sudo systemctl restart tor`
+
+**Step 3 — Enable in bingo:**
+```bash
+/proxy tor           # no password (cookie auth)
+/proxy tor mypassword  # with HashedControlPassword
+```
+
+**Step 4 — Install stem for circuit rotation:**
+```bash
+pip install stem
+```
+Without `stem`, Tor still works but circuit rotation (new IP per ban) is disabled.
+
+### API Preset Fetching
+
+```bash
+/proxy api
+```
+Choose from built-in presets:
+```
+1. ProxyScrape (SOCKS5) — free, 5000+ proxies
+2. ProxyScrape (HTTP)   — free, HTTP proxies
+3. ProxyScrape (SOCKS4) — free, SOCKS4 proxies
+4. GeoNode Free         — filtered, 90%+ uptime
+0. Custom URL           — enter your own API endpoint
+```
+
+Or specify URL directly:
+```bash
+/proxy api https://api.proxyscrape.com/v3/...
+/proxy api https://your-own-proxy-api.com/list.txt
+```
+
+Supported API response formats:
+- Plain text, one proxy per line (`ip:port` or `scheme://ip:port`)
+- JSON array: `["socks5://1.2.3.4:1080", ...]`
+
+### Proxy in AI-Generated Scripts
+
+When `/proxy` is active, every AI script automatically includes:
+
+```python
+import requests
+
+# [bingo v3.2.18: PROXY ACTIVE]
+PROXIES = {'http': 'socks5://1.2.3.4:1080', 'https': 'socks5://1.2.3.4:1080'}
+s = requests.Session()
+s.proxies.update(PROXIES)
+s.verify = False   # required for Tor / self-signed certs
+
+r = s.get("https://target.com/api/...", timeout=15)
+```
+
+### Requirements
+
+```bash
+pip install PySocks  # SOCKS5 proxy support (auto-installed)
+pip install stem     # Tor circuit rotation (optional)
+```
+
+Both are included in `pyproject.toml` dependencies — installed automatically with bingo.
+
+---
+
 ## Commands
 
 Type `/` in the chat to open command menu (arrow keys to navigate).
@@ -172,6 +325,7 @@ Type `/` in the chat to open command menu (arrow keys to navigate).
 | `/scan <url>` | Full red team pipeline |
 | `/waf <url>` | WAF detection + bypass only |
 | `/crack [hash]` | Hash crack — online lookup → offline |
+| `/proxy [sub]` | **Proxy pool rotation** (new v3.2.18) |
 | `/stop` | Stop running task |
 | `/tools` | Show all tools + install status |
 | `/tools install <name>` | Install a specific tool |
@@ -420,6 +574,11 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v3.2.18 | **Proxy Pool Rotation** — HTTP/HTTPS/SOCKS5/Tor/API, auto-rotate on ban, RULE 26-T |
+| v3.2.17 | False positive fix: `Body: <!DOCTYPE html>` loop detector, RULE 26-S |
+| v3.2.16 | CAPTCHA false positive fix — script tags excluded from detection |
+| v3.2.15 | `NameError` prevention: RULE 26-Q — variables must be initialized before use |
+| v3.2.14 | Login efficiency: pivot to JS analysis after 3× HTTP 500 (RULE 26-P) |
 | v3.0.6 | SQLi extraction: auto IP-ban detection + X-Forwarded-For rotation (12 headers), partial dump on exhaustion |
 | v3.0.5 | Fix: final report now saved to Desktop/dump/target/ instead of ~/.config/bingo/reports/ |
 | v3.0.4 | Post-credential: admin page discovery + IP restriction bypass (header spoofing/SSRF/real-IP) + report |

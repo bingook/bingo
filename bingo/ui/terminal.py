@@ -482,7 +482,7 @@ class BingoTerminal:
                 _ctrl_c_count += 1
                 if _ctrl_c_count >= 2:
                     # 연속 2회 Ctrl+C → 진짜 종료
-                self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
+                    self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
                     if self._session_log_path:
                         self.console.print(
                             f"[{THEME['dim']}]{self.s['session_done']}: {self._session_log_path}[/]"
@@ -1479,7 +1479,7 @@ class BingoTerminal:
         # ── 일반 대화 모드 감지 ────────────────────────────────────────
         full_response = ""  # 초기화 — UnboundLocalError 방지
         if self._is_general_question(text):
-        self.history.append(Message(role="user", content=text))
+            self.history.append(Message(role="user", content=text))
             self._append_to_session_log("user", text)
 
             # 임시로 시스템 메시지를 경량 일반대화 프롬프트로 교체
@@ -1909,7 +1909,7 @@ class BingoTerminal:
         import re as _re
         display = _re.sub(r"SKILL_LOAD:\s*[^\n]*\n?", "", display)
 
-            self.console.print()
+        self.console.print()
         try:
             _has_rich = "[dim]" in display or "[bold" in display
             _has_md   = "**" in display or "\n# " in display or "\n## " in display
@@ -2152,7 +2152,7 @@ class BingoTerminal:
                     "cookies": {}, "evidence": "", "active": False,
                 }
                 self._success("세션 초기화 완료.")
-        else:
+            else:
                 self._cmd_session()
         elif name == "/crack":
             self._cmd_crack(arg)
@@ -6073,11 +6073,11 @@ class BingoTerminal:
 
             if not hs_matches and not local_results:
                 # ── 내장 DB 검색 (마지막 수단) ─────────────────────────
-            results = engine.search(keyword)
-            if results:
+                results = engine.search(keyword)
+                if results:
                     for r in results[:8]:
-                    self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
-            else:
+                        self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
+                else:
                     self.console.print(
                         f"[{THEME['dim']}]{self.s['skill_no_result'].format(kw=keyword)}[/]"
                     )

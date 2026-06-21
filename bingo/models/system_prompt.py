@@ -2217,6 +2217,60 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     5. try/except 블록에서 같은 오류 메시지를 반복 catch해 print하지 말 것.
        대신: 오류 카운터 증가 후 루프 종료 시 총합 출력.
 
+  ▸ RULE 26-P [v3.2.14]: 로그인 API 500 반복 시 즉시 JS 딥 분석 전환 — 필드명/인코딩 자동 탐지.
+    로그인 엔드포인트(POST /login, /auth, /signin, /certifications/logins/* 등)가
+    동일 파라미터로 HTTP 500 / EXCEPTION_ISSUED / EXCEPTION_VALIDATION 을 3회 이상
+    반복 반환하면, 필드명 추측을 즉시 중단하고 아래 분석 루틴을 실행한다:
+
+    STEP 1 — JS 소스에서 로그인 DTO 필드명 추출:
+      search_patterns = [
+          r'(?:login|auth|signin)\s*\(\s*\{([^}]{0,400})\}',  # login({...})
+          r'processLogin.*?\{([^}]{0,400})\}',                 # processLogin async
+          r'LoginDto\s*\{([^}]{0,300})\}',                     # LoginDto class
+          r'data:\s*\{([^}]{0,300})\}',                        # axios data: {}
+          r'\bbtoa\s*\(\s*(\w+)',                               # btoa(value) → Base64
+          r'CryptoJS\.AES\.encrypt\s*\(\s*(\w+)',              # AES encrypt
+          r'\.md5\s*\(\s*(\w+)',                                # md5(value)
+          r'encodeURIComponent\s*\(\s*(\w+)',                   # URI encode
+      ]
+      모든 JS 파일에 대해 위 패턴으로 필드명 + 인코딩 방식 동시 추출.
+
+    STEP 2 — 인코딩 방식 자동 감지 후 적용:
+      - btoa() 감지 → 로그인 값을 Python에서 base64.b64encode(val.encode()).decode() 로 인코딩
+      - CryptoJS.AES 감지 → AES 암호화 (키는 JS에서 추출)
+      - md5() 감지 → hashlib.md5(val.encode()).hexdigest()
+      - encodeURIComponent 감지 → urllib.parse.quote(val, safe='')
+      - 감지 없음 → 평문 전송
+
+    STEP 3 — 정확한 필드명 조합 테스트:
+      JS 분석 결과를 기반으로 실제 필드명 (loginId, email, memberId 등) + 인코딩 적용 후 전송.
+      이 단계에서 500이 해결되거나 "INVALID_CREDENTIALS" 류 응답이 오면 성공.
+
+    WRONG — 500 반복에도 필드명 추측 반복:
+      for combo in [['email','password'],['loginId','loginPw'],['userId','userPw'],...]:
+          r = requests.post(login_url, json=dict(zip(combo, ['test','test'])))
+          # 매번 500 → 의미 없는 반복 → 루프 낭비
+
+    CORRECT — 3회 500 후 즉시 JS 분석 전환:
+      fail500 = 0
+      for combo in login_combos:
+          r = requests.post(login_url, json=...)
+          if r.status_code == 500:
+              fail500 += 1
+              if fail500 >= 3:
+                  print("[PIVOT] 500 3회 반복 → JS 딥 분석으로 전환")
+                  # JS에서 loginId:btoa(r) 패턴 발견 → Base64 인코딩 후 재시도
+                  break
+          else:
+              break
+
+    RULE:
+    1. 동일 엔드포인트에 동일 파라미터 패턴으로 500이 3회 이상 → 즉시 STOP.
+    2. JS 소스 분석을 최우선으로 실행 (btoa/AES/md5 패턴 탐지).
+    3. 인코딩 방식이 감지되면 Python에서 동일하게 적용 후 재시도.
+    4. EXCEPTION_VALIDATION (빈 message)도 필드명 불일치 신호 → 동일 룰 적용.
+    5. 분석 결과를 요약 출력: "[JS-PARSE] loginId=btoa, password=btoa, isSns=bool"
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

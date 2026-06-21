@@ -2679,6 +2679,22 @@ _STRINGS.update({
     "autofix_loop_dedup":        {"ko": "[AUTO-FIX] 루프 내 반복 출력 감지 → 카운터 방식으로 자동 교체",
                                    "zh": "[AUTO-FIX] 检测到循环内重复输出 → 自动替换为计数器方式",
                                    "en": "[AUTO-FIX] Repeated output in loop detected → auto-replaced with counter"},
+    # v3.2.14: 로그인 500 반복 → JS 딥 분석 전환 (RULE 26-P)
+    "rule_26p_pivot_js":         {"ko": "⚠ RULE 26-P: 로그인 500이 3회 반복됨 → JS 딥 분석으로 즉시 전환",
+                                   "zh": "⚠ RULE 26-P: 登录500错误重复3次 → 立即切换到JS深度分析",
+                                   "en": "⚠ RULE 26-P: Login 500 repeated 3x → pivoting to JS deep analysis now"},
+    "pivot_js_analysis":         {"ko": "[PIVOT] 로그인 필드명/인코딩 JS 분석 시작 (btoa/AES/md5 탐지)",
+                                   "zh": "[PIVOT] 开始JS分析登录字段名/编码方式 (btoa/AES/md5检测)",
+                                   "en": "[PIVOT] Starting JS analysis for login field names/encoding (btoa/AES/md5 detect)"},
+    "pivot_js_found":            {"ko": "[JS-PARSE] 발견: {fields} | 인코딩: {enc}",
+                                   "zh": "[JS-PARSE] 发现: {fields} | 编码: {enc}",
+                                   "en": "[JS-PARSE] Found: {fields} | encoding: {enc}"},
+    "pivot_js_not_found":        {"ko": "[JS-PARSE] 필드명/인코딩 패턴 미발견 → 평문 재시도",
+                                   "zh": "[JS-PARSE] 未找到字段名/编码模式 → 尝试明文",
+                                   "en": "[JS-PARSE] No field/encoding pattern found → retrying plain text"},
+    "login_500_count":           {"ko": "[LOGIN] 500 에러 {n}회 발생 ({url})",
+                                   "zh": "[LOGIN] 500错误已发生{n}次 ({url})",
+                                   "en": "[LOGIN] 500 error occurred {n} times ({url})"},
 })
 
 

@@ -2651,6 +2651,17 @@ _STRINGS.update({
     "loop_false_positive_xml":   {"ko": "[AUTO-FIX] XML/HTML 태그 오탐 방지: '{val}' 반복감지 → 루프 아님",
                                    "zh": "[AUTO-FIX] XML/HTML标签误报防护: '{val}'重复检测 → 非循环",
                                    "en": "[AUTO-FIX] XML/HTML tag false positive: '{val}' repeated → not a loop"},
+
+    # v3.2.11: 스크립트 오류 메시지 오탐 방지
+    "loop_skip_error_msg":       {"ko": "⚡ 루프감지 건너뜀: '{val}'은 실행 오류 메시지 → SQL 데이터 아님",
+                                   "zh": "⚡ 循环检测跳过: '{val}'为执行错误消息 → 非SQL数据",
+                                   "en": "⚡ Loop detect skip: '{val}' is error message → not SQL data"},
+    "autofix_regex_char_range":  {"ko": "[AUTO-FIX] 정규식 character range 오류 수정: \\-/ → - (하이픈 위치 교정)",
+                                   "zh": "[AUTO-FIX] 修复正则字符范围错误: \\-/ → - (连字符位置修正)",
+                                   "en": "[AUTO-FIX] Regex bad character range fixed: \\-/ → - (hyphen repositioned)"},
+    "regex_char_range_rule":     {"ko": "⚠ RULE 26-N: [] 내 하이픈은 맨 앞/뒤에만 배치 — r'[-\\.+]' (올바름) vs r'[\\-/]' (오류)",
+                                   "zh": "⚠ RULE 26-N: []内连字符必须在首尾 — r'[-\\.+]'(正确) vs r'[\\-/]'(错误)",
+                                   "en": "⚠ RULE 26-N: Hyphen in [] must be at start/end — r'[-\\.+]' (ok) vs r'[\\-/]' (error)"},
 })
 
 

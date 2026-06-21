@@ -3149,6 +3149,35 @@ class BingoTerminal:
             if fixed != _before_0f:
                 _applied_fix_names.append("fix_escape_seq")
 
+            # ── 0g. regex character class 내 잘못된 하이픈 위치 수정 [v3.2.11] ──
+            # r'[\-/]', r'[\-+]', r'[a\-/b]' 등 → 하이픈을 클래스 맨 앞으로 이동
+            # Python 3.12: character class 내 \- 는 '-' 리터럴이나 위치가 range로 해석되면 오류
+            def _fix_bad_char_range(m: "_pre_re.Match") -> str:
+                """문자 클래스 [] 내부에서 \-X 또는 X\-Y 패턴(잘못된 range) 수정"""
+                full = m.group(0)
+                # r"..." raw string 내부만 수정 (일반 문자열은 건드리지 않음)
+                if not (full.startswith("r'") or full.startswith('r"')):
+                    return full
+                # 문자 클래스 내부 \-{char} 패턴 → -{char} 로 교체 후 - 를 맨 앞으로
+                import re as _re2
+                # [\-X] or [X\-Y] → [-X] or [-XY] (하이픈을 클래스 시작으로)
+                def _fix_class(cm):
+                    inner = cm.group(1)
+                    # \- 를 단순 - 로 교체
+                    inner_fixed = inner.replace('\\-', '-')
+                    # 이미 맨 앞/뒤가 아닌 - 가 있으면 맨 앞으로 이동
+                    if '-' in inner_fixed and not (inner_fixed.startswith('-') or inner_fixed.endswith('-')):
+                        inner_fixed = '-' + inner_fixed.replace('-', '')
+                    return '[' + inner_fixed + ']'
+                fixed_inner = _re2.sub(r'\[([^\[\]]{1,80})\]', _fix_class, full)
+                return fixed_inner
+            _before_0g = fixed
+            # r"..." 또는 r'...' raw 문자열에만 적용
+            _raw_str_pat = r'r(?:""".*?"""|\'\'\'.*?\'\'\'|"[^"\\]*(?:\\.[^"\\]*)*"|\'[^\'\\]*(?:\\.[^\'\\]*)*\')'
+            fixed = _pre_re.sub(_raw_str_pat, _fix_bad_char_range, fixed, flags=_pre_re.DOTALL)
+            if fixed != _before_0g:
+                _applied_fix_names.append("fix_regex_char_range")
+
             # ── 1. requests.get/post/put/delete — timeout 자동 주입 ─────────
             def _add_kwarg(call_str: str, kwarg: str) -> str:
                 """call_str의 닫는 괄호 앞에 kwarg 추가. 이미 있으면 그대로 반환.
@@ -4285,6 +4314,12 @@ class BingoTerminal:
                 "<?xml", "xmlns", "<!--", "-->", "<!",
                 "<url", "<loc", "<lastmod", "<priority", "<urlset",
                 "<sitemap", "<sitemapindex",
+                # v3.2.11: 스크립트 실행 오류 메시지 접두어 (오탐 방지)
+                "获取失败:", "执行失败:", "请求失败:", "连接失败:", "解析失败:",
+                "fetch failed:", "request failed:", "error:", "exception:",
+                "traceback", "Traceback", "re.error:", "ValueError:",
+                "TypeError:", "AttributeError:", "bad character",
+                "取得失敗:", "실행실패:", "오류:", "에러:",
             )
             _UI_KEYWORDS = {
                 "alert", "error", "ok", "yes", "no", "true", "false",
@@ -4305,7 +4340,7 @@ class BingoTerminal:
             # v3.2.9: 숫자/날짜/시간만으로 구성된 값 (SQL 데이터가 아님)
             # 수정: \Z는 [] 문자 클래스 안에서 사용 불가 → 제거 후 올바른 패턴으로 교체
             _NUMERIC_ONLY_PATTERN = _re.compile(
-                r'^[\d\s.\-+:T/,Z]+$'  # 0.80, 1.00, 2025-06-18T08:52:20+00:00
+                r'^[-\d\s.+:T/,Z]+$'  # 0.80, 1.00, 2025-06-18T08:52:20+00:00 (하이픈 맨 앞)
             )
             # v3.2.9: JSON 구조 문자로 시작하는 라인
             _JSON_STRUCT_START = ('{', '}', '[', ']', '":', '",', '"}', '"]')

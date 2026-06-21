@@ -2166,6 +2166,28 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     RULE: 반복 구조(XML/HTML/JSON)를 출력할 때는 반드시 파싱 후 핵심값만 요약 출력.
     태그/키 이름 자체(<url>, <loc>, "item", "data" 등)를 반복 print하지 말 것.
 
+  ▸ RULE 26-N [v3.2.11]: 정규식 문자 클래스([]) 내 하이픈(-) 위치 규칙 — 반드시 준수.
+    Python 3.12 re 모듈은 문자 클래스 내 잘못된 위치의 하이픈을 range로 해석하여
+    re.error: bad character range \-/ at position N 오류를 발생시킨다.
+
+    WRONG — 하이픈이 두 문자 사이에 있어 range로 해석됨:
+      re.compile(r'[\-/]')        # \- 뒤에 / → '-'~'/' range → 오류
+      re.compile(r'[a\-z/]')      # a~z range는 OK지만 \- 혼용 주의
+      re.compile(r'[\d\s\-+/]+')  # \-+ 가 '-'~'+' range로 해석 → 오류 가능
+
+    CORRECT — 하이픈을 문자 클래스의 맨 앞 또는 맨 뒤에 배치:
+      re.compile(r'[-/]')         # 맨 앞 → 리터럴 하이픈
+      re.compile(r'[/-]')         # 맨 뒤 → 리터럴 하이픈
+      re.compile(r'[\d\s.+:T/,Z-]+')  # 맨 뒤에 하이픈
+      re.compile(r'[-\d\s.+:T/,Z]+')  # 맨 앞에 하이픈
+
+    CORRECT — 날짜/시간 패턴 예시:
+      re.compile(r'^[-\d\s.+:T/,Z]+$')   # ISO 타임스탬프, 숫자, 날짜 매칭
+
+    RULE: re.compile()에 전달하는 모든 문자 클래스 [] 내부에서,
+    하이픈(-)은 반드시 클래스의 맨 앞([-...]) 또는 맨 뒤([...-])에 배치할 것.
+    중간에 \-로 이스케이프해도 Python 3.12에서 오류가 발생할 수 있음.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

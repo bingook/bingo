@@ -2444,6 +2444,50 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     5. socks5h:// 사용 시 DNS도 Tor를 통해 해석됨 (socks5:// 보다 안전).
     6. 밴 반복 시 → bingo가 자동으로 다음 프록시로 교체하므로 대기 후 재시도.
 
+  ▸ RULE 26-U [v3.2.19]: 연결 오류 반복 출력 방지 — 루프처럼 보이지 않도록.
+    WAF가 연결을 강제 종료(ConnectionAborted/RemoteDisconnected)할 때,
+    여러 페이로드를 테스트하면 동일한 오류 메시지가 반복 출력된다.
+    bingo의 루프 감지기가 이를 무한 루프로 오탐하여 강제 종료할 수 있다.
+
+    WRONG — 동일한 오류 메시지 반복:
+      payloads = ["admin'", "admin'--", "admin' OR '1'='1"]
+      for p in payloads:
+          try:
+              r = session.get(url, params={"q": p})
+          except Exception as e:
+              print(f"失败: {e}")   # ← 모든 페이로드에서 동일한 오류 출력 → 오탐!
+
+    CORRECT — 페이로드 인덱스/값을 오류 메시지에 포함:
+      for i, p in enumerate(payloads):
+          try:
+              r = session.get(url, params={"q": p}, timeout=8)
+              print(f"[{i+1}/{len(payloads)}] payload={repr(p)} → {r.status_code}/{len(r.content)}B")
+          except Exception as e:
+              # 페이로드 번호/값을 포함해 출력이 유일하게 되도록
+              print(f"[{i+1}/{len(payloads)}] payload={repr(p)} 연결실패: {type(e).__name__}")
+              continue   # 다음 페이로드 시도
+
+    WHY:
+    - 오류 메시지에 페이로드 인덱스(i)나 값(p)을 포함하면
+      각 줄이 서로 다른 문자열이 되어 루프 감지기를 통과한다.
+    - WAF 연결 강제 종료는 정상 동작이므로 except로 잡아서 계속 진행해야 한다.
+    - 연속 실패 카운터를 두어 3회 이상 실패 시 다른 전략(헤더 변경/딜레이)으로 피벗.
+
+    CORRECT — 연속 실패 감지 + 전략 피벗:
+      consecutive_fail = 0
+      for i, p in enumerate(payloads):
+          try:
+              r = session.get(url, params={"q": p}, timeout=8)
+              consecutive_fail = 0
+              print(f"[{i+1}/{len(payloads)}] {repr(p)} → {r.status_code}")
+          except Exception as e:
+              consecutive_fail += 1
+              print(f"[{i+1}/{len(payloads)}] {repr(p)} 실패({consecutive_fail}): {type(e).__name__}")
+              if consecutive_fail >= 3:
+                  print("WAF 연결 차단 감지 — 15초 대기 후 전략 변경")
+                  import time; time.sleep(15)
+                  break   # 다른 엔드포인트/방법으로 피벗
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

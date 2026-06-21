@@ -2775,6 +2775,17 @@ _STRINGS.update({
     "proxy_tip_no_proxy":        {"ko": "💡 팁: /proxy add <url> 또는 /proxy tor 로 IP 밴 자동 우회 가능",
                                    "zh": "💡 提示: 使用 /proxy add <url> 或 /proxy tor 自动绕过IP封禁",
                                    "en": "💡 Tip: /proxy add <url> or /proxy tor to auto-rotate past IP bans"},
+
+    # v3.2.19: 연결 오류 반복 오탐 수정 (RULE 26-U)
+    "conn_error_loop_skip":      {"ko": "⚡ 루프 오탐 건너뜀: 연결 오류 반복은 WAF 차단 — 무한 루프 아님",
+                                   "zh": "⚡ 跳过循环误报: 连接错误重复是WAF封锁 — 不是无限循环",
+                                   "en": "⚡ Loop false-positive skipped: repeated conn errors are WAF blocks — not infinite loop"},
+    "rule_26u_conn_loop":        {"ko": "⚠ RULE 26-U: 연결 오류 반복 감지 → 페이로드 인덱스를 출력에 포함 의무",
+                                   "zh": "⚠ RULE 26-U: 检测到连接错误重复 → 输出中必须包含payload索引",
+                                   "en": "⚠ RULE 26-U: Repeated conn errors detected → include payload index in output"},
+    "waf_conn_reset_hint":       {"ko": "🚧 WAF 연결 강제 종료 감지 — 다른 엔드포인트/딜레이 전략으로 피벗 권장",
+                                   "zh": "🚧 检测到WAF强制断开连接 — 建议切换到其他端点/延迟策略",
+                                   "en": "🚧 WAF connection reset detected — pivot to different endpoint/delay strategy"},
 })
 
 

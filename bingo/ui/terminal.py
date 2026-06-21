@@ -4636,6 +4636,20 @@ class BingoTerminal:
                 "[GET] ", "[POST] ", "[PUT] ", "[DELETE] ", "[PATCH] ",
                 "→ 200", "→ 302", "→ 301", "→ 404", "→ 403", "→ 500",
                 "→ 401", "→ 307", "→ 308", "→ 400",
+                # v3.2.19: 네트워크 연결 오류 반복 출력 오탐 방지
+                # '失败: ('Connection aborted.', RemoteDisconnected...)' 5회 반복 → 루프 오탐
+                # WAF가 연결을 강제 종료할 때 정상적인 복수 페이로드 테스트 중 발생
+                "失败:", "失败：",          # 중국어 실패 접두어 (단독형)
+                "('connection aborted", "('Connection aborted",
+                "remoteDisconnected", "RemoteDisconnected",
+                "connection reset", "Connection reset", "Connection Reset",
+                "connectionreseterror", "ConnectionResetError",
+                "connection refused", "Connection refused",
+                "read timeout", "Read timeout", "ReadTimeout",
+                "connect timeout", "Connect timeout", "ConnectTimeout",
+                "max retries exceeded", "Max retries exceeded",
+                "failed:", "Failed:",    # 영문 실패 접두어 (단독형)
+                "실패:", "실패：",         # 한국어 실패 접두어
             )
             _UI_KEYWORDS = {
                 "alert", "error", "ok", "yes", "no", "true", "false",

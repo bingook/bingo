@@ -2786,6 +2786,11 @@ _STRINGS.update({
     "waf_conn_reset_hint":       {"ko": "🚧 WAF 연결 강제 종료 감지 — 다른 엔드포인트/딜레이 전략으로 피벗 권장",
                                    "zh": "🚧 检测到WAF强制断开连接 — 建议切换到其他端点/延迟策略",
                                    "en": "🚧 WAF connection reset detected — pivot to different endpoint/delay strategy"},
+
+    # v3.2.20: _smart_decode() 직접 호출 → def 자동 주입
+    "smart_decode_def_injected": {"ko": "🔧 [PRECHECK] _smart_decode() 호출 감지 — def 자동 주입 (NameError 방지)",
+                                   "zh": "🔧 [PRECHECK] 检测到_smart_decode()调用 — 自动注入def（防止NameError）",
+                                   "en": "🔧 [PRECHECK] _smart_decode() call detected — def auto-injected (NameError prevention)"},
 })
 
 

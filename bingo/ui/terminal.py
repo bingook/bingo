@@ -3222,10 +3222,17 @@ class BingoTerminal:
             # ── 0-Z. 인코딩 자동 감지 헬퍼 주입 ──────────────────────────────
             # r.text / resp.text 사용 시 EUC-KR 등 구형 인코딩 깨짐 방지
             # requests.get/post 가 있고 smart_decode 가 없는 경우 헬퍼 + 교체 주입
+            # v3.2.20: AI가 _smart_decode() 직접 호출했으나 def가 없는 경우도 주입
             _has_requests = bool(_pre_re.search(r'\brequests\.(get|post|put|patch|delete)\b', fixed))
-            _has_smart_decode = "smart_decode" in fixed
+            _has_smart_decode_def = "def _smart_decode" in fixed
+            _has_smart_decode_call = bool(_pre_re.search(r'\b_smart_decode\s*\(', fixed))
             _has_rtext = bool(_pre_re.search(r'\b(?:r|resp|response|res)\s*\.\s*text\b', fixed))
-            if _has_requests and _has_rtext and not _has_smart_decode:
+            # 주입 조건: (requests+r.text 있고 def 없음) OR (_smart_decode() 호출 있고 def 없음)
+            _need_smart_inject = (
+                (_has_requests and _has_rtext and not _has_smart_decode_def)
+                or (_has_smart_decode_call and not _has_smart_decode_def)
+            )
+            if _need_smart_inject:
                 _smart_decode_helper = (
                     "\ndef _smart_decode(resp):\n"
                     "    import re as _sre\n"
@@ -3250,13 +3257,17 @@ class BingoTerminal:
                         _import_end = fixed.find(_ln) + len(_ln)
                 _insert_pos = _import_end if _import_end > 0 else 0
                 fixed = fixed[:_insert_pos] + _smart_decode_helper + fixed[_import_end:]
-                # .text → _smart_decode(변수) 교체
-                fixed = _pre_re.sub(
-                    r'\b(r|resp|response|res)\s*\.\s*text\b',
-                    lambda m2: f"_smart_decode({m2.group(1)})",
-                    fixed
-                )
-                fixed = "__ENCODE_INJECTED__\n" + fixed
+                if _has_smart_decode_call and not (_has_requests and _has_rtext):
+                    # v3.2.20: AI가 _smart_decode() 직접 호출 → def만 주입, .text 교체는 불필요
+                    fixed = "__SMART_DECODE_INJECTED__\n" + fixed
+                else:
+                    # r.text → _smart_decode(변수) 교체
+                    fixed = _pre_re.sub(
+                        r'\b(r|resp|response|res)\s*\.\s*text\b',
+                        lambda m2: f"_smart_decode({m2.group(1)})",
+                        fixed
+                    )
+                    fixed = "__ENCODE_INJECTED__\n" + fixed
 
             # ── 0-A. 무한루프: for/range + TOP 1 + seen=set() 없음 ─────────
             _has_range_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed))
@@ -3713,6 +3724,11 @@ class BingoTerminal:
                 _checked = _checked[len("__ENCODE_INJECTED__\n"):]
                 _enc_msg = t("encoding_inject_notice", "🔤 [PRECHECK] r.text → smart_decode() injected (auto encoding detection)")
                 self.console.print(f"[{THEME['dim']}]{_enc_msg}[/]")
+            # v3.2.20: AI가 _smart_decode() 직접 호출했으나 def 없음 → def만 주입
+            if isinstance(_checked, str) and _checked.startswith("__SMART_DECODE_INJECTED__\n"):
+                _checked = _checked[len("__SMART_DECODE_INJECTED__\n"):]
+                _sd_msg = t("smart_decode_def_injected", "🔧 [PRECHECK] _smart_decode() 호출 감지 — def 자동 주입 (NameError 방지)")
+                self.console.print(f"[{THEME['dim']}]{_sd_msg}[/]")
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])

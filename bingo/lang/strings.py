@@ -2662,6 +2662,23 @@ _STRINGS.update({
     "regex_char_range_rule":     {"ko": "⚠ RULE 26-N: [] 내 하이픈은 맨 앞/뒤에만 배치 — r'[-\\.+]' (올바름) vs r'[\\-/]' (오류)",
                                    "zh": "⚠ RULE 26-N: []内连字符必须在首尾 — r'[-\\.+]'(正确) vs r'[\\-/]'(错误)",
                                    "en": "⚠ RULE 26-N: Hyphen in [] must be at start/end — r'[-\\.+]' (ok) vs r'[\\-/]' (error)"},
+
+    # v3.2.12: 이모지/중국어 분석 출력 오탐 방지
+    "loop_skip_emoji_prefix":    {"ko": "⚡ 루프감지 건너뜀: '{val}'은 이모지/분석 출력 → SQL 데이터 아님",
+                                   "zh": "⚡ 循环检测跳过: '{val}'为分析输出标记 → 非SQL数据",
+                                   "en": "⚡ Loop detect skip: '{val}' is analysis output → not SQL data"},
+    "loop_skip_cn_prefix":       {"ko": "⚡ 루프감지 건너뜀: '{val}'은 중국어 분석 상태 메시지 → SQL 데이터 아님",
+                                   "zh": "⚡ 循环检测跳过: '{val}'为中文状态消息 → 非SQL数据",
+                                   "en": "⚡ Loop detect skip: '{val}' is Chinese status msg → not SQL data"},
+    "autofix_charclass_escape":  {"ko": "[AUTO-FIX] 문자 클래스[] 내 잘못된 이스케이프 수정 (\\Z, \\E 등 → 백슬래시 제거)",
+                                   "zh": "[AUTO-FIX] 修复字符类[]内无效转义序列 (\\Z, \\E等 → 删除反斜杠)",
+                                   "en": "[AUTO-FIX] Char class invalid escape fixed (\\Z, \\E etc → backslash removed)"},
+    "rule_26o_no_repeat_print":  {"ko": "⚠ RULE 26-O: 루프 내 동일 메시지 반복 print 금지 — 카운터 요약 사용",
+                                   "zh": "⚠ RULE 26-O: 禁止循环内重复print相同消息 — 使用计数器汇总",
+                                   "en": "⚠ RULE 26-O: No repeated same-message print in loops — use counter summary"},
+    "autofix_loop_dedup":        {"ko": "[AUTO-FIX] 루프 내 반복 출력 감지 → 카운터 방식으로 자동 교체",
+                                   "zh": "[AUTO-FIX] 检测到循环内重复输出 → 自动替换为计数器方式",
+                                   "en": "[AUTO-FIX] Repeated output in loop detected → auto-replaced with counter"},
 })
 
 

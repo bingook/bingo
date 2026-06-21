@@ -2188,6 +2188,35 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     하이픈(-)은 반드시 클래스의 맨 앞([-...]) 또는 맨 뒤([...-])에 배치할 것.
     중간에 \-로 이스케이프해도 Python 3.12에서 오류가 발생할 수 있음.
 
+  ▸ RULE 26-O [v3.2.12]: 반복 상태 출력 금지 — 루프 내 동일 메시지 중복 print 금지.
+    bingo의 루프 감지 시스템은 동일 문자열이 5회 이상 반복되면 강제 종료한다.
+    아래 패턴은 반드시 피해야 한다:
+
+    WRONG — 루프마다 같은 상태 메시지 반복:
+      for url in url_list:
+          print(f"检测到: Youngcart")   # 매 반복마다 동일 문자열 → 루프 오탐 트리거
+          print(f"✅ 发现: CMS type")   # 이모지 + 고정 문자열 반복 → 오탐 트리거
+          print(f"扫描中: {url}")        # url이 다르면 OK, url이 같으면 오탐
+
+    CORRECT — 요약 출력 + 루프 내 다양한 정보 출력:
+      cms_count = 0
+      for url in url_list:
+          # ... 분석 로직 ...
+          cms_count += 1
+      print(f"✅ CMS 탐지 완료: {cms_count}개 발견")   # 루프 종료 후 한 번만 출력
+
+    CORRECT — 반복이 필요한 경우 인덱스나 고유값 포함:
+      for i, url in enumerate(url_list):
+          print(f"[{i+1}/{len(url_list)}] 처리 중: {url}")   # [1/10], [2/10]... 매번 다름
+
+    RULE:
+    1. 루프 내부에서 고정 문자열(변수 없는 상수 메시지)을 print()하지 말 것.
+    2. 같은 분석 결과를 N회 출력하지 말 것 — 한 번만 출력하거나 카운터로 요약.
+    3. 이모지(✅❌⚠🔍💰🔄 등) + 고정 텍스트 조합도 반복이면 오탐 트리거됨.
+    4. 상태 메시지는 루프 밖에서, 또는 [현재/전체] 형식으로 출력.
+    5. try/except 블록에서 같은 오류 메시지를 반복 catch해 print하지 말 것.
+       대신: 오류 카운터 증가 후 루프 종료 시 총합 출력.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

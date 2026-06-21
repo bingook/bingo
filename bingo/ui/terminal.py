@@ -482,7 +482,7 @@ class BingoTerminal:
                 _ctrl_c_count += 1
                 if _ctrl_c_count >= 2:
                     # 연속 2회 Ctrl+C → 진짜 종료
-                    self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
+                self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
                     if self._session_log_path:
                         self.console.print(
                             f"[{THEME['dim']}]{self.s['session_done']}: {self._session_log_path}[/]"
@@ -1479,7 +1479,7 @@ class BingoTerminal:
         # ── 일반 대화 모드 감지 ────────────────────────────────────────
         full_response = ""  # 초기화 — UnboundLocalError 방지
         if self._is_general_question(text):
-            self.history.append(Message(role="user", content=text))
+        self.history.append(Message(role="user", content=text))
             self._append_to_session_log("user", text)
 
             # 임시로 시스템 메시지를 경량 일반대화 프롬프트로 교체
@@ -1909,7 +1909,7 @@ class BingoTerminal:
         import re as _re
         display = _re.sub(r"SKILL_LOAD:\s*[^\n]*\n?", "", display)
 
-        self.console.print()
+            self.console.print()
         try:
             _has_rich = "[dim]" in display or "[bold" in display
             _has_md   = "**" in display or "\n# " in display or "\n## " in display
@@ -2152,7 +2152,7 @@ class BingoTerminal:
                     "cookies": {}, "evidence": "", "active": False,
                 }
                 self._success("세션 초기화 완료.")
-            else:
+        else:
                 self._cmd_session()
         elif name == "/crack":
             self._cmd_crack(arg)
@@ -2585,9 +2585,9 @@ class BingoTerminal:
             return
 
         # 설정 저장 + strings 갱신
-        self.config.lang = lang
-        self.config.save()
-        self.s = get_strings(lang)
+            self.config.lang = lang
+            self.config.save()
+            self.s = get_strings(lang)
 
         # 전역 i18n 동기화
         try:
@@ -2596,7 +2596,7 @@ class BingoTerminal:
         except Exception:
             pass
 
-        self._success(self.s["lang_saved"])
+            self._success(self.s["lang_saved"])
         self.console.print(
             f"  [{THEME['dim']}]{self.s['lang_changed'].format(lang=SUPPORTED_LANGS[lang])}[/]"
         )
@@ -3149,34 +3149,89 @@ class BingoTerminal:
             if fixed != _before_0f:
                 _applied_fix_names.append("fix_escape_seq")
 
-            # ── 0g. regex character class 내 잘못된 하이픈 위치 수정 [v3.2.11] ──
-            # r'[\-/]', r'[\-+]', r'[a\-/b]' 등 → 하이픈을 클래스 맨 앞으로 이동
-            # Python 3.12: character class 내 \- 는 '-' 리터럴이나 위치가 range로 해석되면 오류
+            # ── 0g. regex character class 내 잘못된 하이픈 위치 수정 [v3.2.11~12] ──
+            # 대상: r'[\-/]', r'[\-+]', r'[a\-/b]', r'[a-z\-A-Z]' 등
+            # → 하이픈을 항상 문자 클래스 맨 앞으로 이동
+            # Python 3.12: 중간 위치 \- 는 'bad character range' 오류 발생
             def _fix_bad_char_range(m: "_pre_re.Match") -> str:
-                """문자 클래스 [] 내부에서 \-X 또는 X\-Y 패턴(잘못된 range) 수정"""
+                """raw 문자열 내 regex 문자 클래스 [] 내부 잘못된 하이픈 위치 수정"""
                 full = m.group(0)
-                # r"..." raw string 내부만 수정 (일반 문자열은 건드리지 않음)
                 if not (full.startswith("r'") or full.startswith('r"')):
                     return full
-                # 문자 클래스 내부 \-{char} 패턴 → -{char} 로 교체 후 - 를 맨 앞으로
                 import re as _re2
-                # [\-X] or [X\-Y] → [-X] or [-XY] (하이픈을 클래스 시작으로)
+
                 def _fix_class(cm):
                     inner = cm.group(1)
-                    # \- 를 단순 - 로 교체
+                    # 1) \- 를 단순 - 로 정규화
                     inner_fixed = inner.replace('\\-', '-')
-                    # 이미 맨 앞/뒤가 아닌 - 가 있으면 맨 앞으로 이동
-                    if '-' in inner_fixed and not (inner_fixed.startswith('-') or inner_fixed.endswith('-')):
-                        inner_fixed = '-' + inner_fixed.replace('-', '')
+                    # 2) 유효한 범위 표현(a-z, A-Z, 0-9, \w-\d 등) 보존 여부 판단
+                    #    단순화: 모든 고립된 - (앞뒤로 이스케이프 문자나 리터럴이 아닌 경우)를
+                    #    클래스 맨 앞으로 이동
+                    # [a-z], [0-9] 같은 유효 범위는 그대로 두고
+                    # 그 외 고립된 - 만 맨 앞으로 이동
+                    #
+                    # 전략: 잘못된 패턴 감지 → \- 가 있었으면 무조건 맨 앞으로
+                    has_escaped_hyphen = '\\-' in inner  # 원본에 \- 가 있었음
+                    if has_escaped_hyphen:
+                        # \- 를 제거하고 - 를 맨 앞으로
+                        inner_no_hyp = inner_fixed.replace('-', '')
+                        # 단, 유효 범위([a-z], [0-9], [A-Z]) 내 - 는 다시 복원
+                        # 이미 inner_fixed에서 \- → - 로 변환했으므로
+                        # 단순히 고립된 - 를 제거하고 맨 앞에 배치
+                        return '[-' + inner_no_hyp + ']'
+                    # \- 없어도 중간에 고립된 - 가 있는 패턴 감지
+                    # 예: [a-zA-Z\-] 또는 [\w\-\s] → 이미 \- 로 표현되어 위에서 처리됨
+                    # 추가: [abc-] 처럼 맨 끝 - 는 OK, 맨 앞 [-abc] 도 OK
+                    # 문제 패턴: [abc-xyz] 같은 잘못된 range (하이픈이 알파벳 중간)
+                    # Python이 range로 해석할 때만 오류 → 여기서는 \- 만 처리
+                    if '-' in inner_fixed:
+                        # 이미 맨 앞이나 맨 뒤가 아닌 경우에만 수정
+                        if not (inner_fixed.startswith('-') or inner_fixed.endswith('-')):
+                            # 알파벳 범위가 아닌 고립 하이픈을 맨 앞으로
+                            inner_fixed = '-' + inner_fixed.replace('-', '', 1)
                     return '[' + inner_fixed + ']'
-                fixed_inner = _re2.sub(r'\[([^\[\]]{1,80})\]', _fix_class, full)
+
+                fixed_inner = _re2.sub(r'\[([^\[\]\n]{1,120})\]', _fix_class, full)
                 return fixed_inner
+
             _before_0g = fixed
-            # r"..." 또는 r'...' raw 문자열에만 적용
+            # r"..." 또는 r'...' raw 문자열에만 적용 (일반/f-string은 건드리지 않음)
             _raw_str_pat = r'r(?:""".*?"""|\'\'\'.*?\'\'\'|"[^"\\]*(?:\\.[^"\\]*)*"|\'[^\'\\]*(?:\\.[^\'\\]*)*\')'
             fixed = _pre_re.sub(_raw_str_pat, _fix_bad_char_range, fixed, flags=_pre_re.DOTALL)
             if fixed != _before_0g:
                 _applied_fix_names.append("fix_regex_char_range")
+
+            # ── 0h. raw string 내 문자 클래스[] 안의 잘못된 이스케이프 수정 [v3.2.12] ──
+            # Python 3.12: re 문자 클래스 [] 안에서 \Z, \+, \E 같은 이스케이프는
+            # "bad escape" 또는 DeprecationWarning → 오류로 취급됨
+            # 유효한 내부 이스케이프: \d \w \s \D \W \S \n \t \r \\ \^ \] \.
+            # 수정: [\Z] → [Z], [\E] → [E], [\+] → [+] 등 (백슬래시 제거)
+            _before_0h = fixed
+            import re as _re3
+
+            def _fix_charclass_escape(m_cc: "_pre_re.Match") -> str:
+                """raw string 내 [] 문자 클래스에서 잘못된 이스케이프 수정"""
+                full_rstr = m_cc.group(0)
+                # 문자 클래스 [] 내 유효한 이스케이프 목록 (Python re 기준)
+                _valid_in_class = set('dwsDWSnrtaAbBZfv\\]^-xuUN')
+
+                def _fix_one_class(cmc):
+                    bracket_content = cmc.group(1)
+                    # 각 \X 이스케이프를 검사
+                    def _replace_one(esc_m):
+                        esc_char = esc_m.group(1)
+                        if esc_char in _valid_in_class:
+                            return esc_m.group(0)   # 유효 → 그대로
+                        return esc_char             # 무효 → 백슬래시 제거
+                    fixed_bracket = _re3.sub(r'\\([^\\])', _replace_one, bracket_content)
+                    return '[' + fixed_bracket + ']'
+
+                result = _re3.sub(r'\[([^\[\]\n]{1,120})\]', _fix_one_class, full_rstr)
+                return result
+
+            fixed = _pre_re.sub(_raw_str_pat, _fix_charclass_escape, fixed, flags=_pre_re.DOTALL)
+            if fixed != _before_0h:
+                _applied_fix_names.append("fix_charclass_escape")
 
             # ── 1. requests.get/post/put/delete — timeout 자동 주입 ─────────
             def _add_kwarg(call_str: str, kwarg: str) -> str:
@@ -4294,14 +4349,9 @@ class BingoTerminal:
             #   - URL/파일경로/파일확장자 패턴을 가진 값은 SQL 데이터로 취급하지 않음
             #   - 오직 의미 있는 SQL 데이터 추출값(≥5자, 비UI 키워드, 비URL)만 감지
             # ⚠️  v3.2.7: URL 패턴 오탐 수정
-            #   - "URL:", "链接:", "링크:", "Link:", "→" 접두어 라인 제외
-            #   - 값에 파일확장자(.aspx/.php/.html/.js/.css 등)나 "/" "://" 포함 → 제외
             # ⚠️  v3.2.9: XML/HTML/JSON 콘텐츠 오탐 수정
-            #   - "<url>", "<loc>", "<div>", "<li>" 등 XML/HTML 태그 자체 → 제외
-            #   - JSON 구조문자("{"/"["/"}")로 시작하는 라인 → 제외
-            #   - 숫자만으로 구성된 값(0.80, 1.00, 2025 등) → 제외
-            #   - 날짜/시간 ISO 형식 (2025-06-18T...) → 제외
-            #   - XML 선언/네임스페이스 라인 → 제외
+            # ⚠️  v3.2.11: 스크립트 오류 메시지 오탐 수정
+            # ⚠️  v3.2.12: 이모지/중국어 분석 상태 출력 오탐 예방적 수정
             import re as _re
             _UI_PREFIXES = (
                 "消息:", "message:", "msg:", "메시지:", "알림:", "info:",
@@ -4320,6 +4370,21 @@ class BingoTerminal:
                 "traceback", "Traceback", "re.error:", "ValueError:",
                 "TypeError:", "AttributeError:", "bad character",
                 "取得失敗:", "실행실패:", "오류:", "에러:",
+                # v3.2.12: 중국어 분석 상태 접두어 (AI 스크립트 출력, SQL 데이터 아님)
+                "检测到:", "发现:", "正在", "扫描:", "探测:", "获取:",
+                "分析:", "提取:", "识别:", "确认:", "验证:", "测试:",
+                "尝试:", "执行:", "请求:", "处理:", "加载:", "解析:",
+                "响应:", "返回:", "输出:", "统计:", "汇总:", "报告:",
+                # v3.2.12: Python 예외 클래스명 (오류 반복 출력 오탐 방지)
+                "ConnectionError", "SSLError", "HTTPError", "TimeoutError",
+                "RequestException", "urllib3", "ssl.", "socket.",
+                "requests.exceptions", "http.client",
+                "ModuleNotFoundError", "ImportError", "NameError",
+                "KeyError:", "IndexError:", "RuntimeError:",
+                # v3.2.12: 분석 진행 상태 표시
+                "phase ", "Phase ", "阶段", "단계", "step ", "Step ",
+                "total:", "Total:", "总计:", "합계:", "count:", "Count:",
+                "found:", "Found:", "발견:", "detected:", "Detected:",
             )
             _UI_KEYWORDS = {
                 "alert", "error", "ok", "yes", "no", "true", "false",
@@ -4352,7 +4417,17 @@ class BingoTerminal:
                 if not _ls:
                     continue
                 # 구분자/헤더/타이머 라인 제외
-                if _ls.startswith(("[", "⏱", "=", "步", "表", "---", ">>>", "<<<", "#")):
+                # v3.2.12: 이모지 분석 출력(✅❌⚠️🔍🔄🔧💡📊📋💰🚨🎯) → SQL 데이터 아님
+                if _ls.startswith((
+                    "[", "⏱", "=", "步", "表", "---", ">>>", "<<<", "#",
+                    # 이모지 접두어 (bingo 분석 출력, SQL 추출값 아님)
+                    "✅", "❌", "⚠", "⚡", "🔍", "🔄", "🔧", "💡", "📊",
+                    "📋", "💰", "🚨", "🎯", "🌐", "📝", "🔒", "💬", "🛠",
+                    "🔐", "🗂", "🔑", "📌", "⛔", "🔁", "📡", "🧪", "🏁",
+                    "🚩", "💻", "📤", "📥", "🔗", "🔺", "🔻", "⬆", "⬇",
+                    # 한국어/중국어 분석 진행 마커
+                    "결과:", "완료:", "시작:", "종료:", "탐지:", "수집:",
+                )):
                     continue
                 # v3.2.9: XML/HTML 태그로 시작하는 라인 제외 (<url>, <loc>, <div> 등)
                 if _XML_TAG_PATTERN.match(_ls):
@@ -5998,11 +6073,11 @@ class BingoTerminal:
 
             if not hs_matches and not local_results:
                 # ── 내장 DB 검색 (마지막 수단) ─────────────────────────
-                results = engine.search(keyword)
-                if results:
+            results = engine.search(keyword)
+            if results:
                     for r in results[:8]:
-                        self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
-                else:
+                    self.console.print(f"  [{THEME['primary']}]{r['module']}[/] → {r['skill']}")
+            else:
                     self.console.print(
                         f"[{THEME['dim']}]{self.s['skill_no_result'].format(kw=keyword)}[/]"
                     )

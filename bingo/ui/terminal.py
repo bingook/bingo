@@ -148,6 +148,50 @@ class _SlashCompleter(Completer):
                 )
 
 
+def _filter_traceback(output: str) -> str:
+    """v3.2.22: Python 스크립트 Traceback 폭탄 → 1줄 에러로 압축.
+
+    Traceback (most recent call last):
+      File "...", line N, in <module>
+        code
+    ExcType: message
+    →  [错误] ExcType: message
+    """
+    if "Traceback (most recent call last):" not in output:
+        return output
+    lines = output.splitlines()
+    result: list = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+        if stripped == "Traceback (most recent call last):":
+            # Traceback 블록 — 예외 줄(들여쓰기 없고 ':'포함)이 나올 때까지 스킵
+            j = i + 1
+            exc_found = None
+            while j < len(lines):
+                l = lines[j]
+                # "During handling..." 줄 → 이 블록 종료
+                if l.startswith("During handling"):
+                    break
+                # 들여쓰기 없는 예외 줄
+                if l and not l[0].isspace() and ":" in l:
+                    exc_found = l.strip()
+                    j += 1
+                    break
+                j += 1
+            if exc_found:
+                result.append(f"[错误] {exc_found}")
+            i = j
+        elif line.startswith("During handling of the above exception"):
+            # 체인 예외 연결 문구 — 스킵
+            i += 1
+        else:
+            result.append(line)
+            i += 1
+    return "\n".join(result)
+
+
 class BingoTerminal:
     """Bingo 메인 터미널 UI"""
 
@@ -3269,36 +3313,6 @@ class BingoTerminal:
                     )
                     fixed = "__ENCODE_INJECTED__\n" + fixed
 
-            # ── 0-Y. Traceback 폭탄 방지 — sys.excepthook 교체 자동 주입 ───
-            # v3.2.21: requests 사용 스크립트에 try/except 없으면 unhandled exception 시
-            # 87줄짜리 Traceback이 그대로 출력됨 → sys.excepthook 교체로 1줄 에러로 변환
-            _has_requests_call = bool(_pre_re.search(
-                r'\brequests\.(get|post|put|patch|delete|head|options)\s*\(', fixed))
-            _has_try = "try:" in fixed
-            _has_excepthook = "excepthook" in fixed
-            if _has_requests_call and not _has_excepthook:
-                _excepthook_snippet = (
-                    "import sys as _sys\n"
-                    "_orig_exc = _sys.excepthook\n"
-                    "def _bingo_excepthook(t, v, tb):\n"
-                    "    import traceback as _tb\n"
-                    "    lines = _tb.format_exception(t, v, tb)\n"
-                    "    # 마지막 예외 줄만 출력 (Traceback 전체 억제)\n"
-                    "    last = [l.strip() for l in lines if l.strip() and not l.startswith(' ')]\n"
-                    "    exc_line = str(v) if str(v) else t.__name__\n"
-                    "    print(f'[错误] {t.__name__}: {exc_line}')\n"
-                    "_sys.excepthook = _bingo_excepthook\n\n"
-                )
-                # import 블록 뒤에 삽입
-                _eh_import_end = 0
-                for _ln in fixed.splitlines():
-                    _sl = _ln.strip()
-                    if _sl.startswith("import ") or _sl.startswith("from "):
-                        _eh_import_end = fixed.find(_ln) + len(_ln)
-                _eh_pos = _eh_import_end if _eh_import_end > 0 else 0
-                fixed = fixed[:_eh_pos] + "\n" + _excepthook_snippet + fixed[_eh_pos:]
-                fixed = "__EXCEPTHOOK_INJECTED__\n" + fixed
-
             # ── 0-A. 무한루프: for/range + TOP 1 + seen=set() 없음 ─────────
             _has_range_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed))
             _has_query = bool(_pre_re.search(
@@ -3759,11 +3773,6 @@ class BingoTerminal:
                 _checked = _checked[len("__SMART_DECODE_INJECTED__\n"):]
                 _sd_msg = t("smart_decode_def_injected", "🔧 [PRECHECK] _smart_decode() 호출 감지 — def 자동 주입 (NameError 방지)")
                 self.console.print(f"[{THEME['dim']}]{_sd_msg}[/]")
-            # v3.2.21: sys.excepthook 교체 주입 — Traceback 폭탄 방지
-            if isinstance(_checked, str) and _checked.startswith("__EXCEPTHOOK_INJECTED__\n"):
-                _checked = _checked[len("__EXCEPTHOOK_INJECTED__\n"):]
-                _eh_msg = t("excepthook_injected", "🔧 [PRECHECK] sys.excepthook 교체 주입 — Traceback 억제 (1줄 에러 출력)")
-                self.console.print(f"[{THEME['dim']}]{_eh_msg}[/]")
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])
@@ -3930,8 +3939,10 @@ class BingoTerminal:
                     )
                     stdout, stderr = proc.communicate()
                     output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
-                    if output.strip():
-                        preview_out = "\n".join(output.strip().splitlines()[:60])
+                    # v3.2.22: Traceback 폭탄 → 1줄 에러로 압축 (표시용 + AI 컨텍스트용)
+                    output_filtered = _filter_traceback(output)
+                    if output_filtered.strip():
+                        preview_out = "\n".join(output_filtered.strip().splitlines()[:60])
                         with _lock:
                             try:
                                 self.console.print(f"[{THEME['dim']}]{_resc(preview_out)}[/]")
@@ -3939,7 +3950,7 @@ class BingoTerminal:
                                 self.console.out(preview_out)
                         results_text[slot] = (
                             f"=== PYTHON EXECUTION (script_{task['idx']}) ===\n"
-                            f"{output.strip()}\n=== EXIT: {proc.returncode} ==="
+                            f"{output_filtered.strip()}\n=== EXIT: {proc.returncode} ==="
                         )
                     else:
                         results_text[slot] = (

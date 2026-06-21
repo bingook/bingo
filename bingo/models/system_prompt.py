@@ -2488,6 +2488,39 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
                   import time; time.sleep(15)
                   break   # 다른 엔드포인트/방법으로 피벗
 
+  ── RULE 26-V [v3.2.21]: HTTP 요청 스크립트 — try/except 필수 ──
+
+  ▸ RULE 26-V [v3.2.21]: 모든 requests.get/post/put 호출은 반드시 try/except로 감싸라.
+    try/except 없이 module-level에서 requests.get()을 호출하면,
+    연결 실패 시 Python이 87줄짜리 Traceback을 그대로 출력해 화면을 오염시킨다.
+
+    WHY:
+    - bingo가 sys.excepthook을 자동 교체하여 오류를 1줄로 줄여주지만,
+      그래도 try/except 없으면 스크립트가 즉시 종료되어 후속 로직이 실행 안 된다.
+    - 반드시 try/except로 감싸서 예외를 잡고 다음 단계로 진행해야 한다.
+
+    WRONG — try 없음, 실패 시 Traceback 폭탄:
+      r = requests.get(url, timeout=10)
+      print(r.status_code)
+
+    CORRECT — try/except로 감싸기:
+      try:
+          r = requests.get(url, timeout=10, verify=False)
+          print(r.status_code, r.text[:200])
+      except Exception as e:
+          print(f"[오류] {type(e).__name__}: {e}")
+
+    CORRECT (다중 요청):
+      results = []
+      for url in targets:
+          try:
+              r = requests.get(url, timeout=8, verify=False)
+              results.append((url, r.status_code))
+          except Exception as e:
+              results.append((url, f"실패: {e}"))
+      for u, s in results:
+          print(f"{u} → {s}")
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

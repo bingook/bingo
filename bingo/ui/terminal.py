@@ -3269,6 +3269,36 @@ class BingoTerminal:
                     )
                     fixed = "__ENCODE_INJECTED__\n" + fixed
 
+            # ── 0-Y. Traceback 폭탄 방지 — sys.excepthook 교체 자동 주입 ───
+            # v3.2.21: requests 사용 스크립트에 try/except 없으면 unhandled exception 시
+            # 87줄짜리 Traceback이 그대로 출력됨 → sys.excepthook 교체로 1줄 에러로 변환
+            _has_requests_call = bool(_pre_re.search(
+                r'\brequests\.(get|post|put|patch|delete|head|options)\s*\(', fixed))
+            _has_try = "try:" in fixed
+            _has_excepthook = "excepthook" in fixed
+            if _has_requests_call and not _has_excepthook:
+                _excepthook_snippet = (
+                    "import sys as _sys\n"
+                    "_orig_exc = _sys.excepthook\n"
+                    "def _bingo_excepthook(t, v, tb):\n"
+                    "    import traceback as _tb\n"
+                    "    lines = _tb.format_exception(t, v, tb)\n"
+                    "    # 마지막 예외 줄만 출력 (Traceback 전체 억제)\n"
+                    "    last = [l.strip() for l in lines if l.strip() and not l.startswith(' ')]\n"
+                    "    exc_line = str(v) if str(v) else t.__name__\n"
+                    "    print(f'[错误] {t.__name__}: {exc_line}')\n"
+                    "_sys.excepthook = _bingo_excepthook\n\n"
+                )
+                # import 블록 뒤에 삽입
+                _eh_import_end = 0
+                for _ln in fixed.splitlines():
+                    _sl = _ln.strip()
+                    if _sl.startswith("import ") or _sl.startswith("from "):
+                        _eh_import_end = fixed.find(_ln) + len(_ln)
+                _eh_pos = _eh_import_end if _eh_import_end > 0 else 0
+                fixed = fixed[:_eh_pos] + "\n" + _excepthook_snippet + fixed[_eh_pos:]
+                fixed = "__EXCEPTHOOK_INJECTED__\n" + fixed
+
             # ── 0-A. 무한루프: for/range + TOP 1 + seen=set() 없음 ─────────
             _has_range_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed))
             _has_query = bool(_pre_re.search(
@@ -3729,6 +3759,11 @@ class BingoTerminal:
                 _checked = _checked[len("__SMART_DECODE_INJECTED__\n"):]
                 _sd_msg = t("smart_decode_def_injected", "🔧 [PRECHECK] _smart_decode() 호출 감지 — def 자동 주입 (NameError 방지)")
                 self.console.print(f"[{THEME['dim']}]{_sd_msg}[/]")
+            # v3.2.21: sys.excepthook 교체 주입 — Traceback 폭탄 방지
+            if isinstance(_checked, str) and _checked.startswith("__EXCEPTHOOK_INJECTED__\n"):
+                _checked = _checked[len("__EXCEPTHOOK_INJECTED__\n"):]
+                _eh_msg = t("excepthook_injected", "🔧 [PRECHECK] sys.excepthook 교체 주입 — Traceback 억제 (1줄 에러 출력)")
+                self.console.print(f"[{THEME['dim']}]{_eh_msg}[/]")
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])

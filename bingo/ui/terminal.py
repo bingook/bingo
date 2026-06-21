@@ -4026,6 +4026,9 @@ class BingoTerminal:
                 label = f"script_{task.get('idx', slot)}" if task["type"] == "python" else task["cmd"][:80]
                 prefix = "PYTHON EXECUTION" if task["type"] == "python" else "REAL EXECUTION"
                 all_lines: list[str] = []
+                # v3.2.23: 실시간 Traceback 스트리밍 필터 상태
+                _tb_buf: list[str] = []
+                _in_tb = False
 
                 # 실시간 라인 스트리밍 — 중복 감지 + 타임아웃
                 _consec_count = 0
@@ -4080,10 +4083,68 @@ class BingoTerminal:
                 )
                 _watchdog_th.start()
 
+                def _flush_tb_compressed(n_buf: int) -> None:
+                    """v3.2.23: 버퍼링된 Traceback 블록을 1줄로 압축 출력."""
+                    nonlocal _in_tb
+                    if not _tb_buf:
+                        _in_tb = False
+                        return
+                    exc_line = None
+                    for _bl in reversed(_tb_buf):
+                        _bls = _bl.strip()
+                        if (
+                            _bls
+                            and not _bl[0].isspace()
+                            and _bls != "Traceback (most recent call last):"
+                            and ":" in _bls
+                        ):
+                            exc_line = _bls
+                            break
+                    _compressed = (
+                        f"[错误] {exc_line}" if exc_line
+                        else f"[错误] (traceback {n_buf}L)"
+                    )
+                    all_lines.append(_compressed)
+                    with _lock:
+                        try:
+                            self.console.print(f"[{THEME['dim']}]{_resc(_compressed)}[/]")
+                        except Exception:
+                            self.console.out(_compressed)
+                    _lang_tb = getattr(self.config, "lang", "zh")
+                    _tb_note = {
+                        "ko": f"📦 [EXEC] Traceback {n_buf}줄 → 압축",
+                        "zh": f"📦 [EXEC] Traceback {n_buf}行 → 已压缩",
+                        "en": f"📦 [EXEC] Traceback {n_buf} lines → compressed",
+                    }.get(_lang_tb, f"📦 Traceback {n_buf}L compressed")
+                    with _lock:
+                        self.console.print(f"[{THEME['dim']}]{_tb_note}[/]")
+                    _tb_buf.clear()
+                    _in_tb = False
+
                 for raw_line in p.stdout:
                     line = raw_line.decode("utf-8", "replace").rstrip()
                     if not line:
                         continue
+
+                    _stripped_cur = line.strip()
+
+                    # v3.2.23: 실시간 Traceback 필터 — 스트리밍 중 감지 즉시 버퍼링
+                    if _stripped_cur == "Traceback (most recent call last):":
+                        if _in_tb and _tb_buf:
+                            _flush_tb_compressed(len(_tb_buf))
+                        _in_tb = True
+                        _tb_buf.append(line)
+                        all_lines.append(line)
+                        continue
+
+                    if _in_tb:
+                        _tb_buf.append(line)
+                        all_lines.append(line)
+                        # 들여쓰기 없는 예외 줄 = Traceback 블록 끝
+                        if line and not line[0].isspace() and ":" in line:
+                            _flush_tb_compressed(len(_tb_buf))
+                        continue
+
                     all_lines.append(line)
                     with _lock:
                         try:
@@ -4101,7 +4162,7 @@ class BingoTerminal:
                         break
 
                     # 연속 중복 감지 (스캔 결과 라인은 더 높은 임계값 적용)
-                    _cur = line.strip()
+                    _cur = _stripped_cur
                     if _cur and _cur == _last_stripped:
                         _consec_count += 1
                         _loop_threshold = _MAX_CONSEC_SCAN if _is_scan_result_line(_cur) else _MAX_CONSEC_DUP
@@ -4123,6 +4184,10 @@ class BingoTerminal:
                     else:
                         _consec_count = 0
                         _last_stripped = _cur
+
+                # v3.2.23: EOF 후 미처리 Traceback 버퍼 플러시
+                if _in_tb and _tb_buf:
+                    _flush_tb_compressed(len(_tb_buf))
 
                 # 워치독 종료 신호 (정상 완료 시)
                 _watchdog_fired.set()
@@ -4169,9 +4234,11 @@ class BingoTerminal:
                         _k_timeout = t("script_killed_timeout", "[SCRIPT_KILLED: TIMEOUT]\nScript exceeded {sec}s timeout and was forcibly terminated.\nSplit the script into smaller blocks or optimize the loop.").replace("{sec}", str(_SCRIPT_TIMEOUT))
                         _kill_suffix = f"\n{_k_timeout}\n"
                 if output.strip():
+                    # v3.2.23: AI 컨텍스트 전달 시 잔여 Traceback도 압축
+                    _ai_out, _, _ = _filter_traceback(output)
                     results_text[slot] = (
                         f"=== {prefix} ({label}) ===\n"
-                        f"{output.strip()}\n"
+                        f"{_ai_out.strip()}\n"
                         f"=== EXIT: {p.returncode} ==={_kill_suffix}"
                     )
                 else:

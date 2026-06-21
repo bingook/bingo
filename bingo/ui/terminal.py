@@ -4267,13 +4267,24 @@ class BingoTerminal:
             # ⚠️  v3.2.7: URL 패턴 오탐 수정
             #   - "URL:", "链接:", "링크:", "Link:", "→" 접두어 라인 제외
             #   - 값에 파일확장자(.aspx/.php/.html/.js/.css 등)나 "/" "://" 포함 → 제외
+            # ⚠️  v3.2.9: XML/HTML/JSON 콘텐츠 오탐 수정
+            #   - "<url>", "<loc>", "<div>", "<li>" 등 XML/HTML 태그 자체 → 제외
+            #   - JSON 구조문자("{"/"["/"}")로 시작하는 라인 → 제외
+            #   - 숫자만으로 구성된 값(0.80, 1.00, 2025 등) → 제외
+            #   - 날짜/시간 ISO 형식 (2025-06-18T...) → 제외
+            #   - XML 선언/네임스페이스 라인 → 제외
+            import re as _re
             _UI_PREFIXES = (
                 "消息:", "message:", "msg:", "메시지:", "알림:", "info:",
                 "alert:", "warn:", "error:", "status:", "状态:", "상태:",
                 "result:", "결과:", "output:", "출력:", "log:", "로그:",
-                # v3.2.7: URL/링크 출력 접두어 추가
+                # v3.2.7: URL/링크 출력 접두어
                 "url:", "URL:", "链接:", "링크:", "link:", "Link:",
                 "→ http", "→ https", "→ ./", "→ //",
+                # v3.2.9: XML/HTML/JSON 출력 접두어
+                "<?xml", "xmlns", "<!--", "-->", "<!",
+                "<url", "<loc", "<lastmod", "<priority", "<urlset",
+                "<sitemap", "<sitemapindex",
             )
             _UI_KEYWORDS = {
                 "alert", "error", "ok", "yes", "no", "true", "false",
@@ -4283,13 +4294,21 @@ class BingoTerminal:
                 "start", "begin", "pass", "skip", "ignore", "n/a",
                 "200", "404", "500", "400", "401", "403",
             }
-            # v3.2.7: URL/경로 패턴 감지용 (파일확장자, 프로토콜)
-            import re as _re
+            # v3.2.7: URL/경로 패턴 감지
             _URL_PATTERN = _re.compile(
                 r'(https?://|://|\.aspx|\.php|\.html?|\.jsp|\.do|'
                 r'\.js|\.css|\.json|\.xml|\.asp|\.cfm|/[a-z])',
                 _re.IGNORECASE
             )
+            # v3.2.9: XML/HTML 태그 패턴 (<tag> 또는 </tag> 또는 <tag/>)
+            _XML_TAG_PATTERN = _re.compile(r'^</?[a-zA-Z][a-zA-Z0-9_:\-]*[\s/>]?')
+            # v3.2.9: 숫자/날짜/시간만으로 구성된 값 (SQL 데이터가 아님)
+            _NUMERIC_ONLY_PATTERN = _re.compile(
+                r'^[\d\s\.\-\+\:T\+\Z/,]+$'  # 0.80, 1.00, 2025-06-18T08:52:20+00:00
+            )
+            # v3.2.9: JSON 구조 문자로 시작하는 라인
+            _JSON_STRUCT_START = ('{', '}', '[', ']', '":', '",', '"}', '"]')
+
             _lines = trimmed.split("\n")
             _table_lines = []
             for _l in _lines:
@@ -4298,6 +4317,12 @@ class BingoTerminal:
                     continue
                 # 구분자/헤더/타이머 라인 제외
                 if _ls.startswith(("[", "⏱", "=", "步", "表", "---", ">>>", "<<<", "#")):
+                    continue
+                # v3.2.9: XML/HTML 태그로 시작하는 라인 제외 (<url>, <loc>, <div> 등)
+                if _XML_TAG_PATTERN.match(_ls):
+                    continue
+                # v3.2.9: JSON 구조 문자로 시작 또는 끝나는 라인 제외
+                if _ls.startswith(_JSON_STRUCT_START) or _ls.endswith(('{', '}', '[', ']', '","', '",')):
                     continue
                 # UI/분석 출력 접두어 라인 제외 ("消息: alert", "URL: index.aspx" 같은 것)
                 if any(_ls.lower().startswith(p.lower()) for p in _UI_PREFIXES):
@@ -4309,6 +4334,12 @@ class BingoTerminal:
                     continue
                 # v3.2.7: URL/파일경로 패턴 값이면 SQL 데이터 아님 → 제외
                 if _URL_PATTERN.search(_val):
+                    continue
+                # v3.2.9: 숫자/날짜/시간만으로 구성된 값 제외 (XML priority, lastmod 등)
+                if _NUMERIC_ONLY_PATTERN.match(_val):
+                    continue
+                # v3.2.9: 값 자체가 XML/HTML 태그 형태이면 제외
+                if _XML_TAG_PATTERN.match(_val):
                     continue
                 _table_lines.append(_ls)
 

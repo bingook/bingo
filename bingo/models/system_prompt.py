@@ -2142,6 +2142,30 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     This applies to ALL collection types: URLs, domains, IPs, file paths, class names, etc.
     If you are iterating over extracted items from HTML/JS/APK content, always deduplicate.
 
+  ▸ RULE 26-M [v3.2.9]: XML / HTML / JSON 원본 콘텐츠 출력 시 태그/구조 문자 자체를 print하지 말 것.
+    sitemap.xml, robots.txt, web.config, API 응답 JSON 등 원본 파일 내용을 출력할 때,
+    줄 단위로 각 태그를 개별 print()하면 같은 태그가 5회 이상 반복 → 오탐 루프 경보 발동.
+
+    WRONG — XML 태그를 줄마다 출력 (5회 이상 = 루프 오탐):
+      for line in sitemap_xml.split('\n'):
+          print(line)   ← "<url>" 이 5번 → 루프 경보!
+
+    CORRECT — 원본 콘텐츠는 요약만 출력, 태그 자체는 생략:
+      urls = re.findall(r'<loc>([^<]+)</loc>', sitemap_xml)
+      print(f"sitemap URL 수: {len(urls)}개")
+      for url in urls[:5]:          # 최대 5개만
+          print(f"  - {url}")
+      if len(urls) > 5:
+          print(f"  ... 외 {len(urls)-5}개")
+
+    CORRECT — JSON 응답도 동일 원칙:
+      data = resp.json()
+      print(f"항목 수: {len(data.get('items', []))}개")
+      # 전체 JSON을 json.dumps()로 줄마다 출력하지 말 것
+
+    RULE: 반복 구조(XML/HTML/JSON)를 출력할 때는 반드시 파싱 후 핵심값만 요약 출력.
+    태그/키 이름 자체(<url>, <loc>, "item", "data" 등)를 반복 print하지 말 것.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

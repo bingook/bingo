@@ -2631,6 +2631,26 @@ _STRINGS.update({
     "playwright_api_captured":   {"ko": "🎭 [PLAYWRIGHT] API 요청 {count}개 캡처: {endpoints}",
                                    "zh": "🎭 [PLAYWRIGHT] 已捕获{count}个API请求: {endpoints}",
                                    "en": "🎭 [PLAYWRIGHT] {count} API requests captured: {endpoints}"},
+
+    # ── v3.2.9: XML/HTML/JSON 오탐 방지 다국어 키 ──
+    "loop_detect_xml_skip":      {"ko": "⚡ 루프감지 건너뜀: '{val}'은 XML/HTML 태그 → SQL 데이터 아님",
+                                   "zh": "⚡ 跳过循环检测: '{val}'是XML/HTML标签 → 非SQL数据",
+                                   "en": "⚡ Loop detect skipped: '{val}' is XML/HTML tag — not SQL data"},
+    "loop_detect_json_skip":     {"ko": "⚡ 루프감지 건너뜀: '{val}'은 JSON 구조 문자 → SQL 데이터 아님",
+                                   "zh": "⚡ 跳过循环检测: '{val}'是JSON结构字符 → 非SQL数据",
+                                   "en": "⚡ Loop detect skipped: '{val}' is JSON structure — not SQL data"},
+    "loop_detect_numeric_skip":  {"ko": "⚡ 루프감지 건너뜀: '{val}'은 숫자/날짜 값 → SQL 데이터 아님",
+                                   "zh": "⚡ 跳过循环检测: '{val}'是数字/日期值 → 非SQL数据",
+                                   "en": "⚡ Loop detect skipped: '{val}' is numeric/date — not SQL data"},
+    "xml_content_summary":       {"ko": "📄 [XML] {tag} 항목 {count}개 발견 (최대 5개 표시)",
+                                   "zh": "📄 [XML] 发现{count}个{tag}条目（最多显示5个）",
+                                   "en": "📄 [XML] {count} {tag} entries found (showing up to 5)"},
+    "json_content_summary":      {"ko": "📄 [JSON] 항목 {count}개 발견 (키: {keys})",
+                                   "zh": "📄 [JSON] 发现{count}个条目 (键: {keys})",
+                                   "en": "📄 [JSON] {count} items found (keys: {keys})"},
+    "loop_false_positive_xml":   {"ko": "[AUTO-FIX] XML/HTML 태그 오탐 방지: '{val}' 반복감지 → 루프 아님",
+                                   "zh": "[AUTO-FIX] XML/HTML标签误报防护: '{val}'重复检测 → 非循环",
+                                   "en": "[AUTO-FIX] XML/HTML tag false positive: '{val}' repeated → not a loop"},
 })
 
 

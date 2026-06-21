@@ -2800,6 +2800,14 @@ _STRINGS.update({
     "traceback_stream_compressed": {"ko": "📦 [EXEC] Traceback {n}줄 → 실시간 압축",
                                     "zh": "📦 [EXEC] Traceback {n}行 → 实时压缩",
                                     "en": "📦 [EXEC] Traceback {n} lines → compressed (streaming)"},
+    # v3.2.24: IP 레벨 차단 감지 메시지 (RULE 26-W 적용 결과 AI 출력)
+    "ip_blocked_detected":          {"ko": "🚫 [IP_BLOCKED] 연속 연결 실패 → IP 레벨 차단 감지. /proxy 설정 후 재시도.",
+                                     "zh": "🚫 [IP_BLOCKED] 连续连接失败 → 检测到IP级封锁。请设置 /proxy 后重试。",
+                                     "en": "🚫 [IP_BLOCKED] Consecutive connection failures → IP-level block detected. Set /proxy and retry."},
+    # v3.2.24: 병렬 스크립트 의존성 감지 경고 (RULE 26-X)
+    "parallel_dep_warning":         {"ko": "⚠️ [RULE 26-X] 스크립트 간 파일 의존성 감지 — 병렬 실행에서 동작 보장 불가",
+                                     "zh": "⚠️ [RULE 26-X] 检测到脚本间文件依赖 — 并行执行中不保证执行顺序",
+                                     "en": "⚠️ [RULE 26-X] Inter-script file dependency detected — execution order not guaranteed in parallel"},
 })
 
 

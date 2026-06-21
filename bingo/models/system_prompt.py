@@ -2521,6 +2521,71 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       for u, s in results:
           print(f"{u} → {s}")
 
+  ── RULE 26-W [v3.2.24]: 전체 ConnectionError = IP 차단 — 즉시 선언 후 종료 ──
+
+  ▸ RULE 26-W [v3.2.24]: 스크립트 내 요청 3회 이상 연속으로 ConnectionError/Timeout 발생 시,
+    IP 레벨 차단(방화벽/CDN/WAF)으로 판단하고 즉시 선언 후 스크립트를 종료하라.
+    더 이상의 요청을 시도하지 말 것 — 어차피 전부 실패한다.
+
+    WHY:
+    - 모든 엔드포인트가 ConnectionError → IP 블록 상태. 추가 18개 경로 테스트는 의미 없음.
+    - WAF 없음 오보 위험: 연결 자체가 안 되면 WAF 유무 판단 불가.
+    - 토큰 낭비 + 화면 오염 방지.
+
+    WRONG — 15개 더 시도:
+      for path in paths:
+          try:
+              r = requests.get(base + path, timeout=5)
+              ...
+          except requests.exceptions.ConnectionError:
+              print(f"[오류] {path}: ConnectionError")
+      # 결과: 15개 전부 [오류] ... ConnectionError 출력
+
+    CORRECT — 3회 실패 시 조기 종료:
+      _fail = 0
+      for path in paths:
+          try:
+              r = requests.get(base + path, timeout=5, verify=False)
+              _fail = 0
+              # 처리 로직...
+          except Exception as e:
+              _fail += 1
+              print(f"[오류] {path}: {type(e).__name__}")
+              if _fail >= 3:
+                  print("[🚫 IP_BLOCKED] 연속 3회 연결 실패 → IP 레벨 차단 감지. 프록시 설정 후 재시도 필요.")
+                  break
+      # WAF 판단도 연결 실패면 반드시:
+      if _fail >= 3:
+          print("[WAF] 연결 자체 차단됨 — WAF 유무 판단 불가 (IP 블록 상태)")
+
+  ── RULE 26-X [v3.2.24]: 병렬 스크립트 간 의존성 완전 금지 ──
+
+  ▸ RULE 26-X [v3.2.24]: 같은 라운드에 생성하는 여러 스크립트는 반드시 완전 독립적이어야 한다.
+    스크립트들은 병렬(동시)로 실행된다 — 실행 순서 보장 없음.
+
+    금지 사항:
+    - Script B에서 Script A가 저장한 파일 읽기 (open(), pickle.load() 등)
+    - Script B에서 Script A의 결과 변수 참조
+    - Script C에서 "앞 스크립트에서 크롤링한 HTML" 기반 처리
+
+    WRONG — 의존성 있음:
+      # Script 1: HTML 저장
+      with open("/tmp/page.html", "w") as f:
+          f.write(r.text)
+
+      # Script 3 (병렬 실행): Script 1 결과 읽기 → 실패
+      with open("/tmp/page.html") as f:   # Script 1이 아직 실행 중!
+          html = f.read()
+
+    CORRECT — 각 스크립트가 직접 요청:
+      # Script 3: 독립적으로 직접 크롤링
+      try:
+          r = requests.get(target, timeout=10, verify=False)
+          html = r.text
+          # 처리...
+      except Exception as e:
+          print(f"[오류] {e}")
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

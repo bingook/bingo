@@ -148,17 +148,16 @@ class _SlashCompleter(Completer):
                 )
 
 
-def _filter_traceback(output: str) -> str:
+def _filter_traceback(output: str):
     """v3.2.22: Python 스크립트 Traceback 폭탄 → 1줄 에러로 압축.
 
-    Traceback (most recent call last):
-      File "...", line N, in <module>
-        code
-    ExcType: message
-    →  [错误] ExcType: message
+    Returns:
+        (filtered_output: str, original_line_count: int, filtered_line_count: int)
+        original_line_count == 0 이면 Traceback 없었음 (필터 미작동)
     """
     if "Traceback (most recent call last):" not in output:
-        return output
+        return output, 0, 0
+    original_count = len(output.splitlines())
     lines = output.splitlines()
     result: list = []
     i = 0
@@ -189,7 +188,9 @@ def _filter_traceback(output: str) -> str:
         else:
             result.append(line)
             i += 1
-    return "\n".join(result)
+    filtered_output = "\n".join(result)
+    filtered_count = len(result)
+    return filtered_output, original_count, filtered_count
 
 
 class BingoTerminal:
@@ -3940,7 +3941,15 @@ class BingoTerminal:
                     stdout, stderr = proc.communicate()
                     output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
                     # v3.2.22: Traceback 폭탄 → 1줄 에러로 압축 (표시용 + AI 컨텍스트용)
-                    output_filtered = _filter_traceback(output)
+                    output_filtered, _tb_orig, _tb_filt = _filter_traceback(output)
+                    if _tb_orig > 0:
+                        # Traceback 필터 작동 — 다국어 알림
+                        _tb_msg = t(
+                            "traceback_filtered",
+                            f"📦 [EXEC] Traceback {_tb_orig}줄 → {_tb_filt}줄로 압축 (에러만 표시)"
+                        ).format(n=_tb_orig, count=_tb_filt)
+                        with _lock:
+                            self.console.print(f"[{THEME['dim']}]{_tb_msg}[/]")
                     if output_filtered.strip():
                         preview_out = "\n".join(output_filtered.strip().splitlines()[:60])
                         with _lock:

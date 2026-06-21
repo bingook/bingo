@@ -2792,10 +2792,10 @@ _STRINGS.update({
                                    "zh": "🔧 [PRECHECK] 检测到_smart_decode()调用 — 自动注入def（防止NameError）",
                                    "en": "🔧 [PRECHECK] _smart_decode() call detected — def auto-injected (NameError prevention)"},
 
-    # v3.2.21: sys.excepthook 교체 — Traceback 폭탄 방지
-    "excepthook_injected":       {"ko": "🔧 [PRECHECK] sys.excepthook 교체 주입 — Traceback 억제 (1줄 에러 출력)",
-                                   "zh": "🔧 [PRECHECK] 注入sys.excepthook替换 — 抑制Traceback（单行错误输出）",
-                                   "en": "🔧 [PRECHECK] sys.excepthook replaced — Traceback suppressed (single-line error output)"},
+    # v3.2.22: Traceback 폭탄 → 1줄 압축 필터 (실행 출력 레벨)
+    "traceback_filtered":        {"ko": "📦 [EXEC] Traceback {n}줄 → {count}줄로 압축 (에러만 표시)",
+                                   "zh": "📦 [EXEC] Traceback {n}行 → 压缩为{count}行（仅显示错误）",
+                                   "en": "📦 [EXEC] Traceback {n} lines → compressed to {count} lines (errors only)"},
 })
 
 

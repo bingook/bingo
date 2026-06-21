@@ -27,6 +27,7 @@ from prompt_toolkit.completion import Completer, Completion, WordCompleter
 from ..models.base import Message, StreamChunk
 from ..lang.strings import get_strings, get_slash_commands, SUPPORTED_LANGS
 from ..i18n import t
+from ..proxy import ProxyManager
 
 # ── 응답 인코딩 자동 감지 유틸 ──────────────────────────────────────
 def _decode_response(resp) -> str:
@@ -205,6 +206,8 @@ class BingoTerminal:
         self._session_tables: list[str] = []
         self._session_credentials: list[dict] = []
         self._session_fresh: bool = True   # True = 새 세션, False = 이전 세션 복원
+        # 프록시 풀 로테이션 관리자 (v3.2.18)
+        self._proxy: ProxyManager = ProxyManager()
 
     # ── 네트워크 환경 감지 (VPN 자동 판단) ───────────────────────
     def _detect_network_env(self) -> None:
@@ -2171,6 +2174,8 @@ class BingoTerminal:
             self._cmd_snapshots()
         elif name == "/cost":
             self._cmd_cost()
+        elif name == "/proxy":
+            self._cmd_proxy(arg)
         else:
             self._warn(self.s["cmd_unknown"].format(name=name))
 
@@ -2730,6 +2735,209 @@ class BingoTerminal:
             border_style="cyan",
             expand=False,
         ))
+
+    # ── /proxy 명령어 핸들러 (v3.2.18) ──────────────────────────────
+    def _cmd_proxy(self, arg: str) -> None:
+        """
+        프록시 풀 로테이션 관리.
+
+        사용법:
+          /proxy list          — 현재 풀 상태 표시
+          /proxy add <url>     — 프록시 수동 추가
+          /proxy file <path>   — 파일에서 일괄 로드
+          /proxy api [url]     — API에서 자동 수집
+          /proxy tor [pass]    — Tor 모드 활성화 (pass: 제어 비밀번호, 선택)
+          /proxy rotate        — 즉시 다음 프록시로 전환
+          /proxy test          — 현재 프록시 연결 확인
+          /proxy unban         — 밴된 프록시 전부 해제
+          /proxy clear         — 풀 초기화
+          /proxy off           — 프록시 비활성화
+        """
+        from rich.table import Table as _Table
+        pm = self._proxy
+        parts = arg.split(None, 1)
+        sub = parts[0].lower() if parts else "list"
+        sub_arg = parts[1].strip() if len(parts) > 1 else ""
+
+        _lang = getattr(self.config, "lang", "en")
+
+        # ─ list ──────────────────────────────────────────────────────
+        if sub in ("", "list", "status"):
+            st = pm.pool_status()
+            tbl = _Table(title="🌐 Proxy Pool Status", border_style="cyan", expand=False)
+            tbl.add_column("항목", style="cyan")
+            tbl.add_column("값", style="white")
+            tbl.add_row("활성화", "✅ ON" if st["enabled"] else "❌ OFF")
+            tbl.add_row("총 프록시", str(st["total"]))
+            tbl.add_row("사용 가능", str(st["active"]))
+            tbl.add_row("밴됨", str(st["banned"]))
+            tbl.add_row("현재 프록시", st["current"])
+            tbl.add_row("Tor 모드", "✅" if st["tor"] else "❌")
+            tbl.add_row("stem (Tor 회로 교체)", "✅ 설치됨" if st["stem"] else "❌ pip install stem")
+            tbl.add_row("PySocks (SOCKS5)", "✅ 설치됨" if st["pysocks"] else "❌ pip install PySocks")
+            self.console.print(tbl)
+
+            items = pm.list_all()
+            if items:
+                ptbl = _Table(border_style="dim", expand=False)
+                ptbl.add_column("#", style="dim")
+                ptbl.add_column("프록시", style="cyan")
+                ptbl.add_column("상태", style="white")
+                ptbl.add_column("성공", justify="right")
+                ptbl.add_column("실패", justify="right")
+                ptbl.add_column("지연(ms)", justify="right")
+                for i, e in enumerate(items, 1):
+                    status = "[red]BANNED[/]" if e["banned"] else "[green]OK[/]"
+                    if e["is_tor"]:
+                        status = "[magenta]TOR[/]"
+                    lat = f"{e['latency']:.0f}" if e["latency"] >= 0 else "-"
+                    ptbl.add_row(str(i), e["url"], status,
+                                 str(e["success"]), str(e["fails"]), lat)
+                self.console.print(ptbl)
+            return
+
+        # ─ add ───────────────────────────────────────────────────────
+        if sub == "add":
+            if not sub_arg:
+                self._warn(
+                    "사용법: /proxy add <url>\n"
+                    "예시:   /proxy add socks5://1.2.3.4:1080\n"
+                    "        /proxy add http://user:pass@5.6.7.8:3128\n"
+                    "        /proxy add https://9.10.11.12:443"
+                )
+                return
+            ok = pm.add(sub_arg)
+            if ok:
+                self._success(
+                    self.s.get("proxy_added", "✅ 프록시 추가됨: {url}").format(url=sub_arg)
+                )
+            else:
+                self._warn(
+                    self.s.get("proxy_add_fail", "❌ 추가 실패 (중복 또는 형식 오류): {url}").format(url=sub_arg)
+                )
+            return
+
+        # ─ file ──────────────────────────────────────────────────────
+        if sub == "file":
+            if not sub_arg:
+                self._warn("사용법: /proxy file <파일경로>   (한 줄에 프록시 1개)")
+                return
+            n = pm.load_file(sub_arg)
+            self._success(
+                self.s.get("proxy_file_loaded", "📂 파일에서 {n}개 프록시 로드됨").format(n=n)
+            )
+            return
+
+        # ─ api ───────────────────────────────────────────────────────
+        if sub == "api":
+            if sub_arg:
+                # URL 직접 지정
+                with self.console.status("[cyan]🌐 API에서 프록시 수집 중...[/cyan]"):
+                    n = pm.fetch_from_api(sub_arg)
+                self._success(
+                    self.s.get("proxy_api_fetched", "🌐 API에서 {n}개 프록시 수집됨").format(n=n)
+                )
+            else:
+                # 프리셋 선택
+                presets = pm.free_api_urls()
+                self.console.print("[cyan]사용 가능한 무료 프록시 API 프리셋:[/cyan]")
+                for i, (name, url) in enumerate(presets, 1):
+                    self.console.print(f"  [bold]{i}.[/bold] {name}")
+                    self.console.print(f"     [dim]{url[:80]}...[/dim]")
+                from rich.prompt import Prompt as _P
+                choice = _P.ask("번호 선택 (0=직접입력)", default="1")
+                if choice == "0":
+                    api_url = _P.ask("API URL 입력").strip()
+                else:
+                    try:
+                        api_url = presets[int(choice) - 1][1]
+                    except (ValueError, IndexError):
+                        self._warn("잘못된 선택.")
+                        return
+                with self.console.status(f"[cyan]🌐 {api_url[:60]}... 에서 수집 중...[/cyan]"):
+                    n = pm.fetch_from_api(api_url)
+                self._success(
+                    self.s.get("proxy_api_fetched", "🌐 API에서 {n}개 프록시 수집됨").format(n=n)
+                )
+            return
+
+        # ─ tor ───────────────────────────────────────────────────────
+        if sub == "tor":
+            ctrl_pass = sub_arg  # 비밀번호 없으면 빈 문자열
+            ok = pm.enable_tor(ctrl_pass)
+            if ok:
+                self._success(
+                    self.s.get("proxy_tor_enabled",
+                               "🧅 Tor 모드 활성화 — socks5h://127.0.0.1:9050 사용 중\n"
+                               "   stem 설치됨: {stem} | 회로 교체 지원: {stem}").format(
+                        stem="✅" if pm.pool_status()["stem"] else "❌ (pip install stem)"
+                    )
+                )
+                if not pm.pool_status()["stem"]:
+                    self.console.print("[dim]   Tor 회로 자동 교체 비활성화 (stem 미설치)[/dim]")
+                    self.console.print("[dim]   → pip install stem  후 재실행[/dim]")
+            else:
+                self._warn("Tor 추가 실패.")
+            return
+
+        # ─ rotate ────────────────────────────────────────────────────
+        if sub == "rotate":
+            entry = pm.rotate()
+            if entry:
+                self._success(
+                    self.s.get("proxy_rotated", "🔄 프록시 교체됨 → {url}").format(url=str(entry))
+                )
+            else:
+                self._warn(self.s.get("proxy_pool_empty", "⚠ 사용 가능한 프록시 없음"))
+            return
+
+        # ─ test ──────────────────────────────────────────────────────
+        if sub == "test":
+            cur = pm.current()
+            if not cur:
+                self._warn(self.s.get("proxy_pool_empty", "⚠ 사용 가능한 프록시 없음"))
+                return
+            with self.console.status(f"[cyan]🔍 {cur} 연결 테스트 중...[/cyan]"):
+                ok = pm.test_proxy(cur)
+            if ok:
+                self._success(
+                    self.s.get("proxy_test_ok", "✅ 프록시 연결 성공: {url} (지연: {lat}ms)").format(
+                        url=str(cur), lat=f"{cur.latency_ms:.0f}"
+                    )
+                )
+            else:
+                self._warn(
+                    self.s.get("proxy_test_fail", "❌ 프록시 연결 실패: {url}").format(url=str(cur))
+                )
+            return
+
+        # ─ unban ─────────────────────────────────────────────────────
+        if sub == "unban":
+            n = pm.unban_all()
+            self._success(
+                self.s.get("proxy_unban", "✅ 밴 해제됨: {n}개").format(n=n)
+            )
+            return
+
+        # ─ clear ─────────────────────────────────────────────────────
+        if sub == "clear":
+            pm.clear()
+            self._success(self.s.get("proxy_cleared", "🗑 프록시 풀 초기화됨"))
+            return
+
+        # ─ off ───────────────────────────────────────────────────────
+        if sub == "off":
+            pm.disable()
+            self._success(self.s.get("proxy_disabled", "⛔ 프록시 비활성화됨"))
+            return
+
+        self._warn(
+            "사용법: /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]\n"
+            "예시:   /proxy add socks5://1.2.3.4:1080\n"
+            "        /proxy tor\n"
+            "        /proxy api\n"
+            "        /proxy file ~/proxies.txt"
+        )
 
     def _show_token_usage(self) -> None:
         """루프마다 토큰 사용량 추정 + 상태바에 표시."""
@@ -4175,6 +4383,15 @@ class BingoTerminal:
 
             self._parse_agent_state(raw_results)
             state_summary = self._format_agent_state()
+            # v3.2.18: 프록시 상태를 state_summary에 포함
+            if self._proxy.enabled:
+                _pe = self._proxy.current()
+                if _pe:
+                    state_summary += (
+                        f"\n[PROXY_ACTIVE: {_pe}]\n"
+                        f"Use in scripts: PROXIES = {{'http': '{_pe.url}', 'https': '{_pe.url}'}}\n"
+                        f"requests.get(url, proxies=PROXIES, verify=False)\n"
+                    )
             self._show_token_usage()
             self._exec_loop_count += 1
             # 루프마다 세션 자동 저장 (이어하기용)
@@ -4525,6 +4742,48 @@ class BingoTerminal:
                     _wait_secs = 5  # 타임아웃은 짧게 대기
 
                 _lang = getattr(self.config, "lang", "en")
+
+                # ── v3.2.18: 프록시 자동 로테이션 ─────────────────────────
+                _proxy_hint_lines: list[str] = []
+                _pm = self._proxy
+                if _pm.enabled:
+                    _new_entry = _pm.report_ban()
+                    if _new_entry:
+                        _proxy_rotate_msg = {
+                            "ko": f"🔄 IP 밴 감지 → 프록시 자동 교체: {_new_entry}",
+                            "zh": f"🔄 检测到IP封禁 → 自动切换代理: {_new_entry}",
+                            "en": f"🔄 IP ban detected → auto-rotated proxy: {_new_entry}",
+                        }.get(_lang, f"🔄 Proxy rotated → {_new_entry}")
+                        self.console.print(f"[{THEME['success']}]{_proxy_rotate_msg}[/]")
+                        _wait_secs = 3  # 프록시 교체 시 짧은 대기
+                        _proxy_hint_lines = [
+                            f"[PROXY_ROTATED: now using {_new_entry}]",
+                            f"Add to your script:",
+                            f"  PROXIES = {{'http': '{_new_entry.url}', 'https': '{_new_entry.url}'}}",
+                            f"  # requests.get(url, proxies=PROXIES, timeout=15, verify=False)",
+                            f"  # httpx.get(url, proxies=PROXIES, timeout=15, verify=False)",
+                            f"  # session.get(url, proxies=PROXIES)",
+                        ]
+                        if _new_entry.is_tor:
+                            _proxy_hint_lines.append(
+                                "  # Tor: install stem for circuit rotation → pm.tor_new_circuit()"
+                            )
+                    else:
+                        _proxy_warn = {
+                            "ko": "⚠ 사용 가능한 프록시 소진 — /proxy add <url> 로 추가하거나 /proxy api 로 수집하세요",
+                            "zh": "⚠ 代理池已耗尽 — 使用 /proxy add <url> 或 /proxy api 补充",
+                            "en": "⚠ Proxy pool exhausted — add with /proxy add <url> or /proxy api",
+                        }.get(_lang, "⚠ Proxy pool exhausted")
+                        self.console.print(f"[{THEME['warn']}]{_proxy_warn}[/]")
+                else:
+                    # 프록시 미설정 시 안내
+                    _proxy_hint_msg = {
+                        "ko": "💡 팁: /proxy add <url> 또는 /proxy tor 로 IP 밴 자동 우회 가능",
+                        "zh": "💡 提示: 使用 /proxy add <url> 或 /proxy tor 自动绕过IP封禁",
+                        "en": "💡 Tip: /proxy add <url> or /proxy tor to auto-rotate past IP bans",
+                    }.get(_lang, "💡 Tip: /proxy add <url> to auto-rotate")
+                    self.console.print(f"[{THEME['dim']}]{_proxy_hint_msg}[/]")
+
                 _block_msg = {
                     "ko": f"⛔ 차단 감지: {', '.join(_detected_blocks)} — {_wait_secs}초 대기 후 재시도...",
                     "zh": f"⛔ 检测到封锁: {', '.join(_detected_blocks)} — 等待 {_wait_secs} 秒后重试...",
@@ -4536,9 +4795,12 @@ class BingoTerminal:
                 for _i in range(_wait_secs, 0, -5):
                     _time.sleep(min(5, _i))
                     self.console.print(f"[{THEME['dim']}]  {self.s.get('countdown_remain', '⏱ {sec}s remaining...').format(sec=_i)}[/]")
+
+                _proxy_inject = "\n".join(_proxy_hint_lines)
                 _ip_block_hint = (
                     f"\n[IP_BLOCK_DETECTED: {', '.join(_detected_blocks)}]\n"
-                    f"Waited {_wait_secs}s. Now retry with:\n"
+                    + (_proxy_inject + "\n" if _proxy_inject else "")
+                    + f"Waited {_wait_secs}s. Now retry with:\n"
                     f"  - Different User-Agent string\n"
                     f"  - X-Forwarded-For: 8.8.8.8 header\n"
                     f"  - Reduce request rate (add time.sleep(2) between requests)\n"

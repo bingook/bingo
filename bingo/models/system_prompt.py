@@ -2395,6 +2395,55 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
          ❌  [GET /api/admin → 302/32B] → 인증 필요
          ⚠️  [POST /api/login → 500/512B] → {"error":"field missing"}
 
+  ▸ RULE 26-T [v3.2.18]: 프록시/Tor 활성화 시 모든 HTTP 요청에 반드시 적용.
+    bingo가 [PROXY_ACTIVE: ...] 메시지를 컨텍스트에 주입하면,
+    그 이후 생성하는 모든 Python HTTP 요청 스크립트에 PROXIES 변수를 포함해야 한다.
+
+    WHY:
+    - [PROXY_ACTIVE] = bingo가 프록시 풀을 관리 중 + 현재 IP가 밴될 위험 있음
+    - 프록시 없이 요청 시 실제 IP 노출 → 밴 누적 → 공격 실패
+    - Tor 사용 시 socks5h://127.0.0.1:9050 이 로컬 Tor 데몬을 통해 익명화
+
+    [PROXY_ACTIVE] 메시지 예시:
+      [PROXY_ACTIVE: socks5://1.2.3.4:1080]
+      Use in scripts: PROXIES = {'http': 'socks5://1.2.3.4:1080', 'https': 'socks5://1.2.3.4:1080'}
+      requests.get(url, proxies=PROXIES, verify=False)
+
+    [PROXY_ROTATED] 메시지 예시:
+      [PROXY_ROTATED: now using socks5://5.6.7.8:9090]
+      Add to your script: PROXIES = {'http': 'socks5://5.6.7.8:9090', ...}
+
+    CORRECT — 프록시 적용 스크립트:
+      import requests
+      # [bingo v3.2.18: PROXY ACTIVE — 아래 PROXIES 반드시 포함]
+      PROXIES = {'http': 'socks5://1.2.3.4:1080', 'https': 'socks5://1.2.3.4:1080'}
+      s = requests.Session()
+      s.proxies.update(PROXIES)
+      s.verify = False
+      r = s.get("https://target.com/api/...", timeout=15)
+
+    CORRECT — Tor 회로 교체 (stem 사용 가능 시):
+      # Tor 회로 강제 갱신 → 새 IP 획득
+      from stem import Signal
+      from stem.control import Controller
+      with Controller.from_port(port=9051) as ctrl:
+          ctrl.authenticate()
+          ctrl.signal(Signal.NEWNYM)
+      import time; time.sleep(1)   # 회로 안정화
+      # 그 다음 요청은 새 IP로 나감
+
+    WRONG — 프록시 없이 직접 요청:
+      import requests
+      r = requests.get("https://target.com/...")   # 밴된 IP 그대로 사용!
+
+    RULE:
+    1. [PROXY_ACTIVE] 주입되면 → 모든 requests/httpx/aiohttp에 proxies= 반드시 추가.
+    2. [PROXY_ROTATED] 주입되면 → PROXIES 변수를 새 URL로 업데이트해서 사용.
+    3. Tor 모드 (socks5h://127.0.0.1:9050) 사용 시 → verify=False 필수.
+    4. 프록시 없이 [PROXY_ACTIVE]를 무시하고 직접 요청 → 금지.
+    5. socks5h:// 사용 시 DNS도 Tor를 통해 해석됨 (socks5:// 보다 안전).
+    6. 밴 반복 시 → bingo가 자동으로 다음 프록시로 교체하므로 대기 후 재시도.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

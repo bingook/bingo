@@ -2358,6 +2358,43 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     4. Cloudflare 챌린지는 특유의 HTML 구조가 있음 — 일반 reCAPTCHA 스크립트와 다름.
     5. 오탐 판단 후: 이전 공격 계획을 변경하지 말고 그대로 계속 실행.
 
+  ▸ RULE 26-S [v3.2.17]: HTTP 응답 출력 시 반드시 URL/인덱스 포함 — 루프 오탐 방지.
+    여러 엔드포인트를 순환 테스트할 때 `print(f"Body: {resp.text[:200]}")` 패턴을 절대 쓰지 말 것.
+    모든 응답이 동일한 HTML(로그인 리다이렉트 페이지 등)을 반환하면
+    "Body: <!DOCTYPE html>" 이 5번 이상 반복 → bingo의 루프 감지가 오탐 발동됨.
+
+    WHY:
+    - bingo의 루프 감지 시스템은 반복되는 의미 있는 라인을 SQL 추출 루프로 판단함.
+    - `Body: <!DOCTYPE html>` 같은 고정 접두어 + 동일 HTML은 정확히 이 조건에 걸림.
+    - 오탐 발동 시: ⚠️ 检测到无限循环 경고 출력 → AI가 "루프 버그 있음"으로 잘못 판단.
+
+    WRONG — 모든 엔드포인트가 같은 출력 → 루프 오탐:
+      for ep in endpoints:
+          r = s.get(base + ep)
+          print(f"  Body: {r.text[:50]}")     # 모두 "Body: <!DOCTYPE html>" → 반복!
+
+    CORRECT — URL/상태코드/크기를 포함 → 각 줄이 고유:
+      for ep in endpoints:
+          r = s.get(base + ep)
+          size = len(r.text)
+          snippet = r.text[:30].replace("\n", " ")
+          print(f"  [{r.status_code}/{size}B] {ep} → {snippet}")
+
+    또는 응답이 전부 동일 HTML일 때는 요약만:
+      all_same = all(len(r.text) == first_size for r in responses)
+      if all_same:
+          print(f"[INFO] 모든 {n}개 엔드포인트 → 동일 응답 ({first_size}B) — 인증 필요")
+
+    RULE:
+    1. HTTP 응답을 출력할 때 URL, 상태코드, 크기 중 하나 이상을 반드시 포함.
+    2. for 루프 내 print에 고정 문자열("Body: ...", "Response: ...")만 반복하지 말 것.
+    3. 응답 본문이 모두 동일할 경우: 개별 출력 대신 "전체 요약" 한 줄로 처리.
+    4. 테스트 결과가 전원 동일(302 리다이렉트, 동일 HTML)이면 → 인증 필요 또는 다른 Base URL 탐색으로 전환.
+    5. 출력 예시 준수:
+         ✅  [GET /api/user → 200/1024B] → "{"id":1,"name":"..."}"
+         ❌  [GET /api/admin → 302/32B] → 인증 필요
+         ⚠️  [POST /api/login → 500/512B] → {"error":"field missing"}
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

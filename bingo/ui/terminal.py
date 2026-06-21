@@ -4408,6 +4408,17 @@ class BingoTerminal:
                 "phase ", "Phase ", "阶段", "단계", "step ", "Step ",
                 "total:", "Total:", "总计:", "합계:", "count:", "Count:",
                 "found:", "Found:", "발견:", "detected:", "Detected:",
+                # v3.2.17: HTTP 응답 바디 접두어 오탐 방지
+                # 'Body: <!DOCTYPE html>'이 여러 엔드포인트 순환 테스트 시 반복 → 루프 오탐
+                "body:", "Body:", "body: <", "Body: <",
+                "<!doctype", "<!DOCTYPE",
+                "response body:", "Response Body:", "응답체:", "응답바디:",
+                "响应体:", "响应内容:", "返回体:", "请求体:",
+                # v3.2.17: HTTP 상태코드 + 크기 출력 패턴 (예: [GET] /path → 200/1234B)
+                "[get] ", "[post] ", "[put] ", "[delete] ", "[patch] ",
+                "[GET] ", "[POST] ", "[PUT] ", "[DELETE] ", "[PATCH] ",
+                "→ 200", "→ 302", "→ 301", "→ 404", "→ 403", "→ 500",
+                "→ 401", "→ 307", "→ 308", "→ 400",
             )
             _UI_KEYWORDS = {
                 "alert", "error", "ok", "yes", "no", "true", "false",
@@ -4450,6 +4461,9 @@ class BingoTerminal:
                     "🚩", "💻", "📤", "📥", "🔗", "🔺", "🔻", "⬆", "⬇",
                     # 한국어/중국어 분석 진행 마커
                     "결과:", "완료:", "시작:", "종료:", "탐지:", "수집:",
+                    # v3.2.17: HTTP 응답 바디/메서드 접두어
+                    "Body:", "body:", "<!DOCTYPE", "<!doctype",
+                    "<html", "<HTML", "<head", "<HEAD",
                 )):
                     continue
                 # v3.2.9: XML/HTML 태그로 시작하는 라인 제외 (<url>, <loc>, <div> 등)

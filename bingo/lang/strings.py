@@ -2715,6 +2715,16 @@ _STRINGS.update({
     "login_500_count":           {"ko": "[LOGIN] 500 에러 {n}회 발생 ({url})",
                                    "zh": "[LOGIN] 500错误已发生{n}次 ({url})",
                                    "en": "[LOGIN] 500 error occurred {n} times ({url})"},
+    # v3.2.17: HTTP 응답 반복 출력 → 루프 오탐 방지 (RULE 26-S)
+    "rule_26s_body_loop":        {"ko": "⚠ RULE 26-S: 'Body: <!DOCTYPE html>' 반복 감지 → HTTP 출력 시 URL/상태코드 포함 의무",
+                                   "zh": "⚠ RULE 26-S: 检测到'Body: <!DOCTYPE html>'重复 → HTTP输出必须包含URL/状态码",
+                                   "en": "⚠ RULE 26-S: 'Body: <!DOCTYPE html>' repetition detected → HTTP output must include URL/status code"},
+    "body_loop_false_positive":  {"ko": "⚡ 루프 오탐 건너뜀: 'Body: <!DOCTYPE html>' 반복은 HTML 응답 출력 — 무한 루프 아님",
+                                   "zh": "⚡ 跳过循环误报: 'Body: <!DOCTYPE html>'重复是HTML响应输出 — 不是无限循环",
+                                   "en": "⚡ Loop false-positive skipped: 'Body: <!DOCTYPE html>' repeat is HTTP response output — not infinite loop"},
+    "http_all_same_response":    {"ko": "[INFO] 전체 {n}개 엔드포인트 → 동일 응답 ({size}B) — 인증 필요 또는 다른 API Base URL 탐색 필요",
+                                   "zh": "[INFO] 全部{n}个端点 → 相同响应 ({size}B) — 需要认证或探索其他API Base URL",
+                                   "en": "[INFO] All {n} endpoints → same response ({size}B) — auth required or explore different API base URL"},
 })
 
 

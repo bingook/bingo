@@ -4110,12 +4110,10 @@ class BingoTerminal:
                             self.console.print(f"[{THEME['dim']}]{_resc(_compressed)}[/]")
                         except Exception:
                             self.console.out(_compressed)
-                    _lang_tb = getattr(self.config, "lang", "zh")
-                    _tb_note = {
-                        "ko": f"📦 [EXEC] Traceback {n_buf}줄 → 압축",
-                        "zh": f"📦 [EXEC] Traceback {n_buf}行 → 已压缩",
-                        "en": f"📦 [EXEC] Traceback {n_buf} lines → compressed",
-                    }.get(_lang_tb, f"📦 Traceback {n_buf}L compressed")
+                    _tb_note = t(
+                        "traceback_stream_compressed",
+                        f"📦 [EXEC] Traceback {n_buf}줄 → 실시간 압축",
+                    ).replace("{n}", str(n_buf))
                     with _lock:
                         self.console.print(f"[{THEME['dim']}]{_tb_note}[/]")
                     _tb_buf.clear()

@@ -2796,6 +2796,10 @@ _STRINGS.update({
     "traceback_filtered":        {"ko": "📦 [EXEC] Traceback {n}줄 → {count}줄로 압축 (에러만 표시)",
                                    "zh": "📦 [EXEC] Traceback {n}行 → 压缩为{count}行（仅显示错误）",
                                    "en": "📦 [EXEC] Traceback {n} lines → compressed to {count} lines (errors only)"},
+    # v3.2.23: 스트리밍 실시간 Traceback 압축 알림 (_flush_tb_compressed)
+    "traceback_stream_compressed": {"ko": "📦 [EXEC] Traceback {n}줄 → 실시간 압축",
+                                    "zh": "📦 [EXEC] Traceback {n}行 → 实时压缩",
+                                    "en": "📦 [EXEC] Traceback {n} lines → compressed (streaming)"},
 })
 
 

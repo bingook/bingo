@@ -2318,6 +2318,46 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       if data:
           print(data)
 
+  ▸ RULE 26-R [v3.2.16]: CAPTCHA 오탐 금지 — 실제 챌린지 페이지와 일반 HTML 구분.
+    bingo의 CAPTCHA 감지 시스템이 "CAPTCHA detected"를 보고해도,
+    실제로 차단된 것인지 반드시 아래 기준으로 확인 후 판단해야 한다.
+
+    CAPTCHA가 실제로 활성화된 증거 (→ CAPTCHA 모드 전환 필요):
+      - 응답 HTML에 사용자에게 보이는 안내 문구 존재:
+          "Please complete the CAPTCHA"
+          "Verify you are human"
+          "Just a moment... (Cloudflare)"
+          "Checking your browser before accessing..."
+      - `<div class="g-recaptcha" data-sitekey="...">`  (data-sitekey 필수)
+      - Cloudflare challenge 페이지: cf-challenge, cf_chl_prog, enable JavaScript
+      - 응답 바디가 평소와 전혀 다른 챌린지 전용 페이지 (HTML 크기 급감, 내용 완전 교체)
+
+    CAPTCHA가 실제로 없는 경우 (→ 정상 계속 진행):
+      - 응답 HTML에 `<script src="...recaptcha...">` 만 있음 (모든 페이지에 삽입된 스크립트)
+      - 응답 크기가 평소 정상 페이지와 동일 (예: 10132B → 로그인 리다이렉트 페이지)
+      - 200 OK에 정상 사이트 콘텐츠 (`<!DOCTYPE html>`, 메뉴, 상품 목록 등)
+      - 400/500 에러 응답 (WAF 차단 ≠ CAPTCHA)
+
+    WRONG — CAPTCHA 오탐으로 잘못된 전략 채택:
+      # bingo가 "CAPTCHA detected" 출력했는데
+      if "CAPTCHA" in context:
+          print("CAPTCHA 발동 → 슬로우 모드로 전환")   # 오탐일 수 있음!
+          # 실제로는 그냥 recaptcha 스크립트가 HTML에 있었던 것
+
+    CORRECT — 실제 응답 내용으로 직접 확인:
+      # "CAPTCHA detected" 알림이 있어도
+      if response_html contains "data-sitekey" or "Just a moment" or "verify you are human":
+          # 진짜 CAPTCHA → 슬로우 모드 또는 API 우회 시도
+      else:
+          # 오탐 → 무시하고 정상 계속 진행
+
+    RULE:
+    1. "CAPTCHA detected" 메시지만 보고 전략을 바꾸지 말 것.
+    2. 실제 응답 HTML을 직접 확인해 챌린지 페이지 여부를 판단.
+    3. 응답 크기·내용·상태코드가 정상이면 CAPTCHA 오탐으로 간주하고 계속 진행.
+    4. Cloudflare 챌린지는 특유의 HTML 구조가 있음 — 일반 reCAPTCHA 스크립트와 다름.
+    5. 오탐 판단 후: 이전 공격 계획을 변경하지 말고 그대로 계속 실행.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

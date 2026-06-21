@@ -2679,6 +2679,16 @@ _STRINGS.update({
     "autofix_loop_dedup":        {"ko": "[AUTO-FIX] 루프 내 반복 출력 감지 → 카운터 방식으로 자동 교체",
                                    "zh": "[AUTO-FIX] 检测到循环内重复输出 → 自动替换为计数器方式",
                                    "en": "[AUTO-FIX] Repeated output in loop detected → auto-replaced with counter"},
+    # v3.2.16: CAPTCHA 오탐 방지 (RULE 26-R)
+    "captcha_false_positive":    {"ko": "⚡ CAPTCHA 오탐 건너뜀: 실제 챌린지 없음 (script src 오탐) → 정상 계속 진행",
+                                   "zh": "⚡ CAPTCHA误报跳过: 无实际挑战页面 (仅script src标签) → 继续正常执行",
+                                   "en": "⚡ CAPTCHA false-positive skipped: no real challenge page (script src only) → continuing normally"},
+    "captcha_real_detected":     {"ko": "⛔ CAPTCHA 실제 감지: data-sitekey 또는 Cloudflare 챌린지 페이지 확인됨",
+                                   "zh": "⛔ 检测到真实CAPTCHA: 发现data-sitekey或Cloudflare挑战页面",
+                                   "en": "⛔ Real CAPTCHA detected: data-sitekey or Cloudflare challenge page confirmed"},
+    "rule_26r_captcha_check":    {"ko": "⚠ RULE 26-R: CAPTCHA 알림 수신 → 실제 응답 HTML 직접 확인 후 판단 (오탐 가능)",
+                                   "zh": "⚠ RULE 26-R: 收到CAPTCHA通知 → 直接检查实际响应HTML再判断 (可能误报)",
+                                   "en": "⚠ RULE 26-R: CAPTCHA alert received → verify actual response HTML before acting (may be false positive)"},
     # v3.2.15: 변수 미초기화 NameError 방지 (RULE 26-Q)
     "rule_26q_undef_var":        {"ko": "⚠ RULE 26-Q: 변수 정의 전 참조 금지 — 사용 전 반드시 초기화 ([] / {} / \"\" / 0)",
                                    "zh": "⚠ RULE 26-Q: 禁止在定义变量前引用 — 使用前必须初始化 ([] / {} / \"\" / 0)",

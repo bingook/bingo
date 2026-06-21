@@ -4264,18 +4264,41 @@ class BingoTerminal:
             if _has_unavail:
                 _detected_blocks.append("Temporarily unavailable")
 
-            # ── CAPTCHA는 실제 차단 컨텍스트에서만 감지 ──────────────────────
-            # form name="captcha" 같은 HTML 필드 이름은 제외
-            # 실제 CAPTCHA 챌린지: "captcha required", reCAPTCHA, hcaptcha 등
+            # ── CAPTCHA 오탐 방지 v3.2.16 ─────────────────────────────────────
+            # 문제: _raw_lower에 AI 스크립트 출력 HTML이 포함됨
+            #       → HTML 안의 <script src="...recaptcha..."> 태그 때문에 오탐 발생
+            #       → 오탐 시 AI가 "CAPTCHA triggered → slow mode" 잘못 판단
+            # 해결: script src URL, 순수 URL 문자열 제거 후 실제 챌린지 패턴만 검사
             import re as _cre
+            # 1단계: script src에 recaptcha/captcha/hcaptcha 포함된 태그 제거
+            _body_for_captcha = _cre.sub(
+                r'<script[^>]*src=["\'][^"\']*(?:recaptcha|captcha|hcaptcha)[^"\']*["\'][^>]*(?:></script>|/>|>)',
+                '', _raw_lower,
+            )
+            # 2단계: URL 문자열로만 나타나는 recaptcha 제거 (JS 변수, href 등)
+            _body_for_captcha = _cre.sub(
+                r'https?://[^\s"\'<>\r\n]*(?:recaptcha|captcha\.google|hcaptcha\.com)[^\s"\'<>\r\n]*',
+                '', _body_for_captcha,
+            )
+            # 3단계: 실제 CAPTCHA 챌린지만 엄격 감지
             _captcha_block = bool(_cre.search(
                 r'(?:'
-                r'captcha\s+(?:required|detected|blocked|verification|solve|complete|error)'
-                r'|(?:enter|complete|fill|verify|solve)\s+(?:the\s+)?captcha'
-                r'|(?:recaptcha|hcaptcha|turnstile|cloudflare.*challenge)'
-                r'|g-recaptcha|h-captcha'
+                # 사용자에게 표시되는 실제 CAPTCHA 안내 문구
+                r'captcha\s+(?:required|verification\s+required|blocked|error)'
+                r'|(?:enter|complete|fill|solve)\s+(?:the\s+)?captcha'
+                r'|verify\s+you(?:\'re|\s+are)\s+(?:human|not\s+a\s+robot)'
+                r'|please\s+(?:complete|solve)\s+(?:the\s+)?(?:captcha|security\s+check)'
+                # Cloudflare 실제 챌린지 페이지 고유 문구
+                r'|just\s+a\s+moment\.\.\.'
+                r'|checking\s+your\s+browser'
+                r'|cf-challenge|cf_chl_prog'
+                r'|enable\s+javascript\s+and\s+cookies\s+to\s+continue'
+                r'|cf-turnstile[^>]{0,60}data-sitekey'
+                # reCAPTCHA/hCaptcha 실제 인터랙션 요소 (data-sitekey 동반 시만)
+                r'|(?:g-recaptcha|h-captcha)[^>]{0,80}data-sitekey'
+                r'|data-hcaptcha-widget-id'
                 r')',
-                _raw_lower,
+                _body_for_captcha,
             ))
             if _captcha_block:
                 _detected_blocks.append("CAPTCHA detected")

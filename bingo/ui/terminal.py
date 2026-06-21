@@ -4119,12 +4119,23 @@ class BingoTerminal:
                     _tb_buf.clear()
                     _in_tb = False
 
+                # v3.2.25: Python 연쇄 예외(chained exception) 구분 메시지 — 무음 억제
+                _CHAINED_EXC_MSGS: frozenset[str] = frozenset({
+                    "The above exception was the direct cause of the following exception:",
+                    "During handling of the above exception, another exception occurred:",
+                })
+
                 for raw_line in p.stdout:
                     line = raw_line.decode("utf-8", "replace").rstrip()
                     if not line:
                         continue
 
                     _stripped_cur = line.strip()
+
+                    # v3.2.25: 연쇄 예외 구분자 무음 억제 (Traceback 블록 사이에 출력되는 잡음)
+                    if _stripped_cur in _CHAINED_EXC_MSGS:
+                        all_lines.append(f"[suppressed] {_stripped_cur}")
+                        continue
 
                     # v3.2.23: 실시간 Traceback 필터 — 스트리밍 중 감지 즉시 버퍼링
                     if _stripped_cur == "Traceback (most recent call last):":

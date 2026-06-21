@@ -2808,6 +2808,10 @@ _STRINGS.update({
     "parallel_dep_warning":         {"ko": "⚠️ [RULE 26-X] 스크립트 간 파일 의존성 감지 — 병렬 실행에서 동작 보장 불가",
                                      "zh": "⚠️ [RULE 26-X] 检测到脚本间文件依赖 — 并行执行中不保证执行顺序",
                                      "en": "⚠️ [RULE 26-X] Inter-script file dependency detected — execution order not guaranteed in parallel"},
+    # v3.2.25: Python 연쇄 예외 구분자 억제 (The above exception was... / During handling of...)
+    "chained_exc_suppressed":       {"ko": "🔕 [EXEC] 연쇄 예외 구분자 억제됨",
+                                     "zh": "🔕 [EXEC] 链式异常分隔符已抑制",
+                                     "en": "🔕 [EXEC] Chained exception separator suppressed"},
 })
 
 

@@ -2679,6 +2679,16 @@ _STRINGS.update({
     "autofix_loop_dedup":        {"ko": "[AUTO-FIX] 루프 내 반복 출력 감지 → 카운터 방식으로 자동 교체",
                                    "zh": "[AUTO-FIX] 检测到循环内重复输出 → 自动替换为计数器方式",
                                    "en": "[AUTO-FIX] Repeated output in loop detected → auto-replaced with counter"},
+    # v3.2.15: 변수 미초기화 NameError 방지 (RULE 26-Q)
+    "rule_26q_undef_var":        {"ko": "⚠ RULE 26-Q: 변수 정의 전 참조 금지 — 사용 전 반드시 초기화 ([] / {} / \"\" / 0)",
+                                   "zh": "⚠ RULE 26-Q: 禁止在定义变量前引用 — 使用前必须初始化 ([] / {} / \"\" / 0)",
+                                   "en": "⚠ RULE 26-Q: Never reference variable before defining — always init first ([] / {} / \"\" / 0)"},
+    "nameerror_detected":        {"ko": "[ERROR] NameError 감지: '{var}' 변수가 정의되지 않음 — 스크립트 상단에 초기화 추가 필요",
+                                   "zh": "[ERROR] 检测到NameError: 变量'{var}'未定义 — 需在脚本顶部添加初始化",
+                                   "en": "[ERROR] NameError detected: '{var}' not defined — add initialization at script top"},
+    "autofix_init_var":          {"ko": "[AUTO-FIX] 미초기화 변수 '{var}' 탐지 → 스크립트 상단에 {var} = {default} 자동 추가",
+                                   "zh": "[AUTO-FIX] 检测到未初始化变量'{var}' → 自动在脚本顶部添加{var} = {default}",
+                                   "en": "[AUTO-FIX] Uninitialized var '{var}' found → auto-added {var} = {default} at script top"},
     # v3.2.14: 로그인 500 반복 → JS 딥 분석 전환 (RULE 26-P)
     "rule_26p_pivot_js":         {"ko": "⚠ RULE 26-P: 로그인 500이 3회 반복됨 → JS 딥 분석으로 즉시 전환",
                                    "zh": "⚠ RULE 26-P: 登录500错误重复3次 → 立即切换到JS深度分析",

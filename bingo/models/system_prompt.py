@@ -2271,6 +2271,53 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     4. EXCEPTION_VALIDATION (빈 message)도 필드명 불일치 신호 → 동일 룰 적용.
     5. 분석 결과를 요약 출력: "[JS-PARSE] loginId=btoa, password=btoa, isSns=bool"
 
+  ▸ RULE 26-Q [v3.2.15]: 변수 정의 전 참조 금지 — NameError 방지를 위한 반드시 초기화 규칙.
+    모든 변수는 사용(print/len/for/if 등)하기 전에 반드시 빈 값으로 초기화해야 한다.
+    특히 조건부 블록이나 예외 처리 내에서만 할당되는 변수는 블록 밖에서 먼저 선언할 것.
+
+    WRONG — js 변수를 할당 없이 len()으로 참조:
+      try:
+          js_links = re.findall(r'https?://[^\s"\']+\.js', html)
+          for url in js_links:
+              js.append(url)          # ← js 미정의 → NameError
+      except:
+          pass
+      print(f"  发现 {len(js)} 个JS文件:")   # ← NameError: name 'js' is not defined
+
+    CORRECT — 사용 전 반드시 빈 리스트/딕셔너리/문자열로 초기화:
+      js = []                          # ← 먼저 초기화
+      try:
+          js_links = re.findall(r'https?://[^\s"\']+\.js', html)
+          js = js_links                # ← try 내에서 재할당
+      except Exception as e:
+          pass
+      print(f"  发现 {len(js)} 个JS文件:")   # ← 항상 안전
+
+    CORRECT — 복수 변수를 동시에 초기화:
+      results, errors, js_files, api_endpoints = [], [], [], []
+      forms, cookies, headers_found = [], {}, {}
+
+    RULE:
+    1. 스크립트 상단에 사용할 모든 컨테이너 변수를 빈 값으로 초기화.
+       list → [], dict → {}, str → "", int → 0, bool → False
+    2. try/except 블록 안에서만 할당되는 변수는 블록 밖 위에서 선언.
+    3. 조건문(if/elif) 분기마다 할당하는 변수도 분기 전에 기본값 선언.
+    4. print(f"... {len(변수)} ...") 패턴 작성 전 해당 변수가 정의돼 있는지 확인.
+    5. for 루프 전 누적 변수(count, total, collected 등)는 반드시 루프 바깥에서 초기화.
+
+    COMMON DANGEROUS PATTERNS — 반드시 피할 것:
+      # 위험: 조건부 할당 후 무조건 참조
+      if condition:
+          data = fetch()
+      print(data)           # condition이 False면 NameError
+
+      # 안전: 기본값 먼저
+      data = None
+      if condition:
+          data = fetch()
+      if data:
+          print(data)
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

@@ -2865,6 +2865,20 @@ _STRINGS.update({
     "rule_26ag_proxy":              {"ko": "⚠ [RULE 26-AG] 프록시 활성 상태 — 모든 HTTP 요청에 BINGO_PROXY 적용 필수",
                                      "zh": "⚠ [RULE 26-AG] 代理已激活 — 所有 HTTP 请求必须应用 BINGO_PROXY",
                                      "en": "⚠ [RULE 26-AG] Proxy active — all HTTP requests must use BINGO_PROXY"},
+    # v3.2.33 — Windows SSL / GBK / CRLF 자동수정 메시지
+    "ssl_hostname_fixed":           {"ko": "🔧 [PRECHECK v3.2.33] check_hostname=False 자동 주입 (SSL CERT_NONE 호환)",
+                                     "zh": "🔧 [PRECHECK v3.2.33] 自动注入 check_hostname=False（SSL CERT_NONE 兼容）",
+                                     "en": "🔧 [PRECHECK v3.2.33] check_hostname=False auto-injected (SSL CERT_NONE compat)"},
+    "gbk_decode_fixed":             {"ko": "🔧 [PRECHECK v3.2.33] .decode() → .decode('utf-8', errors='replace') 자동 교체 (Windows GBK 호환)",
+                                     "zh": "🔧 [PRECHECK v3.2.33] .decode() → .decode('utf-8', errors='replace') 自动替换（Windows GBK 兼容）",
+                                     "en": "🔧 [PRECHECK v3.2.33] .decode() → .decode('utf-8', errors='replace') auto-replaced (Windows GBK compat)"},
+    "crlf_normalized":              {"ko": "🔧 [PRECHECK v3.2.33] \\r\\n → \\n 줄끝 정규화 (Windows CRLF SyntaxError 방지)",
+                                     "zh": "🔧 [PRECHECK v3.2.33] \\r\\n → \\n 行尾规范化（防止 Windows CRLF SyntaxError）",
+                                     "en": "🔧 [PRECHECK v3.2.33] \\r\\n → \\n line-ending normalized (Windows CRLF SyntaxError prevention)"},
+    # v3.2.33 — LFI download.php 룰 메시지
+    "lfi_download_php_hint":        {"ko": "🔍 [LFI v3.2.33] download.php 감지 — path+realfile 분리 테스트 권장",
+                                     "zh": "🔍 [LFI v3.2.33] 检测到 download.php — 建议分别测试 path+realfile 参数",
+                                     "en": "🔍 [LFI v3.2.33] download.php detected — separate path+realfile param testing recommended"},
 })
 
 

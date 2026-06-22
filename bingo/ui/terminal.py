@@ -3334,6 +3334,66 @@ class BingoTerminal:
                         fixed = "import os\n" + fixed
                 fixed = "__TMP_FIXED__\n" + fixed
 
+            # ── 0-AE. Windows SSL check_hostname 에러 자동 수정 (v3.2.33, RULE 26-AE-W) ──
+            # Windows에서 ssl.CERT_NONE 설정 시 check_hostname=False 미설정으로 ValueError 발생
+            # 패턴: context.verify_mode = ssl.CERT_NONE 이 있는데 check_hostname=False 없음
+            # macOS/Linux는 기본값이 달라 문제 없음 → Windows 조건부가 아닌 항상 주입 (안전)
+            _before_ae = fixed
+            _has_cert_none = bool(_pre_re.search(
+                r'(?:verify_mode\s*=\s*(?:ssl\.)?CERT_NONE|CERT_NONE)',
+                fixed
+            ))
+            _has_check_hostname_false = bool(_pre_re.search(
+                r'check_hostname\s*=\s*False',
+                fixed
+            ))
+            if _has_cert_none and not _has_check_hostname_false:
+                # verify_mode = ssl.CERT_NONE 바로 앞에 check_hostname = False 주입
+                fixed = _pre_re.sub(
+                    r'((?:[\w_]+\.)?verify_mode\s*=\s*(?:ssl\.)?CERT_NONE)',
+                    lambda m: (
+                        m.group(0).split('.')[0].rstrip() + '.check_hostname = False\n' +
+                        ' ' * (len(m.group(0)) - len(m.group(0).lstrip())) +
+                        m.group(0)
+                    ),
+                    fixed
+                )
+                if fixed != _before_ae:
+                    fixed = "__SSL_HOSTNAME_FIXED__\n" + fixed
+
+            # ── 0-AF. subprocess 출력 GBK/CP949 인코딩 에러 자동 수정 (v3.2.33, RULE 26-AF-W) ──
+            # Windows 콘솔 기본 인코딩 GBK/CP949 → subprocess 출력 decode() 시 UnicodeDecodeError
+            # .decode() → .decode('utf-8', errors='replace') 자동 교체
+            # macOS/Linux는 기본 UTF-8이므로 영향 없음
+            _before_af = fixed
+            # subprocess.run(...).stdout.decode() → .decode('utf-8', errors='replace')
+            fixed = _pre_re.sub(
+                r'\.stdout\.decode\(\)',
+                ".stdout.decode('utf-8', errors='replace')",
+                fixed
+            )
+            fixed = _pre_re.sub(
+                r'\.stderr\.decode\(\)',
+                ".stderr.decode('utf-8', errors='replace')",
+                fixed
+            )
+            # check_output(...).decode() → .decode('utf-8', errors='replace')
+            fixed = _pre_re.sub(
+                r'(?<=\)\.decode)\(\)(?!\s*,)',
+                "('utf-8', errors='replace')",
+                fixed
+            )
+            if fixed != _before_af:
+                fixed = "__GBK_DECODE_FIXED__\n" + fixed
+
+            # ── 0-AG. CRLF 줄 끝 정규화 (v3.2.33, RULE 26-AG-W) ──────────────
+            # Windows에서 AI 생성 코드에 \r\n 혼재 시 SyntaxError: EOL while scanning string literal
+            # 실행 전 모든 \r\n → \n 으로 정규화 (macOS/Linux 영향 없음)
+            if '\r\n' in fixed or '\r' in fixed:
+                fixed = fixed.replace('\r\n', '\n').replace('\r', '\n')
+                if fixed != code and "__CRLF_FIXED__" not in fixed:
+                    fixed = "__CRLF_FIXED__\n" + fixed
+
             # ── 0-Z. 인코딩 자동 감지 헬퍼 주입 ──────────────────────────────
             # r.text / resp.text 사용 시 EUC-KR 등 구형 인코딩 깨짐 방지
             # requests.get/post 가 있고 smart_decode 가 없는 경우 헬퍼 + 교체 주입
@@ -3859,6 +3919,21 @@ class BingoTerminal:
                 _checked = _checked[len("__TMP_FIXED__\n"):]
                 _tmp_msg = t("tmp_path_fixed", '🔧 [PRECHECK v3.2.29] "/tmp/" → tempfile.gettempdir() 자동 교체 (Windows 호환)')
                 self.console.print(f"[{THEME['dim']}]{_tmp_msg}[/]")
+            # v3.2.33: SSL check_hostname 자동 수정 (RULE 26-AE-W)
+            if isinstance(_checked, str) and _checked.startswith("__SSL_HOSTNAME_FIXED__\n"):
+                _checked = _checked[len("__SSL_HOSTNAME_FIXED__\n"):]
+                _ssl_msg = t("ssl_hostname_fixed", '🔧 [PRECHECK v3.2.33] check_hostname=False 자동 주입 (SSL CERT_NONE 호환)')
+                self.console.print(f"[{THEME['dim']}]{_ssl_msg}[/]")
+            # v3.2.33: subprocess GBK 인코딩 자동 수정 (RULE 26-AF-W)
+            if isinstance(_checked, str) and _checked.startswith("__GBK_DECODE_FIXED__\n"):
+                _checked = _checked[len("__GBK_DECODE_FIXED__\n"):]
+                _gbk_msg = t("gbk_decode_fixed", "🔧 [PRECHECK v3.2.33] .decode() → .decode('utf-8', errors='replace') 자동 교체 (Windows GBK 호환)")
+                self.console.print(f"[{THEME['dim']}]{_gbk_msg}[/]")
+            # v3.2.33: CRLF 정규화 (RULE 26-AG-W)
+            if isinstance(_checked, str) and _checked.startswith("__CRLF_FIXED__\n"):
+                _checked = _checked[len("__CRLF_FIXED__\n"):]
+                _crlf_msg = t("crlf_normalized", "🔧 [PRECHECK v3.2.33] \\r\\n → \\n 줄끝 정규화 (Windows CRLF SyntaxError 방지)")
+                self.console.print(f"[{THEME['dim']}]{_crlf_msg}[/]")
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])

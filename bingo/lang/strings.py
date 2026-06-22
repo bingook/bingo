@@ -2819,6 +2819,16 @@ _STRINGS.update({
     "json_type_check_required":     {"ko": "⚠ [RULE 26-Z] r.json() 결과 dict 체크 누락 — isinstance(data, dict) 필수",
                                      "zh": "⚠ [RULE 26-Z] r.json() 结果未做 dict 检查 — 必须使用 isinstance(data, dict)",
                                      "en": "⚠ [RULE 26-Z] r.json() result not validated as dict — isinstance(data, dict) required"},
+    # v3.2.27 — RULE 26-AA / 26-AB / loop false-positive fix
+    "json_field_loop_skip":         {"ko": "🔕 [LOOP] JSON 필드 패턴 감지 — 루프 감지 제외 (오탐 방지)",
+                                     "zh": "🔕 [LOOP] 检测到 JSON 字段模式 — 已排除循环检测（防误报）",
+                                     "en": "🔕 [LOOP] JSON field pattern detected — excluded from loop detection (false-positive prevention)"},
+    "rule_26aa_index_check":        {"ko": "⚠ [RULE 26-AA] 리스트 인덱스 접근 전 len() 체크 필수 (IndexError 방지)",
+                                     "zh": "⚠ [RULE 26-AA] 访问列表索引前必须检查 len() (防止 IndexError)",
+                                     "en": "⚠ [RULE 26-AA] len() check required before list index access (IndexError prevention)"},
+    "rule_26ab_fstring_backslash":  {"ko": "⚠ [RULE 26-AB] f-string 내부 백슬래시 이스케이프 금지 — 변수 분리 사용",
+                                     "zh": "⚠ [RULE 26-AB] 禁止在 f-string 内部使用反斜杠转义 — 请分离变量",
+                                     "en": "⚠ [RULE 26-AB] Backslash escape inside f-string forbidden — use variable separation"},
 })
 
 

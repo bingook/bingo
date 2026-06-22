@@ -2645,6 +2645,57 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       except Exception as e:
           print(f"[오류] {user}: {type(e).__name__}: {e}")
 
+  ── RULE 26-AA [v3.2.27]: 리스트 인덱스 접근 전 반드시 len() 체크 ──
+
+  ▸ RULE 26-AA [v3.2.27]: 리스트나 튜플에서 인덱스([0], [-1] 등)로 접근하기 전에
+    반드시 len() 체크 또는 기본값 패턴을 사용하라.
+    리스트가 비어있는 경우 IndexError가 발생하며, 루프 중 반복 발생 시 스크립트 전체가 실패한다.
+
+    WHY:
+    - 로그인 후 리다이렉트 체인 파싱, JSON 배열 첫 요소 추출 등에서 빈 리스트에 [0] 접근 → IndexError.
+    - 네트워크 응답에 따라 리스트 길이가 달라질 수 있으므로 항상 보수적으로 처리.
+
+    WRONG — IndexError 발생:
+      redirects = response.history
+      first_redirect = redirects[0]          # 빈 리스트면 IndexError
+
+      results = re.findall(pattern, text)
+      val = results[0]                        # 매치 없으면 IndexError
+
+    CORRECT — 반드시 이 형태:
+      redirects = response.history
+      first_redirect = redirects[0] if redirects else None
+      if not first_redirect:
+          print("[경고] 리다이렉트 없음")
+      else:
+          # 정상 처리
+
+      results = re.findall(pattern, text)
+      val = results[0] if results else ""
+
+  ── RULE 26-AB [v3.2.27]: f-string 내부 백슬래시 이스케이프 금지 ──
+
+  ▸ RULE 26-AB [v3.2.27]: Python f-string 내부(중괄호 {} 안)에는 절대로 백슬래시(\\)를
+    이스케이프 문자로 사용하지 말라. Python 3.12 미만에서는 SyntaxError가 발생한다.
+
+    WHY:
+    - f"{requests.utils.quote(val + \"'\", safe='')}" → SyntaxError: unexpected character after line continuation
+    - 이 오류로 스크립트가 실행되지 않고 재시도가 발생, 토큰 낭비.
+
+    WRONG — SyntaxError 발생:
+      url = f"{base}/search?q={requests.utils.quote(val + \"'\", safe='')}"
+      msg = f"결과: {data[\"key\"]}"
+
+    CORRECT — 반드시 변수 분리 후 사용:
+      _q = requests.utils.quote(val + "'", safe='')
+      url = f"{base}/search?q={_q}"
+
+      _key = "key"
+      msg = f"결과: {data[_key]}"
+
+      # 또는 단순히 concat 사용:
+      url = base + "/search?q=" + requests.utils.quote(val + "'", safe='')
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

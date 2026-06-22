@@ -4845,6 +4845,9 @@ class BingoTerminal:
             )
             # v3.2.9: JSON 구조 문자로 시작하는 라인
             _JSON_STRUCT_START = ('{', '}', '[', ']', '":', '",', '"}', '"]')
+            # v3.2.27: JSON 필드 패턴 — API 응답 본문의 key-value 라인 오탐 방지
+            # '"message": "unknown"', '"code": 0', '"status": "ok"' 등이 루프 감지에 걸리는 문제
+            _JSON_FIELD_PATTERN = _re.compile(r'^"[a-zA-Z_][a-zA-Z0-9_]*"\s*:')
 
             _lines = trimmed.split("\n")
             _table_lines = []
@@ -4871,8 +4874,14 @@ class BingoTerminal:
                 # v3.2.9: XML/HTML 태그로 시작하는 라인 제외 (<url>, <loc>, <div> 등)
                 if _XML_TAG_PATTERN.match(_ls):
                     continue
-                # v3.2.9: JSON 구조 문자로 시작 또는 끝나는 라인 제외
-                if _ls.startswith(_JSON_STRUCT_START) or _ls.endswith(('{', '}', '[', ']', '","', '",')):
+                # v3.2.9+v3.2.27: JSON 구조/필드 라인 제외
+                # - 구조 문자 ({, }, [, ], ":, 등) 시작/끝
+                # - "key": value 형태 JSON 필드 ("message": "unkn" 오탐 방지)
+                if (
+                    _ls.startswith(_JSON_STRUCT_START)
+                    or _ls.endswith(('{', '}', '[', ']', '","', '",'))
+                    or _JSON_FIELD_PATTERN.match(_ls)
+                ):
                     continue
                 # UI/분석 출력 접두어 라인 제외 ("消息: alert", "URL: index.aspx" 같은 것)
                 if any(_ls.lower().startswith(p.lower()) for p in _UI_PREFIXES):

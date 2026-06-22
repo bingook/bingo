@@ -3264,6 +3264,25 @@ class BingoTerminal:
                     fixed = "import urllib.parse\n" + fixed
                 fixed = "__URLLIB_INJECTED__\n" + fixed
 
+            # ── 0-YY. base64 미import 자동 감지·주입 (v3.2.26, RULE 26-Y) ──────
+            # AI가 b64decode/b64encode/b64 alias를 import 없이 사용 → NameError 방지
+            _b64_uses = bool(_pre_re.search(
+                r'\b(b64decode|b64encode|b32decode|b32encode|b85decode|b85encode|urlsafe_b64decode|urlsafe_b64encode)\b',
+                fixed
+            ))
+            _base64_imported = bool(_pre_re.search(
+                r'^(?:import base64|from base64\s+import)',
+                fixed, _pre_re.MULTILINE
+            ))
+            if _b64_uses and not _base64_imported:
+                _first_import_match2 = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
+                if _first_import_match2:
+                    _fip2 = _first_import_match2.start()
+                    fixed = fixed[:_fip2] + "import base64\n" + fixed[_fip2:]
+                else:
+                    fixed = "import base64\n" + fixed
+                fixed = "__BASE64_INJECTED__\n" + fixed
+
             # ── 0-Z. 인코딩 자동 감지 헬퍼 주입 ──────────────────────────────
             # r.text / resp.text 사용 시 EUC-KR 등 구형 인코딩 깨짐 방지
             # requests.get/post 가 있고 smart_decode 가 없는 경우 헬퍼 + 교체 주입
@@ -3759,6 +3778,11 @@ class BingoTerminal:
 
             # 구문 사전 검증 + 무한루프 패턴 차단
             _checked, _applied_fix_names = _precheck_python_code(code)
+            # base64 자동 주입 감지 (v3.2.26, RULE 26-Y)
+            if isinstance(_checked, str) and _checked.startswith("__BASE64_INJECTED__\n"):
+                _checked = _checked[len("__BASE64_INJECTED__\n"):]
+                _b64_msg = t("base64_alias_forbidden", "🔧 [PRECHECK] import base64 injected (b64 alias / missing import detected)")
+                self.console.print(f"[{THEME['dim']}]{_b64_msg}[/]")
             # urllib.parse 자동 주입 감지
             if isinstance(_checked, str) and _checked.startswith("__URLLIB_INJECTED__\n"):
                 _checked = _checked[len("__URLLIB_INJECTED__\n"):]

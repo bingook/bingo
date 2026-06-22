@@ -2586,6 +2586,65 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       except Exception as e:
           print(f"[오류] {e}")
 
+  ── RULE 26-Y [v3.2.26]: base64 alias 사용 금지 — 반드시 import base64 명시 ──
+
+  ▸ RULE 26-Y [v3.2.26]: Python 스크립트에서 base64 인코딩/디코딩이 필요한 경우,
+    반드시 `import base64`를 코드 상단에 선언하고 `base64.b64encode()`, `base64.b64decode()` 형태로 사용하라.
+    절대로 `b64`, `b32`, `b85` 같은 alias 형태나 선언 없는 shorthand를 사용하지 말 것.
+
+    WHY:
+    - `b64 is not defined` → NameError 즉시 발생, 스크립트 전체 실패.
+    - from base64 import ... 를 사용할 경우 반드시 사용하는 함수 전부를 명시.
+
+    WRONG — NameError 발생:
+      data = b64.b64encode(val.encode())           # NameError: b64
+      data = b64decode(val)                         # NameError: b64decode (import 없음)
+      import base64 as b64; data = b64(val)        # TypeError: module is not callable
+
+    CORRECT — 반드시 이 형태:
+      import base64
+      encoded = base64.b64encode(val.encode()).decode()
+      decoded = base64.b64decode(encoded)
+
+    또는:
+      from base64 import b64encode, b64decode
+      encoded = b64encode(val.encode()).decode()
+      decoded = b64decode(encoded)
+
+  ── RULE 26-Z [v3.2.26]: r.json() 결과는 반드시 dict 타입 확인 후 key 접근 ──
+
+  ▸ RULE 26-Z [v3.2.26]: `requests.get/post` 응답에서 `.json()`을 호출한 후 dict key 접근 전에
+    반드시 `isinstance(data, dict)` 체크를 수행하라.
+    서버는 상황에 따라 JSON list, JSON null, 또는 비-JSON 응답을 반환할 수 있다.
+
+    WHY:
+    - r.json()이 list를 반환하면 ['success'] 접근 시 TypeError 또는 AttributeError 발생.
+    - r.json()이 None(JSON null) 반환 시 .get('err') 호출 → AttributeError.
+    - r.json() 자체가 예외를 던지는 경우(JSON decode 실패) → JSONDecodeError.
+    - 이 세 가지 경우가 모두 브루트포스/열거 루프에서 반복 발생 → 로그 오염.
+
+    WRONG — AttributeError 107회 발생 패턴:
+      try:
+          r = requests.post(url, json=payload)
+          success = r.json()['success']       # list 반환 시 TypeError
+          err = r.json().get('errorCode')     # None 반환 시 AttributeError
+      except Exception as e:
+          print(f"[오류] {user}: {type(e).__name__}")   # AttributeError 로그 오염
+
+    CORRECT — 반드시 이 형태:
+      try:
+          r = requests.post(url, json=payload, timeout=10)
+          try:
+              data = r.json()
+          except Exception:
+              data = {}
+          if not isinstance(data, dict):
+              data = {}
+          success = data.get('success', False)
+          err = data.get('errorCode') or data.get('err') or data.get('error', '')
+      except Exception as e:
+          print(f"[오류] {user}: {type(e).__name__}: {e}")
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

@@ -2812,6 +2812,13 @@ _STRINGS.update({
     "chained_exc_suppressed":       {"ko": "🔕 [EXEC] 연쇄 예외 구분자 억제됨",
                                      "zh": "🔕 [EXEC] 链式异常分隔符已抑制",
                                      "en": "🔕 [EXEC] Chained exception separator suppressed"},
+    # v3.2.26 — RULE 26-Y / 26-Z
+    "base64_alias_forbidden":       {"ko": "🔧 [PRECHECK] import base64 자동 주입 (b64 alias 또는 import 누락 감지)",
+                                     "zh": "🔧 [PRECHECK] 自动注入 import base64 (检测到 b64 别名或缺少导入)",
+                                     "en": "🔧 [PRECHECK] import base64 injected (b64 alias / missing import detected)"},
+    "json_type_check_required":     {"ko": "⚠ [RULE 26-Z] r.json() 결과 dict 체크 누락 — isinstance(data, dict) 필수",
+                                     "zh": "⚠ [RULE 26-Z] r.json() 结果未做 dict 检查 — 必须使用 isinstance(data, dict)",
+                                     "en": "⚠ [RULE 26-Z] r.json() result not validated as dict — isinstance(data, dict) required"},
 })
 
 

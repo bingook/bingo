@@ -4263,6 +4263,9 @@ class BingoTerminal:
                     "[+]", "[-]", "[*]", "[!]",
                     # 파라미터/엔드포인트 열거
                     "  →", "  -", "  ✅", "  ❌", "  ⚠",
+                    # v3.2.36: 파라미터 스캔 결과 (单引号: 大小差异0B 등) — 높은 임계값 적용
+                    "单引号:", "단일따옴표:", "single quote:", "大小差异", "크기차이:",
+                    "差异", "参数 ", "파라미터 ", "param ",
                 )
 
                 def _is_scan_result_line(s: str) -> bool:
@@ -5039,6 +5042,11 @@ class BingoTerminal:
                 # Chinese
                 "错误", "失败", "连接", "拒绝", "超时", "异常",
                 "断开", "警告", "阻断", "不可用", "执行失败", "无法连接",
+                # v3.2.36: 파라미터 스캔 결과 라인 — DB 추출값이 아닌 탐지 출력
+                # "单引号: 大小差异0B" 같은 라인이 5회 반복 시 false positive 루프 감지 방지
+                "大小差异", "大小差0", "크기차이", "크기 차이", "size diff",
+                "单引号", "单引号:", "따옴표:", "single quote",
+                "差异0b", "差异0B", "差异:",
             })
             # v3.2.7: URL/경로 패턴 감지
             _URL_PATTERN = _re.compile(
@@ -5079,6 +5087,10 @@ class BingoTerminal:
                     # v3.2.17: HTTP 응답 바디/메서드 접두어
                     "Body:", "body:", "<!DOCTYPE", "<!doctype",
                     "<html", "<HTML", "<head", "<HEAD",
+                    # v3.2.36: 파라미터 스캔 테스트 결과 라인 — DB 추출값 아님
+                    # "单引号: 大小差异0B", "단일따옴표: 크기차이0B" 등 반복 출력 false positive 차단
+                    "单引号:", "단일따옴표:", "Single quote:", "single quote:",
+                    "大小差异", "크기차이:", "差异:", "size diff",
                 )):
                     continue
                 # v3.2.9: XML/HTML 태그로 시작하는 라인 제외 (<url>, <loc>, <div> 등)

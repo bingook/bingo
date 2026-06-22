@@ -1596,6 +1596,11 @@ _STRINGS.update({
                                   "zh": "⚠️  检测到无限循环 — '{name}' 重复出现 {n} 次以上。疑似使用TOP 1查询而无游标分页。",
                                   "en": "⚠️  Infinite loop detected — '{name}' repeated {n}+ times. Likely TOP 1 query without cursor pagination."},
 
+    # ── v3.2.36: 파라미터 스캔 false positive 차단 알림 ─────────────────
+    "param_scan_fp_skipped":    {"ko": "ℹ️  파라미터 스캔 결과 라인 루프 감지 제외 (v3.2.36)",
+                                  "zh": "ℹ️  参数扫描结果行已排除在无限循环检测之外 (v3.2.36)",
+                                  "en": "ℹ️  Parameter scan result line excluded from loop detection (v3.2.36)"},
+
     # ── XSS 반사 중복 제거 / XSS Reflection Deduplication (v2.9.4) ─────
     "xss_reflect_dedup_fix":    {"ko": "필수 수정 — XSS 반사 위치를 중복 제거 없이 출력하고 있습니다.\nseen_ctx = set() 으로 고유 컨텍스트만 출력하세요.",
                                   "zh": "强制修复 — XSS反射位置输出没有去重。\n请使用 seen_ctx = set() 仅输出唯一上下文。",

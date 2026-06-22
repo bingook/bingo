@@ -2884,6 +2884,32 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       BASE = "https://target.com"
       params = {"type": "board", "id": 1}   # base_params 직접 풀어서 선언
 
+  ── RULE 26-AK [v3.2.36]: 파라미터 스캔 결과 반복 — 루프 오판 차단 ──
+
+  ▸ RULE 26-AK [v3.2.36]: 파라미터 열거 중 동일 결과(예: "单引号: 大小差异0B")가
+    여러 파라미터에서 반복 출력되는 것은 정상이다. 이것은 무한 루프가 아니다.
+
+    이유:
+    - 서버가 해당 파라미터를 인식하지 못할 경우 동일 크기 응답을 반환함
+    - "大小差异0B" = 단순히 크기 차이 없음 = 이 파라미터에 주입 반응 없음
+    - 같은 결과가 10~20번 나와도 각각 다른 파라미터에 대한 결과이면 정상
+
+    대응 방법:
+    - "大小差异0B" 결과가 반복되면 해당 파라미터를 건너뛰고 다음 파라미터 시도
+    - 모든 파라미터가 동일 결과이면 → 다른 주입 방법으로 전환 (time-based, error-based)
+    - seen_params = set() 으로 이미 테스트한 파라미터 중복 방지
+
+    WRONG — 반복 결과를 보고 루프 종료:
+      if result == prev_result: break  # 잘못됨: 다음 파라미터가 있을 수 있음
+
+    CORRECT — 각 파라미터를 독립적으로 테스트:
+      for param in params:
+          result = test_param(param)
+          if result.get("diff_bytes", 0) > 0:
+              print(f"✅ 유망한 파라미터 발견: {param}")
+          else:
+              print(f"    {param}: 크기차이 0B (반응 없음)")
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

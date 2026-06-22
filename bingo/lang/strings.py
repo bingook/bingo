@@ -2879,6 +2879,10 @@ _STRINGS.update({
     "lfi_download_php_hint":        {"ko": "🔍 [LFI v3.2.33] download.php 감지 — path+realfile 분리 테스트 권장",
                                      "zh": "🔍 [LFI v3.2.33] 检测到 download.php — 建议分别测试 path+realfile 参数",
                                      "en": "🔍 [LFI v3.2.33] download.php detected — separate path+realfile param testing recommended"},
+    # v3.2.35 — 전역 SSL 우회 주입 메시지 (RULE 26-AJ-W)
+    "ssl_global_bypass_injected":   {"ko": "🔧 [PRECHECK v3.2.35] 전역 SSL 우회 자동 주입 (Windows CA 인증서 미탐지 대응)",
+                                     "zh": "🔧 [PRECHECK v3.2.35] 自动注入全局 SSL 绕过（修复 Windows 中文版 CA 证书未找到问题）",
+                                     "en": "🔧 [PRECHECK v3.2.35] Global SSL bypass auto-injected (Windows CA cert not found fix)"},
 })
 
 

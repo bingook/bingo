@@ -3400,6 +3400,34 @@ class BingoTerminal:
                 if fixed != code and "__CRLF_FIXED__" not in fixed:
                     fixed = "__CRLF_FIXED__\n" + fixed
 
+            # ── 0-AJ. 전역 SSL 우회 주입 (v3.2.35, RULE 26-AJ-W) ─────────────
+            # 핵심 문제: macOS는 Keychain에서 CA 인증서 자동 탐색 → requests.get() 성공
+            #           Windows(중문)는 CA 인증서를 못 찾음 → check_hostname 단계서 터짐
+            # bingo 내장 스캐너는 verify=False 이미 설정, AI 생성 코드는 모름
+            # 해결: requests 사용 스크립트 최상단에 전역 SSL 우회 2줄 주입
+            # macOS/Linux는 이미 SSL 정상 동작 → 영향 없음
+            _has_requests_usage = bool(_pre_re.search(
+                r'\brequests\.(get|post|put|patch|delete|request|head|options)\b',
+                fixed
+            ))
+            _already_has_ssl_bypass = bool(_pre_re.search(
+                r'ssl\._create_default_https_context\s*=\s*ssl\._create_unverified_context',
+                fixed
+            ))
+            if _has_requests_usage and not _already_has_ssl_bypass:
+                _ssl_bypass_header = (
+                    "import ssl as _ssl_mod, urllib3 as _urllib3_mod\n"
+                    "_ssl_mod._create_default_https_context = _ssl_mod._create_unverified_context\n"
+                    "_urllib3_mod.disable_warnings(_urllib3_mod.exceptions.InsecureRequestWarning)\n"
+                )
+                # 첫 번째 import 줄 앞에 주입 (없으면 최상단)
+                _first_imp_aj = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
+                if _first_imp_aj:
+                    fixed = fixed[:_first_imp_aj.start()] + _ssl_bypass_header + fixed[_first_imp_aj.start():]
+                else:
+                    fixed = _ssl_bypass_header + fixed
+                fixed = "__SSL_GLOBAL_BYPASS__\n" + fixed
+
             # ── 0-Z. 인코딩 자동 감지 헬퍼 주입 ──────────────────────────────
             # r.text / resp.text 사용 시 EUC-KR 등 구형 인코딩 깨짐 방지
             # requests.get/post 가 있고 smart_decode 가 없는 경우 헬퍼 + 교체 주입
@@ -3940,6 +3968,11 @@ class BingoTerminal:
                 _checked = _checked[len("__CRLF_FIXED__\n"):]
                 _crlf_msg = t("crlf_normalized", "🔧 [PRECHECK v3.2.33] \\r\\n → \\n 줄끝 정규화 (Windows CRLF SyntaxError 방지)")
                 self.console.print(f"[{THEME['dim']}]{_crlf_msg}[/]")
+            # v3.2.35: 전역 SSL 우회 주입 (RULE 26-AJ-W)
+            if isinstance(_checked, str) and _checked.startswith("__SSL_GLOBAL_BYPASS__\n"):
+                _checked = _checked[len("__SSL_GLOBAL_BYPASS__\n"):]
+                _ssl_gbl_msg = t("ssl_global_bypass_injected", "🔧 [PRECHECK v3.2.35] 전역 SSL 우회 자동 주입 (Windows CA 인증서 미탐지 대응)")
+                self.console.print(f"[{THEME['dim']}]{_ssl_gbl_msg}[/]")
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])

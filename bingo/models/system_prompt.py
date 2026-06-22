@@ -2729,23 +2729,31 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       out_path = os.path.join(tempfile.gettempdir(), "bingo_out.txt")
       tmp_hash = os.path.join(tempfile.gettempdir(), "bingo_hash.txt")
 
-  ── RULE 26-AE [v3.2.29]: chmod +x / apt-get / apt install 금지 ──
+  ── RULE 26-AE [v3.2.29]: chmod +x → 플랫폼 조건 분기 필수 / apt-get 금지 ──
 
-  ▸ RULE 26-AE [v3.2.29]: AI 생성 스크립트 안에서 chmod, apt-get, apt install,
-    sudo apt 명령을 절대 사용하지 말라.
-    Windows에서는 이 명령들이 존재하지 않아 스크립트가 즉시 실패한다.
+  ▸ RULE 26-AE [v3.2.29]:
+    [chmod +x] Mac/Linux에서는 정상 동작. Windows에서는 실패.
+    → 반드시 platform 조건 분기 후 사용하라.
 
     WRONG:
-      os.system("chmod +x /tmp/tool")
+      os.system("chmod +x /path/to/tool")  # Windows에서 즉시 실패
+
+    CORRECT:
+      import platform
+      if platform.system() != "Windows":
+          os.system("chmod +x /path/to/tool")
+
+    [apt-get / apt install / sudo apt] Mac에도 없고 Windows에도 없음 → 금지.
+    Mac은 brew, Windows는 pip/winget 사용. AI 스크립트 안에서 apt 계열은
+    사용하지 말라. 대신 Python 표준 라이브러리나 pip로 설치 가능한 패키지만 쓸 것.
+
+    WRONG:
       os.system("sudo apt install default-jdk-17")
       subprocess.run(["apt-get", "install", "apktool"])
 
     CORRECT:
-      # 툴 설치 없이 Python 표준 라이브러리 또는 이미 설치된 도구만 사용
-      # 플랫폼 조건 분기가 필요하다면:
-      import platform
-      if platform.system() != "Windows":
-          os.system("chmod +x /path/to/tool")
+      # pip 설치가 필요하면 print 안내만:
+      print("apktool이 필요합니다. 직접 설치 후 재실행하세요.")
 
   ── RULE 26-AF [v3.2.29]: Windows 타겟 리버스쉘 — PowerShell 사용 ──
 

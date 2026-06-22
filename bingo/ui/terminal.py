@@ -4830,6 +4830,26 @@ class BingoTerminal:
                 "start", "begin", "pass", "skip", "ignore", "n/a",
                 "200", "404", "500", "400", "401", "403",
             }
+            # v3.2.28: 루프 감지 양성 필터 — 상태/오류 키워드 화이트리스트 제외
+            # 이 키워드가 포함된 라인은 DB 추출값이 아닌 스크립트 실행 상태/오류 메시지
+            # 블랙리스트 방식의 한계를 보완하는 양성(화이트리스트) 레이어
+            _LOOP_STATUS_KEYWORDS: frozenset = frozenset({
+                # English — 네트워크/실행 오류
+                "error", "failed", "failure", "timeout", "refused",
+                "connection", "exception", "traceback", "unknown",
+                "invalid", "unauthorized", "forbidden", "not found",
+                "aborted", "disconnected", "reset", "socket", "ssl",
+                "warning", "retries", "exceeded", "blocked", "unreachable",
+                "unavailable", "bad gateway", "service unavailable",
+                "internal server", "request failed", "fetch failed",
+                # Korean
+                "오류", "실패", "에러", "연결", "타임아웃", "차단",
+                "거부", "경고", "접속", "비정상", "불가", "실행실패",
+                "응답없음", "연결끊김",
+                # Chinese
+                "错误", "失败", "连接", "拒绝", "超时", "异常",
+                "断开", "警告", "阻断", "不可用", "执行失败", "无法连接",
+            })
             # v3.2.7: URL/경로 패턴 감지
             _URL_PATTERN = _re.compile(
                 r'(https?://|://|\.aspx|\.php|\.html?|\.jsp|\.do|'
@@ -4900,6 +4920,22 @@ class BingoTerminal:
                 # v3.2.9: 값 자체가 XML/HTML 태그 형태이면 제외
                 if _XML_TAG_PATTERN.match(_val):
                     continue
+                # ── v3.2.28: 양성(화이트리스트) 필터 레이어 ─────────────────────
+                # 블랙리스트 방식은 새 패턴이 나올 때마다 재발 → 양성 조건도 함께 적용
+                #
+                # 조건1: 길이 제한 — 150자 초과는 SQL 추출값이 아닌 로그/상태 라인
+                if len(_ls) > 150:
+                    continue
+                # 조건2: 구조적 문자 시작 — JSON 문자열 리터럴("key"), 코드 블록 등 제외
+                # '"message": "unknown"' 같은 JSON 본문이 _JSON_FIELD_PATTERN을 통과해도 여기서 차단
+                if _ls and _ls[0] in ('"', "'", '`', '(', ')'):
+                    continue
+                # 조건3: 상태/오류 키워드 포함 — 스크립트 실행 메시지이지 DB값이 아님
+                # "connection refused", "unknown error", "connection aborted" 등 반복 출력 오탐 방지
+                _ls_lc2 = _ls.lower()
+                if any(_kw in _ls_lc2 for _kw in _LOOP_STATUS_KEYWORDS):
+                    continue
+                # ────────────────────────────────────────────────────────────────
                 _table_lines.append(_ls)
 
             if len(_table_lines) >= 6:

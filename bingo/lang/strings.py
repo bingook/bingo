@@ -2829,6 +2829,16 @@ _STRINGS.update({
     "rule_26ab_fstring_backslash":  {"ko": "⚠ [RULE 26-AB] f-string 내부 백슬래시 이스케이프 금지 — 변수 분리 사용",
                                      "zh": "⚠ [RULE 26-AB] 禁止在 f-string 内部使用反斜杠转义 — 请分离变量",
                                      "en": "⚠ [RULE 26-AB] Backslash escape inside f-string forbidden — use variable separation"},
+    # v3.2.28 — 루프 감지 양성 필터 (화이트리스트 레이어)
+    "loop_status_keyword_skip":     {"ko": "🔕 [LOOP v3.2.28] 상태/오류 키워드 감지 — 루프 감지 제외 (양성 필터 오탐 방지)",
+                                     "zh": "🔕 [LOOP v3.2.28] 检测到状态/错误关键词 — 已排除循环检测（白名单正向过滤防误报）",
+                                     "en": "🔕 [LOOP v3.2.28] Status/error keyword detected — excluded from loop detection (whitelist positive filter)"},
+    "loop_structural_char_skip":    {"ko": "🔕 [LOOP v3.2.28] 구조적 문자 시작 라인 — 루프 감지 제외 (JSON/문자열 리터럴 오탐 방지)",
+                                     "zh": "🔕 [LOOP v3.2.28] 结构性字符开头行 — 已排除循环检测（防JSON/字符串字面量误报）",
+                                     "en": "🔕 [LOOP v3.2.28] Structural char start line — excluded from loop detection (JSON/literal false-positive prevention)"},
+    "loop_length_skip":             {"ko": "🔕 [LOOP v3.2.28] 150자 초과 라인 — 루프 감지 제외 (로그 라인 오탐 방지)",
+                                     "zh": "🔕 [LOOP v3.2.28] 超过150字符行 — 已排除循环检测（防日志行误报）",
+                                     "en": "🔕 [LOOP v3.2.28] Line >150 chars — excluded from loop detection (log line false-positive prevention)"},
 })
 
 

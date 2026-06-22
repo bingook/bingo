@@ -3337,10 +3337,9 @@ class BingoTerminal:
             # ── 0-AE. Windows SSL check_hostname 에러 자동 수정 (v3.2.33, RULE 26-AE-W) ──
             # Windows에서 ssl.CERT_NONE 설정 시 check_hostname=False 미설정으로 ValueError 발생
             # 패턴: context.verify_mode = ssl.CERT_NONE 이 있는데 check_hostname=False 없음
-            # macOS/Linux는 기본값이 달라 문제 없음 → Windows 조건부가 아닌 항상 주입 (안전)
-            _before_ae = fixed
+            # 줄별 처리로 들여쓰기(indentation) 완벽 보존 → macOS/Linux 영향 없음
             _has_cert_none = bool(_pre_re.search(
-                r'(?:verify_mode\s*=\s*(?:ssl\.)?CERT_NONE|CERT_NONE)',
+                r'[\w_]+\.verify_mode\s*=\s*(?:ssl\.)?CERT_NONE',
                 fixed
             ))
             _has_check_hostname_false = bool(_pre_re.search(
@@ -3348,17 +3347,24 @@ class BingoTerminal:
                 fixed
             ))
             if _has_cert_none and not _has_check_hostname_false:
-                # verify_mode = ssl.CERT_NONE 바로 앞에 check_hostname = False 주입
-                fixed = _pre_re.sub(
-                    r'((?:[\w_]+\.)?verify_mode\s*=\s*(?:ssl\.)?CERT_NONE)',
-                    lambda m: (
-                        m.group(0).split('.')[0].rstrip() + '.check_hostname = False\n' +
-                        ' ' * (len(m.group(0)) - len(m.group(0).lstrip())) +
-                        m.group(0)
-                    ),
-                    fixed
-                )
-                if fixed != _before_ae:
+                _ssl_lines = fixed.splitlines()
+                _ssl_new_lines = []
+                _ssl_changed = False
+                for _ssl_line in _ssl_lines:
+                    _ssl_stripped = _ssl_line.lstrip()
+                    _ssl_m = _pre_re.match(
+                        r'([\w_]+)\.verify_mode\s*=\s*(?:ssl\.)?CERT_NONE',
+                        _ssl_stripped
+                    )
+                    if _ssl_m:
+                        # 원래 줄의 들여쓰기(앞 공백) 그대로 유지
+                        _ssl_indent = _ssl_line[:len(_ssl_line) - len(_ssl_stripped)]
+                        _ssl_obj = _ssl_m.group(1)
+                        _ssl_new_lines.append(f"{_ssl_indent}{_ssl_obj}.check_hostname = False")
+                        _ssl_changed = True
+                    _ssl_new_lines.append(_ssl_line)
+                if _ssl_changed:
+                    fixed = '\n'.join(_ssl_new_lines)
                     fixed = "__SSL_HOSTNAME_FIXED__\n" + fixed
 
             # ── 0-AF. subprocess 출력 GBK/CP949 인코딩 에러 자동 수정 (v3.2.33, RULE 26-AF-W) ──

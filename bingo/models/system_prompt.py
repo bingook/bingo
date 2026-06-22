@@ -2743,17 +2743,22 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       if platform.system() != "Windows":
           os.system("chmod +x /path/to/tool")
 
-    [apt-get / apt install / sudo apt] Mac에도 없고 Windows에도 없음 → 금지.
-    Mac은 brew, Windows는 pip/winget 사용. AI 스크립트 안에서 apt 계열은
-    사용하지 말라. 대신 Python 표준 라이브러리나 pip로 설치 가능한 패키지만 쓸 것.
+    [apt-get / apt install / sudo apt] Linux에서는 정상. Mac은 brew, Windows는 없음.
+    → 반드시 platform 조건 분기 후 사용하라. 무조건 실행하면 Mac/Windows에서 실패.
 
     WRONG:
-      os.system("sudo apt install default-jdk-17")
+      os.system("sudo apt install default-jdk-17")   # Mac/Windows에서 실패
       subprocess.run(["apt-get", "install", "apktool"])
 
     CORRECT:
-      # pip 설치가 필요하면 print 안내만:
-      print("apktool이 필요합니다. 직접 설치 후 재실행하세요.")
+      import platform, subprocess
+      _os = platform.system()
+      if _os == "Linux":
+          subprocess.run(["apt-get", "install", "-y", "apktool"], check=False)
+      elif _os == "Darwin":
+          subprocess.run(["brew", "install", "apktool"], check=False)
+      else:
+          print("[!] Windows: apktool을 직접 설치 후 재실행하세요.")
 
   ── RULE 26-AF [v3.2.29]: Windows 타겟 리버스쉘 — PowerShell 사용 ──
 

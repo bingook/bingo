@@ -1601,6 +1601,17 @@ _STRINGS.update({
                                   "zh": "ℹ️  参数扫描结果行已排除在无限循环检测之外 (v3.2.36)",
                                   "en": "ℹ️  Parameter scan result line excluded from loop detection (v3.2.36)"},
 
+    # ── v3.2.39: DB 함수 혼용 차단 + HTML 엔티티 반사 오인 차단 ─────────────
+    "db_func_mismatch":         {"ko": "🚫 DB 함수 혼용 감지: {func}은 {correct_db} 전용 함수 — {wrong_db}에 사용 금지 (v3.2.39)",
+                                  "zh": "🚫 检测到数据库函数混用: {func}是{correct_db}专用函数 — 禁止在{wrong_db}中使用 (v3.2.39)",
+                                  "en": "🚫 DB function mismatch: {func} is {correct_db}-only — must not use in {wrong_db} (v3.2.39)"},
+    "html_entity_reflected":    {"ko": "⚠️  HTML 엔티티 반사 감지(&#39;) — SQL 미실행, 페이로드 그대로 반사됨 (v3.2.39)",
+                                  "zh": "⚠️  检测到HTML实体反射(&#39;) — SQL未执行，载荷被原样反射 (v3.2.39)",
+                                  "en": "⚠️  HTML entity reflection detected (&#39;) — SQL not executed, payload echoed back (v3.2.39)"},
+    "payload_echo_not_exec":    {"ko": "❌ 추출 실패 — 응답에 DB 고유 데이터 없음 (페이로드 반사일 가능성 높음)",
+                                  "zh": "❌ 提取失败 — 响应中无数据库特有数据（可能是载荷回显）",
+                                  "en": "❌ Extraction failed — No DB-specific data in response (likely payload echo)"},
+
     # ── v3.2.38: DB 타입 확정 + Oracle 환각 차단 + 다중 DB 우선순위 ────────
     "db_type_confirmed":        {"ko": "✅ DB 타입 확정 (에러 패턴 기반): {db_type}",
                                   "zh": "✅ 数据库类型已确认（基于错误模式）: {db_type}",

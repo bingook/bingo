@@ -1601,6 +1601,23 @@ _STRINGS.update({
                                   "zh": "ℹ️  参数扫描结果行已排除在无限循环检测之外 (v3.2.36)",
                                   "en": "ℹ️  Parameter scan result line excluded from loop detection (v3.2.36)"},
 
+    # ── v3.2.38: DB 타입 확정 + Oracle 환각 차단 + 다중 DB 우선순위 ────────
+    "db_type_confirmed":        {"ko": "✅ DB 타입 확정 (에러 패턴 기반): {db_type}",
+                                  "zh": "✅ 数据库类型已确认（基于错误模式）: {db_type}",
+                                  "en": "✅ DB type confirmed (error pattern): {db_type}"},
+    "db_oracle_blocked":        {"ko": "⚠️  Oracle 에러 패턴(ORA-XXXXX) 미확인 → Oracle 공격 금지 (v3.2.38)",
+                                  "zh": "⚠️  未检测到Oracle错误模式(ORA-XXXXX) → 禁止Oracle攻击 (v3.2.38)",
+                                  "en": "⚠️  Oracle error pattern (ORA-XXXXX) not found → Oracle attack blocked (v3.2.38)"},
+    "db_multi_detected":        {"ko": "ℹ️  다중 DB 감지 (공유 호스팅): {db_list} — 우선순위 순서로 처리",
+                                  "zh": "ℹ️  检测到多个数据库（共享主机）: {db_list} — 按优先级顺序处理",
+                                  "en": "ℹ️  Multiple DBs detected (shared hosting): {db_list} — Processing in priority order"},
+    "db_type_changed_blocked":  {"ko": "🚫 이미 확정된 DB 타입({old}) 을 에러 근거 없이 {new}(으)로 변경 금지",
+                                  "zh": "🚫 已确认的数据库类型({old})不得无错误依据地更改为{new}",
+                                  "en": "🚫 Confirmed DB type ({old}) must not be changed to {new} without error evidence"},
+    "db_virtual_hosting":       {"ko": "ℹ️  동일 IP에서 MSSQL+MySQL 동시 감지 — 공유/가상 호스팅 환경",
+                                  "zh": "ℹ️  同一IP同时检测到MSSQL+MySQL — 共享/虚拟主机环境",
+                                  "en": "ℹ️  MSSQL+MySQL both detected on same IP — Shared/virtual hosting environment"},
+
     # ── v3.2.37: LFI 후 admin PHP 소스 강제 읽기 + 로그인 검증 ──────────
     "admin_php_src_reading":    {"ko": "🔍 LFI 확인 — admin PHP 소스 강제 읽기 시작 (v3.2.37)",
                                   "zh": "🔍 LFI已确认 — 开始强制读取admin PHP源码 (v3.2.37)",

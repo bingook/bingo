@@ -2910,6 +2910,84 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
           else:
               print(f"    {param}: 크기차이 0B (반응 없음)")
 
+  ── RULE 26-AM [v3.2.38]: DB 타입 확정 규칙 — Oracle 환각 차단 + 다중 DB 우선순위 ──
+
+  ▸ RULE 26-AM [v3.2.38]: 주입 테스트 전 DB 타입을 반드시 에러 패턴으로 확정해야 한다.
+    에러 패턴 없이 DB 타입을 자기 판단으로 결정하는 것을 금지한다.
+
+  [STEP 1] DB 타입 자동 판별 — 에러 패턴 기반
+    아래 패턴을 응답 본문에서 검색하여 DB 타입을 결정한다:
+
+    MSSQL 확정 패턴 (하나라도 있으면 MSSQL로 확정):
+      - "Unclosed quotation mark"
+      - "Microsoft OLE DB"
+      - "Microsoft SQL Server"
+      - "SqlException"
+      - "Incorrect syntax near"
+      - "mssql_"
+      - "[Microsoft][ODBC"
+
+    MySQL 확정 패턴 (하나라도 있으면 MySQL로 확정):
+      - "You have an error in your SQL syntax"
+      - "mysql_fetch_array"
+      - "mysql_num_rows"
+      - "Warning: mysql"
+      - "MySQLSyntaxErrorException"
+      - "check the manual that corresponds to your MySQL"
+
+    Oracle 확정 패턴 (반드시 아래 패턴이 있어야만 Oracle 사용):
+      - "ORA-" + 숫자 5자리 (예: ORA-01789, ORA-00907)
+      - "Oracle JDBC Driver"
+      - "java.sql.SQLSyntaxErrorException" + oracle
+      - "quoted string not properly terminated" (Oracle 특유 오류)
+
+    SQLite 확정 패턴:
+      - "SQLite"
+      - "sqlite3.OperationalError"
+
+  [STEP 2] 다중 DB 감지 시 우선순위 처리
+    같은 타겟에서 MSSQL + MySQL 패턴이 동시에 감지될 수 있다 (공유 호스팅).
+    이 경우 아래 우선순위로 처리한다:
+
+      1순위: MSSQL (이미 에러 응답이 더 상세한 경우 먼저)
+      2순위: MySQL
+      3순위: 기타
+
+    처리 방법:
+      db_types = []
+      if mssql_pattern_found: db_types.append("MSSQL")
+      if mysql_pattern_found: db_types.append("MySQL")
+      print(f"✅ 감지된 DB 타입: {', '.join(db_types)}")
+      # 각 DB 타입별로 해당 엔드포인트에서 독립적으로 공격 시도
+
+  [STEP 3] Oracle 금지 규칙
+    아래 조건이 모두 충족되지 않으면 Oracle 공격 코드를 절대 생성하지 않는다:
+      1. 응답에서 "ORA-" + 숫자 패턴이 1회 이상 확인됨
+      2. 또는 "Oracle" 문자열이 HTTP 헤더 또는 에러 메시지에 명시됨
+
+    WRONG — 에러 패턴 확인 없이 Oracle 결정:
+      db_type = "Oracle"  # ORA- 에러 없음 → 환각
+
+    CORRECT — 에러 패턴 기반 결정:
+      import re
+      if re.search(r"ORA-\d{5}", response.text):
+          db_type = "Oracle"
+          print("✅ Oracle DB 확정 (ORA- 에러 패턴 확인)")
+      else:
+          print("⚠️ Oracle 에러 패턴 없음 → Oracle 공격 금지")
+
+  [STEP 4] DB 타입 세션 전체에 고정
+    한 번 확정된 DB 타입은 같은 타겟의 세션 전체에서 유지한다.
+    다른 엔드포인트에서 다른 에러가 나오면 → 해당 엔드포인트만 별도 DB 타입으로 처리
+    절대로 이미 확정된 DB 타입을 에러 없이 중간에 변경하지 않는다.
+
+  [STEP 5] 공유 호스팅 인식
+    여러 개의 사이트/DB가 같은 서버에 있을 수 있다.
+    동일 IP에서 MSSQL + MySQL이 동시에 감지되면:
+      - 이것은 정상이다 (공유 호스팅, 가상호스팅)
+      - 각 사이트별로 독립적으로 DB 타입을 결정한다
+      - Oracle은 위 STEP 3 조건 충족 시에만 추가
+
   ── RULE 26-AL [v3.2.37]: LFI 확인 후 admin 패널 PHP 소스 강제 읽기 + 로그인 검증 ──
 
   ▸ RULE 26-AL [v3.2.37]: LFI(임의 파일 읽기)가 확인된 즉시 아래 단계를 반드시 병렬로 실행한다.

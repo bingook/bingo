@@ -1596,87 +1596,6 @@ _STRINGS.update({
                                   "zh": "⚠️  检测到无限循环 — '{name}' 重复出现 {n} 次以上。疑似使用TOP 1查询而无游标分页。",
                                   "en": "⚠️  Infinite loop detected — '{name}' repeated {n}+ times. Likely TOP 1 query without cursor pagination."},
 
-    # ── v3.2.36: 파라미터 스캔 false positive 차단 알림 ─────────────────
-    "param_scan_fp_skipped":    {"ko": "ℹ️  파라미터 스캔 결과 라인 루프 감지 제외 (v3.2.36)",
-                                  "zh": "ℹ️  参数扫描结果行已排除在无限循环检测之外 (v3.2.36)",
-                                  "en": "ℹ️  Parameter scan result line excluded from loop detection (v3.2.36)"},
-
-    # ── v3.2.39: DB 함수 혼용 차단 + HTML 엔티티 반사 오인 차단 ─────────────
-    "db_func_mismatch":         {"ko": "🚫 DB 함수 혼용 감지: {func}은 {correct_db} 전용 함수 — {wrong_db}에 사용 금지 (v3.2.39)",
-                                  "zh": "🚫 检测到数据库函数混用: {func}是{correct_db}专用函数 — 禁止在{wrong_db}中使用 (v3.2.39)",
-                                  "en": "🚫 DB function mismatch: {func} is {correct_db}-only — must not use in {wrong_db} (v3.2.39)"},
-    "html_entity_reflected":    {"ko": "⚠️  HTML 엔티티 반사 감지(&#39;) — SQL 미실행, 페이로드 그대로 반사됨 (v3.2.39)",
-                                  "zh": "⚠️  检测到HTML实体反射(&#39;) — SQL未执行，载荷被原样反射 (v3.2.39)",
-                                  "en": "⚠️  HTML entity reflection detected (&#39;) — SQL not executed, payload echoed back (v3.2.39)"},
-    "payload_echo_not_exec":    {"ko": "❌ 추출 실패 — 응답에 DB 고유 데이터 없음 (페이로드 반사일 가능성 높음)",
-                                  "zh": "❌ 提取失败 — 响应中无数据库特有数据（可能是载荷回显）",
-                                  "en": "❌ Extraction failed — No DB-specific data in response (likely payload echo)"},
-
-    # ── v3.2.40: 파일 파라미터 LFI 조기 테스트 (Loop 1~2 강제) ─────────────
-    "lfi_param_detected":       {"ko": "🔍 파일 파라미터 감지: {param}={value} → LFI 즉시 테스트 (v3.2.40)",
-                                  "zh": "🔍 检测到文件参数: {param}={value} → 立即执行LFI测试 (v3.2.40)",
-                                  "en": "🔍 File parameter detected: {param}={value} → Immediate LFI test (v3.2.40)"},
-    "lfi_confirmed_early":      {"ko": "✅ LFI 조기 확인 (Loop 1~2): {url} — 설정 파일 탈취 시작",
-                                  "zh": "✅ LFI早期确认 (Loop 1~2): {url} — 开始读取配置文件",
-                                  "en": "✅ LFI confirmed early (Loop 1~2): {url} — Starting config file exfiltration"},
-    "lfi_db_config_found":      {"ko": "🔑 LFI로 DB 설정 파일 탈취 성공: {filepath} — 자격증명 추출 중",
-                                  "zh": "🔑 通过LFI成功读取DB配置文件: {filepath} — 正在提取凭证",
-                                  "en": "🔑 DB config file exfiltrated via LFI: {filepath} — Extracting credentials"},
-    "lfi_no_file_params":       {"ko": "ℹ️  파일 파라미터 없음 — LFI 스킵, SQLi 집중 진행",
-                                  "zh": "ℹ️  未发现文件参数 — 跳过LFI，专注SQLi测试",
-                                  "en": "ℹ️  No file parameters found — LFI skipped, focusing on SQLi"},
-    "lfi_false_positive":       {"ko": "⚠️  LFI 오탐: URL 반사(reflect)됨 — 실제 파일 읽기 아님",
-                                  "zh": "⚠️  LFI误报: URL被反射 — 不是真正的文件读取",
-                                  "en": "⚠️  LFI false positive: URL reflected — not actual file read"},
-
-    # ── v3.2.41: SQLi 막힘 → LFI 자동 피벗 ──────────────────────────────
-    "sqli_pivot_to_lfi":        {"ko": "🔄 [PIVOT] SQLi {n}회 시도 — DB 에러 패턴 없음 → LFI 공격으로 즉시 전환 (v3.2.41)",
-                                  "zh": "🔄 [PIVOT] SQLi尝试{n}次 — 无DB错误模式 → 立即切换到LFI攻击 (v3.2.41)",
-                                  "en": "🔄 [PIVOT] SQLi {n} attempts — No DB error pattern → Switching to LFI attack (v3.2.41)"},
-    "sqli_no_db_error":         {"ko": "⚠️  DB 타입 미확정 — 에러 패턴 없음 ({n}회 시도 후)",
-                                  "zh": "⚠️  DB类型未确定 — 无错误模式（尝试{n}次后）",
-                                  "en": "⚠️  DB type unconfirmed — No error pattern (after {n} attempts)"},
-    "sqli_html_reflected_all":  {"ko": "⚠️  전체 페이로드 HTML 반사 감지 → SQLi 불가 → LFI/XSS 전환",
-                                  "zh": "⚠️  检测到所有载荷HTML反射 → SQLi不可行 → 切换LFI/XSS",
-                                  "en": "⚠️  All payloads HTML-reflected → SQLi not viable → Switch to LFI/XSS"},
-
-    # ── v3.2.38: DB 타입 확정 + Oracle 환각 차단 + 다중 DB 우선순위 ────────
-    "db_type_confirmed":        {"ko": "✅ DB 타입 확정 (에러 패턴 기반): {db_type}",
-                                  "zh": "✅ 数据库类型已确认（基于错误模式）: {db_type}",
-                                  "en": "✅ DB type confirmed (error pattern): {db_type}"},
-    "db_oracle_blocked":        {"ko": "⚠️  Oracle 에러 패턴(ORA-XXXXX) 미확인 → Oracle 공격 금지 (v3.2.38)",
-                                  "zh": "⚠️  未检测到Oracle错误模式(ORA-XXXXX) → 禁止Oracle攻击 (v3.2.38)",
-                                  "en": "⚠️  Oracle error pattern (ORA-XXXXX) not found → Oracle attack blocked (v3.2.38)"},
-    "db_multi_detected":        {"ko": "ℹ️  다중 DB 감지 (공유 호스팅): {db_list} — 우선순위 순서로 처리",
-                                  "zh": "ℹ️  检测到多个数据库（共享主机）: {db_list} — 按优先级顺序处理",
-                                  "en": "ℹ️  Multiple DBs detected (shared hosting): {db_list} — Processing in priority order"},
-    "db_type_changed_blocked":  {"ko": "🚫 이미 확정된 DB 타입({old}) 을 에러 근거 없이 {new}(으)로 변경 금지",
-                                  "zh": "🚫 已确认的数据库类型({old})不得无错误依据地更改为{new}",
-                                  "en": "🚫 Confirmed DB type ({old}) must not be changed to {new} without error evidence"},
-    "db_virtual_hosting":       {"ko": "ℹ️  동일 IP에서 MSSQL+MySQL 동시 감지 — 공유/가상 호스팅 환경",
-                                  "zh": "ℹ️  同一IP同时检测到MSSQL+MySQL — 共享/虚拟主机环境",
-                                  "en": "ℹ️  MSSQL+MySQL both detected on same IP — Shared/virtual hosting environment"},
-
-    # ── v3.2.37: LFI 후 admin PHP 소스 강제 읽기 + 로그인 검증 ──────────
-    "admin_php_src_reading":    {"ko": "🔍 LFI 확인 — admin PHP 소스 강제 읽기 시작 (v3.2.37)",
-                                  "zh": "🔍 LFI已确认 — 开始强制读取admin PHP源码 (v3.2.37)",
-                                  "en": "🔍 LFI confirmed — Starting forced admin PHP source read (v3.2.37)"},
-    "admin_php_cred_found":     {"ko": "✅ admin PHP 소스에서 자격증명 발견: {uid}/{pw}",
-                                  "zh": "✅ 从admin PHP源码中发现凭证: {uid}/{pw}",
-                                  "en": "✅ Credential found in admin PHP source: {uid}/{pw}"},
-    "admin_login_success":      {"ko": "✅ 관리자 패널 로그인 성공 확인: {uid}/{pw} → {location}",
-                                  "zh": "✅ 管理员面板登录成功确认: {uid}/{pw} → {location}",
-                                  "en": "✅ Admin panel login confirmed: {uid}/{pw} → {location}"},
-    "admin_login_failed":       {"ko": "❌ 관리자 패널 로그인 실패: {uid}/{pw}",
-                                  "zh": "❌ 管理员面板登录失败: {uid}/{pw}",
-                                  "en": "❌ Admin panel login failed: {uid}/{pw}"},
-    "admin_php_src_skipped":    {"ko": "ℹ️  LFI 없음 — admin PHP 소스 읽기 건너뜀",
-                                  "zh": "ℹ️  无LFI — 跳过admin PHP源码读取",
-                                  "en": "ℹ️  No LFI — Skipping admin PHP source read"},
-    "admin_cred_unverified":    {"ko": "⚠️  DB 테이블 계정은 로그인 검증 전까지 보고서 미기재",
-                                  "zh": "⚠️  DB表账号未通过登录验证，暂不写入报告",
-                                  "en": "⚠️  DB table credentials withheld from report until login verified"},
-
     # ── XSS 반사 중복 제거 / XSS Reflection Deduplication (v2.9.4) ─────
     "xss_reflect_dedup_fix":    {"ko": "필수 수정 — XSS 반사 위치를 중복 제거 없이 출력하고 있습니다.\nseen_ctx = set() 으로 고유 컨텍스트만 출력하세요.",
                                   "zh": "强制修复 — XSS反射位置输出没有去重。\n请使用 seen_ctx = set() 仅输出唯一上下文。",
@@ -2946,24 +2865,6 @@ _STRINGS.update({
     "rule_26ag_proxy":              {"ko": "⚠ [RULE 26-AG] 프록시 활성 상태 — 모든 HTTP 요청에 BINGO_PROXY 적용 필수",
                                      "zh": "⚠ [RULE 26-AG] 代理已激活 — 所有 HTTP 请求必须应用 BINGO_PROXY",
                                      "en": "⚠ [RULE 26-AG] Proxy active — all HTTP requests must use BINGO_PROXY"},
-    # v3.2.33 — Windows SSL / GBK / CRLF 자동수정 메시지
-    "ssl_hostname_fixed":           {"ko": "🔧 [PRECHECK v3.2.33] check_hostname=False 자동 주입 (SSL CERT_NONE 호환)",
-                                     "zh": "🔧 [PRECHECK v3.2.33] 自动注入 check_hostname=False（SSL CERT_NONE 兼容）",
-                                     "en": "🔧 [PRECHECK v3.2.33] check_hostname=False auto-injected (SSL CERT_NONE compat)"},
-    "gbk_decode_fixed":             {"ko": "🔧 [PRECHECK v3.2.33] .decode() → .decode('utf-8', errors='replace') 자동 교체 (Windows GBK 호환)",
-                                     "zh": "🔧 [PRECHECK v3.2.33] .decode() → .decode('utf-8', errors='replace') 自动替换（Windows GBK 兼容）",
-                                     "en": "🔧 [PRECHECK v3.2.33] .decode() → .decode('utf-8', errors='replace') auto-replaced (Windows GBK compat)"},
-    "crlf_normalized":              {"ko": "🔧 [PRECHECK v3.2.33] \\r\\n → \\n 줄끝 정규화 (Windows CRLF SyntaxError 방지)",
-                                     "zh": "🔧 [PRECHECK v3.2.33] \\r\\n → \\n 行尾规范化（防止 Windows CRLF SyntaxError）",
-                                     "en": "🔧 [PRECHECK v3.2.33] \\r\\n → \\n line-ending normalized (Windows CRLF SyntaxError prevention)"},
-    # v3.2.33 — LFI download.php 룰 메시지
-    "lfi_download_php_hint":        {"ko": "🔍 [LFI v3.2.33] download.php 감지 — path+realfile 분리 테스트 권장",
-                                     "zh": "🔍 [LFI v3.2.33] 检测到 download.php — 建议分别测试 path+realfile 参数",
-                                     "en": "🔍 [LFI v3.2.33] download.php detected — separate path+realfile param testing recommended"},
-    # v3.2.35 — 전역 SSL 우회 주입 메시지 (RULE 26-AJ-W)
-    "ssl_global_bypass_injected":   {"ko": "🔧 [PRECHECK v3.2.35] 전역 SSL 우회 자동 주입 (Windows CA 인증서 미탐지 대응)",
-                                     "zh": "🔧 [PRECHECK v3.2.35] 自动注入全局 SSL 绕过（修复 Windows 中文版 CA 证书未找到问题）",
-                                     "en": "🔧 [PRECHECK v3.2.35] Global SSL bypass auto-injected (Windows CA cert not found fix)"},
 })
 
 

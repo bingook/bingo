@@ -3334,100 +3334,6 @@ class BingoTerminal:
                         fixed = "import os\n" + fixed
                 fixed = "__TMP_FIXED__\n" + fixed
 
-            # ── 0-AE. Windows SSL check_hostname 에러 자동 수정 (v3.2.33, RULE 26-AE-W) ──
-            # Windows에서 ssl.CERT_NONE 설정 시 check_hostname=False 미설정으로 ValueError 발생
-            # 패턴: context.verify_mode = ssl.CERT_NONE 이 있는데 check_hostname=False 없음
-            # 줄별 처리로 들여쓰기(indentation) 완벽 보존 → macOS/Linux 영향 없음
-            _has_cert_none = bool(_pre_re.search(
-                r'[\w_]+\.verify_mode\s*=\s*(?:ssl\.)?CERT_NONE',
-                fixed
-            ))
-            _has_check_hostname_false = bool(_pre_re.search(
-                r'check_hostname\s*=\s*False',
-                fixed
-            ))
-            if _has_cert_none and not _has_check_hostname_false:
-                _ssl_lines = fixed.splitlines()
-                _ssl_new_lines = []
-                _ssl_changed = False
-                for _ssl_line in _ssl_lines:
-                    _ssl_stripped = _ssl_line.lstrip()
-                    _ssl_m = _pre_re.match(
-                        r'([\w_]+)\.verify_mode\s*=\s*(?:ssl\.)?CERT_NONE',
-                        _ssl_stripped
-                    )
-                    if _ssl_m:
-                        # 원래 줄의 들여쓰기(앞 공백) 그대로 유지
-                        _ssl_indent = _ssl_line[:len(_ssl_line) - len(_ssl_stripped)]
-                        _ssl_obj = _ssl_m.group(1)
-                        _ssl_new_lines.append(f"{_ssl_indent}{_ssl_obj}.check_hostname = False")
-                        _ssl_changed = True
-                    _ssl_new_lines.append(_ssl_line)
-                if _ssl_changed:
-                    fixed = '\n'.join(_ssl_new_lines)
-                    fixed = "__SSL_HOSTNAME_FIXED__\n" + fixed
-
-            # ── 0-AF. subprocess 출력 GBK/CP949 인코딩 에러 자동 수정 (v3.2.33, RULE 26-AF-W) ──
-            # Windows 콘솔 기본 인코딩 GBK/CP949 → subprocess 출력 decode() 시 UnicodeDecodeError
-            # .decode() → .decode('utf-8', errors='replace') 자동 교체
-            # macOS/Linux는 기본 UTF-8이므로 영향 없음
-            _before_af = fixed
-            # subprocess.run(...).stdout.decode() → .decode('utf-8', errors='replace')
-            fixed = _pre_re.sub(
-                r'\.stdout\.decode\(\)',
-                ".stdout.decode('utf-8', errors='replace')",
-                fixed
-            )
-            fixed = _pre_re.sub(
-                r'\.stderr\.decode\(\)',
-                ".stderr.decode('utf-8', errors='replace')",
-                fixed
-            )
-            # check_output(...).decode() → .decode('utf-8', errors='replace')
-            fixed = _pre_re.sub(
-                r'(?<=\)\.decode)\(\)(?!\s*,)',
-                "('utf-8', errors='replace')",
-                fixed
-            )
-            if fixed != _before_af:
-                fixed = "__GBK_DECODE_FIXED__\n" + fixed
-
-            # ── 0-AG. CRLF 줄 끝 정규화 (v3.2.33, RULE 26-AG-W) ──────────────
-            # Windows에서 AI 생성 코드에 \r\n 혼재 시 SyntaxError: EOL while scanning string literal
-            # 실행 전 모든 \r\n → \n 으로 정규화 (macOS/Linux 영향 없음)
-            if '\r\n' in fixed or '\r' in fixed:
-                fixed = fixed.replace('\r\n', '\n').replace('\r', '\n')
-                if fixed != code and "__CRLF_FIXED__" not in fixed:
-                    fixed = "__CRLF_FIXED__\n" + fixed
-
-            # ── 0-AJ. 전역 SSL 우회 주입 (v3.2.35, RULE 26-AJ-W) ─────────────
-            # 핵심 문제: macOS는 Keychain에서 CA 인증서 자동 탐색 → requests.get() 성공
-            #           Windows(중문)는 CA 인증서를 못 찾음 → check_hostname 단계서 터짐
-            # bingo 내장 스캐너는 verify=False 이미 설정, AI 생성 코드는 모름
-            # 해결: requests 사용 스크립트 최상단에 전역 SSL 우회 2줄 주입
-            # macOS/Linux는 이미 SSL 정상 동작 → 영향 없음
-            _has_requests_usage = bool(_pre_re.search(
-                r'\brequests\.(get|post|put|patch|delete|request|head|options)\b',
-                fixed
-            ))
-            _already_has_ssl_bypass = bool(_pre_re.search(
-                r'ssl\._create_default_https_context\s*=\s*ssl\._create_unverified_context',
-                fixed
-            ))
-            if _has_requests_usage and not _already_has_ssl_bypass:
-                _ssl_bypass_header = (
-                    "import ssl as _ssl_mod, urllib3 as _urllib3_mod\n"
-                    "_ssl_mod._create_default_https_context = _ssl_mod._create_unverified_context\n"
-                    "_urllib3_mod.disable_warnings(_urllib3_mod.exceptions.InsecureRequestWarning)\n"
-                )
-                # 첫 번째 import 줄 앞에 주입 (없으면 최상단)
-                _first_imp_aj = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
-                if _first_imp_aj:
-                    fixed = fixed[:_first_imp_aj.start()] + _ssl_bypass_header + fixed[_first_imp_aj.start():]
-                else:
-                    fixed = _ssl_bypass_header + fixed
-                fixed = "__SSL_GLOBAL_BYPASS__\n" + fixed
-
             # ── 0-Z. 인코딩 자동 감지 헬퍼 주입 ──────────────────────────────
             # r.text / resp.text 사용 시 EUC-KR 등 구형 인코딩 깨짐 방지
             # requests.get/post 가 있고 smart_decode 가 없는 경우 헬퍼 + 교체 주입
@@ -3953,26 +3859,6 @@ class BingoTerminal:
                 _checked = _checked[len("__TMP_FIXED__\n"):]
                 _tmp_msg = t("tmp_path_fixed", '🔧 [PRECHECK v3.2.29] "/tmp/" → tempfile.gettempdir() 자동 교체 (Windows 호환)')
                 self.console.print(f"[{THEME['dim']}]{_tmp_msg}[/]")
-            # v3.2.33: SSL check_hostname 자동 수정 (RULE 26-AE-W)
-            if isinstance(_checked, str) and _checked.startswith("__SSL_HOSTNAME_FIXED__\n"):
-                _checked = _checked[len("__SSL_HOSTNAME_FIXED__\n"):]
-                _ssl_msg = t("ssl_hostname_fixed", '🔧 [PRECHECK v3.2.33] check_hostname=False 자동 주입 (SSL CERT_NONE 호환)')
-                self.console.print(f"[{THEME['dim']}]{_ssl_msg}[/]")
-            # v3.2.33: subprocess GBK 인코딩 자동 수정 (RULE 26-AF-W)
-            if isinstance(_checked, str) and _checked.startswith("__GBK_DECODE_FIXED__\n"):
-                _checked = _checked[len("__GBK_DECODE_FIXED__\n"):]
-                _gbk_msg = t("gbk_decode_fixed", "🔧 [PRECHECK v3.2.33] .decode() → .decode('utf-8', errors='replace') 자동 교체 (Windows GBK 호환)")
-                self.console.print(f"[{THEME['dim']}]{_gbk_msg}[/]")
-            # v3.2.33: CRLF 정규화 (RULE 26-AG-W)
-            if isinstance(_checked, str) and _checked.startswith("__CRLF_FIXED__\n"):
-                _checked = _checked[len("__CRLF_FIXED__\n"):]
-                _crlf_msg = t("crlf_normalized", "🔧 [PRECHECK v3.2.33] \\r\\n → \\n 줄끝 정규화 (Windows CRLF SyntaxError 방지)")
-                self.console.print(f"[{THEME['dim']}]{_crlf_msg}[/]")
-            # v3.2.35: 전역 SSL 우회 주입 (RULE 26-AJ-W)
-            if isinstance(_checked, str) and _checked.startswith("__SSL_GLOBAL_BYPASS__\n"):
-                _checked = _checked[len("__SSL_GLOBAL_BYPASS__\n"):]
-                _ssl_gbl_msg = t("ssl_global_bypass_injected", "🔧 [PRECHECK v3.2.35] 전역 SSL 우회 자동 주입 (Windows CA 인증서 미탐지 대응)")
-                self.console.print(f"[{THEME['dim']}]{_ssl_gbl_msg}[/]")
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])
@@ -4263,9 +4149,6 @@ class BingoTerminal:
                     "[+]", "[-]", "[*]", "[!]",
                     # 파라미터/엔드포인트 열거
                     "  →", "  -", "  ✅", "  ❌", "  ⚠",
-                    # v3.2.36: 파라미터 스캔 결과 (单引号: 大小差异0B 등) — 높은 임계값 적용
-                    "单引号:", "단일따옴표:", "single quote:", "大小差异", "크기차이:",
-                    "差异", "参数 ", "파라미터 ", "param ",
                 )
 
                 def _is_scan_result_line(s: str) -> bool:
@@ -5042,11 +4925,6 @@ class BingoTerminal:
                 # Chinese
                 "错误", "失败", "连接", "拒绝", "超时", "异常",
                 "断开", "警告", "阻断", "不可用", "执行失败", "无法连接",
-                # v3.2.36: 파라미터 스캔 결과 라인 — DB 추출값이 아닌 탐지 출력
-                # "单引号: 大小差异0B" 같은 라인이 5회 반복 시 false positive 루프 감지 방지
-                "大小差异", "大小差0", "크기차이", "크기 차이", "size diff",
-                "单引号", "单引号:", "따옴표:", "single quote",
-                "差异0b", "差异0B", "差异:",
             })
             # v3.2.7: URL/경로 패턴 감지
             _URL_PATTERN = _re.compile(
@@ -5087,10 +4965,6 @@ class BingoTerminal:
                     # v3.2.17: HTTP 응답 바디/메서드 접두어
                     "Body:", "body:", "<!DOCTYPE", "<!doctype",
                     "<html", "<HTML", "<head", "<HEAD",
-                    # v3.2.36: 파라미터 스캔 테스트 결과 라인 — DB 추출값 아님
-                    # "单引号: 大小差异0B", "단일따옴표: 크기차이0B" 등 반복 출력 false positive 차단
-                    "单引号:", "단일따옴표:", "Single quote:", "single quote:",
-                    "大小差异", "크기차이:", "差异:", "size diff",
                 )):
                     continue
                 # v3.2.9: XML/HTML 태그로 시작하는 라인 제외 (<url>, <loc>, <div> 등)

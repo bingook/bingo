@@ -1612,6 +1612,23 @@ _STRINGS.update({
                                   "zh": "❌ 提取失败 — 响应中无数据库特有数据（可能是载荷回显）",
                                   "en": "❌ Extraction failed — No DB-specific data in response (likely payload echo)"},
 
+    # ── v3.2.40: 파일 파라미터 LFI 조기 테스트 (Loop 1~2 강제) ─────────────
+    "lfi_param_detected":       {"ko": "🔍 파일 파라미터 감지: {param}={value} → LFI 즉시 테스트 (v3.2.40)",
+                                  "zh": "🔍 检测到文件参数: {param}={value} → 立即执行LFI测试 (v3.2.40)",
+                                  "en": "🔍 File parameter detected: {param}={value} → Immediate LFI test (v3.2.40)"},
+    "lfi_confirmed_early":      {"ko": "✅ LFI 조기 확인 (Loop 1~2): {url} — 설정 파일 탈취 시작",
+                                  "zh": "✅ LFI早期确认 (Loop 1~2): {url} — 开始读取配置文件",
+                                  "en": "✅ LFI confirmed early (Loop 1~2): {url} — Starting config file exfiltration"},
+    "lfi_db_config_found":      {"ko": "🔑 LFI로 DB 설정 파일 탈취 성공: {filepath} — 자격증명 추출 중",
+                                  "zh": "🔑 通过LFI成功读取DB配置文件: {filepath} — 正在提取凭证",
+                                  "en": "🔑 DB config file exfiltrated via LFI: {filepath} — Extracting credentials"},
+    "lfi_no_file_params":       {"ko": "ℹ️  파일 파라미터 없음 — LFI 스킵, SQLi 집중 진행",
+                                  "zh": "ℹ️  未发现文件参数 — 跳过LFI，专注SQLi测试",
+                                  "en": "ℹ️  No file parameters found — LFI skipped, focusing on SQLi"},
+    "lfi_false_positive":       {"ko": "⚠️  LFI 오탐: URL 반사(reflect)됨 — 실제 파일 읽기 아님",
+                                  "zh": "⚠️  LFI误报: URL被反射 — 不是真正的文件读取",
+                                  "en": "⚠️  LFI false positive: URL reflected — not actual file read"},
+
     # ── v3.2.38: DB 타입 확정 + Oracle 환각 차단 + 다중 DB 우선순위 ────────
     "db_type_confirmed":        {"ko": "✅ DB 타입 확정 (에러 패턴 기반): {db_type}",
                                   "zh": "✅ 数据库类型已确认（基于错误模式）: {db_type}",

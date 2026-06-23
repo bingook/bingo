@@ -2839,32 +2839,6 @@ _STRINGS.update({
     "loop_length_skip":             {"ko": "🔕 [LOOP v3.2.28] 150자 초과 라인 — 루프 감지 제외 (로그 라인 오탐 방지)",
                                      "zh": "🔕 [LOOP v3.2.28] 超过150字符行 — 已排除循环检测（防日志行误报）",
                                      "en": "🔕 [LOOP v3.2.28] Line >150 chars — excluded from loop detection (log line false-positive prevention)"},
-    # v3.2.29 — Windows 호환성 자동수정 메시지
-    "python3_hardcoded_fixed":      {"ko": '🔧 [PRECHECK v3.2.29] "python3" → sys.executable 자동 교체 (Windows 호환)',
-                                     "zh": '🔧 [PRECHECK v3.2.29] "python3" → sys.executable 自动替换（Windows 兼容）',
-                                     "en": '🔧 [PRECHECK v3.2.29] "python3" → sys.executable auto-replaced (Windows compat)'},
-    "tmp_path_fixed":               {"ko": '🔧 [PRECHECK v3.2.29] "/tmp/" → tempfile.gettempdir() 자동 교체 (Windows 호환)',
-                                     "zh": '🔧 [PRECHECK v3.2.29] "/tmp/" → tempfile.gettempdir() 自动替换（Windows 兼容）',
-                                     "en": '🔧 [PRECHECK v3.2.29] "/tmp/" → tempfile.gettempdir() auto-replaced (Windows compat)'},
-    # v3.2.29 — 프록시 인식 메시지
-    "proxy_env_injected":           {"ko": "🔗 [PROXY v3.2.29] BINGO_PROXY 환경변수 주입 — 스크립트가 프록시 자동 사용",
-                                     "zh": "🔗 [PROXY v3.2.29] BINGO_PROXY 环境变量已注入 — 脚本自动使用代理",
-                                     "en": "🔗 [PROXY v3.2.29] BINGO_PROXY env var injected — script uses proxy automatically"},
-    "rule_26ac_py3":                {"ko": "⚠ [RULE 26-AC] python3 하드코딩 금지 — sys.executable 사용",
-                                     "zh": "⚠ [RULE 26-AC] 禁止硬编码 python3 — 请使用 sys.executable",
-                                     "en": "⚠ [RULE 26-AC] Hardcoded 'python3' forbidden — use sys.executable"},
-    "rule_26ad_tmp":                {"ko": "⚠ [RULE 26-AD] /tmp/ 경로 하드코딩 금지 — tempfile.gettempdir() 사용",
-                                     "zh": "⚠ [RULE 26-AD] 禁止硬编码 /tmp/ 路径 — 请使用 tempfile.gettempdir()",
-                                     "en": "⚠ [RULE 26-AD] Hardcoded '/tmp/' path forbidden — use tempfile.gettempdir()"},
-    "rule_26ae_chmod":              {"ko": "⚠ [RULE 26-AE] chmod/apt-get는 platform 조건 분기 필수 — Windows 직접 실행 금지",
-                                     "zh": "⚠ [RULE 26-AE] chmod/apt-get 必须加 platform 条件分支 — Windows 禁止直接执行",
-                                     "en": "⚠ [RULE 26-AE] chmod/apt-get require platform check — direct exec forbidden on Windows"},
-    "rule_26af_windows_shell":      {"ko": "⚠ [RULE 26-AF] Windows 타겟 감지 — PowerShell 리버스쉘 사용 권장",
-                                     "zh": "⚠ [RULE 26-AF] 检测到 Windows 目标 — 建议使用 PowerShell 反弹 Shell",
-                                     "en": "⚠ [RULE 26-AF] Windows target detected — use PowerShell reverse shell"},
-    "rule_26ag_proxy":              {"ko": "⚠ [RULE 26-AG] 프록시 활성 상태 — 모든 HTTP 요청에 BINGO_PROXY 적용 필수",
-                                     "zh": "⚠ [RULE 26-AG] 代理已激活 — 所有 HTTP 请求必须应用 BINGO_PROXY",
-                                     "en": "⚠ [RULE 26-AG] Proxy active — all HTTP requests must use BINGO_PROXY"},
 })
 
 

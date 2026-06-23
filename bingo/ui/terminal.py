@@ -3283,57 +3283,6 @@ class BingoTerminal:
                     fixed = "import base64\n" + fixed
                 fixed = "__BASE64_INJECTED__\n" + fixed
 
-            # ── 0-AC. python3 하드코딩 → sys.executable 자동 교체 (v3.2.29, RULE 26-AC) ──
-            # Windows에서 "python3" 명령이 없어 FileNotFoundError 발생 → sys.executable 로 교체
-            _PY3_HARDCODED = _pre_re.compile(
-                r'(?<!["\'])(?:subprocess\.(?:run|Popen|call|check_output)\s*\(\s*\[)\s*"python3"',
-            )
-            _PY3_OSCMD = _pre_re.compile(
-                r'os\.system\s*\(\s*["\']python3\s'
-            )
-            _has_py3_hardcoded = bool(_PY3_HARDCODED.search(fixed)) or bool(_PY3_OSCMD.search(fixed))
-            _has_sys_import = bool(_pre_re.search(r'^import sys$|^import sys,|, sys\b', fixed, _pre_re.MULTILINE))
-            if _has_py3_hardcoded:
-                # subprocess(["python3", ...]) → subprocess([sys.executable, ...])
-                fixed = _PY3_HARDCODED.sub(
-                    lambda m: m.group(0).replace('"python3"', 'sys.executable'),
-                    fixed
-                )
-                if not _has_sys_import:
-                    _first_imp3 = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
-                    if _first_imp3:
-                        fixed = fixed[:_first_imp3.start()] + "import sys\n" + fixed[_first_imp3.start():]
-                    else:
-                        fixed = "import sys\n" + fixed
-                fixed = "__PY3_FIXED__\n" + fixed
-
-            # ── 0-AD. /tmp/ 하드코딩 → tempfile.gettempdir() 자동 교체 (v3.2.29, RULE 26-AD) ──
-            # Windows에 /tmp/ 없음 → tempfile.gettempdir() 로 교체
-            _TMP_HARDCODED = _pre_re.compile(r'["\']\/tmp\/([\w\-\.]+)["\']')
-            _has_tmp = bool(_TMP_HARDCODED.search(fixed))
-            _has_tempfile_import = bool(_pre_re.search(r'import tempfile|from tempfile', fixed))
-            _has_os_import = bool(_pre_re.search(r'^import os$|^import os,|, os\b', fixed, _pre_re.MULTILINE))
-            if _has_tmp:
-                # "/tmp/foo.txt" → os.path.join(tempfile.gettempdir(), "foo.txt")
-                fixed = _TMP_HARDCODED.sub(
-                    lambda m: 'os.path.join(tempfile.gettempdir(), "' + m.group(1) + '")',
-                    fixed
-                )
-                if not _has_tempfile_import:
-                    _first_imp4 = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
-                    _inj4 = "import tempfile\n" + ("" if _has_os_import else "import os\n")
-                    if _first_imp4:
-                        fixed = fixed[:_first_imp4.start()] + _inj4 + fixed[_first_imp4.start():]
-                    else:
-                        fixed = _inj4 + fixed
-                elif not _has_os_import:
-                    _first_imp4 = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
-                    if _first_imp4:
-                        fixed = fixed[:_first_imp4.start()] + "import os\n" + fixed[_first_imp4.start():]
-                    else:
-                        fixed = "import os\n" + fixed
-                fixed = "__TMP_FIXED__\n" + fixed
-
             # ── 0-Z. 인코딩 자동 감지 헬퍼 주입 ──────────────────────────────
             # r.text / resp.text 사용 시 EUC-KR 등 구형 인코딩 깨짐 방지
             # requests.get/post 가 있고 smart_decode 가 없는 경우 헬퍼 + 교체 주입
@@ -3849,16 +3798,6 @@ class BingoTerminal:
                 _checked = _checked[len("__SMART_DECODE_INJECTED__\n"):]
                 _sd_msg = t("smart_decode_def_injected", "🔧 [PRECHECK] _smart_decode() 호출 감지 — def 자동 주입 (NameError 방지)")
                 self.console.print(f"[{THEME['dim']}]{_sd_msg}[/]")
-            # v3.2.29: python3 하드코딩 자동 교체 감지 (RULE 26-AC)
-            if isinstance(_checked, str) and _checked.startswith("__PY3_FIXED__\n"):
-                _checked = _checked[len("__PY3_FIXED__\n"):]
-                _py3_msg = t("python3_hardcoded_fixed", '🔧 [PRECHECK v3.2.29] "python3" → sys.executable 자동 교체 (Windows 호환)')
-                self.console.print(f"[{THEME['dim']}]{_py3_msg}[/]")
-            # v3.2.29: /tmp/ 경로 자동 교체 감지 (RULE 26-AD)
-            if isinstance(_checked, str) and _checked.startswith("__TMP_FIXED__\n"):
-                _checked = _checked[len("__TMP_FIXED__\n"):]
-                _tmp_msg = t("tmp_path_fixed", '🔧 [PRECHECK v3.2.29] "/tmp/" → tempfile.gettempdir() 자동 교체 (Windows 호환)')
-                self.console.print(f"[{THEME['dim']}]{_tmp_msg}[/]")
             if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])
@@ -4019,7 +3958,7 @@ class BingoTerminal:
                             f"[#{task['idx']+1}]:[/] [{THEME['dim']}]{task['preview']}...[/]"
                         )
                     proc = subprocess.Popen(
-                        [sys.executable, task["path"]],  # v3.2.29: sys.executable (Windows 호환)
+                        ["python3", task["path"]],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
                     )
@@ -4092,25 +4031,10 @@ class BingoTerminal:
         def _tracked_run_task(task: dict, slot: int) -> None:
             """실시간 stdout 스트리밍 — print() 출력 즉시 화면에 표시."""
             try:
-                # v3.2.29 RULE 26-AC: python3 → sys.executable (Windows 호환)
-                # v3.2.29 RULE 26-AG: BINGO_PROXY 환경변수로 프록시 전달
-                _active_proxy_url = ""
-                if hasattr(self, "_proxy_manager") and self._proxy_manager is not None:
-                    try:
-                        _pm = self._proxy_manager
-                        if getattr(_pm, "_current_proxy", None):
-                            _active_proxy_url = _pm._current_proxy
-                    except Exception:
-                        pass
-                env = {
-                    **os.environ,
-                    "PYTHONIOENCODING": "utf-8",
-                    "PYTHONUNBUFFERED": "1",
-                    **({"BINGO_PROXY": _active_proxy_url} if _active_proxy_url else {}),
-                }
+                env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
                 if task["type"] == "python":
                     p = subprocess.Popen(
-                        [sys.executable, "-u", task["path"]],  # -u: unbuffered; sys.executable for Windows
+                        ["python3", "-u", task["path"]],  # -u: unbuffered
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                         env=env, bufsize=0,
                     )

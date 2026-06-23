@@ -3270,49 +3270,4 @@ _SQLI_PIVOT_AND_PLAYWRIGHT_RULES = """
   ▸ RULE 30-F: Playwright 사용 시 출력 접두어
     print("🎭 [PLAYWRIGHT] {작업 설명}")  # 시작
     print("🎭 [PLAYWRIGHT] 완료: {결과 요약}")  # 완료
-
-# ── 31. 파일 읽기(LFI/Path Traversal) 성공 후 필수 연계 동작 [v3.2.46] ──
-
-  ▸ RULE 31-A: LFI / Path Traversal 로 DB 설정파일 획득 직후 — 반드시 수행
-    DB 크레덴셜 획득 후 다음 두 가지를 순서대로 즉시 실행:
-
-    ① 관리자 로그인 PHP 소스 파일 읽기 (하드코딩 자격증명 발굴)
-       아래 경로를 순서대로 시도 — 200 응답이 오면 즉시 파싱:
-         /admin/login/login_proc.php
-         /admin/login/login.php
-         /admin/common/login_proc.php
-         /adm/login_proc.php
-         /manager/login_proc.php
-         /bbs/adm/login_proc.php
-       파싱 대상:
-         • $user_id == '...'  또는  $id == '...'  형태의 하드코딩 ID/PW
-         • define('ADMIN_ID', '...')  형태의 상수 정의
-         • if ($pw === '...')  형태의 직접 비교
-       발견된 하드코딩 자격증명 → CREDENTIALS_admin_source.json 저장
-       즉시 해당 관리자 패널 로그인 시도
-
-    ② 관련 설정/소스 파일 추가 읽기
-       획득한 DB 설정파일과 동일 include/ 또는 config/ 디렉토리에서:
-         db_connect.php, config.php, define.php, common.php, settings.php
-       → 추가 DB 크레덴셜 / API 키 / 하드코딩 관리자 계정 파싱
-
-  ▸ RULE 31-B: 관리자/USER 테이블 덤프 — 반드시 전체 행 출력
-    admin, user, member, manager, operator 등 권한 관련 테이블 발견 시:
-
-    ① 절대 요약(범위, "~") 금지 — city1~city17 같은 표현 사용 금지
-    ② 각 행을 개별 출력:
-         print(f"  [{i+1}] {row['user_id']} / {row.get('user_pw','(hash)')} / {row.get('user_name','')} / AUTH={row.get('auth','')}")
-    ③ 총 행 수 마지막에 출력:
-         print(f"  ─ 총 {total}개 관리자 계정")
-    ④ SHA-512/bcrypt 해시 → 즉시 hashcat 크래킹 시도 (common password list):
-         handball123, admin123, pndcom123, 1234, qwer1234, password123
-         위 목록으로 python hashlib.sha512(pw.encode()).hexdigest() 비교 후
-         일치 시 → 해당 계정으로 즉시 관리자 패널 로그인 시도
-
-  ▸ RULE 31-C: 관리자 패널 로그인 성공 시 — 계정 목록 즉시 수집
-    로그인 후 아래 경로에서 전체 관리자 계정 목록 수집:
-      /admin/common/member_list.php
-      /admin/user/list.php
-      /admin/manager/list.php
-    → HTML 파싱으로 모든 관리자 ID / 권한 / 이름 추출 후 전체 출력
 """

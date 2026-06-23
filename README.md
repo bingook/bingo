@@ -123,6 +123,56 @@ Tasks:
 
 ---
 
+## Burp Engine — 자동 실행 / 自动触发 / Auto-Triggered (v3.2.51)
+
+### 🇰🇷 한국어
+
+URL + 취약점 키워드가 입력에 함께 있으면 **Burp 엔진이 자동 실행**됩니다. 별도 명령 불필요.
+
+```
+bingo> https://target.com sqli 찾아줘
+bingo> https://target.com xss 테스트
+bingo> https://target.com rce 익스플로잇
+```
+
+자동 트리거 키워드: `sqli` `xss` `rce` `ssrf` `xxe` `inject` `payload` `fuzz` `scan` `exploit` `oob`
+
+> **URL이 없으면 실행 안 됨.** URL + 키워드 둘 다 필요.
+
+---
+
+### 🇨🇳 中文
+
+URL 与漏洞关键词同时出现时，**Burp 引擎自动触发**，无需手动命令。
+
+```
+bingo> https://target.com sqli渗透
+bingo> https://target.com xss测试
+bingo> https://target.com rce利用
+```
+
+自动触发关键词：`sqli` `xss` `rce` `ssrf` `xxe` `inject` `payload` `fuzz` `scan` `exploit` `oob`
+
+> **没有 URL 则不触发。** URL 与关键词缺一不可。
+
+---
+
+### 🇺🇸 English
+
+**Burp Engine auto-runs** when a URL and a vulnerability keyword appear together. No extra command needed.
+
+```
+bingo> https://target.com sqli test
+bingo> https://target.com xss scan
+bingo> https://target.com rce exploit
+```
+
+Auto-trigger keywords: `sqli` `xss` `rce` `ssrf` `xxe` `inject` `payload` `fuzz` `scan` `exploit` `oob`
+
+> **No URL = no trigger.** Both URL and keyword are required.
+
+---
+
 ## Anti-Hallucination — 4-Layer Guard
 
 Every AI response is blocked unless it passes all 4 checks:

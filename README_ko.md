@@ -340,6 +340,22 @@ pip install stem     # Tor 회로 교체 (선택 사항)
 
 ---
 
+## Burp Engine — 자동 실행 (v3.2.51)
+
+URL + 취약점 키워드가 입력에 함께 있으면 **Burp 엔진이 자동 실행**됩니다. 별도 명령 불필요.
+
+```
+bingo> https://target.com sqli 찾아줘
+bingo> https://target.com xss 테스트
+bingo> https://target.com rce 익스플로잇
+```
+
+자동 트리거 키워드: `sqli` `xss` `rce` `ssrf` `xxe` `inject` `payload` `fuzz` `scan` `exploit` `oob`
+
+> **URL이 없으면 실행 안 됨.** URL + 키워드 둘 다 필요.
+
+---
+
 ## 환각 방지 — 4단계 가드
 
 모든 AI 응답은 4가지 검사를 통과해야 출력됩니다:

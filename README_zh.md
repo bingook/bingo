@@ -340,6 +340,22 @@ pip install stem     # Tor 线路切换（可选）
 
 ---
 
+## Burp Engine — 自动触发 (v3.2.51)
+
+URL 与漏洞关键词同时出现时，**Burp 引擎自动触发**，无需手动命令。
+
+```
+bingo> https://target.com sqli渗透
+bingo> https://target.com xss测试
+bingo> https://target.com rce利用
+```
+
+自动触发关键词：`sqli` `xss` `rce` `ssrf` `xxe` `inject` `payload` `fuzz` `scan` `exploit` `oob`
+
+> **没有 URL 则不触发。** URL 与关键词缺一不可。
+
+---
+
 ## 防幻觉 — 4 层防护
 
 每个 AI 响应必须通过全部 4 项检查才能输出:

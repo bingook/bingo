@@ -44,6 +44,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 import requests.exceptions
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -3270,21 +3270,4 @@ _SQLI_PIVOT_AND_PLAYWRIGHT_RULES = """
   ▸ RULE 30-F: Playwright 사용 시 출력 접두어
     print("🎭 [PLAYWRIGHT] {작업 설명}")  # 시작
     print("🎭 [PLAYWRIGHT] 완료: {결과 요약}")  # 완료
-
-# ── 31. 관리자/유저 테이블 출력 규칙 (MANDATORY) ──
-
-  ▸ RULE 31: admin/user/manager/operator 계정 출력 시 — 절대 요약 금지
-    DB에서 추출한 관리자·회원 계정을 화면에 출력할 때:
-
-    ① 범위 표현 절대 금지 — city1~city17, user1...user20 같은 축약 표현 사용 불가
-    ② 모든 행을 개별 출력:
-         for i, row in enumerate(rows):
-             uid  = row.get('user_id') or row.get('id') or row.get('mb_id') or ''
-             name = row.get('user_name') or row.get('name') or row.get('mb_name') or ''
-             auth = row.get('auth') or row.get('auth_cd') or row.get('level') or ''
-             print(f"  [{i+1:>3}] {uid} / {name} / AUTH={auth}")
-    ③ 마지막에 총 건수 출력:
-         print(f"  ─ 합계: {len(rows)}개 계정")
-    ④ 이 규칙은 SQLi dump, 직접 DB 연결(pymssql/pymysql), LFI 결과 파싱 등
-       모든 경로로 얻은 계정 데이터에 동일 적용
 """

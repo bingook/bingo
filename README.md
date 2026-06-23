@@ -6,11 +6,15 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.18-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.45-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 
 **🌐 Language:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
+
+> ⚠️ **Windows is NOT supported.** bingo runs on **macOS and Linux only.**
+> Windows support has been permanently discontinued as of v3.2.45.
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
@@ -34,11 +38,6 @@ bingo --update
 ```bash
 git clone https://github.com/bingook/bingo.git
 cd bingo && bash install.sh
-```
-
-**Windows (PowerShell as Admin):**
-```powershell
-irm https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
 ```
 
 ---
@@ -241,8 +240,6 @@ brew install tor && brew services start tor
 
 # Ubuntu/Debian
 sudo apt install tor && sudo systemctl start tor
-
-# Windows: download Tor Browser (includes tor daemon)
 ```
 
 **Step 2 — (Optional) Enable Tor Control Port:**  
@@ -372,7 +369,6 @@ Type `/` in the chat to open command menu (arrow keys to navigate).
 |----|------|
 | macOS | `~/Library/Application Support/bingo/config.json` |
 | Linux | `~/.config/bingo/config.json` |
-| Windows | `%APPDATA%\bingo\config.json` |
 
 ---
 
@@ -443,47 +439,6 @@ bingo> auto scan target.ipa
 | Network endpoints | API URLs extracted from code + assets |
 | SSL pinning | Detected → bypass guide auto-generated |
 | 3rd party SDKs | Firebase, Sentry, Analytics, etc. |
-
----
-
-## Windows EXE — Standalone Build
-
-Build a portable `.exe` that runs without Python installed:
-
-```bash
-pip install pyinstaller
-pyinstaller --onefile --name bingo bingo/__main__.py
-# Output: dist/bingo.exe
-```
-
-Copy `dist/bingo.exe` to any Windows PC — no Python required.  
-Run: `bingo.exe` or `bingo.exe scan https://target.com`
-
----
-
-## EXE Phase 0 — Windows PE Analysis (v2.3.5)
-
-Analyze Windows executables (EXE / DLL / SYS) **without running them**.
-
-```bash
-# In bingo chat
-bingo> analyze malware.exe
-bingo> pe static analysis sample.dll
-bingo> check this exe: payload.exe
-```
-
-| What bingo checks | Detail |
-|-------------------|--------|
-| Architecture | x86 / x64 / ARM, compile timestamp |
-| Section entropy | >7.0 = packed/encrypted/obfuscated |
-| Import table | 30+ suspicious Windows APIs by attack category |
-| Strings | C2 URLs, hardcoded IPs, API keys, mutex names, Base64 blobs |
-| Packer detection | UPX, Themida, VMProtect, MPRESS, ASPack |
-| Digital signature | Authenticode validity check |
-| YARA scan | Built-in rules + custom rule file support |
-| Risk score | AUTO: LOW / MEDIUM / HIGH |
-| Hashes | MD5, SHA1, SHA256, ImpHash, SSDeep |
-| VirusTotal | Optional hash lookup via VT API |
 
 ---
 
@@ -574,6 +529,8 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v3.2.45 | **macOS/Linux only** — Windows support permanently discontinued |
+| v3.2.28 | Core engine restored — rolled back to most stable base |
 | v3.2.18 | **Proxy Pool Rotation** — HTTP/HTTPS/SOCKS5/Tor/API, auto-rotate on ban, RULE 26-T |
 | v3.2.17 | False positive fix: `Body: <!DOCTYPE html>` loop detector, RULE 26-S |
 | v3.2.16 | CAPTCHA false positive fix — script tags excluded from detection |

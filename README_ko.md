@@ -6,11 +6,15 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-3.2.18-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.45-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **🌐 언어:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
+
+> ⚠️ **Windows는 지원하지 않습니다.** bingo는 **macOS 및 Linux 전용**입니다.
+> v3.2.45부터 Windows 지원이 영구적으로 중단되었습니다. Windows 관련 업데이트는 절대 제공하지 않습니다.
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
 
@@ -36,10 +40,6 @@ git clone https://github.com/bingook/bingo.git
 cd bingo && bash install.sh
 ```
 
-**Windows (PowerShell 관리자 권한):**
-```powershell
-irm https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
-```
 
 ---
 
@@ -177,7 +177,6 @@ brew install tor && brew services start tor
 # Ubuntu / Debian
 sudo apt install tor && sudo systemctl start tor
 
-# Windows: Tor Browser 설치 (tor 데몬 포함)
 ```
 
 **2단계 — (선택) Tor 제어 포트 활성화:**
@@ -509,6 +508,8 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.45 | **macOS/Linux 전용** — Windows 지원 영구 중단 |
+| v3.2.28 | 핵심 엔진 복원 — 가장 안정적인 베이스로 롤백 |
 | v3.2.18 | **프록시 풀 로테이션** — HTTP/HTTPS/SOCKS5/Tor/API, 밴 시 자동 교체, RULE 26-T |
 | v3.2.17 | 오탐 수정: `Body: <!DOCTYPE html>` 루프 감지기, RULE 26-S |
 | v3.2.16 | CAPTCHA 오탐 수정 — 스크립트 태그 제외 |

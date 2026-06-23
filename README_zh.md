@@ -6,11 +6,15 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-3.2.18-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.45-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **🌐 语言:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
+
+> ⚠️ **不支持 Windows。** bingo 仅支持 **macOS 和 Linux**。
+> 自 v3.2.45 起，Windows 支持已永久终止，不会再有任何 Windows 相关更新。
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · 自定义*
 
@@ -36,10 +40,6 @@ git clone https://github.com/bingook/bingo.git
 cd bingo && bash install.sh
 ```
 
-**Windows (以管理员身份运行 PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/bingook/bingo/main/install.ps1 | iex
-```
 
 ---
 
@@ -177,7 +177,6 @@ brew install tor && brew services start tor
 # Ubuntu / Debian
 sudo apt install tor && sudo systemctl start tor
 
-# Windows: 安装 Tor Browser（已内置 tor 守护进程）
 ```
 
 **第二步 — （可选）启用 Tor 控制端口:**
@@ -509,6 +508,8 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 版本 | 摘要 |
 |------|------|
+| v3.2.45 | **仅支持 macOS/Linux** — 永久终止 Windows 支持 |
+| v3.2.28 | 核心引擎复原 — 回滚至最稳定基础版本 |
 | v3.2.18 | **代理池轮换** — HTTP/HTTPS/SOCKS5/Tor/API，封禁后自动切换，RULE 26-T |
 | v3.2.17 | 误报修复: `Body: <!DOCTYPE html>` 循环检测器，RULE 26-S |
 | v3.2.16 | CAPTCHA 误报修复 — 排除 script 标签 |

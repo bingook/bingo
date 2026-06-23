@@ -702,6 +702,40 @@ class BingoTerminal:
 
         return "\n\n".join(parts)
 
+    def _auto_burp_scan(self, text: str) -> str:
+        """URL + Burp 관련 키워드 감지 시 burp_engine.full_scan() 자동 실행.
+        [v3.2.51] Repeater/Intruder/Scanner/OOB/퍼징/취약점 언급 시 자동 트리거.
+        """
+        import re as _re
+        _burp_kw = (
+            "burp", "repeater", "intruder", "scanner", "payload", "fuzz", "퍼징",
+            "oob", "ssrf", "xxe", "rce", "xss", "sqli", "inject", "취약점",
+            "scan", "스캔", "exploit", "익스", "웹취약", "web vuln",
+            "리피터", "인트루더", "스캐너", "out-of-band",
+        )
+        text_lower = text.lower()
+        has_kw = any(kw in text_lower for kw in _burp_kw)
+        urls = _re.findall(r"https?://[^\s\"'<>]+", text)
+        if not (has_kw and urls):
+            return ""
+
+        url = urls[0].rstrip("/?,")
+        self.console.print(
+            f"\n[{THEME['warn']}]{self.s.get('burp_auto_scan', '🔧 Burp 자동 스캔 중...')} {url}[/]"
+        )
+        try:
+            from ..tools.burp_engine import full_scan
+            result = full_scan(url)
+            self.console.print(
+                f"[{THEME['success']}]{self.s.get('burp_scan_done', '✅ Burp 스캔 완료')}[/]"
+            )
+            return result
+        except Exception as e:
+            self.console.print(
+                f"[{THEME['error']}]{self.s.get('burp_scan_error', '⚠️ Burp 스캔 오류')}: {e}[/]"
+            )
+            return ""
+
     def _auto_waf_scan(self, text: str) -> str:
         """URL 감지 시 사이트 raw 데이터 수집 → AI가 전략 전부 결정.
         고정 공격 지시 없음. AI가 수집된 데이터 기반으로 자율 판단.
@@ -1623,6 +1657,7 @@ class BingoTerminal:
                 if len(self.history) > 8:
                     self.history = self.history[-4:]
         waf_context = self._auto_waf_scan(text)
+        burp_context = self._auto_burp_scan(text)  # [v3.2.51] Burp 자동 스캔
         # ── v2.9.2: 새 타겟 전환 시 AI에게 명시적으로 컨텍스트 리셋 알림
         if _target_changed and _urls:
             _new_target_notice = (
@@ -1657,6 +1692,15 @@ class BingoTerminal:
                 "=== BINGO AUTO-SCAN RESULTS (already executed, do NOT ask to run again) ===\n"
                 + waf_context
                 + "\n=== END AUTO-SCAN ===\n\n"
+                + wrapped_text
+            )
+
+        # [v3.2.51] Burp 스캔 결과도 AI 컨텍스트에 주입
+        if burp_context:
+            wrapped_text = (
+                "=== BINGO BURP-ENGINE SCAN RESULTS (already executed, do NOT ask to run again) ===\n"
+                + burp_context
+                + "\n=== END BURP-SCAN ===\n\n"
                 + wrapped_text
             )
 

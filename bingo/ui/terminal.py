@@ -4060,8 +4060,8 @@ class BingoTerminal:
                 _killed_reason: str | None = None
                 _start_ts = __import__("time").time()
                 _SCRIPT_TIMEOUT = 300  # 스크립트당 최대 300초 (5분)
-                _MAX_CONSEC_DUP = 5    # 동일 줄 5회 연속 → 루프 감지
-                _MAX_CONSEC_SCAN = 25  # 스캔 결과 줄은 25회까지 허용 (XSS 반사 등)
+                _MAX_CONSEC_DUP = 50   # 동일 줄 50회 연속 → 루프 감지 [v3.2.49: 오탐 방지]
+                _MAX_CONSEC_SCAN = 50  # 스캔 결과 줄은 50회까지 허용 (XSS 반사 등)
                 # 합법적 반복이 발생하는 스캔 결과 prefix — 더 높은 임계값 적용
                 _SCAN_OUTPUT_MARKERS: tuple[str, ...] = (
                     # XSS 반사 위치

@@ -1629,6 +1629,17 @@ _STRINGS.update({
                                   "zh": "⚠️  LFI误报: URL被反射 — 不是真正的文件读取",
                                   "en": "⚠️  LFI false positive: URL reflected — not actual file read"},
 
+    # ── v3.2.41: SQLi 막힘 → LFI 자동 피벗 ──────────────────────────────
+    "sqli_pivot_to_lfi":        {"ko": "🔄 [PIVOT] SQLi {n}회 시도 — DB 에러 패턴 없음 → LFI 공격으로 즉시 전환 (v3.2.41)",
+                                  "zh": "🔄 [PIVOT] SQLi尝试{n}次 — 无DB错误模式 → 立即切换到LFI攻击 (v3.2.41)",
+                                  "en": "🔄 [PIVOT] SQLi {n} attempts — No DB error pattern → Switching to LFI attack (v3.2.41)"},
+    "sqli_no_db_error":         {"ko": "⚠️  DB 타입 미확정 — 에러 패턴 없음 ({n}회 시도 후)",
+                                  "zh": "⚠️  DB类型未确定 — 无错误模式（尝试{n}次后）",
+                                  "en": "⚠️  DB type unconfirmed — No error pattern (after {n} attempts)"},
+    "sqli_html_reflected_all":  {"ko": "⚠️  전체 페이로드 HTML 반사 감지 → SQLi 불가 → LFI/XSS 전환",
+                                  "zh": "⚠️  检测到所有载荷HTML反射 → SQLi不可行 → 切换LFI/XSS",
+                                  "en": "⚠️  All payloads HTML-reflected → SQLi not viable → Switch to LFI/XSS"},
+
     # ── v3.2.38: DB 타입 확정 + Oracle 환각 차단 + 다중 DB 우선순위 ────────
     "db_type_confirmed":        {"ko": "✅ DB 타입 확정 (에러 패턴 기반): {db_type}",
                                   "zh": "✅ 数据库类型已确认（基于错误模式）: {db_type}",

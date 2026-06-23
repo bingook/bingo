@@ -3046,6 +3046,39 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       # 진짜 추출 성공은 반드시 DB 고유 데이터(버전 문자열, 테이블명 등)가 나와야 함
       # 예: "8.0.32-MySQL Community Server", "ORA-01722", "Microsoft SQL Server 2019"
 
+  [STEP 8] DB 타입 미확정 시 자동 피벗 — SQLi에서 막히면 LFI로 즉시 전환 (v3.2.41)
+    아래 조건이 하나라도 해당되면 SQLi 시도를 중단하고 LFI 공격으로 즉시 피벗한다:
+
+    ▸ 피벗 조건:
+      A. 3개 이상의 파라미터에서 MSSQL + MySQL 에러 패턴 모두 없음 → DB 타입 미확정
+      B. 10회 이상 SQLi 페이로드를 보냈으나 응답 크기 변화가 없음 (0B 차이)
+      C. 모든 페이로드가 HTML 엔티티로 반사됨 (STEP 7 조건)
+      D. WAF가 SQLi 전부 차단 (모든 응답이 403/406 또는 차단 페이지)
+
+    ▸ 피벗 순서 (DB 타입 미확정 상태):
+      1순위 — LFI 경로 (크롤 결과에 아래 패턴이 있으면 즉시):
+               download.php?realfile=  / filedown.php?file=  / view.php?path=
+               → RULE 26-AH, RULE 26-AN 즉시 실행
+      2순위 — RULE 28 (SQLi 실패 → 자동 피벗): XSS, 파일업로드, SSRF 등
+      3순위 — 관리자 패널 브루트포스/디렉토리 탐색
+
+    ▸ WRONG — DB 타입 미확정 상태에서 SQLi만 계속 시도:
+      # 에러 없음, 크기 변화 없음인데도 계속 UNION 컬럼 수 늘리기만 반복
+      for col in range(1, 20):
+          r = requests.get(url, params={"id": f"-1 UNION SELECT {','.join(['NULL']*col)}--"})
+          # 아무 변화 없이 반복 → 시간 낭비, 결국 XSS로 전환하고 끝냄
+
+    ▸ CORRECT — 10회 시도 후 LFI 피벗:
+      attempts = 0
+      for payload in sqli_payloads:
+          r = send(payload)
+          if db_pattern_found(r): break
+          attempts += 1
+          if attempts >= 10:
+              print("[PIVOT] SQLi 10회 시도 — DB 에러 없음 → LFI 공격으로 전환")
+              # download.php?realfile= 패턴이 크롤 결과에 있으면 즉시 LFI 테스트
+              break
+
   ── RULE 26-AL [v3.2.37]: LFI 확인 후 admin 패널 PHP 소스 강제 읽기 + 로그인 검증 ──
 
   ▸ RULE 26-AL [v3.2.37]: LFI(임의 파일 읽기)가 확인된 즉시 아래 단계를 반드시 병렬로 실행한다.

@@ -726,9 +726,35 @@ class BingoTerminal:
         try:
             from ..tools.burp_engine import full_scan
             result = full_scan(url)
-            self.console.print(
-                f"[{THEME['success']}]{self.s.get('burp_scan_done', '✅ Burp 스캔 완료')}[/]"
-            )
+
+            # ── [v3.2.53] 결과 요약 화면 출력 ─────────────────────────────
+            _lines = result.splitlines()
+            _findings = [l for l in _lines if l.strip().startswith("[HIGH]")
+                         or l.strip().startswith("[MEDIUM]")
+                         or l.strip().startswith("[LOW]")
+                         or l.strip().startswith("[INFO]")]
+            if _findings:
+                self.console.print(
+                    f"[{THEME['success']}]{self.s.get('burp_scan_done', '✅ Burp 스캔 완료')} "
+                    f"({len(_findings)} {self.s.get('burp_findings', 'findings')})[/]"
+                )
+                for fl in _findings[:10]:           # 최대 10개만 출력
+                    _sev = (
+                        "error" if "[HIGH]"   in fl else
+                        "warn"  if "[MEDIUM]" in fl else
+                        "dim"
+                    )
+                    self.console.print(f"  [{THEME[_sev]}]{fl.strip()}[/]")
+                if len(_findings) > 10:
+                    self.console.print(
+                        f"  [{THEME['dim']}]... +{len(_findings)-10} "
+                        f"{self.s.get('burp_more', 'more findings (in AI context)')}[/]"
+                    )
+            else:
+                self.console.print(
+                    f"[{THEME['success']}]{self.s.get('burp_scan_done', '✅ Burp 스캔 완료')} — "
+                    f"{self.s.get('burp_no_findings', 'no findings')}[/]"
+                )
             return result
         except Exception as e:
             self.console.print(

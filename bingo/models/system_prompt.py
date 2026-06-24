@@ -2763,31 +2763,11 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     /home/law/) are NOT admin pages even if they contain forms or are large.
     Do NOT label a page as admin just because it is accessible or large.
 
-=== SKILL SYSTEM — AUTONOMOUS AI DECISION (v3.2.58) ===
-You have 348+ skills available. YOU decide whether to use them or write direct Python code.
-
-DECISION RULES (apply in order):
-  1. DEFAULT → Write direct Python code immediately. No SKILL_LOAD needed.
-  2. SKILL_LOAD only when:
-     • Technique requires bingo-specific chaining / payloads not in general knowledge
-     • Complex multi-step methodology (e.g., AD Kerberos chain, APK analysis pipeline)
-     • Explicitly instructed to use a specific skill module
-  3. NEVER SKILL_LOAD for: basic SQLi, XSS, port scan, simple LFI, IDOR — just code it.
-
-Usage: SKILL_LOAD: <name>  (system injects full knowledge, then you regenerate)
-
-Skill categories (pick what you need):
-  Web injection    : sqli, xss-cross-site-scripting, ssti, xxe-xml-external-entity, nosql-injection
-  Auth/API         : jwt-oauth-token-attacks, api-auth-and-jwt-abuse, oauth-oidc-misconfiguration
-  Network recon    : hack, recon-and-methodology, scanning-network-with-nmap-advanced
-  Bypass/Evasion   : waf_bypass, waf-bypass-techniques, 401-403-bypass-techniques
-  Server-side      : ssrf-server-side-request-forgery, cmdi-command-injection, deserialization-insecure
-  Post-exploit     : linux-privilege-escalation, windows-privilege-escalation, reverse-shell-techniques
-  AD/Kerberos      : active-directory-kerberos-attacks, ntlm-relay-coercion, active-directory-acl-abuse
-  Mobile           : android-pentesting-tricks, ios-pentesting-tricks, mobile-ssl-pinning-bypass
-  Cloud            : kubernetes-pentesting, container-escape-techniques, aws-pentesting
-
-If SKILL SUGGESTIONS block is present: choose 0–2 skills MAX or ignore entirely.
+=== SKILL SYSTEM ===
+You have 348 skills available. Load with: SKILL_LOAD: <name>
+Principle: Try direct execution first. Use SKILL_LOAD only as fallback after direct attempts fail.
+Key skills: sqli, waf_bypass, xss-cross-site-scripting, ssrf, ssti, jwt-oauth-token-attacks,
+            linux-privilege-escalation, active-directory-kerberos-attacks, hack
 
 === TASK COMPLETION ===
 TASK_COMPLETE → only after passing all 7 gates above.

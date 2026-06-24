@@ -2879,6 +2879,23 @@ _STRINGS.update({
     "hallucination_blocked":     {"ko": "⛔ AI 추론만으로 취약점 선언 차단됨 — HTTP 증거 필요",
                                    "zh": "⛔ 仅凭AI推理宣称漏洞已被拦截 — 需要HTTP证据",
                                    "en": "⛔ Vulnerability claim blocked — AI reasoning only, HTTP evidence required"},
+
+    # ── v3.2.58: AI 자율 스킬 선택 시스템 ──────────────────────────
+    "skill_ai_decision":         {"ko": "🤖 AI 자율 판단 — 스킬 사용 여부를 AI가 직접 결정합니다",
+                                   "zh": "🤖 AI自主决策 — 由AI自行决定是否使用技能",
+                                   "en": "🤖 AI autonomous decision — AI decides whether to use skills"},
+    "skill_suggestion_shown":    {"ko": "💡 스킬 제안: {count}개 (AI가 선택하거나 직접 Python 작성)",
+                                   "zh": "💡 技能建议: {count} 个 (AI选择或直接编写Python)",
+                                   "en": "💡 Skill suggestions: {count} (AI picks or writes Python directly)"},
+    "skill_self_written":        {"ko": "✏️ AI 자체 코드 — 스킬 없이 직접 Python 생성",
+                                   "zh": "✏️ AI自编代码 — 无需技能，直接生成Python",
+                                   "en": "✏️ AI direct code — Python written without skill loading"},
+    "skill_load_requested":      {"ko": "📥 SKILL_LOAD 요청됨: {name} — AI 판단으로 전문 지식 주입 중",
+                                   "zh": "📥 SKILL_LOAD 请求: {name} — AI判断后注入专业知识",
+                                   "en": "📥 SKILL_LOAD requested: {name} — injecting expert knowledge per AI decision"},
+    "skill_no_load_needed":      {"ko": "⚡ 스킬 로드 불필요 — AI가 직접 기법 수행 (효율 우선)",
+                                   "zh": "⚡ 无需加载技能 — AI直接执行技术 (效率优先)",
+                                   "en": "⚡ No skill load needed — AI executes technique directly (efficiency first)"},
 })
 
 

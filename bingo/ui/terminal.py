@@ -663,42 +663,68 @@ class BingoTerminal:
         return Message(role="system", content=system_text)
 
     def _get_skill_context(self, text: str) -> str:
-        """사용자 입력에서 관련 스킬 자동 검색 후 AI 컨텍스트 문자열 반환.
+        """AI 자율 스킬 선택 시스템 (v3.2.58).
 
-        우선순위:
-          1. bingo 내장 pentest SKILL.md 파일 (신규 — sqli/waf_bypass/api_security 등)
-          2. SecSkills-main / advsec-plus 로컬 references/
-          3. CyberSecurity-Skills 내장 DB (보조)
+        풀 컨텐츠 자동 주입 ❌ → 매칭된 스킬 이름만 제안으로 반환.
+        AI가 SKILL_LOAD: <name> 으로 필요한 스킬만 직접 요청하거나,
+        스킬 없이 직접 Python 코드를 작성하는 방식으로 자율 결정.
         """
-        parts: list[str] = []
+        suggestions: list[str] = []
 
-        # ── 1. bingo 내장 pentest 스킬 (새 시스템) ───────────────────
-        builtin_ctx = self._detect_and_load_skills(text)
-        if builtin_ctx:
-            parts.append(builtin_ctx)
-
-        # ── 2. 로컬 SecSkills references (기존) ──────────────────────
+        # ── 1. 내장 DB 매칭 (이름+태그만 수집) ──────────────────────
         try:
             from ..skills.engine import SkillEngine
             engine = SkillEngine()
-            local_ctx = engine.local_skill_context(text, max_chars=2000)
-            if local_ctx:
-                parts.append(
-                    "=== SKILL_CONTEXT (verified reference) ===\n"
-                    + local_ctx
-                    + "\n=== END SKILL_CONTEXT ==="
-                )
-            # ── 3. 내장 DB (보조) ─────────────────────────────────────
-            if not local_ctx:
-                results = engine.search(text)
-                for r in results[:5]:
-                    prompt = engine.get_skill_prompt(r["id"])
-                    if prompt:
-                        parts.append(prompt)
+            results = engine.search(text)
+            for r in results[:8]:
+                entry = r["id"]
+                tags = r.get("tags", [])
+                tag_hint = f"[{', '.join(tags[:3])}]" if tags else ""
+                suggestions.append(f"{entry} {tag_hint}".strip())
         except Exception:
             pass
 
-        return "\n\n".join(parts)
+        # ── 2. 로컬 SKILL.md 목록 (파일명만) ──────────────────────
+        try:
+            from ..skills.engine import SkillEngine
+            engine = SkillEngine()
+            local_names = engine.list_local_skills() if hasattr(engine, "list_local_skills") else []
+            for name in local_names[:5]:
+                if not any(name in s for s in suggestions):
+                    suggestions.append(name)
+        except Exception:
+            pass
+
+        if not suggestions:
+            return ""
+
+        _lang = getattr(self.config, "lang", "en")
+        _header = {
+            "ko": "=== 스킬 제안 (AI가 선택) ===",
+            "zh": "=== 技能建议 (AI自主决策) ===",
+            "en": "=== SKILL SUGGESTIONS (AI decides) ===",
+        }.get(_lang, "=== SKILL SUGGESTIONS (AI decides) ===")
+        _footer = {
+            "ko": (
+                "→ 필요하면: SKILL_LOAD: <name>  |  직접 Python 작성도 가능\n"
+                "→ AI 판단: 이미 아는 기법이면 스킬 없이 바로 코드 작성"
+            ),
+            "zh": (
+                "→ 需要时: SKILL_LOAD: <name>  |  也可直接编写Python\n"
+                "→ AI决策: 若已熟悉该技术，无需SKILL_LOAD，直接编写代码"
+            ),
+            "en": (
+                "→ If needed: SKILL_LOAD: <name>  |  OR write Python directly\n"
+                "→ AI decision: skip SKILL_LOAD if you already know the technique"
+            ),
+        }.get(_lang, "→ SKILL_LOAD: <name> to load, or write direct Python code")
+
+        return (
+            _header + "\n"
+            + "\n".join(f"  • {s}" for s in suggestions) + "\n"
+            + _footer + "\n"
+            "=== END SUGGESTIONS ==="
+        )
 
     def _auto_burp_scan(self, text: str) -> str:
         """URL + Burp 관련 키워드 감지 시 burp_engine.full_scan() 자동 실행.
@@ -6091,14 +6117,16 @@ class BingoTerminal:
         return skills
 
     def _detect_and_load_skills(self, text: str) -> str:
-        """사용자 입력 키워드 기반 초기 스킬 로드.
-        engine.local_skill_context()로 전체 스킬DB(1~14)에서 최적 매칭 반환.
+        """AI 자율 스킬 선택 — 제안 이름 목록만 반환 (v3.2.58).
+        풀 컨텐츠 자동 주입 안 함. AI가 SKILL_LOAD: 로 직접 요청.
         """
         try:
             from ..skills.engine import SkillEngine
             engine = SkillEngine()
-            ctx = engine.local_skill_context(text, max_chars=3000)
-            return ctx or ""
+            # 내용이 아닌 이름만 수집 → AI 자율 결정 지원
+            results = engine.search(text)
+            names = [r["id"] for r in results[:5]]
+            return ", ".join(names) if names else ""
         except Exception:
             return ""
 

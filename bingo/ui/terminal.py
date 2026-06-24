@@ -454,10 +454,8 @@ class BingoTerminal:
         _hs_dir = Path(__file__).parent.parent / "skills" / "hack-skills"
         _hs_count = sum(1 for d in _hs_dir.iterdir() if d.is_dir() and (d / "SKILL.md").exists()) if _hs_dir.exists() else 0
         try:
-            from ..skills.skills_data import SKILLS_DB
-            from ..skills.skills_data2 import SKILLS_DB_2
-            from ..skills.skills_data3 import SKILLS_DB_3
-            _db_count = len({**SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3})
+            from ..skills.engine import ALL_SKILLS
+            _db_count = len(ALL_SKILLS)
         except Exception:
             _db_count = 0
         _total = _hs_count + 6 + 5 + _db_count
@@ -693,7 +691,7 @@ class BingoTerminal:
             # ── 3. 내장 DB (보조) ─────────────────────────────────────
             if not local_ctx:
                 results = engine.search(text)
-                for r in results[:2]:
+                for r in results[:5]:
                     prompt = engine.get_skill_prompt(r["id"])
                     if prompt:
                         parts.append(prompt)
@@ -1351,8 +1349,11 @@ class BingoTerminal:
                 body=page,
                 url=url,
             )
-            # 링크 너무 적은데 정상 응답인 경우도 Playwright 시도
+            # 링크 너무 적거나 파라미터 URL이 0개인 경우 Playwright 시도
             if not _pw_needed and orig_status == 200 and len(all_links) < 3:
+                _pw_needed = True
+            # JS-rendered param_urls 미발견 시 Playwright로 보완
+            if not _pw_needed and orig_status == 200 and len(param_links) == 0:
                 _pw_needed = True
 
             if _pw_needed:
@@ -6090,10 +6091,16 @@ class BingoTerminal:
         return skills
 
     def _detect_and_load_skills(self, text: str) -> str:
-        """사용자 입력 키워드 기반 초기 스킬 로드 (첫 메시지 한정).
-        이후는 AI가 SKILL_LOAD:로 자율 판단.
+        """사용자 입력 키워드 기반 초기 스킬 로드.
+        engine.local_skill_context()로 전체 스킬DB(1~14)에서 최적 매칭 반환.
         """
-        return ""  # 이제 AI가 직접 판단 — 키워드 자동 로드 비활성화
+        try:
+            from ..skills.engine import SkillEngine
+            engine = SkillEngine()
+            ctx = engine.local_skill_context(text, max_chars=3000)
+            return ctx or ""
+        except Exception:
+            return ""
 
     def _format_agent_state(self) -> str:
         """agent_state를 AI에게 주입할 요약 문자열로 변환."""

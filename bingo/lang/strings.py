@@ -2853,6 +2853,32 @@ _STRINGS.update({
     "platform_wsl":                 {"ko": "❌ bingo는 WSL(Windows Subsystem for Linux) 환경을 지원하지 않습니다.\n   네이티브 Linux 또는 macOS를 사용하세요.",
                                      "zh": "❌ bingo 不支持 WSL（Windows Subsystem for Linux）。\n   请使用原生 Linux 或 macOS。",
                                      "en": "❌ bingo does not support WSL (Windows Subsystem for Linux).\n   Please use native Linux or macOS."},
+
+    # ── v3.2.57: 스킬 로딩 / Playwright / 헬루시네이션 방지 ──────────
+    "skill_auto_detected":       {"ko": "🧠 스킬 자동 매칭: {count}개 로드됨",
+                                   "zh": "🧠 技能自动匹配: 已加载 {count} 个",
+                                   "en": "🧠 Skill auto-matched: {count} loaded"},
+    "skill_db_total":            {"ko": "📚 전체 스킬 DB: {total}개 (1~14 파일)",
+                                   "zh": "📚 技能数据库总计: {total} 个 (文件1~14)",
+                                   "en": "📚 Total skill DB: {total} (files 1~14)"},
+    "pw_param_trigger":          {"ko": "🎭 파라미터 URL 0개 — Playwright로 JS 렌더링 재정찰",
+                                   "zh": "🎭 未发现参数URL — 使用Playwright重新渲染侦察",
+                                   "en": "🎭 No param URLs found — re-scanning with Playwright JS rendering"},
+    "pw_recon_success":          {"ko": "🎭 Playwright 정찰 완료: 링크 {links}개 / 파라미터 {params}개 발견",
+                                   "zh": "🎭 Playwright侦察完成: 发现链接{links}个 / 参数{params}个",
+                                   "en": "🎭 Playwright recon done: {links} links / {params} param URLs found"},
+    "verified_finding":          {"ko": "✅ [VERIFIED] HTTP 응답으로 확인된 취약점",
+                                   "zh": "✅ [VERIFIED] 已通过HTTP响应确认的漏洞",
+                                   "en": "✅ [VERIFIED] Vulnerability confirmed via HTTP response"},
+    "likely_finding":            {"ko": "🟡 [LIKELY] 행동 증거 기반 (직접 데이터 미확인)",
+                                   "zh": "🟡 [LIKELY] 基于行为证据 (未直接获取数据)",
+                                   "en": "🟡 [LIKELY] Based on behavioral evidence (no direct data yet)"},
+    "inferred_finding":          {"ko": "🔵 [INFERRED] 간접 신호 추론 — 보고서 제외, 추가 검증 필요",
+                                   "zh": "🔵 [INFERRED] 间接信号推断 — 排除在报告外，需进一步验证",
+                                   "en": "🔵 [INFERRED] Inferred from indirect signals — excluded from report, needs proof"},
+    "hallucination_blocked":     {"ko": "⛔ AI 추론만으로 취약점 선언 차단됨 — HTTP 증거 필요",
+                                   "zh": "⛔ 仅凭AI推理宣称漏洞已被拦截 — 需要HTTP证据",
+                                   "en": "⛔ Vulnerability claim blocked — AI reasoning only, HTTP evidence required"},
 })
 
 

@@ -1,6 +1,6 @@
 """
 skills_data15.py — DApp / Web3 / Smart Contract 전용 공격·감사 스킬 DB
-bingo v3.2.60
+bingo v3.2.61
 
 Sources analyzed:
   [1] SWC Registry (Smart Contract Weakness Classification)
@@ -18,8 +18,17 @@ Sources analyzed:
   [7] Ethernaut — OpenZeppelin CTF patterns
       https://ethernaut.openzeppelin.com/
   [8] Web3 API Endpoint Enumeration — Custom research
+  [9] Trail of Bits Blog — EIP-7730 Blind Signing
+      https://blog.trailofbits.com/2025/08/27/implement-eip-7730-today/
+      (Bybit $1.5B hack: delegatecall op-type 0→1 tampering, blind signing, clear signing)
+  [10] Cyfrin — Smart Contract Auditor Roadmap
+       https://www.cyfrin.io/blog/how-to-become-a-smart-contract-auditor
+       (Weak randomness SWC-120, DoS gas limit, MEV, signature replay patterns)
+  [11] HackerNoon — Code Injection Cryptocurrency Theft
+       https://hackernoon.com/how-one-hacker-stole-thousands-of-dollars-worth-of-cryptocurrency-with-a-classic-code-injection-a3aba5d2bff0
+       (EtherDelta-style DOM injection, DApp frontend address swapping)
 
-20 new skills:
+25 new skills:
   1.  web3-dapp-fingerprint        — DApp 기술 스택 핑거프린팅 (ethers/web3.js/wagmi/viem)
   2.  web3-rpc-enum                 — Ethereum JSON-RPC 엔드포인트 열거 및 노출 감지
   3.  web3-abi-extract              — 지갑 없이 컨트랙트 ABI + 함수 시그니처 추출
@@ -40,6 +49,12 @@ Sources analyzed:
   18. web3-nft-metadata-ssrf        — NFT 메타데이터 SSRF / URI 조작
   19. web3-defi-full-pipeline       — DeFi 전체 공격 파이프라인 (자동 선택)
   20. web3-contract-audit           — 스마트 컨트랙트 종합 감사 리포트 생성
+  [NEW — v3.2.61 from external research]
+  21. web3-blind-signing-audit      — EIP-712/7730 블라인드 서명 취약점 감사 (Trail of Bits/Bybit 패턴)
+  22. web3-safe-multisig-optype     — Safe 멀티시그 delegatecall operation-type 조작 감지 (Bybit 해킹 벡터)
+  23. web3-frontend-injection       — DApp 프론트엔드 JS 코드인젝션 / 주소 스와핑 (EtherDelta 패턴)
+  24. web3-weak-randomness          — SWC-120 약한 온체인 무작위성 (block.timestamp/blockhash 예측)
+  25. web3-dos-gas-limit            — SWC-128 가스 한도 DoS / 무한 루프 / 외부 의존 DoS
 """
 from __future__ import annotations
 
@@ -1779,6 +1794,668 @@ else:
     print("\\n[OK] 스캔된 패턴에서 취약점 없음")
 
 print("\\n[*] 감사 완료")
+''',
+    },
+
+    # ════════════════════════════════════════════════════════════════════
+    # v3.2.61 NEW SKILLS — External Research Integration
+    # Source: Trail of Bits EIP-7730, Cyfrin Auditor Roadmap, HackerNoon
+    # ════════════════════════════════════════════════════════════════════
+
+    # ── 21. 블라인드 서명 감사 (EIP-712/7730) ────────────────────────────
+    "web3-blind-signing-audit": {
+        "id":          "web3-blind-signing-audit",
+        "name":        "DApp Blind Signing Vulnerability Audit",
+        "name_ko":     "블라인드 서명 취약점 감사 (EIP-712/EIP-7730)",
+        "name_zh":     "DApp盲签名漏洞审计 (EIP-712/EIP-7730)",
+        "description": (
+            "Audit DApp for blind signing vulnerabilities. "
+            "Checks EIP-712 structured data support, detects raw hex signing prompts, "
+            "verifies EIP-7730 clear signing manifest existence, "
+            "analyzes wallet UX for user-verifiable transaction details. "
+            "Based on Trail of Bits EIP-7730 research and Bybit $1.5B hack analysis."
+        ),
+        "description_ko": (
+            "DApp 블라인드 서명 취약점 종합 감사. "
+            "EIP-712 구조화 데이터 지원 여부 확인, 원시 hex 서명 프롬프트 감지, "
+            "EIP-7730 클리어 사이닝 매니페스트 존재 확인, "
+            "사용자가 실제로 트랜잭션 내용을 검증할 수 있는지 UX 분석. "
+            "Trail of Bits EIP-7730 연구 및 Bybit 15억 달러 해킹 패턴 기반."
+        ),
+        "description_zh": (
+            "审计DApp的盲签名漏洞. "
+            "检查EIP-712结构化数据支持、检测原始hex签名提示、"
+            "验证EIP-7730清晰签名清单是否存在、分析用户能否验证交易内容. "
+            "基于Trail of Bits EIP-7730研究和Bybit 15亿美元黑客攻击分析."
+        ),
+        "tags":    ["web3", "blind-signing", "eip-712", "eip-7730", "wallet", "bybit", "signing"],
+        "module":  "web3",
+        "code": '''
+import re, json, urllib.request, urllib.parse
+from urllib.error import URLError
+
+target = "{target}"
+print("=" * 70)
+print("  [EIP-7730] 블라인드 서명 취약점 감사")
+print(f"  대상: {target}")
+print("=" * 70)
+
+issues = []
+checks_passed = []
+
+# 1. DApp JS 번들에서 서명 관련 코드 패턴 분석
+print("\\n[*] 서명 패턴 분석 중...")
+try:
+    headers = {"User-Agent": "Mozilla/5.0 (bingo-security-scanner)"}
+    req = urllib.request.Request(target, headers=headers)
+    resp = urllib.request.urlopen(req, timeout=10)
+    html = resp.read().decode("utf-8", errors="ignore")
+
+    # EIP-712 signTypedData 사용 여부
+    if "signTypedData" in html or "eth_signTypedData_v4" in html:
+        checks_passed.append("EIP-712 signTypedData 감지됨 (구조화 서명 사용 중)")
+    else:
+        issues.append({
+            "severity": "HIGH",
+            "title": "EIP-712 미사용",
+            "detail": "eth_sign 또는 personal_sign만 사용 — 사용자에게 raw hex 표시됨",
+            "fix": "eth_signTypedData_v4 (EIP-712) 구현 권장"
+        })
+
+    # eth_sign (가장 위험한 방식) 사용 여부
+    if "eth_sign" in html and "signTypedData" not in html:
+        issues.append({
+            "severity": "CRITICAL",
+            "title": "eth_sign 블라인드 서명 감지",
+            "detail": "eth_sign은 임의 데이터에 서명 가능 — 피싱 최적 타겟",
+            "fix": "eth_signTypedData_v4로 마이그레이션 필수"
+        })
+
+    # EIP-7730 레지스트리 참조 여부
+    if "erc7730" in html.lower() or "clear-signing" in html.lower():
+        checks_passed.append("EIP-7730 클리어 사이닝 참조 감지")
+    else:
+        issues.append({
+            "severity": "MEDIUM",
+            "title": "EIP-7730 미구현",
+            "detail": "하드웨어 지갑에서 트랜잭션 내용을 사람이 읽을 수 있는 형태로 표시 불가",
+            "fix": "https://get-clear-signed.ledger.com/ 에서 EIP-7730 매니페스트 생성"
+        })
+
+    # delegatecall operation 타입 노출 여부 (Bybit 패턴)
+    if "operation" in html and ("delegatecall" in html.lower() or "operationType" in html):
+        issues.append({
+            "severity": "CRITICAL",
+            "title": "Safe 멀티시그 Operation 타입 노출 (Bybit 패턴)",
+            "detail": "operation 파라미터가 사용자에게 명확히 표시되지 않아 0(call)→1(delegatecall) 조작 가능",
+            "fix": "web3-safe-multisig-optype 스킬로 심층 분석 권장"
+        })
+
+    # 슬리피지/deadline 파라미터 UX 노출
+    if "amountOutMin" in html or "slippage" in html.lower():
+        checks_passed.append("슬리피지 보호 파라미터 감지 (amountOutMin/slippage)")
+
+except URLError as e:
+    print(f"  [!] 연결 실패: {e}")
+
+# 2. EIP-7730 레지스트리에 등록 여부 확인
+print("\\n[*] EIP-7730 Ledger 레지스트리 확인...")
+try:
+    domain = urllib.parse.urlparse(target).netloc.replace("www.", "")
+    registry_url = f"https://raw.githubusercontent.com/LedgerHQ/clear-signing-erc7730-registry/main/registry/{domain}.json"
+    urllib.request.urlopen(registry_url, timeout=5)
+    checks_passed.append(f"EIP-7730 레지스트리 등록 확인: {domain}")
+except Exception:
+    issues.append({
+        "severity": "MEDIUM",
+        "title": "EIP-7730 레지스트리 미등록",
+        "detail": f"{domain}이 Ledger ERC-7730 레지스트리에 등록되지 않음",
+        "fix": "https://github.com/LedgerHQ/clear-signing-erc7730-registry 에 PR 제출"
+    })
+
+# 결과 출력
+print("\\n" + "=" * 70)
+print("  감사 결과")
+print("=" * 70)
+
+if checks_passed:
+    print("\\n[✓] 통과:")
+    for c in checks_passed:
+        print(f"  ✓ {c}")
+
+if issues:
+    print(f"\\n[!] 발견된 이슈 ({len(issues)}개):")
+    for i, issue in enumerate(issues, 1):
+        print(f"\\n  [{issue['severity']}] {i}. {issue['title']}")
+        print(f"       상세: {issue['detail']}")
+        print(f"       수정: {issue['fix']}")
+else:
+    print("\\n[OK] 블라인드 서명 이슈 없음")
+
+print(f"\\n[*] 참고: Trail of Bits EIP-7730 — https://blog.trailofbits.com/2025/08/27/implement-eip-7730-today/")
+''',
+    },
+
+    # ── 22. Safe 멀티시그 Operation 타입 조작 (Bybit 벡터) ────────────────
+    "web3-safe-multisig-optype": {
+        "id":          "web3-safe-multisig-optype",
+        "name":        "Safe Multisig Operation-Type Tampering (Bybit Vector)",
+        "name_ko":     "Safe 멀티시그 Operation 타입 조작 감지 (Bybit 1.5조 해킹 벡터)",
+        "name_zh":     "Safe多签Operation类型篡改检测 (Bybit15亿攻击向量)",
+        "description": (
+            "Detects the Bybit-style attack vector where Safe multisig operation type "
+            "is tampered from 0 (call) to 1 (delegatecall). "
+            "Audits Safe contract integration: verifies operation type visibility in UI, "
+            "checks EIP-712 domain includes operation field, "
+            "detects if 'data' parameter calldata is decoded for users. "
+            "Source: Bybit $1.5B hack (Feb 2025), Trail of Bits EIP-7730 analysis."
+        ),
+        "description_ko": (
+            "Safe 멀티시그에서 operation 타입이 0(일반 call)에서 1(delegatecall)로 "
+            "변조되는 Bybit 스타일 공격 벡터 감지. "
+            "Safe 컨트랙트 통합 감사: UI에서 operation 타입 가시성 확인, "
+            "EIP-712 도메인에 operation 필드 포함 여부, "
+            "'data' 파라미터 calldata가 사용자에게 디코딩되는지 확인. "
+            "출처: Bybit 15억 달러 해킹(2025년 2월), Trail of Bits EIP-7730 분석."
+        ),
+        "description_zh": (
+            "检测Safe多签中operation类型从0(普通call)篡改为1(delegatecall)的Bybit式攻击向量. "
+            "Safe合约集成审计: 验证UI中operation类型可见性、"
+            "检查EIP-712域是否包含operation字段、验证'data'参数calldata是否向用户解码. "
+            "来源: Bybit 15亿美元黑客攻击(2025年2月)、Trail of Bits EIP-7730分析."
+        ),
+        "tags":    ["web3", "safe", "multisig", "delegatecall", "bybit", "eip-712", "operation-type"],
+        "module":  "web3",
+        "code": '''
+import re, urllib.request
+from urllib.error import URLError
+
+target = "{target}"
+print("=" * 70)
+print("  [Bybit Vector] Safe 멀티시그 Operation 타입 조작 감지")
+print(f"  대상: {target}")
+print("=" * 70)
+
+print("""
+[*] Bybit 해킹 벡터 설명 (2025년 2월, 피해액 $1.5B):
+  - 공격자가 Safe 멀티시그 서명 데이터 위조
+  - EIP-712 구조: to, value, data, operation, safeTxGas, ...
+  - operation: 0 = 일반 call, 1 = delegatecall
+  - 피해: operation 0→1 변조 + destination 주소 교체
+  - 서명자들은 operation 타입 변화를 하드웨어 지갑에서 확인 불가
+  - EIP-712는 구조 제공하지만 nested calldata 디코딩 불가
+  - EIP-7730만이 이를 사람이 읽을 수 있는 형태로 표시 가능
+""")
+
+issues = []
+
+try:
+    headers = {"User-Agent": "Mozilla/5.0 (bingo-security-scanner)"}
+    req = urllib.request.Request(target, headers=headers)
+    resp = urllib.request.urlopen(req, timeout=10)
+    html = resp.read().decode("utf-8", errors="ignore")
+
+    # Safe 관련 코드 존재 여부
+    safe_detected = any(kw in html for kw in [
+        "GnosisSafe", "gnosis-safe", "@safe-global",
+        "SafeTransaction", "execTransaction", "safe-core-sdk",
+        "safe-ethers-lib", "isValidSignature"
+    ])
+
+    if safe_detected:
+        print("[!] Safe 멀티시그 통합 감지됨 — 심층 분석 시작")
+
+        # operation 타입 UI 노출 여부
+        if "operation" not in html.lower() or (
+            "Operation" not in html and "DELEGATE_CALL" not in html
+        ):
+            issues.append({
+                "severity": "CRITICAL",
+                "title": "Operation 타입 UI 미표시",
+                "detail": "Safe 트랜잭션의 operation 타입(0=call, 1=delegatecall)이 UI에 표시되지 않음",
+                "fix": "operation 타입을 명시적으로 표시 (0: 'Standard Call', 1: 'DANGER: Delegate Call')"
+            })
+
+        # data 파라미터 디코딩 여부
+        if "decodeCalldata" not in html and "parseCalldata" not in html and "decodeFunctionData" not in html:
+            issues.append({
+                "severity": "HIGH",
+                "title": "calldata 미디코딩",
+                "detail": "Safe 트랜잭션의 'data' 파라미터가 사람이 읽을 수 있는 형태로 디코딩되지 않음",
+                "fix": "ethers.js Interface.parseTransaction() 또는 4byte.directory API로 calldata 디코딩"
+            })
+
+        # EIP-7730 구현 여부
+        if "erc7730" not in html.lower() and "clear-signing" not in html.lower():
+            issues.append({
+                "severity": "HIGH",
+                "title": "EIP-7730 미구현",
+                "detail": "하드웨어 지갑에서 Safe 트랜잭션 내용 검증 불가",
+                "fix": "EIP-7730 매니페스트 구현으로 하드웨어 지갑에서 클리어 사이닝 활성화"
+            })
+
+    else:
+        print("[*] Safe 멀티시그 직접 통합 미감지 — 일반 서명 패턴 분석")
+
+    # 일반 delegatecall 패턴
+    if "delegatecall" in html.lower():
+        issues.append({
+            "severity": "HIGH",
+            "title": "delegatecall 참조 감지",
+            "detail": "프론트엔드에서 delegatecall 참조 — 스토리지 슬롯 충돌 위험",
+            "fix": "delegatecall 사용 컨트랙트 SWC-112 감사 권장"
+        })
+
+except URLError as e:
+    print(f"  [!] 연결 실패: {e}")
+
+# 결과
+print("\\n" + "=" * 70)
+print("  감사 결과")
+print("=" * 70)
+
+if issues:
+    for i, issue in enumerate(issues, 1):
+        print(f"\\n  [{issue['severity']}] {i}. {issue['title']}")
+        print(f"       상세: {issue['detail']}")
+        print(f"       수정: {issue['fix']}")
+else:
+    print("\\n[OK] Bybit-style 취약점 패턴 미감지")
+
+print(f"\\n[*] Bybit 해킹 분석: https://blog.trailofbits.com/2025/08/27/implement-eip-7730-today/")
+print(f"[*] Safe 컨트랙트 소스: https://github.com/safe-global/safe-contracts")
+''',
+    },
+
+    # ── 23. DApp 프론트엔드 JS 코드 인젝션 (EtherDelta 패턴) ──────────────
+    "web3-frontend-injection": {
+        "id":          "web3-frontend-injection",
+        "name":        "DApp Frontend JavaScript Injection (Address Swapping)",
+        "name_ko":     "DApp 프론트엔드 JS 인젝션 / 주소 스와핑 (EtherDelta 패턴)",
+        "name_zh":     "DApp前端JavaScript注入/地址替换 (EtherDelta模式)",
+        "description": (
+            "Tests DApp frontend for JavaScript code injection vulnerabilities "
+            "that allow wallet address swapping. "
+            "Classic attack: inject JS to replace target address in transaction, "
+            "redirect funds to attacker wallet. "
+            "Checks CSP headers, SRI integrity, CDN dependency risks, "
+            "DOM-based address manipulation, supply chain via npm packages. "
+            "Based on EtherDelta 2017 hack pattern (HackerNoon research)."
+        ),
+        "description_ko": (
+            "DApp 프론트엔드 JS 코드 인젝션 취약점 테스트. "
+            "지갑 주소 스와핑을 통한 자금 탈취 — 클래식 공격 패턴: "
+            "JS 인젝션으로 트랜잭션의 목적지 주소를 공격자 지갑으로 교체. "
+            "CSP 헤더, SRI 무결성, CDN 의존성 위험, DOM 기반 주소 조작, "
+            "npm 공급망 취약점 검사. EtherDelta 2017 해킹 패턴 기반."
+        ),
+        "description_zh": (
+            "测试DApp前端JavaScript代码注入漏洞导致的钱包地址替换. "
+            "经典攻击: 注入JS将交易目标地址替换为攻击者钱包. "
+            "检查CSP头部、SRI完整性、CDN依赖风险、DOM地址操作、npm供应链漏洞. "
+            "基于EtherDelta 2017黑客攻击模式."
+        ),
+        "tags":    ["web3", "frontend", "injection", "xss", "csp", "sri", "address-swap", "etherdelta"],
+        "module":  "web3",
+        "code": '''
+import re, urllib.request
+from urllib.error import URLError
+
+target = "{target}"
+print("=" * 70)
+print("  [EtherDelta Pattern] DApp 프론트엔드 JS 인젝션 감사")
+print(f"  대상: {target}")
+print("=" * 70)
+
+print("""
+[*] EtherDelta 해킹 패턴 (2017):
+  - DNS 하이재킹 + 악성 JS 인젝션
+  - 트랜잭션 주소 필드를 공격자 주소로 DOM 조작
+  - 사용자는 MetaMask 팝업에서 이미 바뀐 주소 서명
+  - 이더리움 주소 검증 없이 UI 신뢰하는 사용자 피해
+  - 현대적 변형: CDN 공급망 공격, npm 악성 패키지
+""")
+
+issues = []
+checks_passed = []
+
+try:
+    headers = {"User-Agent": "Mozilla/5.0 (bingo-security-scanner)"}
+    req = urllib.request.Request(target, headers=headers)
+    resp = urllib.request.urlopen(req, timeout=10)
+    html = resp.read().decode("utf-8", errors="ignore")
+    response_headers = dict(resp.headers)
+
+    # 1. CSP (Content-Security-Policy) 헤더 확인
+    csp = response_headers.get("Content-Security-Policy", "") or response_headers.get("content-security-policy", "")
+    if csp:
+        checks_passed.append(f"CSP 헤더 존재: {csp[:80]}...")
+        if "unsafe-inline" in csp or "unsafe-eval" in csp:
+            issues.append({
+                "severity": "HIGH",
+                "title": "CSP unsafe-inline/unsafe-eval 허용",
+                "detail": "CSP에서 인라인 스크립트 허용 — XSS 완화 효과 없음",
+                "fix": "nonce 또는 hash 기반 CSP로 교체, unsafe-inline 제거"
+            })
+        if "*" in csp.split("script-src")[1:2]:
+            issues.append({
+                "severity": "CRITICAL",
+                "title": "CSP script-src 와일드카드",
+                "detail": "모든 도메인에서 스크립트 로드 허용",
+                "fix": "신뢰할 수 있는 도메인만 명시적으로 허용"
+            })
+    else:
+        issues.append({
+            "severity": "HIGH",
+            "title": "CSP 헤더 없음",
+            "detail": "Content-Security-Policy 미설정 — XSS/인젝션 무방비",
+            "fix": "엄격한 CSP 정책 설정 필수"
+        })
+
+    # 2. SRI (Subresource Integrity) 확인
+    external_scripts = re.findall(r'<script[^>]+src=["\']https?://(?!(?:localhost|127\.0\.0\.1))[^"\']+["\']', html)
+    sri_scripts = re.findall(r'<script[^>]+integrity=["\'][^"\']+["\']', html)
+
+    if external_scripts:
+        if len(sri_scripts) < len(external_scripts):
+            missing_sri = len(external_scripts) - len(sri_scripts)
+            issues.append({
+                "severity": "HIGH",
+                "title": f"SRI 미적용 외부 스크립트 {missing_sri}개",
+                "detail": "CDN 스크립트에 integrity 속성 없음 — 공급망 공격에 취약",
+                "fix": "모든 외부 스크립트에 integrity='sha384-...' crossorigin='anonymous' 추가"
+            })
+        else:
+            checks_passed.append(f"SRI 적용된 외부 스크립트: {len(sri_scripts)}개")
+
+    # 3. 위험한 CDN 소스 확인
+    dangerous_cdns = re.findall(
+        r'src=["\'](https?://(?:cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)[^"\']*)["\']',
+        html
+    )
+    if dangerous_cdns:
+        for cdn in dangerous_cdns[:3]:
+            issues.append({
+                "severity": "MEDIUM",
+                "title": f"외부 CDN 의존성: {cdn[:60]}",
+                "detail": "공급망 공격 위험 — CDN 계정 탈취 시 악성 코드 배포 가능",
+                "fix": "SRI 해시 추가 또는 의존성 자체 호스팅"
+            })
+
+    # 4. DOM 기반 주소 조작 패턴
+    dom_risky = re.findall(
+        r'(?:innerHTML|outerHTML|document\.write)\s*[+=]\s*[^;]{0,100}(?:address|addr|wallet)',
+        html, re.I
+    )
+    if dom_risky:
+        issues.append({
+            "severity": "CRITICAL",
+            "title": "DOM에 지갑 주소 동적 삽입 감지",
+            "detail": f"주소 관련 innerHTML/document.write 패턴: {dom_risky[0][:80]}",
+            "fix": "textContent 사용, XSS 방지 인코딩 적용"
+        })
+
+    # 5. 이더리움 주소 직접 하드코딩 (실수 가능성)
+    eth_addresses = re.findall(r'0x[0-9a-fA-F]{40}', html)
+    if len(eth_addresses) > 5:
+        checks_passed.append(f"이더리움 주소 {len(eth_addresses)}개 감지 — 수동 검증 권장")
+
+    # 6. eval() 사용
+    if re.search(r'\\beval\\s*\\(', html):
+        issues.append({
+            "severity": "HIGH",
+            "title": "eval() 사용 감지",
+            "detail": "동적 코드 실행 — 공격자 JS 실행 가능",
+            "fix": "eval() 제거, JSON.parse() 또는 정적 코드로 대체"
+        })
+
+except URLError as e:
+    print(f"  [!] 연결 실패: {e}")
+
+# 결과
+print("\\n" + "=" * 70)
+print("  감사 결과")
+print("=" * 70)
+
+if checks_passed:
+    print("\\n[✓] 통과:")
+    for c in checks_passed:
+        print(f"  ✓ {c}")
+
+if issues:
+    print(f"\\n[!] 발견된 이슈 ({len(issues)}개):")
+    for i, issue in enumerate(issues, 1):
+        print(f"\\n  [{issue['severity']}] {i}. {issue['title']}")
+        print(f"       상세: {issue['detail']}")
+        print(f"       수정: {issue['fix']}")
+else:
+    print("\\n[OK] 프론트엔드 인젝션 취약점 미감지")
+''',
+    },
+
+    # ── 24. 약한 온체인 무작위성 (SWC-120) ───────────────────────────────
+    "web3-weak-randomness": {
+        "id":          "web3-weak-randomness",
+        "name":        "Weak On-Chain Randomness (SWC-120)",
+        "name_ko":     "SWC-120 약한 온체인 무작위성 (block.timestamp/blockhash 예측)",
+        "name_zh":     "SWC-120弱链上随机性 (block.timestamp/blockhash可预测)",
+        "description": (
+            "Detects SWC-120 weak randomness vulnerabilities in Solidity contracts. "
+            "Identifies use of block.timestamp, block.number, blockhash, block.difficulty "
+            "as entropy sources for randomness. "
+            "These values are predictable by miners/validators and exploitable. "
+            "Common in NFT minting (rarity), lotteries, gambling DApps. "
+            "Source: Cyfrin Smart Contract Auditor Roadmap."
+        ),
+        "description_ko": (
+            "솔리디티 컨트랙트의 SWC-120 약한 무작위성 취약점 감지. "
+            "block.timestamp, block.number, blockhash, block.difficulty를 "
+            "무작위성 소스로 사용하는 패턴 식별 — 마이너/검증자가 예측/조작 가능. "
+            "NFT 민팅(희귀도), 복권, 도박 DApp에서 흔히 발생. "
+            "출처: Cyfrin 스마트 컨트랙트 감사자 로드맵."
+        ),
+        "description_zh": (
+            "检测Solidity合约中的SWC-120弱随机性漏洞. "
+            "识别使用block.timestamp、block.number、blockhash、block.difficulty作为随机数源的模式 "
+            "— 矿工/验证者可预测/操纵. "
+            "常见于NFT铸造(稀有度)、彩票、赌博DApp. "
+            "来源: Cyfrin智能合约审计师路线图."
+        ),
+        "tags":    ["web3", "randomness", "swc-120", "blockhash", "timestamp", "nft", "lottery", "gambling"],
+        "module":  "web3",
+        "code": '''
+import re
+
+target = "{target}"
+# target이 URL이면 소스 가져오기, 아니면 Solidity 코드로 처리
+print("=" * 70)
+print("  [SWC-120] 약한 온체인 무작위성 취약점 분석")
+print(f"  입력: {target[:80]}")
+print("=" * 70)
+
+print("""
+[*] SWC-120: 약한 무작위성 소스
+  - block.timestamp: 마이너가 ±15초 조작 가능
+  - block.number: 예측 가능
+  - blockhash(block.number - 1): 마이너가 블록 버릴 수 있음
+  - block.difficulty (PoW) / prevrandao (PoS): PoS에서 RANDAO 바이어스 공격 가능
+  - tx.origin, msg.sender, address(this): 완전히 예측 가능
+
+[*] 실제 피해 사례:
+  - Fomo3D, SmartBillions 등 복권 DApp 해킹
+  - NFT 프로젝트에서 희귀 아이템 민팅 예측 공격
+""")
+
+# Solidity 코드 분석 (URL이면 URL 그대로, 소스코드면 직접 분석)
+code = target
+
+weak_patterns = [
+    ("block.timestamp % N", r'block\\.timestamp\\s*%\\s*\\d+', "CRITICAL",
+     "타임스탬프 모듈로 연산 — 마이너가 결과 조작 가능"),
+    ("blockhash 사용", r'blockhash\\s*\\(', "HIGH",
+     "blockhash는 마이너가 원하는 결과 나올 때까지 블록 버릴 수 있음"),
+    ("block.number as random", r'block\\.number\\s*%', "HIGH",
+     "블록 번호는 완전히 예측 가능"),
+    ("block.difficulty/prevrandao", r'block\\.(difficulty|prevrandao)', "HIGH",
+     "PoS prevrandao는 RANDAO 바이어스 공격에 취약"),
+    ("keccak(block.timestamp)", r'keccak256\\s*\\([^)]*block\\.timestamp', "CRITICAL",
+     "해시 랩핑해도 예측 가능성 제거 안 됨"),
+    ("keccak(abi.encode(block))", r'keccak256\\s*\\([^)]*abi\\.encode[^)]*block\\.', "HIGH",
+     "블록 변수 조합 해시도 마이너 조작 가능"),
+    ("uint(address(this))", r'uint\\s*\\(\\s*address\\s*\\(\\s*this\\s*\\)', "CRITICAL",
+     "컨트랙트 주소는 배포 전 계산 가능"),
+    ("tx.origin entropy", r'uint\\s*\\(\\s*tx\\.origin\\s*\\)', "HIGH",
+     "tx.origin은 공격자가 선택 가능"),
+]
+
+findings = []
+for name, pattern, severity, detail in weak_patterns:
+    if re.search(pattern, code):
+        findings.append({"name": name, "severity": severity, "detail": detail})
+
+# 안전한 패턴 확인
+safe_patterns = []
+if "VRFConsumerBase" in code or "VRFCoordinatorV2" in code:
+    safe_patterns.append("Chainlink VRF 사용 감지 ✓")
+if "requestRandomWords" in code:
+    safe_patterns.append("Chainlink VRF requestRandomWords 감지 ✓")
+if "commit-reveal" in code.lower() or "commitment" in code.lower():
+    safe_patterns.append("Commit-reveal 패턴 감지 ✓")
+
+print("\\n[*] 분석 결과:")
+if safe_patterns:
+    print("\\n[✓] 안전한 무작위성 패턴:")
+    for sp in safe_patterns:
+        print(f"  ✓ {sp}")
+
+if findings:
+    print(f"\\n[!] 취약점 발견 ({len(findings)}개):")
+    for f in findings:
+        print(f"\\n  [{f['severity']}] {f['name']}")
+        print(f"       위험: {f['detail']}")
+else:
+    if not safe_patterns:
+        print("  [*] 명시적 무작위성 패턴 미감지 (URL 타겟인 경우 Solidity 소스 직접 제공 권장)")
+    else:
+        print("\\n[OK] 약한 무작위성 취약점 미감지")
+
+print("""
+[*] 권장 해결책:
+  1. Chainlink VRF v2: https://docs.chain.link/vrf
+  2. Commit-Reveal 스킴 (중앙화 없는 경우)
+  3. RANDAO (Ethereum PoS) — RANDAO+commit-reveal 조합으로 강화 가능
+
+[*] 참고: SWC-120 https://swcregistry.io/docs/SWC-120/
+""")
+''',
+    },
+
+    # ── 25. 가스 한도 DoS (SWC-128) ──────────────────────────────────────
+    "web3-dos-gas-limit": {
+        "id":          "web3-dos-gas-limit",
+        "name":        "Gas Limit DoS / Unbounded Loop Vulnerability (SWC-128)",
+        "name_ko":     "SWC-128 가스 한도 DoS / 무한 루프 / 외부 의존 DoS",
+        "name_zh":     "SWC-128 Gas限制DoS/无限循环/外部依赖DoS",
+        "description": (
+            "Detects SWC-128 gas limit DoS vulnerabilities: "
+            "unbounded loops over dynamic arrays (user-controlled size), "
+            "external call in loop (griefing via gas exhaustion), "
+            "transfer() / send() gas forwarding restriction (2300 gas limit), "
+            "push payment pattern causing pull payment failures. "
+            "Also checks for unexpected revert DoS where one failing external call "
+            "blocks entire function. Source: Cyfrin auditor roadmap."
+        ),
+        "description_ko": (
+            "SWC-128 가스 한도 DoS 취약점 감지: "
+            "동적 배열의 무한 루프 (사용자 제어 크기), "
+            "루프 내 외부 호출 (가스 소진 그리핑 공격), "
+            "transfer()/send() 2300 가스 제한 문제, "
+            "푸시 결제 패턴으로 인한 풀 결제 실패. "
+            "예상치 못한 revert DoS — 외부 호출 실패 시 전체 함수 차단. "
+            "출처: Cyfrin 감사자 로드맵."
+        ),
+        "description_zh": (
+            "检测SWC-128 Gas限制DoS漏洞: "
+            "动态数组的无限循环(用户控制大小)、循环中的外部调用(Gas耗尽griefing攻击)、"
+            "transfer()/send()的2300 Gas限制问题、推送支付模式导致拉取支付失败. "
+            "意外revert DoS — 外部调用失败时整个函数被阻塞. "
+            "来源: Cyfrin审计师路线图."
+        ),
+        "tags":    ["web3", "dos", "gas-limit", "swc-128", "unbounded-loop", "griefing", "denial-of-service"],
+        "module":  "web3",
+        "code": '''
+import re
+
+target = "{target}"
+print("=" * 70)
+print("  [SWC-128] 가스 한도 DoS 취약점 분석")
+print(f"  입력: {target[:80]}")
+print("=" * 70)
+
+print("""
+[*] SWC-128 DoS 패턴:
+  1. 무한 루프: for(uint i=0; i<users.length; i++) — users가 공격자 제어 시 OOG
+  2. 루프 내 외부 호출: 하나의 실패로 전체 배치 실패
+  3. 가스 스팁 제한: transfer()/send()는 2300 가스만 — receive()가 복잡하면 실패
+  4. 예상치 못한 revert: 블랙리스트된 주소 하나가 배치 전송 차단
+""")
+
+code = target
+findings = []
+
+patterns = [
+    ("무한 루프 (동적 배열)", r'for\s*\([^)]*\.\s*length', "HIGH",
+     "배열 크기를 공격자가 늘려 가스 소진 가능 — 루프 외부에서 length 저장"),
+    ("루프 내 외부 call", r'for[^{]*\{[^}]*\.call\s*\{', "HIGH",
+     "하나의 실패한 call이 전체 배치 차단 가능"),
+    ("루프 내 transfer", r'for[^{]*\{[^}]*\.transfer\s*\(', "HIGH",
+     "transfer는 2300가스 — 수신자가 가스 더 필요한 receive() 가질 경우 DoS"),
+    ("루프 내 send", r'for[^{]*\{[^}]*\.send\s*\(', "MEDIUM",
+     "send 실패 무시 — 자금 손실 가능"),
+    ("push 결제 패턴", r'(?:payable|transfer|send)\s*\([^)]*\)\s*(?:;|\})', "MEDIUM",
+     "pull 결제 패턴으로 변경 권장"),
+    ("가스 없는 외부 call", r'\.call\s*\(\s*\"\"\s*\)', "HIGH",
+     "가스 제한 없는 call — 재진입 및 DoS 위험"),
+    ("address.transfer 사용", r'(?<!\w)\.transfer\s*\(', "MEDIUM",
+     "EIP-1884 이후 2300 가스 부족 케이스 증가 — .call{value:}() 권장"),
+]
+
+for name, pattern, severity, detail in patterns:
+    if re.search(pattern, code, re.DOTALL):
+        findings.append({"name": name, "severity": severity, "detail": detail})
+
+# 안전 패턴 확인
+safe_patterns = []
+if "ReentrancyGuard" in code:
+    safe_patterns.append("ReentrancyGuard 감지")
+if re.search(r'mapping\s*\([^)]*\)\s*\w+\s+pending', code):
+    safe_patterns.append("Pull payment 패턴 감지 (mapping pending)")
+if "PullPayment" in code or "withdrawPayments" in code:
+    safe_patterns.append("OpenZeppelin PullPayment 감지")
+
+print("\\n[*] 분석 결과:")
+if safe_patterns:
+    print("\\n[✓] 안전 패턴:")
+    for sp in safe_patterns:
+        print(f"  ✓ {sp}")
+
+if findings:
+    print(f"\\n[!] DoS 취약점 발견 ({len(findings)}개):")
+    for f in findings:
+        print(f"\\n  [{f['severity']}] {f['name']}")
+        print(f"       위험: {f['detail']}")
+else:
+    print("\\n[OK] 가스 한도 DoS 패턴 미감지")
+
+print("""
+[*] 권장 해결책:
+  1. 무한 루프 → 페이지네이션 또는 오프체인 처리
+  2. push → pull 결제 패턴 (OpenZeppelin PullPayment)
+  3. transfer/send → .call{value: amount}("") + 반환값 확인
+  4. 루프 내 외부 호출 → try/catch로 개별 실패 처리
+
+[*] SWC-128: https://swcregistry.io/docs/SWC-128/
+""")
 ''',
     },
 }

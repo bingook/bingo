@@ -28,7 +28,7 @@ from .skills_data13 import SKILLS_DB_13, MODULE_INDEX_13, TAG_INDEX_13
 from .skills_data14 import SKILLS_DB_14, MODULE_INDEX_14, TAG_INDEX_14
 from .skills_data15 import SKILLS_DB_15, MODULE_INDEX_15, TAG_INDEX_15
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH + Nuxt.js + Next.js/React + DApp/Web3/SmartContract — v3.2.60)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH + Nuxt.js + Next.js/React + DApp/Web3/SmartContract[25] — v3.2.61)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,

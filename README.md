@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.61-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.62-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -560,9 +560,9 @@ bingo detects reflected and stored XSS automatically:
 
 ---
 
-## DApp / Web3 / Smart Contract Audit (v3.2.61)
+## DApp / Web3 / Smart Contract Audit (v3.2.62)
 
-bingo now includes **25 dedicated DApp/Web3/Smart Contract audit skills** — auto-triggered when Web3 keywords are detected.
+bingo now includes **28 dedicated DApp/Web3/Smart Contract audit skills** — auto-triggered when Web3 keywords are detected.
 
 ### Auto-trigger Keywords
 
@@ -576,9 +576,10 @@ No extra command needed — just describe your DApp target.
 bingo> audit https://app.uniswap.org smart contract
 bingo> https://defi-target.com reentrancy vulnerability check
 bingo> analyze solidity contract for flash loan attack
+bingo> dapp pentest https://app.example.com  # auto wallet generation + SIWE login
 ```
 
-### DApp Audit Skills (25 total)
+### DApp Audit Skills (28 total)
 
 | # | Skill ID | What it does |
 |---|----------|-------------|
@@ -602,11 +603,14 @@ bingo> analyze solidity contract for flash loan attack
 | 18 | `web3-nft-metadata-ssrf` | NFT metadata SSRF / URI manipulation |
 | 19 | `web3-defi-full-pipeline` | Full DeFi attack pipeline (auto-selected) |
 | 20 | `web3-contract-audit` | Smart contract comprehensive audit report |
-| 21 | `web3-blind-signing-audit` | **[NEW]** EIP-712/7730 blind signing audit (Trail of Bits / Bybit pattern) |
-| 22 | `web3-safe-multisig-optype` | **[NEW]** Safe multisig operation-type tampering (Bybit $1.5B hack vector) |
-| 23 | `web3-frontend-injection` | **[NEW]** DApp frontend JS injection / address swapping (EtherDelta pattern) |
-| 24 | `web3-weak-randomness` | **[NEW]** SWC-120 weak on-chain randomness (block.timestamp/blockhash predictable) |
-| 25 | `web3-dos-gas-limit` | **[NEW]** SWC-128 gas limit DoS / unbounded loop / external dependency DoS |
+| 21 | `web3-blind-signing-audit` | EIP-712/7730 blind signing audit (Trail of Bits / Bybit pattern) |
+| 22 | `web3-safe-multisig-optype` | Safe multisig operation-type tampering (Bybit $1.5B hack vector) |
+| 23 | `web3-frontend-injection` | DApp frontend JS injection / address swapping (EtherDelta pattern) |
+| 24 | `web3-weak-randomness` | SWC-120 weak on-chain randomness (block.timestamp/blockhash predictable) |
+| 25 | `web3-dos-gas-limit` | SWC-128 gas limit DoS / unbounded loop / external dependency DoS |
+| 26 | `web3-wallet-gen` | **[v3.2.62]** Instantly generate a test Ethereum wallet (address + private key) |
+| 27 | `web3-siwe-auth` | **[v3.2.62]** Sign-In with Ethereum (EIP-4361) — auto DApp login |
+| 28 | `web3-dapp-full-auth` | **[v3.2.62]** Wallet gen → SIWE login → session token → full API pentest pipeline |
 
 ### Key Vulnerability Coverage
 
@@ -618,14 +622,49 @@ bingo> analyze solidity contract for flash loan attack
 | Delegatecall Collision | SWC-112 | HIGH | ✅ |
 | Signature Replay | SWC-121 | HIGH | ✅ |
 | Timestamp Dependence | SWC-116 | MEDIUM | ✅ |
-| Weak Randomness | SWC-120 | HIGH | ✅ *new* |
-| Gas Limit DoS | SWC-128 | HIGH | ✅ *new* |
-| Blind Signing (EIP-7730) | — | HIGH | ✅ *new* |
-| Safe Op-Type Tampering | — | CRITICAL | ✅ *new* (Bybit vector) |
-| Frontend JS Injection | — | CRITICAL | ✅ *new* (EtherDelta pattern) |
+| Weak Randomness | SWC-120 | HIGH | ✅ |
+| Gas Limit DoS | SWC-128 | HIGH | ✅ |
+| Blind Signing (EIP-7730) | — | HIGH | ✅ |
+| Safe Op-Type Tampering | — | CRITICAL | ✅ (Bybit vector) |
+| Frontend JS Injection | — | CRITICAL | ✅ (EtherDelta pattern) |
 | Flash Loan Attack | — | CRITICAL | ✅ |
 | Oracle Manipulation | — | CRITICAL | ✅ |
 | NFT Metadata SSRF | — | HIGH | ✅ |
+| DApp Auth Bypass (SIWE) | — | HIGH | ✅ *new* |
+| IDOR/BOLA on Auth APIs | — | HIGH | ✅ *new* |
+
+### DApp Authentication — Wallet Generation + SIWE Login (v3.2.62)
+
+Most DApps require a wallet connection before any API access. bingo now handles this automatically:
+
+```
+bingo> pentest this DApp: https://app.target.com
+
+# bingo automatically:
+# 1. [web3-wallet-gen]      Generates a fresh test Ethereum wallet (no real funds)
+# 2. [web3-siwe-auth]       Signs EIP-4361 challenge → obtains session token
+# 3. [web3-dapp-full-auth]  Tests ALL authenticated API endpoints (IDOR/BOLA/privilege escalation)
+```
+
+**How it works:**
+
+```
+All DApp APIs → 401 Unauthorized (without wallet)
+                    ↓
+           bingo creates test wallet
+           Address: 0xAbCd... (new, empty)
+                    ↓
+       DApp sends sign challenge (EIP-4361)
+                    ↓
+       bingo signs with test wallet key
+                    ↓
+       Session token obtained → Bearer eyJ...
+                    ↓
+       bingo fuzzes ALL authenticated endpoints
+       → IDOR / BOLA / privilege escalation testing
+```
+
+> ⚠️ **Safety**: bingo generates a **brand-new test wallet** with zero funds. No existing wallet or private key is ever required. Never send real ETH/tokens to the generated test address.
 
 ### Blind Signing / EIP-7730 (Bybit $1.5B Attack Vector)
 
@@ -646,19 +685,21 @@ bingo's `web3-blind-signing-audit` and `web3-safe-multisig-optype` skills detect
        Fix: Submit JSON manifest to https://github.com/LedgerHQ/clear-signing-erc7730-registry
 ```
 
-### Example: DApp Audit
+### Example: DApp Full Pentest (with wallet auth)
 
 ```bash
-bingo> audit this DApp for smart contract vulnerabilities: https://defi-protocol.com
+# DApp that requires wallet login
+bingo> https://app.defi-protocol.com dapp pentest
 
 # bingo automatically:
-# 1. Detects DApp tech stack (ethers/wagmi/web3.js)
-# 2. Extracts contract addresses from JS bundles
-# 3. Fetches ABI from Etherscan
-# 4. Scans for SWC vulnerabilities
-# 5. Checks blind signing / EIP-7730 compliance
-# 6. Tests frontend for JS injection / address swapping
-# 7. Generates audit report with severity ratings
+# 1. Fingerprints DApp tech stack (ethers/wagmi/web3.js)
+# 2. Generates test wallet: 0xNewAddress... (TEST ONLY — no real funds)
+# 3. Performs SIWE login (EIP-4361) → gets session token
+# 4. Tests all authenticated endpoints for IDOR/BOLA
+# 5. Scans smart contracts for SWC vulnerabilities
+# 6. Checks EIP-7730 blind signing compliance
+# 7. Tests frontend for JS injection / address swapping
+# 8. Generates full pentest report with severity ratings
 ```
 
 ---
@@ -682,6 +723,7 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v3.2.62 | **DApp wallet auth** — test wallet generation, SIWE login (EIP-4361), full authenticated API pentest pipeline (28 skills total) |
 | v3.2.61 | **DApp/Web3 audit** — 25 smart contract skills, EIP-7730 blind signing, Bybit Safe op-type, frontend injection, SWC-120/128 |
 | v3.2.57 | Anti-hallucination labels (VERIFIED/LIKELY/INFERRED), Playwright JS detection, skill loading fixes |
 | v3.2.45 | **macOS/Linux only** — Windows support permanently discontinued |

@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-3.2.61-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.62-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -485,9 +485,9 @@ SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 
 ---
 
-## DApp / Web3 / 스마트 컨트랙트 감사 (v3.2.61)
+## DApp / Web3 / 스마트 컨트랙트 감사 (v3.2.62)
 
-bingo에 **DApp/Web3 전용 스킬 25개**가 추가되었습니다. Web3 관련 키워드가 감지되면 **자동으로 스킬이 로드**됩니다.
+bingo에 **DApp/Web3 전용 스킬 28개**가 추가되었습니다. Web3 관련 키워드가 감지되면 **자동으로 스킬이 로드**됩니다.
 
 ### 자동 트리거 키워드
 
@@ -501,9 +501,10 @@ bingo에 **DApp/Web3 전용 스킬 25개**가 추가되었습니다. Web3 관련
 bingo> https://app.uniswap.org 스마트 컨트랙트 감사해줘
 bingo> https://defi-target.com 재진입 취약점 확인
 bingo> 플래시론 공격 가능한지 분석해줘
+bingo> https://app.target.com dapp 침투 테스트  # 지갑 자동 생성 + SIWE 로그인
 ```
 
-### DApp 감사 스킬 (총 25개)
+### DApp 감사 스킬 (총 28개)
 
 | # | 스킬 ID | 설명 |
 |---|---------|------|
@@ -527,11 +528,14 @@ bingo> 플래시론 공격 가능한지 분석해줘
 | 18 | `web3-nft-metadata-ssrf` | NFT 메타데이터 SSRF / URI 조작 |
 | 19 | `web3-defi-full-pipeline` | DeFi 전체 공격 파이프라인 (자동 선택) |
 | 20 | `web3-contract-audit` | 스마트 컨트랙트 종합 감사 리포트 생성 |
-| 21 | `web3-blind-signing-audit` | **[신규]** EIP-712/7730 블라인드 서명 감사 (Trail of Bits / Bybit 패턴) |
-| 22 | `web3-safe-multisig-optype` | **[신규]** Safe 멀티시그 operation-type 조작 (Bybit 15억 달러 해킹 벡터) |
-| 23 | `web3-frontend-injection` | **[신규]** DApp 프론트엔드 JS 인젝션 / 주소 스와핑 (EtherDelta 패턴) |
-| 24 | `web3-weak-randomness` | **[신규]** SWC-120 약한 온체인 무작위성 (block.timestamp/blockhash 예측 가능) |
-| 25 | `web3-dos-gas-limit` | **[신규]** SWC-128 가스 한도 DoS / 무한 루프 / 외부 의존 DoS |
+| 21 | `web3-blind-signing-audit` | EIP-712/7730 블라인드 서명 감사 (Trail of Bits / Bybit 패턴) |
+| 22 | `web3-safe-multisig-optype` | Safe 멀티시그 operation-type 조작 (Bybit 15억 달러 해킹 벡터) |
+| 23 | `web3-frontend-injection` | DApp 프론트엔드 JS 인젝션 / 주소 스와핑 (EtherDelta 패턴) |
+| 24 | `web3-weak-randomness` | SWC-120 약한 온체인 무작위성 (block.timestamp/blockhash 예측 가능) |
+| 25 | `web3-dos-gas-limit` | SWC-128 가스 한도 DoS / 무한 루프 / 외부 의존 DoS |
+| 26 | `web3-wallet-gen` | **[v3.2.62 신규]** 테스트용 이더리움 지갑 즉시 생성 (주소 + 프라이빗 키) |
+| 27 | `web3-siwe-auth` | **[v3.2.62 신규]** Sign-In with Ethereum (EIP-4361) DApp 자동 로그인 |
+| 28 | `web3-dapp-full-auth` | **[v3.2.62 신규]** 지갑 생성 → SIWE 로그인 → 세션 토큰 → 인증 API 전체 침투 파이프라인 |
 
 ### 핵심 취약점 커버리지
 
@@ -543,14 +547,49 @@ bingo> 플래시론 공격 가능한지 분석해줘
 | Delegatecall 충돌 | SWC-112 | HIGH | ✅ |
 | 서명 재사용 | SWC-121 | HIGH | ✅ |
 | 타임스탬프 의존성 | SWC-116 | MEDIUM | ✅ |
-| 약한 무작위성 | SWC-120 | HIGH | ✅ *신규* |
-| 가스 한도 DoS | SWC-128 | HIGH | ✅ *신규* |
-| 블라인드 서명 (EIP-7730) | — | HIGH | ✅ *신규* |
-| Safe op-type 조작 | — | CRITICAL | ✅ *신규* (Bybit 벡터) |
-| 프론트엔드 JS 인젝션 | — | CRITICAL | ✅ *신규* (EtherDelta 패턴) |
+| 약한 무작위성 | SWC-120 | HIGH | ✅ |
+| 가스 한도 DoS | SWC-128 | HIGH | ✅ |
+| 블라인드 서명 (EIP-7730) | — | HIGH | ✅ |
+| Safe op-type 조작 | — | CRITICAL | ✅ (Bybit 벡터) |
+| 프론트엔드 JS 인젝션 | — | CRITICAL | ✅ (EtherDelta 패턴) |
 | 플래시론 공격 | — | CRITICAL | ✅ |
 | 오라클 조작 | — | CRITICAL | ✅ |
 | NFT 메타데이터 SSRF | — | HIGH | ✅ |
+| DApp 인증 우회 (SIWE) | — | HIGH | ✅ *신규* |
+| IDOR/BOLA (인증 API) | — | HIGH | ✅ *신규* |
+
+### DApp 지갑 인증 — 테스트 지갑 생성 + SIWE 로그인 (v3.2.62)
+
+대부분의 DApp은 지갑 연결 없이는 API에 접근할 수 없습니다 (`401 Unauthorized`). bingo는 이제 이 과정을 자동으로 처리합니다:
+
+```
+bingo> https://app.target.com dapp 침투 테스트
+
+# bingo 자동 실행:
+# 1. [web3-wallet-gen]      테스트용 이더리움 지갑 생성 (실제 자산 없음)
+# 2. [web3-siwe-auth]       EIP-4361 챌린지 서명 → 세션 토큰 획득
+# 3. [web3-dapp-full-auth]  인증된 모든 API 엔드포인트 테스트 (IDOR/BOLA/권한 상승)
+```
+
+**동작 원리:**
+
+```
+모든 DApp API → 401 Unauthorized (지갑 없음)
+                    ↓
+           bingo가 테스트 지갑 생성
+           주소: 0xAbCd... (새로 생성, 자산 없음)
+                    ↓
+       DApp이 서명 챌린지 전송 (EIP-4361)
+                    ↓
+       bingo가 테스트 지갑 키로 서명
+                    ↓
+       세션 토큰 획득 → Bearer eyJ...
+                    ↓
+       인증된 모든 엔드포인트 퍼징
+       → IDOR / BOLA / 권한 상승 테스트
+```
+
+> ⚠️ **안전**: bingo는 **새로운 테스트 전용 지갑**을 생성합니다. 실제 자산이 없는 빈 지갑이며, 사용자의 기존 지갑이나 프라이빗 키는 절대 필요하지 않습니다. 생성된 테스트 주소에 실제 ETH/토큰을 절대 입금하지 마세요.
 
 ### 블라인드 서명 / EIP-7730 (Bybit 해킹 벡터)
 
@@ -571,19 +610,21 @@ bingo의 `web3-blind-signing-audit`과 `web3-safe-multisig-optype` 스킬이 이
        수정: JSON 매니페스트를 https://github.com/LedgerHQ/clear-signing-erc7730-registry 에 제출
 ```
 
-### 사용 예시
+### 사용 예시 (지갑 인증 포함 전체 침투 테스트)
 
 ```bash
-bingo> https://defi-protocol.com 스마트 컨트랙트 전체 감사
+# 지갑 로그인이 필요한 DApp
+bingo> https://app.defi-protocol.com dapp 침투 테스트
 
 # bingo 자동 실행:
-# 1. DApp 기술 스택 감지 (ethers/wagmi/web3.js)
-# 2. JS 번들에서 컨트랙트 주소 추출
-# 3. Etherscan에서 ABI 가져오기
-# 4. SWC 취약점 스캔
-# 5. 블라인드 서명 / EIP-7730 준수 여부 확인
-# 6. 프론트엔드 JS 인젝션 / 주소 스와핑 테스트
-# 7. 심각도 등급이 포함된 감사 보고서 생성
+# 1. DApp 기술 스택 핑거프린팅 (ethers/wagmi/web3.js)
+# 2. 테스트 지갑 생성: 0xNewAddress... (테스트 전용 — 실제 자산 없음)
+# 3. SIWE 로그인 (EIP-4361) → 세션 토큰 획득
+# 4. 인증된 모든 엔드포인트 IDOR/BOLA 테스트
+# 5. 스마트 컨트랙트 SWC 취약점 스캔
+# 6. EIP-7730 블라인드 서명 준수 여부 확인
+# 7. 프론트엔드 JS 인젝션 / 주소 스와핑 테스트
+# 8. 심각도 등급이 포함된 전체 침투 보고서 생성
 ```
 
 ---
@@ -627,6 +668,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.62 | **DApp 지갑 인증** — 테스트 지갑 생성, SIWE 로그인 (EIP-4361), 인증 API 전체 침투 파이프라인 (총 28개 스킬) |
 | v3.2.61 | **DApp/Web3 감사** — 스마트 컨트랙트 스킬 25개, EIP-7730 블라인드 서명, Bybit Safe op-type, 프론트엔드 인젝션, SWC-120/128 |
 | v3.2.57 | 환각 방지 레이블 (VERIFIED/LIKELY/INFERRED), Playwright JS 감지, 스킬 로딩 수정, Python 3.12 전용 |
 | v3.2.45 | **macOS/Linux 전용** — Windows 지원 영구 중단 |

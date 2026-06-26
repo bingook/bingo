@@ -1,6 +1,6 @@
 """
 skills_data15.py — DApp / Web3 / Smart Contract 전용 공격·감사 스킬 DB
-bingo v3.2.61
+bingo v3.2.62
 
 Sources analyzed:
   [1] SWC Registry (Smart Contract Weakness Classification)
@@ -55,6 +55,10 @@ Sources analyzed:
   23. web3-frontend-injection       — DApp 프론트엔드 JS 코드인젝션 / 주소 스와핑 (EtherDelta 패턴)
   24. web3-weak-randomness          — SWC-120 약한 온체인 무작위성 (block.timestamp/blockhash 예측)
   25. web3-dos-gas-limit            — SWC-128 가스 한도 DoS / 무한 루프 / 외부 의존 DoS
+  [NEW — v3.2.62 DApp 인증 지원]
+  26. web3-wallet-gen               — 테스트용 이더리움 지갑 즉시 생성 (주소 + 프라이빗 키, 자산 없음)
+  27. web3-siwe-auth                — Sign-In with Ethereum (EIP-4361) DApp 표준 로그인 자동화
+  28. web3-dapp-full-auth           — 지갑 생성 → SIWE 로그인 → 세션 토큰 → 인증 API 전체 테스트
 """
 from __future__ import annotations
 
@@ -2456,6 +2460,479 @@ print("""
 
 [*] SWC-128: https://swcregistry.io/docs/SWC-128/
 """)
+''',
+    },
+    # ── 26. web3-wallet-gen ──────────────────────────────────────────────
+    "web3-wallet-gen": {
+        "name": "web3-wallet-gen",
+        "display_name": {
+            "ko": "테스트용 이더리움 지갑 생성",
+            "zh": "生成测试以太坊钱包",
+            "en": "Generate Test Ethereum Wallet",
+        },
+        "description": {
+            "ko": "DApp 침투 테스트용 이더리움 지갑을 즉시 생성합니다. 주소 + 프라이빗 키 출력. 실제 자산 없는 테스트 전용 지갑.",
+            "zh": "即时生成用于DApp渗透测试的以太坊测试钱包。输出地址+私钥。仅用于测试，无真实资产。",
+            "en": "Instantly generate an Ethereum wallet for DApp pentesting. Outputs address + private key. Test-only wallet with no real assets.",
+        },
+        "tags": ["web3", "wallet", "ethereum", "keygen", "dapp", "auth", "test"],
+        "module": "web3-auth",
+        "code": r'''
+import os, json, hashlib, hmac, struct, binascii
+from eth_account import Account
+
+# ⚠️  테스트 전용 지갑 생성 (실제 자산 절대 넣지 마세요)
+# ⚠️  TEST-ONLY WALLET — DO NOT SEND REAL FUNDS TO THIS ADDRESS
+
+print("""
+╔══════════════════════════════════════════════════════════╗
+║      🔑 bingo — DApp 테스트 지갑 생성 (v3.2.62)          ║
+║  ⚠️  테스트 전용 / Test-only / 仅用于测试               ║
+║  ⚠️  실제 자산 절대 입금 금지                           ║
+╚══════════════════════════════════════════════════════════╝
+""")
+
+# eth_account 로 새 지갑 생성
+Account.enable_unaudited_hdwallet_features()
+acct = Account.create()
+
+address     = acct.address
+private_key = acct.key.hex()
+
+print(f"[+] 지갑 주소 (Wallet Address):")
+print(f"    {address}")
+print()
+print(f"[+] 프라이빗 키 (Private Key):")
+print(f"    {private_key}")
+print()
+print("[*] 이 지갑은 DApp 연결/로그인 테스트 전용입니다.")
+print("[*] Etherscan: https://etherscan.io/address/" + address)
+print("[*] Sepolia 테스트넷 faucet: https://sepoliafaucet.com/")
+print()
+print("[*] 다음 단계: 이 프라이빗 키로 DApp 로그인 (SIWE)")
+print("[*] web3-siwe-auth 스킬로 바로 이어서 실행 가능")
+
+# JSON 형태로도 저장
+wallet_data = {
+    "address": address,
+    "private_key": private_key,
+    "note": "TEST ONLY - DO NOT USE FOR REAL FUNDS",
+    "bingo_version": "3.2.62",
+}
+print()
+print("[JSON]")
+print(json.dumps(wallet_data, indent=2))
+''',
+    },
+
+    # ── 27. web3-siwe-auth ───────────────────────────────────────────────
+    "web3-siwe-auth": {
+        "name": "web3-siwe-auth",
+        "display_name": {
+            "ko": "Sign-In with Ethereum (SIWE) DApp 로그인",
+            "zh": "Sign-In with Ethereum (SIWE) DApp登录",
+            "en": "Sign-In with Ethereum (SIWE) DApp Login",
+        },
+        "description": {
+            "ko": "EIP-4361 표준 Sign-In with Ethereum으로 DApp에 자동 로그인합니다. 챌린지 메시지 서명 → 세션 토큰 획득.",
+            "zh": "使用EIP-4361标准Sign-In with Ethereum自动登录DApp。签名挑战消息→获取会话令牌。",
+            "en": "Auto-login to DApp using EIP-4361 Sign-In with Ethereum standard. Signs challenge message and obtains session token.",
+        },
+        "tags": ["web3", "siwe", "auth", "eip4361", "login", "session", "dapp", "ethereum"],
+        "module": "web3-auth",
+        "code": r'''
+import requests, json, re, time, sys
+from eth_account import Account
+from eth_account.messages import encode_defunct
+
+TARGET = target if "target" in dir() else "https://TARGET_DAPP.com"
+PRIVATE_KEY = private_key if "private_key" in dir() else None
+
+if not PRIVATE_KEY:
+    print("[!] 프라이빗 키가 없습니다.")
+    print("[*] 먼저 web3-wallet-gen 스킬을 실행하거나")
+    print("[*] 프롬프트에 private_key = '0x...' 형태로 지정하세요.")
+    sys.exit(0)
+
+acct = Account.from_key(PRIVATE_KEY)
+address = acct.address
+
+session = requests.Session()
+session.verify = False
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Origin": TARGET,
+    "Referer": TARGET + "/",
+})
+
+base = TARGET.rstrip("/")
+
+print(f"[*] DApp: {base}")
+print(f"[*] 지갑 주소: {address}")
+print()
+
+# ── 1단계: 논스/챌린지 메시지 요청 ────────────────────────────────────
+nonce_endpoints = [
+    f"{base}/api/auth/nonce",
+    f"{base}/api/v1/auth/nonce",
+    f"{base}/api/auth/challenge",
+    f"{base}/api/v1/user/nonce",
+    f"{base}/auth/nonce",
+    f"{base}/api/siwe/nonce",
+    f"{base}/api/users/nonce",
+]
+
+nonce = None
+nonce_url = None
+
+for ep in nonce_endpoints:
+    try:
+        r = session.get(ep, params={"address": address}, timeout=8)
+        if r.status_code == 200:
+            try:
+                data = r.json()
+                nonce = data.get("nonce") or data.get("data", {}).get("nonce") or data.get("message")
+                if nonce:
+                    nonce_url = ep
+                    print(f"[+] 논스 획득: {nonce} (from {ep})")
+                    break
+            except Exception:
+                nonce = r.text.strip()[:64]
+                if nonce:
+                    nonce_url = ep
+                    print(f"[+] 논스 획득 (raw): {nonce} (from {ep})")
+                    break
+    except Exception:
+        continue
+
+if not nonce:
+    # 논스 없이 메시지 직접 서명 시도 (일부 DApp)
+    nonce = str(int(time.time()))
+    print(f"[!] 논스 엔드포인트 미발견 — 타임스탬프 논스 사용: {nonce}")
+
+# ── 2단계: SIWE 메시지 생성 및 서명 ──────────────────────────────────
+domain = base.replace("https://", "").replace("http://", "").split("/")[0]
+siwe_msg = (
+    f"{domain} wants you to sign in with your Ethereum account:\n"
+    f"{address}\n\n"
+    f"Sign in with Ethereum to the app.\n\n"
+    f"URI: {base}\n"
+    f"Version: 1\n"
+    f"Chain ID: 1\n"
+    f"Nonce: {nonce}\n"
+    f"Issued At: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}"
+)
+
+msg_obj = encode_defunct(text=siwe_msg)
+signed = acct.sign_message(msg_obj)
+signature = signed.signature.hex()
+if not signature.startswith("0x"):
+    signature = "0x" + signature
+
+print(f"[+] SIWE 메시지 서명 완료")
+print(f"    서명: {signature[:20]}...{signature[-10:]}")
+
+# ── 3단계: 로그인 API 시도 ────────────────────────────────────────────
+login_endpoints = [
+    f"{base}/api/auth/verify",
+    f"{base}/api/v1/auth/verify",
+    f"{base}/api/auth/login",
+    f"{base}/api/v1/auth/login",
+    f"{base}/auth/verify",
+    f"{base}/api/siwe/verify",
+    f"{base}/api/users/login",
+    f"{base}/api/auth/wallet",
+    f"{base}/api/v1/user/login",
+]
+
+login_payloads = [
+    {"message": siwe_msg, "signature": signature, "address": address},
+    {"message": siwe_msg, "signature": signature},
+    {"address": address, "signature": signature, "nonce": nonce},
+    {"walletAddress": address, "signature": signature, "message": siwe_msg},
+    {"wallet": address, "sig": signature, "message": siwe_msg},
+]
+
+token = None
+token_url = None
+
+for ep in login_endpoints:
+    for payload in login_payloads:
+        try:
+            r = session.post(ep, json=payload, timeout=10)
+            if r.status_code in (200, 201):
+                try:
+                    data = r.json()
+                    # 토큰 추출 시도
+                    tok = (
+                        data.get("token") or
+                        data.get("accessToken") or
+                        data.get("access_token") or
+                        data.get("jwt") or
+                        (data.get("data") or {}).get("token") or
+                        (data.get("data") or {}).get("accessToken")
+                    )
+                    if tok:
+                        token = tok
+                        token_url = ep
+                        print(f"\n[+] 로그인 성공! ({ep})")
+                        print(f"    토큰: {token[:30]}...{token[-10:]}")
+                        break
+                    elif "success" in str(data).lower() or "user" in str(data).lower():
+                        print(f"\n[+] 로그인 응답 수신 ({ep}): {json.dumps(data)[:200]}")
+                        # Set-Cookie에서 세션 확인
+                        if "set-cookie" in r.headers:
+                            print(f"    쿠키: {r.headers['set-cookie'][:100]}")
+                        break
+                except Exception:
+                    pass
+        except Exception:
+            continue
+    if token:
+        break
+
+# ── 결과 출력 ─────────────────────────────────────────────────────────
+print()
+if token:
+    print("=" * 60)
+    print("[✅ SIWE 인증 성공]")
+    print(f"   주소 : {address}")
+    print(f"   토큰 : {token[:60]}...")
+    print()
+    print("[*] 다음 단계: 이 토큰으로 인증 API 전체 테스트")
+    print("[*] Authorization: Bearer " + token[:30] + "...")
+    print("=" * 60)
+else:
+    print("=" * 60)
+    print("[!] 자동 SIWE 로그인 실패 — 수동 분석 필요")
+    print(f"    주소    : {address}")
+    print(f"    서명    : {signature}")
+    print(f"    SIWE 메시지:\n{siwe_msg}")
+    print()
+    print("[*] JS 번들에서 실제 로그인 API 엔드포인트 확인 필요")
+    print("=" * 60)
+''',
+    },
+
+    # ── 28. web3-dapp-full-auth ──────────────────────────────────────────
+    "web3-dapp-full-auth": {
+        "name": "web3-dapp-full-auth",
+        "display_name": {
+            "ko": "DApp 완전 인증 + 전체 API 테스트",
+            "zh": "DApp完整认证+全部API测试",
+            "en": "DApp Full Auth + Complete API Test",
+        },
+        "description": {
+            "ko": "테스트용 지갑 생성 → SIWE 로그인 → 세션 토큰 획득 → 인증이 필요한 모든 API 엔드포인트 전체 테스트. DApp 침투 테스트 원스톱 파이프라인.",
+            "zh": "生成测试钱包→SIWE登录→获取会话令牌→测试所有需要认证的API端点。DApp渗透测试一站式流水线。",
+            "en": "Generate test wallet → SIWE login → get session token → test all authenticated API endpoints. One-stop DApp pentest pipeline.",
+        },
+        "tags": ["web3", "dapp", "auth", "full-pipeline", "api", "idor", "bola", "pentest", "ethereum"],
+        "module": "web3-auth",
+        "code": r'''
+import requests, json, re, time, sys
+from eth_account import Account
+from eth_account.messages import encode_defunct
+
+TARGET = target if "target" in dir() else "https://TARGET_DAPP.com"
+base = TARGET.rstrip("/")
+
+print(f"""
+╔══════════════════════════════════════════════════════════════╗
+║   🔗 bingo DApp 완전 인증 파이프라인 (v3.2.62)               ║
+║   1단계: 테스트 지갑 생성                                     ║
+║   2단계: SIWE 로그인 → 세션 토큰                              ║
+║   3단계: 인증 API 전체 퍼징 (IDOR/BOLA/월권)                 ║
+╚══════════════════════════════════════════════════════════════╝
+타겟: {base}
+""")
+
+# ── 1단계: 테스트 지갑 생성 ───────────────────────────────────────────
+Account.enable_unaudited_hdwallet_features()
+acct = Account.create()
+address     = acct.address
+private_key = acct.key.hex()
+
+print(f"[1/3] ✅ 테스트 지갑 생성")
+print(f"      주소: {address}")
+print(f"      키  : {private_key[:10]}...{private_key[-8:]} (테스트 전용)")
+print()
+
+session = requests.Session()
+session.verify = False
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Origin": base,
+    "Referer": base + "/",
+})
+
+# ── 2단계: SIWE 로그인 ────────────────────────────────────────────────
+print("[2/3] SIWE 로그인 시도 중...")
+
+nonce = str(int(time.time() * 1000))
+for ep in [
+    f"{base}/api/auth/nonce",
+    f"{base}/api/v1/auth/nonce",
+    f"{base}/api/auth/challenge",
+    f"{base}/api/users/nonce",
+]:
+    try:
+        r = session.get(ep, params={"address": address}, timeout=6)
+        if r.status_code == 200:
+            try:
+                d = r.json()
+                n = d.get("nonce") or d.get("data", {}).get("nonce")
+                if n:
+                    nonce = str(n)
+                    print(f"      논스: {nonce} ({ep})")
+                    break
+            except Exception:
+                pass
+    except Exception:
+        continue
+
+domain = base.replace("https://", "").replace("http://", "").split("/")[0]
+siwe_msg = (
+    f"{domain} wants you to sign in with your Ethereum account:\n"
+    f"{address}\n\nSign in with Ethereum.\n\n"
+    f"URI: {base}\nVersion: 1\nChain ID: 1\n"
+    f"Nonce: {nonce}\n"
+    f"Issued At: {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}"
+)
+signed = acct.sign_message(encode_defunct(text=siwe_msg))
+sig = "0x" + signed.signature.hex().lstrip("0x")
+
+auth_token = None
+auth_cookies = {}
+
+for ep in [
+    f"{base}/api/auth/verify",
+    f"{base}/api/v1/auth/verify",
+    f"{base}/api/auth/login",
+    f"{base}/api/users/login",
+    f"{base}/api/auth/wallet",
+]:
+    for payload in [
+        {"message": siwe_msg, "signature": sig, "address": address},
+        {"address": address, "signature": sig, "nonce": nonce},
+        {"walletAddress": address, "signature": sig, "message": siwe_msg},
+    ]:
+        try:
+            r = session.post(ep, json=payload, timeout=10)
+            if r.status_code in (200, 201):
+                try:
+                    d = r.json()
+                    tok = (
+                        d.get("token") or d.get("accessToken") or
+                        d.get("access_token") or d.get("jwt") or
+                        (d.get("data") or {}).get("token")
+                    )
+                    if tok:
+                        auth_token = tok
+                        session.headers["Authorization"] = f"Bearer {tok}"
+                        print(f"      ✅ 로그인 성공! 토큰: {tok[:25]}...  ({ep})")
+                        break
+                    if r.cookies:
+                        auth_cookies = dict(r.cookies)
+                        session.cookies.update(auth_cookies)
+                        print(f"      ✅ 쿠키 세션 획득: {list(auth_cookies.keys())}  ({ep})")
+                        auth_token = "cookie_session"
+                        break
+                except Exception:
+                    pass
+        except Exception:
+            continue
+    if auth_token:
+        break
+
+if not auth_token:
+    print("      ⚠️  자동 로그인 실패 — 인증 없이 공개 API만 테스트 진행")
+
+print()
+
+# ── 3단계: 인증 API 전체 퍼징 ────────────────────────────────────────
+print("[3/3] 인증 API 엔드포인트 퍼징 중...")
+
+common_paths = [
+    # 사용자/프로필
+    "/api/v1/user/profile", "/api/v1/user/me", "/api/user/info",
+    "/api/v1/users/me", "/api/me", "/api/profile",
+    # 잔액/자산
+    "/api/v1/user/balance", "/api/v1/wallet/balance", "/api/balance",
+    "/api/v1/assets", "/api/assets",
+    # 거래 내역
+    "/api/v1/transactions", "/api/v1/tx", "/api/history",
+    "/api/v1/user/transactions",
+    # 관리자
+    "/api/v1/admin/users", "/api/admin", "/api/v1/admin/stats",
+    # 설정
+    "/api/v1/user/settings", "/api/settings",
+    # 지갑
+    "/api/v1/wallet", "/api/v1/wallets", "/api/wallet/address",
+    # DeFi 전용
+    "/api/v1/portfolio", "/api/v1/positions", "/api/v1/rewards",
+    "/api/v1/staking", "/api/v1/liquidity",
+]
+
+findings = []
+authed_count = 0
+public_count = 0
+
+for path in common_paths:
+    url = base + path
+    try:
+        r = session.get(url, timeout=6)
+        status = r.status_code
+        size   = len(r.content)
+        if status == 200:
+            authed_count += 1
+            snippet = r.text[:80].replace("\n", " ")
+            print(f"  [200] {path:45s} | {size:6d}B | {snippet}")
+            findings.append({"path": path, "status": 200, "size": size, "snippet": snippet})
+        elif status == 403:
+            print(f"  [403] {path:45s} | 존재하나 권한 없음 (IDOR 테스트 가치 있음)")
+            findings.append({"path": path, "status": 403, "size": size})
+        elif status == 401:
+            public_count += 1
+    except Exception as e:
+        pass
+
+# IDOR 테스트 (숫자 ID 조작)
+print()
+print("[*] IDOR/BOLA 테스트 — 다른 사용자 ID 열거 시도 중...")
+idor_paths = [
+    "/api/v1/users/{id}/profile",
+    "/api/v1/users/{id}",
+    "/api/v1/orders/{id}",
+    "/api/v1/wallet/{id}/balance",
+]
+for tmpl in idor_paths:
+    for uid in ["1", "2", "3", "100", "1000"]:
+        path = tmpl.replace("{id}", uid)
+        url = base + path
+        try:
+            r = session.get(url, timeout=5)
+            if r.status_code == 200 and len(r.content) > 10:
+                print(f"  [IDOR 의심] {path} → 200 ({len(r.content)}B)")
+                findings.append({"path": path, "status": 200, "idor": True, "uid": uid})
+        except Exception:
+            pass
+
+# ── 결과 요약 ─────────────────────────────────────────────────────────
+print()
+print("=" * 65)
+print(f"[✅ DApp 인증 파이프라인 완료]")
+print(f"   지갑      : {address}")
+print(f"   인증 상태 : {'토큰 획득 성공' if auth_token and auth_token != 'cookie_session' else '쿠키 세션' if auth_token else '미인증'}")
+print(f"   API 200   : {authed_count}개")
+print(f"   발견 항목 : {len(findings)}개")
+if any(f.get("idor") for f in findings):
+    print(f"   🚨 IDOR   : {sum(1 for f in findings if f.get('idor'))}개 의심 경로")
+print("=" * 65)
 ''',
     },
 }

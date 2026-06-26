@@ -26,8 +26,9 @@ from .skills_data11 import SKILLS_DB_11, MODULE_INDEX_11, TAG_INDEX_11
 from .skills_data12 import SKILLS_DB_12, MODULE_INDEX_12, TAG_INDEX_12
 from .skills_data13 import SKILLS_DB_13, MODULE_INDEX_13, TAG_INDEX_13
 from .skills_data14 import SKILLS_DB_14, MODULE_INDEX_14, TAG_INDEX_14
+from .skills_data15 import SKILLS_DB_15, MODULE_INDEX_15, TAG_INDEX_15
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH + Nuxt.js + Next.js/React — v2.3.13)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH + Nuxt.js + Next.js/React + DApp/Web3/SmartContract — v3.2.60)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,
@@ -39,6 +40,7 @@ ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB_12,
     **SKILLS_DB_13,
     **SKILLS_DB_14,
+    **SKILLS_DB_15,
 }
 ALL_MODULE_INDEX: dict[str, list[str]] = {}
 ALL_TAG_INDEX: dict[str, list[str]] = {}
@@ -46,7 +48,7 @@ ALL_TAG_INDEX: dict[str, list[str]] = {}
 for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
                  MODULE_INDEX_5, MODULE_INDEX_6, MODULE_INDEX_7, MODULE_INDEX_8,
                  MODULE_INDEX_9, MODULE_INDEX_10, MODULE_INDEX_11, MODULE_INDEX_12,
-                 MODULE_INDEX_13, MODULE_INDEX_14]:
+                 MODULE_INDEX_13, MODULE_INDEX_14, MODULE_INDEX_15]:
     for k, v in _src_idx.items():
         if k not in ALL_MODULE_INDEX:
             ALL_MODULE_INDEX[k] = []
@@ -55,7 +57,7 @@ for _src_idx in [MODULE_INDEX, MODULE_INDEX_2, MODULE_INDEX_3, MODULE_INDEX_4,
 for _src_idx in [TAG_INDEX, TAG_INDEX_2, TAG_INDEX_3, TAG_INDEX_4,
                  TAG_INDEX_5, TAG_INDEX_6, TAG_INDEX_7, TAG_INDEX_8,
                  TAG_INDEX_9, TAG_INDEX_10, TAG_INDEX_11, TAG_INDEX_12,
-                 TAG_INDEX_13, TAG_INDEX_14]:
+                 TAG_INDEX_13, TAG_INDEX_14, TAG_INDEX_15]:
     for k, v in _src_idx.items():
         if k not in ALL_TAG_INDEX:
             ALL_TAG_INDEX[k] = []

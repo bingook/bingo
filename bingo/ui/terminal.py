@@ -1705,12 +1705,49 @@ class BingoTerminal:
             "admin", "db", "database", "exploit", "scan", "payload", "xss",
             "해킹", "공격", "취약", "인젝션", "우회", "침투", "스캔", "추출",
             "웹쉘", "관리자", "비밀번호", "크랙",
+            # DApp/Web3/Smart Contract 키워드
+            "web3", "dapp", "defi", "nft", "smart contract", "스마트 컨트랙트",
+            "solidity", "blockchain", "블록체인", "이더리움", "ethereum",
+            "abi", "rpc", "metamask", "walletconnect", "wagmi", "ethers",
+            "reentrancy", "재진입", "flash loan", "플래시론", "oracle",
+            "erc20", "erc721", "token", "토큰", "contract audit", "컨트랙트 감사",
         )
         text_lower = text.lower()
         if any(kw in text_lower for kw in _security_keywords):
             wrapped_text = wrap_task(text)
         else:
             wrapped_text = text
+
+        # DApp/Web3 키워드 감지 시 web3 스킬 자동 주입
+        _web3_keywords = (
+            "web3", "dapp", "defi", "nft", "smart contract", "스마트 컨트랙트",
+            "solidity", "blockchain", "블록체인", "이더리움", "ethereum",
+            "abi", "metamask", "walletconnect", "wagmi", "ethers", "viem",
+            "reentrancy", "재진입", "flash loan", "플래시론", "oracle",
+            "erc20", "erc721", "contract audit", "컨트랙트 감사",
+            "swc-", "delegatecall", "selfdestruct", "ecrecover",
+        )
+        if any(kw in text_lower for kw in _web3_keywords):
+            try:
+                from ..skills.engine import SkillEngine as _SE15
+                _engine15 = _SE15()
+                _web3_ctx = _engine15.local_skill_context(text, max_chars=4000)
+                if _web3_ctx:
+                    _lang = getattr(self.config, "lang", "en")
+                    _web3_label = {
+                        "ko": self.s.get("web3_skill_injected", "🔗 Web3/DApp 스킬 자동 로드됨"),
+                        "zh": self.s.get("web3_skill_injected_zh", "🔗 Web3/DApp技能已自动加载"),
+                        "en": self.s.get("web3_skill_injected_en", "🔗 Web3/DApp skills auto-loaded"),
+                    }.get(_lang, "🔗 Web3/DApp skills auto-loaded")
+                    self.console.print(f"[dim]{_web3_label}[/dim]")
+                    wrapped_text = (
+                        "=== WEB3/DAPP SKILL CONTEXT (auto-injected by bingo) ===\n"
+                        + _web3_ctx
+                        + "\n=== END WEB3 SKILL CONTEXT ===\n\n"
+                        + wrapped_text
+                    )
+            except Exception:
+                pass
 
         # WAF 스캔 결과를 유저 메시지 앞에 직접 주입
         # → AI가 시스템 프롬프트 끝 컨텍스트보다 훨씬 명확하게 인식함

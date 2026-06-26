@@ -6,9 +6,9 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-3.2.45-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.61-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **🌐 语言:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
@@ -485,6 +485,109 @@ java -jar ~/tools/Malimite.jar target.ipa --output ./decompiled/
 
 ---
 
+## DApp / Web3 / 智能合约审计 (v3.2.61)
+
+bingo 新增 **25 个 DApp/Web3 专属审计技能**，输入中检测到 Web3 关键词时**自动加载**。
+
+### 自动触发关键词
+
+输入包含以下关键词时，Web3 技能上下文自动注入：
+
+`web3` `dapp` `defi` `nft` `smart contract` `智能合约` `solidity` `blockchain` `区块链` `以太坊` `ethereum` `abi` `metamask` `walletconnect` `wagmi` `ethers` `viem` `reentrancy` `重入` `flash loan` `闪电贷` `oracle` `erc20` `erc721` `delegatecall` `selfdestruct` `ecrecover` `swc-`
+
+无需额外命令，直接用自然语言描述即可。
+
+```bash
+bingo> 审计 https://app.uniswap.org 智能合约
+bingo> https://defi-target.com 检查重入漏洞
+bingo> 分析是否存在闪电贷攻击向量
+```
+
+### DApp 审计技能（共 25 个）
+
+| # | 技能 ID | 描述 |
+|---|---------|------|
+| 1 | `web3-dapp-fingerprint` | DApp 技术栈指纹识别 (ethers/web3.js/wagmi/viem) |
+| 2 | `web3-rpc-enum` | Ethereum JSON-RPC 端点枚举及暴露检测 |
+| 3 | `web3-abi-extract` | 无需钱包提取合约 ABI + 函数签名 |
+| 4 | `web3-reentrancy` | SWC-107 重入攻击漏洞检测（Slither 模式）|
+| 5 | `web3-integer-overflow` | SWC-101 整数溢出/下溢检测 |
+| 6 | `web3-access-control` | SWC-105 未保护函数 + 所有权劫持模式 |
+| 7 | `web3-tx-order-dependency` | SWC-114 抢先交易 / TX 顺序依赖 |
+| 8 | `web3-flash-loan` | 闪电贷攻击向量分析（价格预言机操纵）|
+| 9 | `web3-oracle-manipulation` | 链上预言机操纵 / TWAP 绕过 |
+| 10 | `web3-signature-replay` | SWC-121 签名重放 / EIP-712 缺失 |
+| 11 | `web3-delegate-call` | SWC-112 delegatecall 存储槽冲突漏洞 |
+| 12 | `web3-selfdestruct` | SWC-106 selfdestruct 滥用 + 强制发送以太 |
+| 13 | `web3-unchecked-call` | SWC-104 低级 call 返回值未检查 |
+| 14 | `web3-timestamp-dependence` | SWC-116 区块时间戳依赖 |
+| 15 | `web3-private-data` | SWC-136 私有存储数据暴露 |
+| 16 | `web3-wallet-connect-enum` | 无需 WalletConnect/MetaMask 枚举 DApp API |
+| 17 | `web3-graphql-subgraph` | DApp GraphQL 子图查询漏洞 |
+| 18 | `web3-nft-metadata-ssrf` | NFT 元数据 SSRF / URI 操纵 |
+| 19 | `web3-defi-full-pipeline` | DeFi 完整攻击流水线（自动选择）|
+| 20 | `web3-contract-audit` | 智能合约综合审计报告生成 |
+| 21 | `web3-blind-signing-audit` | **[新]** EIP-712/7730 盲签名审计（Trail of Bits / Bybit 模式）|
+| 22 | `web3-safe-multisig-optype` | **[新]** Safe 多签 operation-type 篡改（Bybit 15亿美元攻击向量）|
+| 23 | `web3-frontend-injection` | **[新]** DApp 前端 JS 注入 / 地址替换（EtherDelta 模式）|
+| 24 | `web3-weak-randomness` | **[新]** SWC-120 弱链上随机性（block.timestamp/blockhash 可预测）|
+| 25 | `web3-dos-gas-limit` | **[新]** SWC-128 Gas 限制 DoS / 无限循环 / 外部依赖 DoS |
+
+### 核心漏洞覆盖
+
+| 漏洞 | SWC | 严重程度 | 支持 |
+|------|-----|----------|------|
+| 重入 | SWC-107 | CRITICAL | ✅ |
+| 整数溢出 | SWC-101 | HIGH | ✅ |
+| 未保护函数 | SWC-105 | CRITICAL | ✅ |
+| Delegatecall 冲突 | SWC-112 | HIGH | ✅ |
+| 签名重放 | SWC-121 | HIGH | ✅ |
+| 时间戳依赖 | SWC-116 | MEDIUM | ✅ |
+| 弱随机性 | SWC-120 | HIGH | ✅ *新增* |
+| Gas 限制 DoS | SWC-128 | HIGH | ✅ *新增* |
+| 盲签名 (EIP-7730) | — | HIGH | ✅ *新增* |
+| Safe op-type 篡改 | — | CRITICAL | ✅ *新增*（Bybit 向量）|
+| 前端 JS 注入 | — | CRITICAL | ✅ *新增*（EtherDelta 模式）|
+| 闪电贷攻击 | — | CRITICAL | ✅ |
+| 预言机操纵 | — | CRITICAL | ✅ |
+| NFT 元数据 SSRF | — | HIGH | ✅ |
+
+### 盲签名 / EIP-7730（Bybit 攻击向量）
+
+2025年2月 Bybit 15亿美元被盗事件利用了 Safe 多签的盲签名漏洞：
+- 攻击者将 `operation` 参数从 `0`（call）改为 `1`（delegatecall）
+- 硬件钱包签名者无法感知参数被篡改
+- 仅靠 EIP-712 结构化数据不足以防止此类攻击
+
+bingo 的 `web3-blind-signing-audit` 和 `web3-safe-multisig-optype` 技能可检测此类模式：
+
+```
+[CRITICAL] Operation Type 未在 UI 显示
+           Safe 交易 operation type (0=call, 1=delegatecall) 未显示在签名界面
+           修复建议: 在签名 UI 中明确显示 operation type
+
+[HIGH] 未实现 EIP-7730
+       硬件钱包无法显示人类可读的交易详情
+       修复建议: 向 https://github.com/LedgerHQ/clear-signing-erc7730-registry 提交 JSON 清单
+```
+
+### 使用示例
+
+```bash
+bingo> 对 https://defi-protocol.com 进行智能合约全面审计
+
+# bingo 自动执行:
+# 1. 检测 DApp 技术栈 (ethers/wagmi/web3.js)
+# 2. 从 JS 包中提取合约地址
+# 3. 从 Etherscan 获取 ABI
+# 4. 扫描 SWC 漏洞
+# 5. 检查盲签名 / EIP-7730 合规性
+# 6. 测试前端 JS 注入 / 地址替换
+# 7. 生成含严重性评级的审计报告
+```
+
+---
+
 ## Cloudflare 绕过（真实 IP 发现）
 
 ```python
@@ -514,7 +617,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 ## 系统要求
 
-- Python 3.10+
+- Python **3.12**（Playwright 兼容性必需）
 - 至少一个受支持模型的 API 密钥
 - （可选）VPN 或代理 — 自动检测并显示
 
@@ -524,6 +627,8 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 版本 | 摘要 |
 |------|------|
+| v3.2.61 | **DApp/Web3 审计** — 智能合约技能 25 个，EIP-7730 盲签名，Bybit Safe op-type，前端注入，SWC-120/128 |
+| v3.2.57 | 反幻觉标签 (VERIFIED/LIKELY/INFERRED)，Playwright JS 检测，技能加载修复，Python 3.12 专属 |
 | v3.2.45 | **仅支持 macOS/Linux** — 永久终止 Windows 支持 |
 | v3.2.28 | 核心引擎复原 — 回滚至最稳定基础版本 |
 | v3.2.18 | **代理池轮换** — HTTP/HTTPS/SOCKS5/Tor/API，封禁后自动切换，RULE 26-T |

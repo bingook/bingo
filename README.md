@@ -6,8 +6,8 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.45-brightgreen)](https://github.com/bingook/bingo/releases)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
+[![Version](https://img.shields.io/badge/version-3.2.61-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 
@@ -560,6 +560,109 @@ bingo detects reflected and stored XSS automatically:
 
 ---
 
+## DApp / Web3 / Smart Contract Audit (v3.2.61)
+
+bingo now includes **25 dedicated DApp/Web3/Smart Contract audit skills** — auto-triggered when Web3 keywords are detected.
+
+### Auto-trigger Keywords
+
+Any input containing these keywords automatically loads the Web3 skill context:
+
+`web3` `dapp` `defi` `nft` `smart contract` `solidity` `blockchain` `ethereum` `abi` `metamask` `walletconnect` `wagmi` `ethers` `viem` `reentrancy` `flash loan` `oracle` `erc20` `erc721` `delegatecall` `selfdestruct` `ecrecover` `swc-`
+
+No extra command needed — just describe your DApp target.
+
+```bash
+bingo> audit https://app.uniswap.org smart contract
+bingo> https://defi-target.com reentrancy vulnerability check
+bingo> analyze solidity contract for flash loan attack
+```
+
+### DApp Audit Skills (25 total)
+
+| # | Skill ID | What it does |
+|---|----------|-------------|
+| 1 | `web3-dapp-fingerprint` | Technology stack fingerprint (ethers/web3.js/wagmi/viem) |
+| 2 | `web3-rpc-enum` | Ethereum JSON-RPC endpoint enumeration + exposure detection |
+| 3 | `web3-abi-extract` | Contract ABI + function signature extraction without wallet |
+| 4 | `web3-reentrancy` | SWC-107 reentrancy detection (Slither pattern) |
+| 5 | `web3-integer-overflow` | SWC-101 integer overflow/underflow detection |
+| 6 | `web3-access-control` | SWC-105 unprotected functions + ownership takeover |
+| 7 | `web3-tx-order-dependency` | SWC-114 frontrunning / TX order dependency |
+| 8 | `web3-flash-loan` | Flash loan attack vector analysis (price oracle manipulation) |
+| 9 | `web3-oracle-manipulation` | On-chain oracle manipulation / TWAP bypass |
+| 10 | `web3-signature-replay` | SWC-121 signature replay / EIP-712 missing |
+| 11 | `web3-delegate-call` | SWC-112 delegatecall storage slot collision |
+| 12 | `web3-selfdestruct` | SWC-106 selfdestruct misuse + forced ether send |
+| 13 | `web3-unchecked-call` | SWC-104 unchecked low-level call return value |
+| 14 | `web3-timestamp-dependence` | SWC-116 block timestamp dependence |
+| 15 | `web3-private-data` | SWC-136 private storage data exposure |
+| 16 | `web3-wallet-connect-enum` | WalletConnect/MetaMask DApp API enumeration without wallet |
+| 17 | `web3-graphql-subgraph` | DApp GraphQL subgraph query vulnerabilities |
+| 18 | `web3-nft-metadata-ssrf` | NFT metadata SSRF / URI manipulation |
+| 19 | `web3-defi-full-pipeline` | Full DeFi attack pipeline (auto-selected) |
+| 20 | `web3-contract-audit` | Smart contract comprehensive audit report |
+| 21 | `web3-blind-signing-audit` | **[NEW]** EIP-712/7730 blind signing audit (Trail of Bits / Bybit pattern) |
+| 22 | `web3-safe-multisig-optype` | **[NEW]** Safe multisig operation-type tampering (Bybit $1.5B hack vector) |
+| 23 | `web3-frontend-injection` | **[NEW]** DApp frontend JS injection / address swapping (EtherDelta pattern) |
+| 24 | `web3-weak-randomness` | **[NEW]** SWC-120 weak on-chain randomness (block.timestamp/blockhash predictable) |
+| 25 | `web3-dos-gas-limit` | **[NEW]** SWC-128 gas limit DoS / unbounded loop / external dependency DoS |
+
+### Key Vulnerability Coverage
+
+| Vulnerability | SWC | Severity | Coverage |
+|---------------|-----|----------|----------|
+| Reentrancy | SWC-107 | CRITICAL | ✅ |
+| Integer Overflow | SWC-101 | HIGH | ✅ |
+| Unprotected Functions | SWC-105 | CRITICAL | ✅ |
+| Delegatecall Collision | SWC-112 | HIGH | ✅ |
+| Signature Replay | SWC-121 | HIGH | ✅ |
+| Timestamp Dependence | SWC-116 | MEDIUM | ✅ |
+| Weak Randomness | SWC-120 | HIGH | ✅ *new* |
+| Gas Limit DoS | SWC-128 | HIGH | ✅ *new* |
+| Blind Signing (EIP-7730) | — | HIGH | ✅ *new* |
+| Safe Op-Type Tampering | — | CRITICAL | ✅ *new* (Bybit vector) |
+| Frontend JS Injection | — | CRITICAL | ✅ *new* (EtherDelta pattern) |
+| Flash Loan Attack | — | CRITICAL | ✅ |
+| Oracle Manipulation | — | CRITICAL | ✅ |
+| NFT Metadata SSRF | — | HIGH | ✅ |
+
+### Blind Signing / EIP-7730 (Bybit $1.5B Attack Vector)
+
+The Bybit $1.5B hack (Feb 2025) exploited a Safe multisig blind signing flaw:
+- Attackers changed `operation` parameter from `0` (call) → `1` (delegatecall)
+- Signers could not detect the change on hardware wallets
+- EIP-712 structured data was insufficient to prevent this
+
+bingo's `web3-blind-signing-audit` and `web3-safe-multisig-optype` skills detect these patterns:
+
+```
+[CRITICAL] Operation Type UI Not Displayed
+           Safe transaction operation type (0=call, 1=delegatecall) not shown in UI
+           Fix: Display operation type explicitly in signing UI
+
+[HIGH] EIP-7730 Not Implemented
+       Hardware wallet cannot display human-readable transaction details
+       Fix: Submit JSON manifest to https://github.com/LedgerHQ/clear-signing-erc7730-registry
+```
+
+### Example: DApp Audit
+
+```bash
+bingo> audit this DApp for smart contract vulnerabilities: https://defi-protocol.com
+
+# bingo automatically:
+# 1. Detects DApp tech stack (ethers/wagmi/web3.js)
+# 2. Extracts contract addresses from JS bundles
+# 3. Fetches ABI from Etherscan
+# 4. Scans for SWC vulnerabilities
+# 5. Checks blind signing / EIP-7730 compliance
+# 6. Tests frontend for JS injection / address swapping
+# 7. Generates audit report with severity ratings
+```
+
+---
+
 ## Cloudflare Bypass (Real IP Discovery)
 
 ```python
@@ -579,6 +682,8 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v3.2.61 | **DApp/Web3 audit** — 25 smart contract skills, EIP-7730 blind signing, Bybit Safe op-type, frontend injection, SWC-120/128 |
+| v3.2.57 | Anti-hallucination labels (VERIFIED/LIKELY/INFERRED), Playwright JS detection, skill loading fixes |
 | v3.2.45 | **macOS/Linux only** — Windows support permanently discontinued |
 | v3.2.28 | Core engine restored — rolled back to most stable base |
 | v3.2.18 | **Proxy Pool Rotation** — HTTP/HTTPS/SOCKS5/Tor/API, auto-rotate on ban, RULE 26-T |
@@ -625,7 +730,7 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 ## Requirements
 
-- Python 3.10+
+- Python **3.12** (required for Playwright compatibility)
 - API key for at least one supported model
 - (Optional) VPN for anonymity — auto-detected and displayed
 

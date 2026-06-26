@@ -6,9 +6,9 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-3.2.45-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.61-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **🌐 언어:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
@@ -485,6 +485,109 @@ SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 
 ---
 
+## DApp / Web3 / 스마트 컨트랙트 감사 (v3.2.61)
+
+bingo에 **DApp/Web3 전용 스킬 25개**가 추가되었습니다. Web3 관련 키워드가 감지되면 **자동으로 스킬이 로드**됩니다.
+
+### 자동 트리거 키워드
+
+아래 키워드가 입력에 포함되면 Web3 스킬 컨텍스트가 자동으로 주입됩니다:
+
+`web3` `dapp` `defi` `nft` `스마트 컨트랙트` `solidity` `블록체인` `이더리움` `abi` `metamask` `walletconnect` `wagmi` `ethers` `viem` `reentrancy` `재진입` `flash loan` `플래시론` `oracle` `erc20` `erc721` `delegatecall` `selfdestruct` `ecrecover` `swc-`
+
+별도 명령 없이 자연어로 입력하면 됩니다.
+
+```bash
+bingo> https://app.uniswap.org 스마트 컨트랙트 감사해줘
+bingo> https://defi-target.com 재진입 취약점 확인
+bingo> 플래시론 공격 가능한지 분석해줘
+```
+
+### DApp 감사 스킬 (총 25개)
+
+| # | 스킬 ID | 설명 |
+|---|---------|------|
+| 1 | `web3-dapp-fingerprint` | DApp 기술 스택 핑거프린팅 (ethers/web3.js/wagmi/viem) |
+| 2 | `web3-rpc-enum` | Ethereum JSON-RPC 엔드포인트 열거 및 노출 감지 |
+| 3 | `web3-abi-extract` | 지갑 없이 컨트랙트 ABI + 함수 시그니처 추출 |
+| 4 | `web3-reentrancy` | SWC-107 재진입 공격 취약점 감지 (Slither 패턴) |
+| 5 | `web3-integer-overflow` | SWC-101 정수 오버플로우/언더플로우 감지 |
+| 6 | `web3-access-control` | SWC-105 미보호 함수 + 소유권 탈취 패턴 |
+| 7 | `web3-tx-order-dependency` | SWC-114 프론트런닝 / TX 순서 의존성 |
+| 8 | `web3-flash-loan` | Flash Loan 공격 벡터 분석 (가격 오라클 조작) |
+| 9 | `web3-oracle-manipulation` | 온체인 오라클 조작 / TWAP 우회 |
+| 10 | `web3-signature-replay` | SWC-121 서명 재사용 / EIP-712 미적용 |
+| 11 | `web3-delegate-call` | SWC-112 delegatecall 슬롯 충돌 취약점 |
+| 12 | `web3-selfdestruct` | SWC-106 selfdestruct 오용 + 강제 이더 전송 |
+| 13 | `web3-unchecked-call` | SWC-104 return value 미확인 저수준 call |
+| 14 | `web3-timestamp-dependence` | SWC-116 블록 타임스탬프 의존성 |
+| 15 | `web3-private-data` | SWC-136 프라이빗 스토리지 데이터 노출 |
+| 16 | `web3-wallet-connect-enum` | WalletConnect/MetaMask 없이 DApp API 열거 |
+| 17 | `web3-graphql-subgraph` | DApp GraphQL 서브그래프 쿼리 취약점 |
+| 18 | `web3-nft-metadata-ssrf` | NFT 메타데이터 SSRF / URI 조작 |
+| 19 | `web3-defi-full-pipeline` | DeFi 전체 공격 파이프라인 (자동 선택) |
+| 20 | `web3-contract-audit` | 스마트 컨트랙트 종합 감사 리포트 생성 |
+| 21 | `web3-blind-signing-audit` | **[신규]** EIP-712/7730 블라인드 서명 감사 (Trail of Bits / Bybit 패턴) |
+| 22 | `web3-safe-multisig-optype` | **[신규]** Safe 멀티시그 operation-type 조작 (Bybit 15억 달러 해킹 벡터) |
+| 23 | `web3-frontend-injection` | **[신규]** DApp 프론트엔드 JS 인젝션 / 주소 스와핑 (EtherDelta 패턴) |
+| 24 | `web3-weak-randomness` | **[신규]** SWC-120 약한 온체인 무작위성 (block.timestamp/blockhash 예측 가능) |
+| 25 | `web3-dos-gas-limit` | **[신규]** SWC-128 가스 한도 DoS / 무한 루프 / 외부 의존 DoS |
+
+### 핵심 취약점 커버리지
+
+| 취약점 | SWC | 심각도 | 지원 |
+|--------|-----|--------|------|
+| 재진입 | SWC-107 | CRITICAL | ✅ |
+| 정수 오버플로우 | SWC-101 | HIGH | ✅ |
+| 미보호 함수 | SWC-105 | CRITICAL | ✅ |
+| Delegatecall 충돌 | SWC-112 | HIGH | ✅ |
+| 서명 재사용 | SWC-121 | HIGH | ✅ |
+| 타임스탬프 의존성 | SWC-116 | MEDIUM | ✅ |
+| 약한 무작위성 | SWC-120 | HIGH | ✅ *신규* |
+| 가스 한도 DoS | SWC-128 | HIGH | ✅ *신규* |
+| 블라인드 서명 (EIP-7730) | — | HIGH | ✅ *신규* |
+| Safe op-type 조작 | — | CRITICAL | ✅ *신규* (Bybit 벡터) |
+| 프론트엔드 JS 인젝션 | — | CRITICAL | ✅ *신규* (EtherDelta 패턴) |
+| 플래시론 공격 | — | CRITICAL | ✅ |
+| 오라클 조작 | — | CRITICAL | ✅ |
+| NFT 메타데이터 SSRF | — | HIGH | ✅ |
+
+### 블라인드 서명 / EIP-7730 (Bybit 해킹 벡터)
+
+2025년 2월 Bybit 15억 달러 해킹은 Safe 멀티시그의 블라인드 서명 취약점을 이용했습니다:
+- 공격자가 `operation` 파라미터를 `0`(call) → `1`(delegatecall)로 변경
+- 하드웨어 지갑에서 서명자가 변경 사실을 감지 불가
+- EIP-712 구조화 데이터만으로는 이를 방지하기 부족
+
+bingo의 `web3-blind-signing-audit`과 `web3-safe-multisig-optype` 스킬이 이 패턴을 탐지합니다:
+
+```
+[CRITICAL] Operation Type UI 미표시
+           Safe 트랜잭션 operation type (0=call, 1=delegatecall)이 UI에 표시 안 됨
+           수정: 서명 UI에 operation type을 명시적으로 표시
+
+[HIGH] EIP-7730 미구현
+       하드웨어 지갑에서 사람이 읽을 수 있는 트랜잭션 상세 표시 불가
+       수정: JSON 매니페스트를 https://github.com/LedgerHQ/clear-signing-erc7730-registry 에 제출
+```
+
+### 사용 예시
+
+```bash
+bingo> https://defi-protocol.com 스마트 컨트랙트 전체 감사
+
+# bingo 자동 실행:
+# 1. DApp 기술 스택 감지 (ethers/wagmi/web3.js)
+# 2. JS 번들에서 컨트랙트 주소 추출
+# 3. Etherscan에서 ABI 가져오기
+# 4. SWC 취약점 스캔
+# 5. 블라인드 서명 / EIP-7730 준수 여부 확인
+# 6. 프론트엔드 JS 인젝션 / 주소 스와핑 테스트
+# 7. 심각도 등급이 포함된 감사 보고서 생성
+```
+
+---
+
 ## Cloudflare 우회 (실제 IP 발견)
 
 ```python
@@ -514,7 +617,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 ## 요구사항
 
-- Python 3.10+
+- Python **3.12** (Playwright 호환성 필수)
 - 지원 모델 중 하나의 API 키
 - (선택) VPN 또는 프록시 — 자동 감지 및 표시
 
@@ -524,6 +627,8 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.61 | **DApp/Web3 감사** — 스마트 컨트랙트 스킬 25개, EIP-7730 블라인드 서명, Bybit Safe op-type, 프론트엔드 인젝션, SWC-120/128 |
+| v3.2.57 | 환각 방지 레이블 (VERIFIED/LIKELY/INFERRED), Playwright JS 감지, 스킬 로딩 수정, Python 3.12 전용 |
 | v3.2.45 | **macOS/Linux 전용** — Windows 지원 영구 중단 |
 | v3.2.28 | 핵심 엔진 복원 — 가장 안정적인 베이스로 롤백 |
 | v3.2.18 | **프록시 풀 로테이션** — HTTP/HTTPS/SOCKS5/Tor/API, 밴 시 자동 교체, RULE 26-T |

@@ -359,37 +359,98 @@ class ProxyManager:
         return count
 
     # ── 헬스체크 ─────────────────────────────────────────────────
+    # 테스트 URL 우선순위 (빠르고 신뢰할 수 있는 IP 확인 서비스)
+    _TEST_URLS: list[str] = [
+        "http://ip.sb",              # 가장 빠름, 단순 IP 텍스트
+        "http://api.ipify.org",      # 안정적 IP API
+        "http://ifconfig.me/ip",     # 단순 IP
+        "http://ip-api.com/line/?fields=query",  # 빠른 IP API
+        "http://checkip.amazonaws.com",          # AWS endpoint
+    ]
+
     def test_proxy(
         self,
-        entry: ProxyEntry,
-        test_url: str = "http://httpbin.org/ip",
-        timeout: int = 8,
-    ) -> bool:
+        entry: "ProxyEntry",
+        test_url: str | None = None,
+        timeout: int = 15,
+    ) -> tuple[bool, str]:
         """
         단일 프록시 동작 확인.
-        requests 또는 urllib 사용 (PySocks 없으면 HTTP만 가능).
-        """
-        try:
-            import requests as _req  # type: ignore
-            t0 = time.time()
-            r = _req.get(
-                test_url,
-                proxies=entry.to_requests_dict(),
-                timeout=timeout,
-                verify=False,
-            )
-            entry.latency_ms = round((time.time() - t0) * 1000, 1)
-            return r.status_code < 400
-        except Exception:
-            entry.fail_count += 1
-            return False
 
-    def test_all(self, test_url: str = "http://httpbin.org/ip") -> dict[str, bool]:
-        """풀 전체 헬스체크. {proxy_str: ok} dict 반환."""
-        results = {}
+        Returns
+        -------
+        (ok: bool, detail: str)
+            ok=True  → 'IP=x.x.x.x latency=Xms' 문자열
+            ok=False → 실패 원인 설명 문자열
+        """
+        # SOCKS5/SOCKS4 사용 시 PySocks 설치 여부 확인
+        is_socks = entry.scheme.startswith("socks")
+        if is_socks and not _PYSOCKS_OK:
+            return (
+                False,
+                "PySocks not installed — run: pip install requests[socks]\n"
+                "PySocks 미설치 — 실행 필요: pip install 'requests[socks]'",
+            )
+
+        import requests as _req  # type: ignore
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        proxies = entry.to_requests_dict()
+        urls_to_try = [test_url] if test_url else list(self._TEST_URLS)
+
+        last_err = "No test URL available"
+        for url in urls_to_try:
+            try:
+                sess = _req.Session()
+                sess.trust_env = False          # 환경변수 HTTP_PROXY 등 무시
+                t0 = time.time()
+                r = sess.get(
+                    url,
+                    proxies=proxies,
+                    timeout=timeout,
+                    verify=False,
+                    allow_redirects=True,
+                )
+                elapsed = round((time.time() - t0) * 1000, 1)
+
+                if r.status_code < 400:
+                    ip_text = r.text.strip().split()[0] if r.text.strip() else "?"
+                    # 응답이 IP 형식인지 확인 (단순 검증)
+                    import re as _re
+                    if not _re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", ip_text):
+                        ip_text = "connected"
+                    entry.latency_ms = elapsed
+                    entry.success_count += 1
+                    return (True, f"IP={ip_text}  latency={elapsed:.0f}ms  via {url}")
+                else:
+                    last_err = f"HTTP {r.status_code} from {url}"
+            except _req.exceptions.ProxyError as e:
+                last_err = f"ProxyError: {str(e)[:120]}"
+                # ProxyError는 즉시 실패 (다른 URL 시도해도 무의미)
+                entry.fail_count += 1
+                return (False, last_err)
+            except _req.exceptions.ConnectTimeout:
+                last_err = f"ConnectTimeout ({timeout}s) → {url}"
+            except _req.exceptions.ConnectionError as e:
+                _msg = str(e)
+                if "SOCKS5" in _msg or "SOCKS4" in _msg:
+                    last_err = f"SOCKS connection refused: {_msg[:100]}"
+                    entry.fail_count += 1
+                    return (False, last_err)
+                last_err = f"ConnectionError: {_msg[:100]}"
+            except Exception as e:
+                last_err = f"{type(e).__name__}: {str(e)[:100]}"
+
+        entry.fail_count += 1
+        return (False, last_err)
+
+    def test_all(self, test_url: str | None = None) -> dict[str, tuple[bool, str]]:
+        """풀 전체 헬스체크. {proxy_str: (ok, detail)} dict 반환."""
+        results: dict[str, tuple[bool, str]] = {}
         for e in list(self._pool):
-            ok = self.test_proxy(e, test_url)
-            results[str(e)] = ok
+            ok, detail = self.test_proxy(e, test_url)
+            results[str(e)] = (ok, detail)
             if not ok:
                 e.banned = True
         return results
@@ -404,10 +465,10 @@ class ProxyManager:
         if not e:
             return ""
         return (
-            f"# [PROXY INJECTED by bingo v3.2.18]\n"
+            f"# [PROXY INJECTED by bingo v3.2.74]\n"
+            f"import urllib3; urllib3.disable_warnings()\n"
             f"PROXIES = {{'http': '{e.url}', 'https': '{e.url}'}}\n"
-            f"# requests.get(url, proxies=PROXIES, ...)\n"
-            f"# httpx.get(url, proxies=PROXIES, ...)\n"
+            f"# requests.get(url, proxies=PROXIES, verify=False, timeout=15)\n"
         )
 
     # ── 빠른 API 프리셋 ──────────────────────────────────────────

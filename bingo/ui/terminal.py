@@ -3123,18 +3123,53 @@ class BingoTerminal:
             if not cur:
                 self._warn(self.s.get("proxy_pool_empty", "⚠ 사용 가능한 프록시 없음"))
                 return
-            with self.console.status(f"[cyan]🔍 {cur} 연결 테스트 중...[/cyan]"):
-                ok = pm.test_proxy(cur)
+            # v3.2.74: PySocks 사전 경고 (SOCKS5 + PySocks 미설치)
+            try:
+                import socks as _socks_chk  # noqa: F401
+                _pysocks_ok = True
+            except ImportError:
+                _pysocks_ok = False
+            if cur.scheme.startswith("socks") and not _pysocks_ok:
+                self._warn(
+                    self.s.get(
+                        "proxy_pysocks_missing",
+                        "⚠ PySocks 미설치 — SOCKS5/4 사용 불가\n"
+                        "설치 명령: pip install 'requests[socks]'",
+                    )
+                )
+            with self.console.status(
+                f"[cyan]🔍 {cur} 연결 테스트 중... (최대 15초)[/cyan]"
+            ):
+                ok, detail = pm.test_proxy(cur)
             if ok:
                 self._success(
-                    self.s.get("proxy_test_ok", "✅ 프록시 연결 성공: {url} (지연: {lat}ms)").format(
-                        url=str(cur), lat=f"{cur.latency_ms:.0f}"
-                    )
+                    self.s.get(
+                        "proxy_test_ok",
+                        "✅ 프록시 연결 성공: {url} (지연: {lat}ms)",
+                    ).format(url=str(cur), lat=f"{cur.latency_ms:.0f}")
+                    + f"\n   {detail}"
                 )
             else:
                 self._warn(
-                    self.s.get("proxy_test_fail", "❌ 프록시 연결 실패: {url}").format(url=str(cur))
+                    self.s.get(
+                        "proxy_test_fail",
+                        "❌ 프록시 연결 실패: {url}",
+                    ).format(url=str(cur))
                 )
+                # v3.2.74: 실패 원인 상세 출력
+                self.console.print(f"   [red]원인: {detail}[/red]")
+                if "PySocks" in detail or "pip install" in detail:
+                    self.console.print(
+                        "   [yellow]→ 해결: pip install 'requests[socks]'[/yellow]"
+                    )
+                elif "ProxyError" in detail or "SOCKS" in detail:
+                    self.console.print(
+                        "   [yellow]→ 프록시 서버에 연결할 수 없습니다. IP/포트/인증정보를 확인하세요.[/yellow]"
+                    )
+                elif "Timeout" in detail:
+                    self.console.print(
+                        "   [yellow]→ 타임아웃. 프록시가 응답하지 않습니다. 다른 프록시를 시도하세요.[/yellow]"
+                    )
             return
 
         # ─ unban ─────────────────────────────────────────────────────
@@ -5206,14 +5241,16 @@ class BingoTerminal:
 
             self._parse_agent_state(raw_results)
             state_summary = self._format_agent_state()
-            # v3.2.18: 프록시 상태를 state_summary에 포함
+            # v3.2.74: 프록시 상태를 state_summary에 포함
             if self._proxy.enabled:
                 _pe = self._proxy.current()
                 if _pe:
                     state_summary += (
                         f"\n[PROXY_ACTIVE: {_pe}]\n"
-                        f"Use in scripts: PROXIES = {{'http': '{_pe.url}', 'https': '{_pe.url}'}}\n"
-                        f"requests.get(url, proxies=PROXIES, verify=False)\n"
+                        f"import urllib3; urllib3.disable_warnings()\n"
+                        f"PROXIES = {{'http': '{_pe.url}', 'https': '{_pe.url}'}}\n"
+                        f"sess = __import__('requests').Session(); sess.trust_env = False\n"
+                        f"r = sess.get(url, proxies=PROXIES, verify=False, timeout=15)\n"
                     )
             self._show_token_usage()
             self._exec_loop_count += 1

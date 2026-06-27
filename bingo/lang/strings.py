@@ -2888,6 +2888,25 @@ _STRINGS.update({
     "proxy_test_fail":           {"ko": "❌ 프록시 연결 실패: {url}",
                                    "zh": "❌ 代理连接失败: {url}",
                                    "en": "❌ Proxy connection failed: {url}"},
+    # v3.2.74 프록시 진단 키
+    "proxy_pysocks_missing":     {"ko": "⚠ PySocks 미설치 — SOCKS5/SOCKS4 사용 불가\n"
+                                        "   설치: pip install 'requests[socks]'",
+                                   "zh": "⚠ 未安装PySocks — 无法使用SOCKS5/SOCKS4代理\n"
+                                        "   安装: pip install 'requests[socks]'",
+                                   "en": "⚠ PySocks not installed — SOCKS5/SOCKS4 unavailable\n"
+                                        "   Install: pip install 'requests[socks]'"},
+    "proxy_test_detail":         {"ko": "   상세: {detail}",
+                                   "zh": "   详情: {detail}",
+                                   "en": "   Detail: {detail}"},
+    "proxy_fix_pysocks":         {"ko": "   → 해결: pip install 'requests[socks]'",
+                                   "zh": "   → 解决: pip install 'requests[socks]'",
+                                   "en": "   → Fix: pip install 'requests[socks]'"},
+    "proxy_fix_connection":      {"ko": "   → IP/포트/인증정보를 확인하세요. 다른 프록시를 시도하세요.",
+                                   "zh": "   → 请检查代理IP/端口/认证信息，或尝试其他代理。",
+                                   "en": "   → Check proxy IP/port/credentials or try another proxy."},
+    "proxy_fix_timeout":         {"ko": "   → 타임아웃: 프록시가 응답 없음. /proxy rotate 로 교체하세요.",
+                                   "zh": "   → 超时: 代理无响应，请使用 /proxy rotate 切换。",
+                                   "en": "   → Timeout: proxy not responding. Use /proxy rotate."},
     "proxy_unban":               {"ko": "✅ 밴 해제됨: {n}개",
                                    "zh": "✅ 已解封 {n} 个代理",
                                    "en": "✅ Unbanned {n} proxies"},

@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-3.2.62-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.65-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -485,6 +485,50 @@ java -jar ~/tools/Malimite.jar target.ipa --output ./decompiled/
 
 ---
 
+## OAuth开放客户端注册链式攻击 (v3.2.65)
+
+bingo v3.2.65 新增 **`sec-web-oauth-open-reg`** — 针对允许未认证动态客户端注册的严重OAuth配置错误，实现完整账户接管攻击链。
+
+### 攻击链
+
+```
+/.well-known/oauth-authorization-server
+        ↓
+  registration_endpoint (无需认证即可访问)
+        ↓
+  攻击者注册客户端 → 获取 client_id + client_secret
+        ↓
+  使用攻击者 redirect_uri 发起授权请求
+        ↓
+  受害者点击 → 授权码发送至 attacker.com
+        ↓
+  令牌交换 (PKCE 未强制执行)
+        ↓
+  通配符 CORS → 跨域读取令牌
+        ↓
+  账户接管成功 ✓
+```
+
+### bingo 自动检测项目
+
+| 检测项目 | 技能覆盖 |
+|----------|---------|
+| `/.well-known/oauth-authorization-server` 元数据探测 | ✅ |
+| `registration_endpoint` 未认证访问 | ✅ |
+| `redirect_uri` 白名单绕过 | ✅ |
+| PKCE (`code_challenge`) 强制执行检测 | ✅ |
+| `Access-Control-Allow-Origin: *` + Credentials 同时允许 | ✅ |
+| 授权码劫持 PoC | ✅ |
+
+### 使用方法
+
+```
+bingo skill show sec-web-oauth-open-reg
+bingo skill search oauth
+```
+
+---
+
 ## DApp / Web3 / 智能合约审计 (v3.2.62)
 
 bingo 新增 **28 个 DApp/Web3 专属审计技能**，输入中检测到 Web3 关键词时**自动加载**。
@@ -668,6 +712,8 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 版本 | 摘要 |
 |------|------|
+| v3.2.65 | **OAuth开放客户端注册链式攻击** — 自动探测`/.well-known/oauth-authorization-server` → 未认证客户端注册 → redirect_uri劫持授权码 → PKCE绕过 → 通配符CORS利用 → 完整账户接管链（`sec-web-oauth-open-reg`）；代理死锁修复(RLock)；DApp技能SyntaxWarning清理 |
+| v3.2.64 | 代理死锁修复 (RLock), `skills_data15.py` SyntaxWarning 清理 |
 | v3.2.62 | **DApp 钱包认证** — 测试钱包生成，SIWE 登录 (EIP-4361)，认证 API 全量渗透流水线（共 28 个技能）|
 | v3.2.61 | **DApp/Web3 审计** — 智能合约技能 25 个，EIP-7730 盲签名，Bybit Safe op-type，前端注入，SWC-120/128 |
 | v3.2.57 | 反幻觉标签 (VERIFIED/LIKELY/INFERRED)，Playwright JS 检测，技能加载修复，Python 3.12 专属 |

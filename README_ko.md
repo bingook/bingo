@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-3.2.62-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.65-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -485,6 +485,50 @@ SQLi / 웹쉘 / RCE 확인 후 자동 실행:
 
 ---
 
+## OAuth 오픈 클라이언트 등록 체인 공격 (v3.2.65)
+
+bingo v3.2.65는 **`sec-web-oauth-open-reg`** 스킬을 추가합니다. 미인증 동적 클라이언트 등록을 허용하는 치명적인 OAuth 설정 오류를 이용한 계정 탈취 완전 체인입니다.
+
+### 공격 체인
+
+```
+/.well-known/oauth-authorization-server
+        ↓
+  registration_endpoint (인증 없이 접근 가능)
+        ↓
+  공격자가 클라이언트 등록 → client_id + client_secret 획득
+        ↓
+  공격자 redirect_uri로 인가 요청
+        ↓
+  피해자 클릭 → 인가 코드가 attacker.com으로 전송
+        ↓
+  토큰 교환 (PKCE 미강제)
+        ↓
+  와일드카드 CORS → 크로스오리진 토큰 읽기
+        ↓
+  계정 탈취 완료 ✓
+```
+
+### bingo가 자동으로 점검하는 항목
+
+| 점검 항목 | 스킬 커버 |
+|-----------|----------|
+| `/.well-known/oauth-authorization-server` 메타데이터 탐지 | ✅ |
+| `registration_endpoint` 미인증 접근 | ✅ |
+| `redirect_uri` 화이트리스트 우회 | ✅ |
+| PKCE (`code_challenge`) 강제 여부 | ✅ |
+| `Access-Control-Allow-Origin: *` + Credentials 동시 허용 | ✅ |
+| 인가 코드 탈취 PoC | ✅ |
+
+### 사용 방법
+
+```
+bingo skill show sec-web-oauth-open-reg
+bingo skill search oauth
+```
+
+---
+
 ## DApp / Web3 / 스마트 컨트랙트 감사 (v3.2.62)
 
 bingo에 **DApp/Web3 전용 스킬 28개**가 추가되었습니다. Web3 관련 키워드가 감지되면 **자동으로 스킬이 로드**됩니다.
@@ -668,6 +712,8 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.65 | **OAuth 오픈 클라이언트 등록 체인 공격** — `/.well-known/oauth-authorization-server` 자동 탐지 → 미인증 클라이언트 등록 → redirect_uri 인가 코드 탈취 → PKCE 우회 → 와일드카드 CORS 악용 → 계정 완전 탈취 (`sec-web-oauth-open-reg`); 프록시 데드락 수정(RLock); DApp 스킬 SyntaxWarning 정리 |
+| v3.2.64 | 프록시 데드락 수정 (RLock), `skills_data15.py` SyntaxWarning 정리 |
 | v3.2.62 | **DApp 지갑 인증** — 테스트 지갑 생성, SIWE 로그인 (EIP-4361), 인증 API 전체 침투 파이프라인 (총 28개 스킬) |
 | v3.2.61 | **DApp/Web3 감사** — 스마트 컨트랙트 스킬 25개, EIP-7730 블라인드 서명, Bybit Safe op-type, 프론트엔드 인젝션, SWC-120/128 |
 | v3.2.57 | 환각 방지 레이블 (VERIFIED/LIKELY/INFERRED), Playwright JS 감지, 스킬 로딩 수정, Python 3.12 전용 |

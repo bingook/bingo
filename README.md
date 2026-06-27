@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.62-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.65-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -87,7 +87,7 @@ Tasks:
 | **File Upload** | Extension bypass, webshell upload |
 | **Auth Attack** | Login brute force, SQLi auth bypass, CAPTCHA auto-solve |
 | **IDOR/BOLA** | Object ID enumeration, horizontal privilege escalation |
-| **JWT/OAuth** | alg:none, weak secret, redirect_uri abuse |
+| **JWT/OAuth** | alg:none, weak secret, redirect_uri abuse, **open client registration chain ATO** (v3.2.65) |
 | **GraphQL** | Introspection, batch attack, field injection |
 | **HTTP Smuggling** | CL.TE / TE.CL desync |
 | **Credential Dump** | Extract hashes → suggest hashcat command |
@@ -560,6 +560,50 @@ bingo detects reflected and stored XSS automatically:
 
 ---
 
+## OAuth Open Client Registration Chain Attack (v3.2.65)
+
+bingo v3.2.65 adds **`sec-web-oauth-open-reg`** — a full attack chain for the critical OAuth misconfiguration where unauthenticated dynamic client registration enables account takeover.
+
+### Attack Chain
+
+```
+/.well-known/oauth-authorization-server
+        ↓
+  registration_endpoint (no auth required)
+        ↓
+  Attacker registers client → gets client_id + client_secret
+        ↓
+  Authorization request with attacker redirect_uri
+        ↓
+  Victim clicks → authorization code sent to attacker.com
+        ↓
+  Token exchange (PKCE not enforced)
+        ↓
+  Wildcard CORS → cross-origin token read
+        ↓
+  Account Takeover ✓
+```
+
+### What bingo checks automatically
+
+| Check | Skill covers |
+|-------|-------------|
+| `/.well-known/oauth-authorization-server` metadata probe | ✅ |
+| `registration_endpoint` unauthenticated access | ✅ |
+| `redirect_uri` whitelist bypass | ✅ |
+| PKCE (`code_challenge`) enforcement | ✅ |
+| `Access-Control-Allow-Origin: *` + Credentials | ✅ |
+| Authorization code hijack PoC | ✅ |
+
+### Usage
+
+```
+bingo skill show sec-web-oauth-open-reg
+bingo skill search oauth
+```
+
+---
+
 ## DApp / Web3 / Smart Contract Audit (v3.2.62)
 
 bingo now includes **28 dedicated DApp/Web3/Smart Contract audit skills** — auto-triggered when Web3 keywords are detected.
@@ -723,6 +767,8 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 | Version | Summary |
 |---------|---------|
+| v3.2.65 | **OAuth Open Client Registration Chain Attack** — `/.well-known/oauth-authorization-server` discovery → unauthenticated client registration → redirect_uri hijack → PKCE bypass → wildcard CORS → full account takeover chain (`sec-web-oauth-open-reg`); proxy deadlock fix (RLock); SyntaxWarning cleanup in DApp skills |
+| v3.2.64 | Proxy deadlock fix (RLock), `skills_data15.py` SyntaxWarning cleanup |
 | v3.2.62 | **DApp wallet auth** — test wallet generation, SIWE login (EIP-4361), full authenticated API pentest pipeline (28 skills total) |
 | v3.2.61 | **DApp/Web3 audit** — 25 smart contract skills, EIP-7730 blind signing, Bybit Safe op-type, frontend injection, SWC-120/128 |
 | v3.2.57 | Anti-hallucination labels (VERIFIED/LIKELY/INFERRED), Playwright JS detection, skill loading fixes |

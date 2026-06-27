@@ -118,12 +118,12 @@ print(f"[+] 응답: {r.status_code} | {len(html)} bytes")
 
 # 2. Web3 라이브러리 감지
 web3_libs = {
-    "ethers.js":      [r'ethers', r'ethers\.utils', r'ethers\.Contract'],
-    "web3.js":        [r'new Web3\(', r'web3\.eth', r'web3\.utils'],
+    "ethers.js":      [r'ethers', r'ethers\\.utils', r'ethers\\.Contract'],
+    "web3.js":        [r'new Web3\\(', r'web3\\.eth', r'web3\\.utils'],
     "wagmi":          [r'wagmi', r'useAccount', r'useConnect'],
     "viem":           [r'viem', r'createPublicClient', r'createWalletClient'],
     "WalletConnect":  [r'WalletConnect', r'walletconnect', r'@walletconnect'],
-    "MetaMask":       [r'ethereum\.request', r'window\.ethereum', r'MetaMask'],
+    "MetaMask":       [r'ethereum\\.request', r'window\\.ethereum', r'MetaMask'],
     "RainbowKit":     [r'RainbowKit', r'rainbowkit', r'ConnectButton'],
     "web3modal":      [r'Web3Modal', r'web3modal'],
 }
@@ -2157,7 +2157,7 @@ try:
         })
 
     # 2. SRI (Subresource Integrity) 확인
-    external_scripts = re.findall(r'<script[^>]+src=["\']https?://(?!(?:localhost|127\.0\.0\.1))[^"\']+["\']', html)
+    external_scripts = re.findall(r'<script[^>]+src=["\']https?://(?!(?:localhost|127\\.0\\.0\\.1))[^"\']+["\']', html)
     sri_scripts = re.findall(r'<script[^>]+integrity=["\'][^"\']+["\']', html)
 
     if external_scripts:
@@ -2174,7 +2174,7 @@ try:
 
     # 3. 위험한 CDN 소스 확인
     dangerous_cdns = re.findall(
-        r'src=["\'](https?://(?:cdn\.jsdelivr\.net|unpkg\.com|cdnjs\.cloudflare\.com)[^"\']*)["\']',
+        r'src=["\'](https?://(?:cdn\\.jsdelivr\\.net|unpkg\\.com|cdnjs\\.cloudflare\\.com)[^"\']*)["\']',
         html
     )
     if dangerous_cdns:
@@ -2188,7 +2188,7 @@ try:
 
     # 4. DOM 기반 주소 조작 패턴
     dom_risky = re.findall(
-        r'(?:innerHTML|outerHTML|document\.write)\s*[+=]\s*[^;]{0,100}(?:address|addr|wallet)',
+        r'(?:innerHTML|outerHTML|document\\.write)\\s*[+=]\\s*[^;]{0,100}(?:address|addr|wallet)',
         html, re.I
     )
     if dom_risky:
@@ -2408,19 +2408,19 @@ code = target
 findings = []
 
 patterns = [
-    ("무한 루프 (동적 배열)", r'for\s*\([^)]*\.\s*length', "HIGH",
+    ("무한 루프 (동적 배열)", r'for\\s*\\([^)]*\\.\\s*length', "HIGH",
      "배열 크기를 공격자가 늘려 가스 소진 가능 — 루프 외부에서 length 저장"),
-    ("루프 내 외부 call", r'for[^{]*\{[^}]*\.call\s*\{', "HIGH",
+    ("루프 내 외부 call", r'for[^{]*\\{[^}]*\\.call\\s*\\{', "HIGH",
      "하나의 실패한 call이 전체 배치 차단 가능"),
-    ("루프 내 transfer", r'for[^{]*\{[^}]*\.transfer\s*\(', "HIGH",
+    ("루프 내 transfer", r'for[^{]*\\{[^}]*\\.transfer\\s*\\(', "HIGH",
      "transfer는 2300가스 — 수신자가 가스 더 필요한 receive() 가질 경우 DoS"),
-    ("루프 내 send", r'for[^{]*\{[^}]*\.send\s*\(', "MEDIUM",
+    ("루프 내 send", r'for[^{]*\\{[^}]*\\.send\\s*\\(', "MEDIUM",
      "send 실패 무시 — 자금 손실 가능"),
-    ("push 결제 패턴", r'(?:payable|transfer|send)\s*\([^)]*\)\s*(?:;|\})', "MEDIUM",
+    ("push 결제 패턴", r'(?:payable|transfer|send)\\s*\\([^)]*\\)\\s*(?:;|\\})', "MEDIUM",
      "pull 결제 패턴으로 변경 권장"),
-    ("가스 없는 외부 call", r'\.call\s*\(\s*\"\"\s*\)', "HIGH",
+    ("가스 없는 외부 call", r'\\.call\\s*\\(\\s*\"\"\\s*\\)', "HIGH",
      "가스 제한 없는 call — 재진입 및 DoS 위험"),
-    ("address.transfer 사용", r'(?<!\w)\.transfer\s*\(', "MEDIUM",
+    ("address.transfer 사용", r'(?<!\\w)\\.transfer\\s*\\(', "MEDIUM",
      "EIP-1884 이후 2300 가스 부족 케이스 증가 — .call{value:}() 권장"),
 ]
 
@@ -2432,7 +2432,7 @@ for name, pattern, severity, detail in patterns:
 safe_patterns = []
 if "ReentrancyGuard" in code:
     safe_patterns.append("ReentrancyGuard 감지")
-if re.search(r'mapping\s*\([^)]*\)\s*\w+\s+pending', code):
+if re.search(r'mapping\\s*\\([^)]*\\)\\s*\\w+\\s+pending', code):
     safe_patterns.append("Pull payment 패턴 감지 (mapping pending)")
 if "PullPayment" in code or "withdrawPayments" in code:
     safe_patterns.append("OpenZeppelin PullPayment 감지")

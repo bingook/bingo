@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-3.2.66-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.67-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -708,6 +708,104 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 ---
 
+## v3.2.67 신규 기능 — 12개 보안 스킬 추가
+
+### 1. DOM Clobbering → XSS (`sec-web-dom-clobbering`)
+
+이름이 있는 HTML 요소(`<a id=x>`)가 `window.x` / `document.x`를 덮어쓰면서 DOMPurify 같은 라이브러리 글로벌 변수를 오염. DOMPurify v3.2.4 미만에서 `document.currentScript`나 `document.baseURI`를 읽는 경우 `<a id=currentScript href=javascript:...>` 주입만으로 HTML 소독을 무력화하고 저장형 XSS 달성.
+
+**확인:** `<a id=x>` 페이로드 주입 → `window.x` 오염 여부 확인 → 라이브러리 특화 페이로드 제작.
+
+---
+
+### 2. DOMPurify + 프로토타입 오염 우회 (`sec-web-dompurify-pp-bypass`)
+
+쿼리스트링 파서나 `_.merge`를 통한 **Prototype Pollution**으로 `Object.prototype`을 오염시킨 후 DOMPurify 소독 전에 `__proto__.FORCE_BODY = true` 또는 `__proto__.ALLOWED_TAGS['script'] = true`를 설정 → 소독자가 `<script>`를 허용 태그로 인식 → 영구 XSS.
+
+**도구:** `ppfuzz`, URL 파라미터/JSON 바디를 통한 수동 `__proto__` 주입.
+
+---
+
+### 3. ImageMagick / Ghostscript SVG→RCE (`sec-web-imagemagick-ghostscript-rce`)
+
+`<image href="mvg:...">` 또는 MSL/MIFF 지시자를 포함한 SVG를 업로드하면 ImageMagick의 정책 우회(MVG policy 미설정) 또는 Ghostscript `-dSAFER` 회피를 통해 셸 실행. 서버 사이드 이미지 변환을 수행하는 모든 서비스에 영향.
+
+**확인:** 조작된 SVG/MVG 업로드 → DNS 핑백 관찰 → 명령 실행으로 확대.
+
+---
+
+### 4. AWS ALB 직접 IP 접근 / CloudFront WAF 우회 (`sec-cloud-aws-alb-bypass`)
+
+ALB와 CloudFront 배포는 SPF 레코드, BGP 데이터(bgp.he.net), 인증서 투명성 로그를 통해 **실제 백엔드 IP**를 노출. EC2/ELB IP에 직접 연결 후 `Host:` 헤더 조작으로 CloudFront WAF 규칙을 완전히 우회 — CDN 엣지에서 차단되던 SQLi, SSRF, 경로 탐색 페이로드가 오리진에 무필터 도달.
+
+**확인:** `dig TXT target.com` → `ip4:` SPF 항목 → `curl https://<IP>/ -H "Host: target.com"` → 응답 비교.
+
+---
+
+### 5. Google Cloud StubZero / 디버그 엔드포인트 RCE (`sec-cloud-gcp-debug-rce`)
+
+Cloud Run, App Engine 서비스가 미인증 gRPC 리플렉션 엔드포인트나 Go `pprof`/`expvar` 디버그 라우트를 노출하는 경우. 공격자가 protobuf 서비스 정의를 열거하고 워크플로 실행 큐 메시지를 조작해 유효한 자격증명 없이 서버 사이드 코드 실행 달성.
+
+**확인:** `grpc_cli ls <host>:443` → 비보호 RPC 발견 → 조작된 protobuf 전송 → 실행 트리거.
+
+---
+
+### 6. AWS Cognito 멀티 SSO 고스트 신원 주입 (`sec-cloud-aws-cognito-sso`)
+
+Cognito User Pool이 여러 외부 IdP 페더레이션 지점으로 구성되고 Lambda 트리거(사전/사후 인증)에서 `triggerSource` 값을 검증하지 않는 경우, 공격자가 로그인 요청을 조작해 실제 IdP 어서션에 없는 상향 그룹 멤버십을 주장하는 고스트 신원 토큰 주입 가능.
+
+**확인:** Cognito `InitiateAuth` 인터셉트 → `triggerSource` / 사용자 속성 변조 → Lambda 동작 관찰.
+
+---
+
+### 7. `npx` 바이너리 이름 혼동 (공급망) (`sec-supply-chain-npx-confusion`)
+
+내부 도구를 `npx internal-tool`로 실행하는데 해당 도구가 공개 npm 레지스트리에 없는 경우, 공격자가 동일 이름의 악성 패키지를 게시 가능. 개발자가 `npx internal-tool` 실행 시 npm이 공개 레지스트리를 먼저 조회 → 공격자 패키지를 다운로드·실행.
+
+**확인:** `npmjs.com`에서 비공개 도구 이름 존재 여부 확인 → 없으면 `$HOME/.ssh/` 유출 PoC로 선점.
+
+---
+
+### 8. Exim MTA RCE — CVE-2026-45185 (`sec-infra-exim-rce`)
+
+Exim 4.97.x의 **dead-letter 역직렬화** 버그: 반송 메시지 전달 실패 시 내부 직렬화 경로가 공격자 제어 콘텐츠를 역직렬화. 조작된 SMTP `MAIL FROM:`으로 embedded 직렬화 객체 전송 → `Debian-exim` 권한으로 **원격 코드 실행**.
+
+**패치:** Exim 4.98+. 감지: `exim --version` → `4.97.0`~`4.97.4` 확인.
+
+---
+
+### 9. Android 무선 디버깅 RCE — CVE-2026-0073 (`sec-android-wireless-debug-rce`)
+
+**무선 디버깅** 활성화(설정 → 개발자 옵션) Android 11~14 기기가 임의 고포트에 ADB를 TCP로 노출. CVE-2026-0073은 `adbd` 페어링 프로토콜의 경쟁 조건을 통해 페어링 PIN 검사 우회 → 같은 네트워크의 공격자가 USB 없이 **미인증 ADB 셸** 획득 → 기기 완전 장악.
+
+**확인:** `adb connect <device-ip>:<port>` → 경쟁 조건 익스플로잇 → `adb shell id`.
+
+---
+
+### 10. Linux 커널 AF_ALG LPE — CVE-2026-31431 (`sec-kernel-af-alg-lpe`)
+
+`AF_ALG` 소켓 + `splice()` 시스템 콜 조합이 생성하는 **페이지 캐시 쓰기** 프리미티브로 비권한 로컬 사용자가 읽기 전용 페이지 캐시 페이지(`/etc/passwd`, SUID 바이너리 등)에 임의 바이트 쓰기 → 루트 권한 상승.
+
+**영향:** `CONFIG_STRICT_KERNEL_RWX` 없는 Linux 5.15~6.8. 확인: 커널 버전 + `AF_ALG` 소켓 생성 가능 여부.
+
+---
+
+### 11. AI IDE 간접 프롬프트 인젝션 → TOCTOU RCE (`sec-ai-ide-toctou-rce`)
+
+VSCode Copilot, Cursor 등 AI 파워 IDE가 악성 저장소 파일(README, docstring, 설정)의 **간접 프롬프트 인젝션**에 취약. 에이전트가 `~/.ssh/id_rsa` 읽기 후 URL로 유출하도록 지시 가능. **TOCTOU** 결합 시 에이전트가 무해 버전을 읽고 교체된 악성 버전으로 동작 → IDE 터미널 도구를 통한 임의 명령 실행.
+
+**완화:** 샌드박스 에이전트 워크스페이스, 모든 셸 명령 사용자 확인, 프롬프트 콘텐츠 정책.
+
+---
+
+### 12. AI 자율 취약점 헌팅 (MCP 루프) (`sec-ai-autonomous-hunt-mcp`)
+
+Claude Code + MCP 도구가 자율 취약점 헌팅 루프 구성: 에이전트가 타겟 JS/API 응답 브라우징 → 후보 싱크 추출 → 페이로드 생성 → 테스트 → 환각을 "hallucination bin"에 폐기 → 확인된 발견을 지식 그래프에 누적 — 테스트 반복 사이에 인간 개입 없이 진행.
+
+**핵심 패턴:** MCP 도구(`fetch`, `browser`) → 후보 추출 → 페이로드 생성 → 검증 → 지식 저장 → 다음 후보.
+
+---
+
 ## v3.2.66 신규 기능 — 4개 보안 스킬 추가
 
 ### 1. OAuth 이메일 미검증 ATO (`sec-web-oauth-email-unverified-ato`)
@@ -748,6 +846,7 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.67 | **12개 신규 스킬** — DOM Clobbering XSS, DOMPurify+PP 우회, ImageMagick/GS RCE, AWS ALB 우회, GCP 디버그 RCE, AWS Cognito 고스트 신원, npx 바이너리 혼동, Exim CVE-2026-45185 RCE, Android CVE-2026-0073 ADB RCE, Linux AF_ALG CVE-2026-31431 LPE, AI IDE TOCTOU RCE, AI 자율 헌팅 MCP 루프; 다국어 i18n 키 40개 추가 |
 | v3.2.66 | **4개 신규 스킬** — OAuth 이메일 미검증 ATO (`sec-web-oauth-email-unverified-ato`), MQTT 자격증명 탈취 (`sec-iot-mqtt-credential-leak`), Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`), AI 에이전트 CI/CD 프롬프트 인젝션 공급망 공격 (`ai-agent-ci-prompt-inject`); 다국어 i18n 키 21개 추가 |
 | v3.2.65 | **OAuth 오픈 클라이언트 등록 체인 공격** — `/.well-known/oauth-authorization-server` 자동 탐지 → 미인증 클라이언트 등록 → redirect_uri 인가 코드 탈취 → PKCE 우회 → 와일드카드 CORS 악용 → 계정 완전 탈취 (`sec-web-oauth-open-reg`); 프록시 데드락 수정(RLock); DApp 스킬 SyntaxWarning 정리 |
 | v3.2.64 | 프록시 데드락 수정 (RLock), `skills_data15.py` SyntaxWarning 정리 |

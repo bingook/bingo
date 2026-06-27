@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.66-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.67-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -763,6 +763,104 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 ---
 
+## New in v3.2.67 — 12 Security Skills Added
+
+### 1. DOM Clobbering → XSS (`sec-web-dom-clobbering`)
+
+Named HTML elements (e.g., `<a id=x>`) overwrite `window.x` / `document.x`, clobbering library globals used by sanitizers like DOMPurify. If the target uses DOMPurify **before** v3.2.4 and reads `document.currentScript` or `document.baseURI`, injecting `<a id=currentScript href=javascript:...>` silently bypasses HTML sanitization and achieves stored XSS.
+
+**Test:** Inject `<a id=x>` payload → check if `window.x` is clobbered → craft library-specific payload.
+
+---
+
+### 2. DOMPurify + Prototype Pollution Bypass (`sec-web-dompurify-pp-bypass`)
+
+Chaining **Prototype Pollution** (Object.prototype poisoning via a query-string parser or `_.merge`) with **DOMPurify** allows `__proto__.FORCE_BODY = true` or `__proto__.ALLOWED_TAGS['script'] = true` to be set before sanitization, making DOMPurify believe `<script>` is whitelisted. Results in persistent XSS through the sanitizer.
+
+**Tools:** `ppfuzz`, manual `__proto__` injection via URL params or JSON body.
+
+---
+
+### 3. ImageMagick / Ghostscript SVG→RCE (`sec-web-imagemagick-ghostscript-rce`)
+
+Upload an SVG containing an `<image href="mvg:...">` or MSL/MIFF directive that triggers shell execution through ImageMagick's policy bypass (missing `<policy domain="coder" rights="none" pattern="MVG"/>`) or Ghostscript's `-dSAFER` evasion. Affects any service that converts user-uploaded images server-side.
+
+**Test:** Upload crafted SVG/MVG → observe DNS ping-back → escalate to command execution.
+
+---
+
+### 4. AWS ALB Direct-IP / CloudFront WAF Bypass (`sec-cloud-aws-alb-bypass`)
+
+ALBs and CloudFront distributions expose their **real backend IP** via SPF records, BGP data (bgp.he.net), or certificate transparency logs. Connecting directly to the EC2/ELB IP with a spoofed `Host:` header bypasses CloudFront WAF rules entirely, allowing SQLi, SSRF, and path traversal payloads blocked at the CDN edge to reach the origin unfiltered.
+
+**Test:** `dig TXT target.com` → find `ip4:` SPF entry → curl `https://<IP>/` with `Host: target.com` → compare responses.
+
+---
+
+### 5. Google Cloud StubZero / Debug Endpoint RCE (`sec-cloud-gcp-debug-rce`)
+
+Cloud Run and App Engine services may expose unauthenticated gRPC reflection endpoints or Go `pprof`/`expvar` debug routes. An attacker enumerates protobuf service definitions, crafts workflow execution queue messages, and achieves server-side code execution without valid credentials.
+
+**Test:** `grpc_cli ls <host>:443` → discover unprotected RPCs → send crafted protobuf to trigger execution.
+
+---
+
+### 6. AWS Cognito Multi-SSO Ghost Identity Injection (`sec-cloud-aws-cognito-sso`)
+
+When Cognito User Pools are configured with multiple external IdP federation points and `triggerSource` values are not validated in Lambda triggers (Pre-Authentication, Post-Authentication), an attacker can craft a login request that injects a ghost identity — a token that claims elevated group membership not present in the real IdP assertion.
+
+**Test:** Intercept Cognito `InitiateAuth` → modify `triggerSource` / user attributes → observe Lambda behavior.
+
+---
+
+### 7. `npx` Binary Name Confusion (Supply Chain) (`sec-supply-chain-npx-confusion`)
+
+If an internal tool is run as `npx internal-tool`, and `internal-tool` is not published to the public npm registry, an attacker can publish a malicious package with the same name. When a developer runs `npx internal-tool`, npm's public registry is queried first, downloading and executing the attacker's package with full developer privileges.
+
+**Test:** Check if private tool name exists on `npmjs.com` → if absent, claim it with a PoC that exfiltrates `$HOME/.ssh/`.
+
+---
+
+### 8. Exim MTA RCE — CVE-2026-45185 (`sec-infra-exim-rce`)
+
+A **dead-letter deserialization** bug in Exim 4.97.x: when a bounce message cannot be delivered, Exim calls an internal serialization path that deserializes attacker-controlled content from the bounce envelope. Sending a specially crafted SMTP `MAIL FROM:` with embedded PHP/Perl serialized object triggers RCE as the `Debian-exim` user.
+
+**Patch:** Exim 4.98+. Detection: `exim --version`, check for `4.97.0`–`4.97.4`.
+
+---
+
+### 9. Android Wireless Debugging RCE — CVE-2026-0073 (`sec-android-wireless-debug-rce`)
+
+Android 11–14 devices with **Wireless Debugging** enabled (Settings → Developer Options) expose ADB over TCP on a random high port. CVE-2026-0073 allows an attacker on the same network to bypass the pairing PIN check via a race condition in `adbd`'s pairing protocol, achieving unauthenticated ADB shell — full device compromise without USB.
+
+**Test:** `adb connect <device-ip>:<port>` → exploit race → `adb shell id`.
+
+---
+
+### 10. Linux Kernel AF_ALG LPE — CVE-2026-31431 (`sec-kernel-af-alg-lpe`)
+
+A **page-cache write** primitive introduced via `AF_ALG` socket + `splice()` system call combination allows an unprivileged local user to write arbitrary bytes to read-only page-cache pages (including kernel code pages on systems without `CONFIG_STRICT_KERNEL_RWX`). Escalates to root via overwriting `/etc/passwd` or a SUID binary in page cache.
+
+**Affects:** Linux 5.15–6.8 without the June 2026 stable patch. Test: kernel version check + `AF_ALG` socket creation.
+
+---
+
+### 11. AI IDE Indirect Prompt Injection → TOCTOU RCE (`sec-ai-ide-toctou-rce`)
+
+VSCode Copilot, Cursor, and similar AI-powered IDEs are vulnerable to **indirect prompt injection**: a malicious repository file (README, docstring, config) instructs the IDE agent to `read ~/.ssh/id_rsa` and exfiltrate it via a URL. Combined with **TOCTOU** (the agent reads a benign version of a file then acts on a swapped malicious version), this achieves arbitrary command execution through the IDE's terminal tool.
+
+**Mitigations:** Sandboxed agent workspace, user confirmation for all shell commands, prompt content policy.
+
+---
+
+### 12. AI-Assisted Autonomous Vulnerability Hunting (MCP Loop) (`sec-ai-autonomous-hunt-mcp`)
+
+Claude Code + MCP tools create an autonomous vulnerability hunting loop: the agent browses target JS/API responses, extracts candidate sinks, generates payloads, tests them, discards hallucinations (via a "hallucination bin" dedup store), and accumulates confirmed findings in a knowledge graph — all without human intervention between test iterations.
+
+**Key pattern:** MCP tool (`fetch`, `browser`) → candidate extraction → payload generation → verify → knowledge store → next candidate.
+
+---
+
 ## New in v3.2.66 — 4 Security Skills Added
 
 ### 1. OAuth Unverified Email Account Takeover (`sec-web-oauth-email-unverified-ato`)
@@ -803,6 +901,7 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 | Version | Summary |
 |---------|---------|
+| v3.2.67 | **12 New Skills** — DOM Clobbering XSS, DOMPurify+PP Bypass, ImageMagick/GS RCE, AWS ALB Bypass, GCP Debug RCE, AWS Cognito Ghost Identity, npx Binary Confusion, Exim CVE-2026-45185 RCE, Android CVE-2026-0073 ADB RCE, Linux AF_ALG CVE-2026-31431 LPE, AI IDE TOCTOU RCE, AI Autonomous Hunt MCP Loop; 40 new multilingual i18n keys |
 | v3.2.66 | **4 New Skills** — OAuth email unverified ATO (`sec-web-oauth-email-unverified-ato`), MQTT credential leak (`sec-iot-mqtt-credential-leak`), Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`), AI Agent CI/CD prompt injection supply chain (`ai-agent-ci-prompt-inject`); 21 new multilingual i18n keys |
 | v3.2.65 | **OAuth Open Client Registration Chain Attack** — `/.well-known/oauth-authorization-server` discovery → unauthenticated client registration → redirect_uri hijack → PKCE bypass → wildcard CORS → full account takeover chain (`sec-web-oauth-open-reg`); proxy deadlock fix (RLock); SyntaxWarning cleanup in DApp skills |
 | v3.2.64 | Proxy deadlock fix (RLock), `skills_data15.py` SyntaxWarning cleanup |

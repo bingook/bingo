@@ -3112,6 +3112,232 @@ _STRINGS.update({
     "oauth_chain_summary":       {"ko": "📋 OAuth 오픈 등록 체인 요약: 등록={reg} / redirect_uri={redir} / PKCE={pkce} / CORS={cors}",
                                    "zh": "📋 OAuth开放注册链摘要: 注册={reg} / redirect_uri={redir} / PKCE={pkce} / CORS={cors}",
                                    "en": "📋 OAuth open reg chain summary: reg={reg} / redirect_uri={redir} / PKCE={pkce} / CORS={cors}"},
+
+    # ── v3.2.67 신규 스킬 다국어 키 ────────────────────────────────────────────
+
+    # sec-web-dom-clobbering
+    "dom_clobber_dompurify_check": {
+        "ko": "🔍 DOMPurify 버전 및 id/name 속성 필터링 여부 확인 중...",
+        "zh": "🔍 正在检查DOMPurify版本及id/name属性过滤状态...",
+        "en": "🔍 Checking DOMPurify version and id/name attribute filtering...",
+    },
+    "dom_clobber_vuln": {
+        "ko": "🚨 [HIGH] DOM Clobbering 가능 — id/name 속성이 전역 변수를 덮어씀, XSS 체인 위험",
+        "zh": "🚨 [HIGH] 存在DOM Clobbering — id/name属性可覆盖全局变量，XSS链风险",
+        "en": "🚨 [HIGH] DOM Clobbering possible — id/name attributes overwrite globals, XSS chain risk",
+    },
+    "dom_clobber_safe": {
+        "ko": "✅ id/name 속성 필터링 확인 — DOM Clobbering 불가",
+        "zh": "✅ id/name属性已过滤 — DOM Clobbering不可行",
+        "en": "✅ id/name attribute filtering confirmed — DOM Clobbering not possible",
+    },
+
+    # sec-web-dompurify-pp-bypass
+    "dompurify_pp_probe": {
+        "ko": "🔍 Prototype Pollution + DOMPurify contenteditable 우회 테스트 중...",
+        "zh": "🔍 正在测试Prototype Pollution + DOMPurify contenteditable绕过...",
+        "en": "🔍 Testing Prototype Pollution + DOMPurify contenteditable bypass...",
+    },
+    "dompurify_pp_vuln": {
+        "ko": "🚨 [CRITICAL] DOMPurify PP 우회 성공 — Prototype 오염으로 XSS 필터 무력화",
+        "zh": "🚨 [CRITICAL] DOMPurify PP绕过成功 — 原型污染导致XSS过滤器失效",
+        "en": "🚨 [CRITICAL] DOMPurify PP bypass success — prototype pollution neutralizes XSS filter",
+    },
+    "dompurify_pp_safe": {
+        "ko": "✅ Prototype Pollution 또는 DOMPurify 안전 — PP 우회 불가",
+        "zh": "✅ Prototype Pollution或DOMPurify安全 — 无法绕过",
+        "en": "✅ Prototype Pollution or DOMPurify safe — bypass not possible",
+    },
+
+    # sec-web-imagemagick-ghostscript-rce
+    "imagemagick_version_check": {
+        "ko": "🔍 ImageMagick/Ghostscript 버전 및 정책 파일 확인 중...",
+        "zh": "🔍 正在检查ImageMagick/Ghostscript版本及策略文件...",
+        "en": "🔍 Checking ImageMagick/Ghostscript version and policy file...",
+    },
+    "imagemagick_mvg_vuln": {
+        "ko": "🚨 [CRITICAL] MVG/MSL 인젝션 가능 — SVG→RCE 체인 위험",
+        "zh": "🚨 [CRITICAL] 可进行MVG/MSL注入 — SVG→RCE链风险",
+        "en": "🚨 [CRITICAL] MVG/MSL injection possible — SVG to RCE chain risk",
+    },
+    "imagemagick_policy_ok": {
+        "ko": "✅ ImageMagick 정책 파일이 MVG/MSL/SVG 비활성화 — 안전",
+        "zh": "✅ ImageMagick策略文件已禁用MVG/MSL/SVG — 安全",
+        "en": "✅ ImageMagick policy disables MVG/MSL/SVG — safe",
+    },
+
+    # sec-cloud-aws-alb-bypass
+    "alb_direct_probe": {
+        "ko": "🔍 AWS ALB 직접 접근 및 CloudFront/WAF 우회 가능성 테스트 중...",
+        "zh": "🔍 正在测试AWS ALB直接访问及CloudFront/WAF绕过可能性...",
+        "en": "🔍 Testing AWS ALB direct access and CloudFront/WAF bypass possibility...",
+    },
+    "alb_bypass_vuln": {
+        "ko": "🚨 [HIGH] ALB 직접 접근 성공 — CloudFront/WAF 완전 우회",
+        "zh": "🚨 [HIGH] ALB直接访问成功 — CloudFront/WAF完全绕过",
+        "en": "🚨 [HIGH] ALB direct access success — CloudFront/WAF fully bypassed",
+    },
+    "alb_rule_shadow": {
+        "ko": "🚨 [HIGH] ALB 룰 섀도잉 탐지 — 낮은 우선순위 룰이 높은 우선순위 룰 무력화",
+        "zh": "🚨 [HIGH] 检测到ALB规则遮蔽 — 低优先级规则使高优先级规则失效",
+        "en": "🚨 [HIGH] ALB rule shadowing detected — lower priority rule overrides higher priority rule",
+    },
+    "alb_protected": {
+        "ko": "✅ ALB Security Group이 CloudFront IP 범위만 허용 — 안전",
+        "zh": "✅ ALB安全组仅允许CloudFront IP范围 — 安全",
+        "en": "✅ ALB Security Group allows only CloudFront IP ranges — safe",
+    },
+
+    # sec-cloud-gcp-debug-rce
+    "gcp_debug_probe": {
+        "ko": "🔍 GCP 내부 디버그 엔드포인트 탐색 중...",
+        "zh": "🔍 正在探测GCP内部调试端点...",
+        "en": "🔍 Probing GCP internal debug endpoints...",
+    },
+    "gcp_debug_rce_vuln": {
+        "ko": "🚨 [CRITICAL] GCP 디버그 엔드포인트 RCE — Protobuf 스키마 노출 + 워크플로 실행",
+        "zh": "🚨 [CRITICAL] GCP调试端点RCE — Protobuf架构泄露+工作流执行",
+        "en": "🚨 [CRITICAL] GCP debug endpoint RCE — Protobuf schema leak + workflow execution",
+    },
+    "gcp_debug_safe": {
+        "ko": "✅ GCP 디버그 엔드포인트 미노출 또는 인증 필요 — 안전",
+        "zh": "✅ GCP调试端点未暴露或需要认证 — 安全",
+        "en": "✅ GCP debug endpoint not exposed or requires auth — safe",
+    },
+
+    # sec-cloud-aws-cognito-sso
+    "cognito_sso_probe": {
+        "ko": "🔍 AWS Cognito User Pool 다중 IdP 설정 분석 중...",
+        "zh": "🔍 正在分析AWS Cognito用户池多IdP配置...",
+        "en": "🔍 Analyzing AWS Cognito User Pool multi-IdP configuration...",
+    },
+    "cognito_ghost_identity": {
+        "ko": "🚨 [CRITICAL] Cognito Ghost Identity 인젝션 가능 — JIT 계정 생성 오남용",
+        "zh": "🚨 [CRITICAL] Cognito Ghost Identity注入可行 — JIT账户创建被滥用",
+        "en": "🚨 [CRITICAL] Cognito Ghost Identity injection possible — JIT account creation abused",
+    },
+    "cognito_trigger_confused": {
+        "ko": "🚨 [HIGH] Cognito Trigger Source 혼동 — Pre-Auth Lambda 우회 가능",
+        "zh": "🚨 [HIGH] Cognito Trigger Source混淆 — 可绕过Pre-Auth Lambda",
+        "en": "🚨 [HIGH] Cognito Trigger Source confused — Pre-Auth Lambda bypass possible",
+    },
+    "cognito_sso_safe": {
+        "ko": "✅ Cognito IdP 이메일 검증 및 Trigger Source 검증 — 안전",
+        "zh": "✅ Cognito IdP邮箱验证及Trigger Source验证 — 安全",
+        "en": "✅ Cognito IdP email validation and Trigger Source verification — safe",
+    },
+
+    # sec-supply-chain-npx-confusion
+    "npx_confusion_scan": {
+        "ko": "🔍 npx 바이너리명 혼동 공격 가능성 스캔 중...",
+        "zh": "🔍 正在扫描npx二进制名混淆攻击可能性...",
+        "en": "🔍 Scanning for npx binary name confusion attack possibility...",
+    },
+    "npx_confusion_vuln": {
+        "ko": "🚨 [HIGH] npx 바이너리명 혼동 탐지 — 악성 패키지가 동일 바이너리명으로 등록됨",
+        "zh": "🚨 [HIGH] 检测到npx二进制名混淆 — 恶意包以相同二进制名注册",
+        "en": "🚨 [HIGH] npx binary name confusion detected — malicious package registered with same binary name",
+    },
+    "npx_confusion_safe": {
+        "ko": "✅ 바이너리명 충돌 없음 또는 스코프 패키지 사용 — 안전",
+        "zh": "✅ 无二进制名冲突或使用作用域包 — 安全",
+        "en": "✅ No binary name collision or scoped package used — safe",
+    },
+
+    # sec-infra-exim-rce
+    "exim_version_check": {
+        "ko": "🔍 Exim MTA 버전 확인 중 (CVE-2026-45185 대상: 4.96 이하)...",
+        "zh": "🔍 正在检查Exim MTA版本（CVE-2026-45185影响：4.96及以下）...",
+        "en": "🔍 Checking Exim MTA version (CVE-2026-45185 target: 4.96 and below)...",
+    },
+    "exim_rce_vuln": {
+        "ko": "🚨 [CRITICAL] Exim 취약 버전 탐지 — dead letter 역직렬화 RCE 가능 (CVE-2026-45185)",
+        "zh": "🚨 [CRITICAL] 检测到Exim漏洞版本 — dead letter反序列化RCE可行（CVE-2026-45185）",
+        "en": "🚨 [CRITICAL] Exim vulnerable version detected — dead letter deserialization RCE (CVE-2026-45185)",
+    },
+    "exim_patched": {
+        "ko": "✅ Exim 4.97+ 패치 적용 또는 SMTP 접근 제한 — 안전",
+        "zh": "✅ 已应用Exim 4.97+补丁或限制SMTP访问 — 安全",
+        "en": "✅ Exim 4.97+ patched or SMTP access restricted — safe",
+    },
+
+    # sec-android-wireless-debug-rce
+    "android_adb_scan": {
+        "ko": "🔍 Android ADB 무선 디버깅 포트(5554-5558) 스캔 중...",
+        "zh": "🔍 正在扫描Android ADB无线调试端口（5554-5558）...",
+        "en": "🔍 Scanning for Android ADB wireless debugging ports (5554-5558)...",
+    },
+    "android_adb_rce_vuln": {
+        "ko": "🚨 [CRITICAL] Android ADB 무선 디버깅 인증 없이 접근 가능 (CVE-2026-0073) — RCE",
+        "zh": "🚨 [CRITICAL] Android ADB无线调试可无认证访问（CVE-2026-0073）— RCE",
+        "en": "🚨 [CRITICAL] Android ADB wireless debugging accessible without auth (CVE-2026-0073) — RCE",
+    },
+    "android_adb_safe": {
+        "ko": "✅ ADB 무선 디버깅 포트 미노출 또는 접근 불가 — 안전",
+        "zh": "✅ ADB无线调试端口未暴露或无法访问 — 安全",
+        "en": "✅ ADB wireless debugging port not exposed or inaccessible — safe",
+    },
+
+    # sec-kernel-af-alg-lpe
+    "kernel_af_alg_check": {
+        "ko": "🔍 커널 버전 및 AF_ALG 소켓 지원 확인 중 (CVE-2026-31431)...",
+        "zh": "🔍 正在检查内核版本及AF_ALG套接字支持（CVE-2026-31431）...",
+        "en": "🔍 Checking kernel version and AF_ALG socket support (CVE-2026-31431)...",
+    },
+    "kernel_af_alg_vuln": {
+        "ko": "🚨 [CRITICAL] Linux 커널 AF_ALG + splice() 페이지 캐시 LPE 가능 (CVE-2026-31431)",
+        "zh": "🚨 [CRITICAL] Linux内核AF_ALG + splice()页缓存LPE可行（CVE-2026-31431）",
+        "en": "🚨 [CRITICAL] Linux kernel AF_ALG + splice() page cache LPE possible (CVE-2026-31431)",
+    },
+    "kernel_af_alg_safe": {
+        "ko": "✅ 커널 패치 적용 또는 seccomp로 AF_ALG 차단 — 안전",
+        "zh": "✅ 已应用内核补丁或seccomp阻止AF_ALG — 安全",
+        "en": "✅ Kernel patched or seccomp blocks AF_ALG — safe",
+    },
+
+    # sec-ai-ide-toctou-rce
+    "ai_ide_prompt_inject_probe": {
+        "ko": "🔍 AI IDE 프롬프트 인젝션 + TOCTOU RCE 가능성 분석 중...",
+        "zh": "🔍 正在分析AI IDE提示词注入+TOCTOU RCE可能性...",
+        "en": "🔍 Analyzing AI IDE prompt injection + TOCTOU RCE possibility...",
+    },
+    "ai_ide_toctou_vuln": {
+        "ko": "🚨 [CRITICAL] AI IDE TOCTOU RCE — applyPatchTool 경로 검증 없이 .git/config 오버라이트",
+        "zh": "🚨 [CRITICAL] AI IDE TOCTOU RCE — applyPatchTool未验证路径覆写.git/config",
+        "en": "🚨 [CRITICAL] AI IDE TOCTOU RCE — applyPatchTool overwrites .git/config without path validation",
+    },
+    "ai_ide_token_stolen": {
+        "ko": "🚨 [CRITICAL] GITHUB_TOKEN 탈취 가능 — 공급망 완전 오염 위험",
+        "zh": "🚨 [CRITICAL] GITHUB_TOKEN可被窃取 — 供应链完全污染风险",
+        "en": "🚨 [CRITICAL] GITHUB_TOKEN theft possible — full supply chain compromise risk",
+    },
+    "ai_ide_toctou_safe": {
+        "ko": "✅ AI IDE 경로 검증 강화 또는 GITHUB_TOKEN 최소 권한 — 안전",
+        "zh": "✅ AI IDE路径验证已加强或GITHUB_TOKEN权限最小化 — 安全",
+        "en": "✅ AI IDE path validation hardened or GITHUB_TOKEN minimal permissions — safe",
+    },
+
+    # sec-ai-autonomous-hunt-mcp
+    "ai_mcp_hunt_init": {
+        "ko": "🤖 Claude Code + MCP 자율 취약점 헌팅 시스템 초기화 중...",
+        "zh": "🤖 正在初始化Claude Code + MCP自主漏洞挖掘系统...",
+        "en": "🤖 Initializing Claude Code + MCP autonomous vulnerability hunting system...",
+    },
+    "ai_mcp_hallucination_bin": {
+        "ko": "⚠️  Hallucination Bin 저장 — AI 생성 취약점은 수동 검증 필수",
+        "zh": "⚠️  Hallucination Bin存储 — AI生成漏洞必须手动验证",
+        "en": "⚠️  Hallucination Bin stored — AI-generated vulns require manual verification",
+    },
+    "ai_mcp_confirmed_vuln": {
+        "ko": "✅ 취약점 확인 완료 — Knowledge Loop RAG DB 누적",
+        "zh": "✅ 漏洞已确认 — Knowledge Loop RAG数据库累积",
+        "en": "✅ Vulnerability confirmed — accumulated in Knowledge Loop RAG DB",
+    },
+    "ai_mcp_hunt_summary": {
+        "ko": "📊 자율 헌팅 결과: 발견={found} | 미확인={unconfirmed} | 확인={confirmed} | 오탐={fp}",
+        "zh": "📊 自主挖掘结果: 发现={found} | 未确认={unconfirmed} | 已确认={confirmed} | 误报={fp}",
+        "en": "📊 Autonomous hunt results: found={found} | unconfirmed={unconfirmed} | confirmed={confirmed} | fp={fp}",
+    },
 })
 
 

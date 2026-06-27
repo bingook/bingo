@@ -77,7 +77,7 @@ check_pip() {
 
 install_deps() {
     step "Installing dependencies..."
-    "$PY" -m pip install --quiet --upgrade \
+    "$PY" -m pip install --quiet --upgrade --break-system-packages \
         rich prompt_toolkit httpx pydantic \
         requests urllib3 beautifulsoup4 lxml \
         chardet charset-normalizer fake-useragent \
@@ -92,9 +92,9 @@ install_bingo() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo ".")"
 
     if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
-        "$PY" -m pip install --quiet -e "$SCRIPT_DIR"
+        "$PY" -m pip install --quiet --break-system-packages -e "$SCRIPT_DIR"
     else
-        "$PY" -m pip install --quiet bingo-ai
+        "$PY" -m pip install --quiet --break-system-packages bingo-ai
     fi
     ok "Bingo installed"
 }
@@ -202,7 +202,7 @@ if ! $_all_ok; then
         fi
 
         printf "    ${YELLOW}📦  Installing${RESET}  %-20s" "${_pip} ..."
-        if "$PY" -m pip install --quiet "${_pip}" 2>/dev/null; then
+        if "$PY" -m pip install --quiet --break-system-packages "${_pip}" 2>/dev/null; then
             echo -e "\r    ${GREEN}✅  Installed  ${RESET}  ${_pip}              "
         else
             if [ "${_tag}" = "required" ]; then
@@ -253,7 +253,7 @@ else
     read -r -p "  Install Playwright? [y/N] " _pw_answer </dev/tty || _pw_answer=""
     if [[ "${_pw_answer,,}" == "y" ]]; then
         step "Installing Playwright"
-        if python3 -m pip install playwright -q; then
+        if python3 -m pip install playwright -q --break-system-packages; then
             ok "playwright package installed"
         else
             warn "playwright pip install failed"

@@ -3414,6 +3414,71 @@ class BingoTerminal:
                     "Replace with the actual target URL before executing."
                 )
 
+            # ── v3.2.73 패턴 5: 코드 내부 모의실행 감지 ──────────────────
+            # 5-A: 模拟/simulate/假设 키워드가 변수 할당과 함께 나타나는 경우
+            # 예: simulated_response = {...}, 模拟结果 = {...}
+            _SIM_VAR_RE = _hall_re.compile(
+                r"(?:"
+                r"simulated?_(?:response|result|output|data|return)"
+                r"|mock(?:ed)?_(?:response|result|output|data)"
+                r"|fake_(?:response|result|output|data)"
+                r"|假(?:设|的)?(?:响应|结果|数据|返回)"
+                r"|模拟(?:响应|结果|数据|返回|执行)"
+                r"|假设结果|虚拟响应|仿真结果"
+                r"|가(?:상|짜)[\s_]?(?:결과|응답|데이터)"
+                r"|모의[\s_]?(?:결과|응답|실행)"
+                r")\s*=",
+                _hall_re.IGNORECASE,
+            )
+            if _SIM_VAR_RE.search(s):
+                return (
+                    "SIMULATED_VAR: Code assigns a simulated/mock/fake response variable "
+                    "(simulated_response / 模拟结果 / 가상결과). "
+                    "This means NO real HTTP request was made. "
+                    "DELETE the hardcoded data and use: r = requests.get(url); print(r.text[:500])"
+                )
+
+            # 5-B: # 模拟 / # simulate 주석 직후 결과 dict 할당
+            _SIM_COMMENT_THEN_DICT = _hall_re.compile(
+                r"#\s*(?:模拟|模拟执行|simulate|simulated?|假设|가상|모의)[^\n]*\n"
+                r"\s*\w+\s*=\s*[\[{\"']",
+                _hall_re.IGNORECASE,
+            )
+            if _SIM_COMMENT_THEN_DICT.search(s):
+                return (
+                    "SIMULATED_COMMENT+ASSIGN: Code has a '# simulate/模拟' comment "
+                    "followed immediately by a hardcoded assignment. "
+                    "Real HTTP calls MUST be used. Remove the simulation block."
+                )
+
+            # 5-C: requests.get/post 없이 "假设服务器返回" / "assume server returns" 사용
+            _ASSUME_SERVER_RE = _hall_re.compile(
+                r"(?:假设服务器返回|假设HTTP响应|assume\s+server\s+return"
+                r"|assuming\s+server\s+respond|서버가\s+반환한다고\s+가정)",
+                _hall_re.IGNORECASE,
+            )
+            if _ASSUME_SERVER_RE.search(s) and not _has_network:
+                return (
+                    "ASSUME_SERVER: Code says 'assume server returns ...' without making "
+                    "a real requests.get/post call. Replace assumption with actual HTTP request."
+                )
+
+            # 5-D: 네트워크 호출은 있으나 결과를 바로 하드코딩으로 덮어쓰는 패턴
+            # requests.get(...) 가 있지만 바로 아래 result = {...} 하드코딩 할당
+            if _has_network:
+                _OVERRIDE_DICT = _hall_re.compile(
+                    r"requests\.(?:get|post|put|delete|patch)\s*\([^)]+\)\s*\n"
+                    r"(?:[^\n]*\n){0,3}"  # 0~3줄 사이
+                    r"\s*\w*result\w*\s*=\s*[\[{\"']\s*(?:\"|'|{)",
+                    _hall_re.IGNORECASE,
+                )
+                if _OVERRIDE_DICT.search(s):
+                    return (
+                        "OVERRIDDEN_RESULT: Code calls requests.get/post but immediately "
+                        "overwrites result with a hardcoded dict/string. "
+                        "Use the ACTUAL response: r = requests.get(url); print(r.text)"
+                    )
+
             return None
 
         # ── 코드 사전 검증 헬퍼 (SyntaxError / NameError 예방) ──────────
@@ -4925,6 +4990,82 @@ class BingoTerminal:
                 if current_response:
                     self.history.append(Message(role="assistant", content=current_response))
                 continue
+
+            # ── v3.2.73: 코드 출력 내 模拟渗透 감지 ─────────────────────────
+            # 코드 실행은 됐지만 출력이 "모의 결과"임을 스스로 표시한 경우.
+            # 예: "[模拟结果] 发现SQL注入", "시뮬레이션 완료: admin계정 발견"
+            _SIM_OUTPUT_KWS = [
+                r"(?:模拟|模拟测试|模拟执行|模拟渗透|模拟结果|模拟探测)\s*[:：]",
+                r"\[?\s*(?:Simulated?\s*(?:Result|Output|Response|Attack|Test)|MOCK\s*RESULT)\s*\]?",
+                r"(?:假设|假设服务器|假设结果|假设响应)\s*[:：]",
+                r"(?:시뮬레이션|가상\s*실행|모의\s*결과|모의\s*실행)\s*[:：\[]",
+                r"# (?:这是模拟|这只是模拟|模拟HTTP|simulate)",
+                r"\[?(?:SIMULATED|MOCK|FAKE)\s+(?:RESULT|RESPONSE|OUTPUT)\]?",
+                r"(?:结果仅供参考|以下为模拟|以下是模拟|实际环境.*?可能.*?不同)",
+            ]
+            import re as _sim_re
+            _sim_out_combined = "\n".join(results_text) if results_text else ""
+            _sim_output_detected = results_text and any(
+                _sim_re.search(p, _sim_out_combined, _sim_re.IGNORECASE)
+                for p in _SIM_OUTPUT_KWS
+            )
+            if _sim_output_detected:
+                _lang = getattr(self.config, "lang", "en")
+                _sim_warn_ui = self.s.get("simulated_output_intercepted", "⛔ 모의 침투 출력 감지 — 실제 HTTP 실행 강제")
+                self.console.print(f"\n[bold red]{_sim_warn_ui}[/bold red]")
+                _sim_force_msg = {
+                    "ko": (
+                        "[⛔ 모의 침투 출력 감지 — BINGO 런타임 차단]\n\n"
+                        "스크립트 출력에 '模拟结果', '가상 실행', '시뮬레이션' 등 모의/가상 결과 표시가 포함됐습니다.\n"
+                        "이는 실제 HTTP 요청 없이 결과를 날조한 것입니다.\n\n"
+                        "■ 절대 금지:\n"
+                        "  - 모의 응답 dict/string 하드코딩 후 '발견' 주장\n"
+                        "  - '# 실제 네트워크 없어서 가상 결과' 주석 사용\n"
+                        "  - print('[模拟] ...') 형태의 가짜 결과 출력\n\n"
+                        "■ 지금 즉시:\n"
+                        "  import requests; r = requests.get(URL, timeout=10, verify=False)\n"
+                        "  print(r.status_code, r.text[:500])\n"
+                        "  위 코드로 실제 서버 응답을 받아 분석하세요.\n"
+                        "  bingo는 완전한 인터넷 연결 환경에서 실행됩니다."
+                    ),
+                    "zh": (
+                        "[⛔ 检测到模拟渗透输出 — BINGO运行时已拦截]\n\n"
+                        "脚本输出包含'模拟结果'/'模拟执行'等模拟标记，说明代码未发送真实HTTP请求。\n\n"
+                        "■ 绝对禁止:\n"
+                        "  - 硬编码假响应dict然后声称发现漏洞\n"
+                        "  - 使用'# 模拟结果'注释\n"
+                        "  - print('[模拟]...')输出虚假结果\n\n"
+                        "■ 立即执行:\n"
+                        "  import requests\n"
+                        "  r = requests.get(目标URL, timeout=10, verify=False)\n"
+                        "  print(r.status_code, r.text[:500])\n"
+                        "  bingo在真实网络环境中运行，必须使用真实HTTP请求!"
+                    ),
+                    "en": (
+                        "[⛔ SIMULATED OUTPUT INTERCEPTED — BINGO RUNTIME BLOCKED]\n\n"
+                        "Script output contains simulation markers ('Simulated Result', '模拟结果', etc.).\n"
+                        "This means the code fabricated results WITHOUT real HTTP requests.\n\n"
+                        "■ ABSOLUTELY FORBIDDEN:\n"
+                        "  - Hardcoding fake response dicts then claiming 'found vulnerability'\n"
+                        "  - Using '# simulate/模拟' comment blocks\n"
+                        "  - print('[SIMULATED]...') fake output\n\n"
+                        "■ DO THIS NOW:\n"
+                        "  import requests\n"
+                        "  r = requests.get(TARGET_URL, timeout=10, verify=False)\n"
+                        "  print(r.status_code, r.text[:500])\n"
+                        "  bingo runs in a REAL network environment. Use REAL HTTP requests!"
+                    ),
+                }.get(_lang, "[⛔ SIMULATED OUTPUT] Remove hardcoded fake results. Use requests.get() for real HTTP.")
+                self.history.append(Message(role="user", content=f"[SIMULATED_OUTPUT_BLOCKED]\n{_sim_force_msg}"))
+                from ..models.registry import ModelRegistry as _MR_sim
+                _mc_sim = self.config.get_active_model_config()
+                if _mc_sim:
+                    _m_sim = _MR_sim.build(_mc_sim)
+                    self.console.print(f"\n[bold red]{self.s.get('simulated_output_retrying', '⛔ 모의실행 차단 → 실제 HTTP 코드 재요청 중...')}[/bold red]")
+                    current_response = self._stream_response(_m_sim.chat_stream(self._build_messages("")))
+                    if current_response:
+                        self.history.append(Message(role="assistant", content=current_response))
+                    continue
 
             # ── 환각 감지 (HTTP 응답 지표 없는 출력) ─────────────────────────
             _real_http_indicators = [

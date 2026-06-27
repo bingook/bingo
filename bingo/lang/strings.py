@@ -3644,6 +3644,27 @@ _STRINGS.update({
         "zh": "🧠 已将上次会话发现信息注入AI上下文",
         "en": "🧠 Previous session findings injected into AI context",
     },
+    # ── v3.2.73: 모의실행(模拟渗透) 차단 관련 ─────────────────────────────
+    "simulated_output_intercepted": {
+        "ko": "⛔ 모의 침투 출력 감지 — 실제 HTTP 실행 강제 재요청",
+        "zh": "⛔ 检测到模拟渗透输出 — 强制要求真实HTTP执行",
+        "en": "⛔ Simulated penetration output detected — forcing real HTTP execution",
+    },
+    "simulated_output_retrying": {
+        "ko": "⛔ 모의실행 차단 → 실제 HTTP 코드 재요청 중...",
+        "zh": "⛔ 模拟执行已拦截 → 正在重新请求真实HTTP代码...",
+        "en": "⛔ Simulation blocked → requesting real HTTP code...",
+    },
+    "sim_code_blocked": {
+        "ko": "⛔ [코드 내 모의실행 감지] simulated_response / 模拟 변수 사용 금지 — 실제 requests.get() 사용 필수",
+        "zh": "⛔ [检测到代码内模拟执行] 禁止使用simulated_response/模拟变量 — 必须使用真实requests.get()",
+        "en": "⛔ [In-code simulation detected] simulated_response/模拟 vars forbidden — use real requests.get()",
+    },
+    "sim_var_warning": {
+        "ko": "⚠️ 코드에서 모의/가짜 결과 변수 감지 — 네트워크 연결 정상, 실제 HTTP 요청 실행 가능",
+        "zh": "⚠️ 代码中检测到模拟/虚假结果变量 — 网络连接正常，可执行真实HTTP请求",
+        "en": "⚠️ Mock/fake result variable in code — network is live, real HTTP requests work",
+    },
 })
 
 

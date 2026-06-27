@@ -177,6 +177,24 @@ bingo> analyze solidity contract flash loan
 
 ---
 
+### 🔧 Optional Tools — Install Once, Auto-Used Forever
+
+bingo works on first launch with **zero external tools**. But if you install these, bingo detects and uses them automatically — no config needed.
+
+```bash
+apt install nmap          # → bingo auto-runs port/service scan on every target
+apt install sqlmap        # → bingo uses sqlmap for advanced SQLi when needed
+```
+
+| Tool | How bingo uses it |
+|------|-------------------|
+| `nmap` | Auto port scan, service version detection, OS fingerprint |
+| `sqlmap` | Fallback for complex SQLi when built-in engine needs backup |
+
+> **Built-in engine first.** External tools are used as optional upgrades, not requirements.
+
+---
+
 ### 🧠 Built-in Intelligence
 
 | Feature | What it does |

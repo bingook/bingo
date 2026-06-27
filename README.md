@@ -6,7 +6,7 @@
 
 **AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.65-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.66-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -87,7 +87,7 @@ Tasks:
 | **File Upload** | Extension bypass, webshell upload |
 | **Auth Attack** | Login brute force, SQLi auth bypass, CAPTCHA auto-solve |
 | **IDOR/BOLA** | Object ID enumeration, horizontal privilege escalation |
-| **JWT/OAuth** | alg:none, weak secret, redirect_uri abuse, **open client registration chain ATO** (v3.2.65) |
+| **JWT/OAuth** | alg:none, weak secret, redirect_uri abuse, open client registration chain ATO (v3.2.65), **unverified email ATO** (v3.2.66) |
 | **GraphQL** | Introspection, batch attack, field injection |
 | **HTTP Smuggling** | CL.TE / TE.CL desync |
 | **Credential Dump** | Extract hashes → suggest hashcat command |
@@ -763,10 +763,47 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 ---
 
+## New in v3.2.66 — 4 Security Skills Added
+
+### 1. OAuth Unverified Email Account Takeover (`sec-web-oauth-email-unverified-ato`)
+
+The most dangerous OAuth bug class: an IdP that creates accounts **without verifying email ownership**. When a target site links accounts by email (trusting the `email` claim without checking `email_verified`), an attacker who registers `victim@target.com` at the IdP gains instant access to the victim's account across **every** site using that IdP as a Social Login provider.
+
+**Attack chain:** Register attacker-controlled account with victim's email at vulnerable IdP → OAuth login to target → target auto-links by email → full ATO.
+
+**Test:** Decode `id_token` JWT → check `email_verified` field. If `false` and target ignores it → Critical.
+
+---
+
+### 2. IoT MQTT Credential Exposure (`sec-iot-mqtt-credential-leak`)
+
+Live chat / IoT services often hardcode MQTT broker credentials (host, port, username, password) in their frontend JavaScript bundles. An attacker extracts these from browser DevTools, connects directly to the broker, and subscribes to **all topics** (`#`), eavesdropping on every user conversation in real time — or injecting rogue messages to phish victims.
+
+**Tools:** `mosquitto_sub`, `mqttx`, browser DevTools
+
+---
+
+### 3. Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`)
+
+A **Use-After-Free** in Redis's replication subsystem (versions 7.0.0–7.2.4). Post-authentication, an attacker runs `SLAVEOF` to connect the target to an attacker-controlled "master" that sends a crafted RDB stream, triggering the UAF. Combined with `FUNCTION LOAD` (Lua engine), this escalates to full **Remote Code Execution**.
+
+**Patch:** Redis 7.2.5+. Mitigate: `requirepass` strong password, `bind 127.0.0.1`, disable `SLAVEOF` and `FUNCTION` commands.
+
+---
+
+### 4. AI Agent CI/CD Prompt Injection → Supply Chain (`ai-agent-ci-prompt-inject`)
+
+When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHub Actions and read unsanitized user input (Issue bodies, PR descriptions, commit messages), an attacker can embed **hidden instructions** to exfiltrate `$GITHUB_TOKEN`, inject backdoor code, or poison the build pipeline — all without write access to the repository.
+
+**Key risk pattern:** `${{ github.event.issue.body }}` inserted directly into an AI agent prompt.
+
+---
+
 ## Changelog
 
 | Version | Summary |
 |---------|---------|
+| v3.2.66 | **4 New Skills** — OAuth email unverified ATO (`sec-web-oauth-email-unverified-ato`), MQTT credential leak (`sec-iot-mqtt-credential-leak`), Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`), AI Agent CI/CD prompt injection supply chain (`ai-agent-ci-prompt-inject`); 21 new multilingual i18n keys |
 | v3.2.65 | **OAuth Open Client Registration Chain Attack** — `/.well-known/oauth-authorization-server` discovery → unauthenticated client registration → redirect_uri hijack → PKCE bypass → wildcard CORS → full account takeover chain (`sec-web-oauth-open-reg`); proxy deadlock fix (RLock); SyntaxWarning cleanup in DApp skills |
 | v3.2.64 | Proxy deadlock fix (RLock), `skills_data15.py` SyntaxWarning cleanup |
 | v3.2.62 | **DApp wallet auth** — test wallet generation, SIWE login (EIP-4361), full authenticated API pentest pipeline (28 skills total) |

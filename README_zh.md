@@ -6,7 +6,7 @@
 
 **AI 驱动的红队终端**
 
-[![Version](https://img.shields.io/badge/version-3.2.65-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.66-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -708,10 +708,47 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 ---
 
+## v3.2.66 新功能 — 新增4个安全技能
+
+### 1. OAuth未验证邮箱账户接管 (`sec-web-oauth-email-unverified-ato`)
+
+最危险的OAuth漏洞类型：IdP在**无需邮箱所有权证明**的情况下创建账户。当目标站点仅通过`email`声明自动关联账户而不检查`email_verified`时，攻击者在IdP用受害者邮箱注册账户，即可接管使用该IdP作为社交登录的**所有网站**上的账户。
+
+**攻击链：** 在漏洞IdP用受害者邮箱注册 → OAuth登录目标站 → 按邮箱自动关联 → ATO完成
+
+**验证方法：** 解码`id_token` JWT → 检查`email_verified`字段。若为`false`且目标忽略 → Critical
+
+---
+
+### 2. IoT MQTT凭据泄露 (`sec-iot-mqtt-credential-leak`)
+
+直播聊天/IoT服务将MQTT Broker凭据（host/port/username/password）硬编码在前端JS中。攻击者通过浏览器DevTools提取后直接连接Broker，使用`#`通配符订阅所有主题，实时窃听所有用户对话或注入恶意消息。
+
+**工具：** `mosquitto_sub`、`mqttx`、浏览器DevTools
+
+---
+
+### 3. Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`)
+
+Redis复制子系统中的**Use-After-Free**漏洞（版本7.0.0~7.2.4）。认证后通过`SLAVEOF`将目标连接到攻击者控制的"主节点"→发送构造的RDB流触发UAF→结合`FUNCTION LOAD`(Lua)实现**远程代码执行**。
+
+**修补：** Redis 7.2.5+。缓解措施：强`requirepass`、`bind 127.0.0.1`、禁用SLAVEOF和FUNCTION命令。
+
+---
+
+### 4. AI Agent CI/CD提示词注入→供应链攻击 (`ai-agent-ci-prompt-inject`)
+
+当GitHub Actions中的AI编码助手（Claude Code、GitHub Copilot、Gemini CLI）将GitHub Issue正文、PR描述、提交信息等**用户输入未经清理直接插入提示词**时，攻击者可嵌入隐藏指令以泄露`$GITHUB_TOKEN`、注入后门代码或污染构建流水线。**无需仓库写入权限**。
+
+**核心风险模式：** `${{ github.event.issue.body }}`直接插入AI Agent提示词。
+
+---
+
 ## 版本历史
 
 | 版本 | 摘要 |
 |------|------|
+| v3.2.66 | **4个新技能** — OAuth未验证邮箱ATO（`sec-web-oauth-email-unverified-ato`）、MQTT凭据泄露（`sec-iot-mqtt-credential-leak`）、Redis CVE-2026-23631 DarkReplica UAF→RCE（`sec-infra-redis-cve-2026-23631`）、AI Agent CI/CD提示词注入供应链攻击（`ai-agent-ci-prompt-inject`）；新增21个多语言i18n键 |
 | v3.2.65 | **OAuth开放客户端注册链式攻击** — 自动探测`/.well-known/oauth-authorization-server` → 未认证客户端注册 → redirect_uri劫持授权码 → PKCE绕过 → 通配符CORS利用 → 完整账户接管链（`sec-web-oauth-open-reg`）；代理死锁修复(RLock)；DApp技能SyntaxWarning清理 |
 | v3.2.64 | 代理死锁修复 (RLock), `skills_data15.py` SyntaxWarning 清理 |
 | v3.2.62 | **DApp 钱包认证** — 测试钱包生成，SIWE 登录 (EIP-4361)，认证 API 全量渗透流水线（共 28 个技能）|

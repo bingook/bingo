@@ -2971,6 +2971,107 @@ _STRINGS.update({
                                    "zh": "⚠️  这是仅用于测试的钱包。绝对不要存入真实资产！",
                                    "en": "⚠️  This is a TEST-ONLY wallet. NEVER send real funds to this address!"},
 
+    # ── OAuth 이메일 미검증 ATO (v3.2.66) ─────────────────────────────────
+    "oauth_email_unverified_scan_start": {
+        "ko": "🤖 AI 판단: OAuth Social Login 탐지 → 이메일 미검증 ATO 스캔 자동 활성화",
+        "zh": "🤖 AI 判断: 检测到OAuth社交登录 → 自动启动未验证邮箱ATO扫描",
+        "en": "🤖 AI decision: OAuth social login detected → email unverified ATO scan activated",
+    },
+    "oauth_email_unverified_test": {
+        "ko": "🔍 IdP 이메일 미검증 계정 생성 테스트 중: {provider}",
+        "zh": "🔍 正在测试IdP未验证邮箱账户创建: {provider}",
+        "en": "🔍 Testing unverified email account creation at IdP: {provider}",
+    },
+    "oauth_email_unverified_vuln": {
+        "ko": "🚨 [CRITICAL] 이메일 검증 없이 IdP 계정 생성 가능! email_verified 클레임: {val}",
+        "zh": "🚨 [CRITICAL] IdP可无需邮箱验证创建账户！email_verified声明: {val}",
+        "en": "🚨 [CRITICAL] IdP account created without email verification! email_verified: {val}",
+    },
+    "oauth_email_unverified_claim_bad": {
+        "ko": "💥 타겟이 email_verified: false 클레임 무시 → 이메일로 계정 자동 연결 → ATO 완성",
+        "zh": "💥 目标忽略email_verified: false声明 → 按邮箱自动关联账户 → ATO完成",
+        "en": "💥 Target ignores email_verified: false claim → auto-links by email → ATO complete",
+    },
+    "oauth_email_unverified_safe": {
+        "ko": "✅ IdP 이메일 검증 강제 또는 타겟이 email_verified 클레임 검증 — 안전",
+        "zh": "✅ IdP强制邮箱验证或目标验证email_verified声明 — 安全",
+        "en": "✅ IdP enforces email verification or target validates email_verified claim — safe",
+    },
+    "oauth_email_unverified_summary": {
+        "ko": "🔑 이메일 미검증 ATO 요약: IdP={idp} | 미검증={unverified} | 타겟연결={link} | 심각도={sev}",
+        "zh": "🔑 未验证邮箱ATO摘要: IdP={idp} | 未验证={unverified} | 目标关联={link} | 严重性={sev}",
+        "en": "🔑 Unverified email ATO summary: IdP={idp} | unverified={unverified} | link={link} | severity={sev}",
+    },
+
+    # ── IoT MQTT 자격증명 탈취 (v3.2.66) ───────────────────────────────────
+    "mqtt_cred_scan_start": {
+        "ko": "🤖 AI 판단: IoT/채팅 서비스 탐지 → MQTT 자격증명 탈취 스캔 자동 활성화",
+        "zh": "🤖 AI 判断: 检测到IoT/聊天服务 → 自动启动MQTT凭据泄露扫描",
+        "en": "🤖 AI decision: IoT/chat service detected → MQTT credential leak scan activated",
+    },
+    "mqtt_cred_found_in_js": {
+        "ko": "🚨 [HIGH] JS 소스에서 MQTT 자격증명 발견! host={host} user={user}",
+        "zh": "🚨 [HIGH] 在JS源码中发现MQTT凭据！host={host} user={user}",
+        "en": "🚨 [HIGH] MQTT credentials found in JS source! host={host} user={user}",
+    },
+    "mqtt_broker_connected": {
+        "ko": "📡 MQTT 브로커 연결 성공: {host}:{port} — 모든 토픽('#') 구독 시작",
+        "zh": "📡 MQTT Broker连接成功: {host}:{port} — 开始订阅所有主题('#')",
+        "en": "📡 MQTT broker connected: {host}:{port} — subscribing to all topics ('#')",
+    },
+    "mqtt_message_intercepted": {
+        "ko": "📨 MQTT 메시지 도청 성공! 토픽: {topic} — 대화 내용 탈취 가능",
+        "zh": "📨 MQTT消息窃听成功！主题: {topic} — 可窃取对话内容",
+        "en": "📨 MQTT message intercepted! Topic: {topic} — conversation content exposed",
+    },
+    "mqtt_no_finding": {
+        "ko": "✓ MQTT: JS에서 자격증명 미발견 또는 브로커 연결 불가",
+        "zh": "✓ MQTT: JS中未发现凭据或无法连接Broker",
+        "en": "✓ MQTT: no credentials found in JS or broker unreachable",
+    },
+    "mqtt_summary": {
+        "ko": "📡 MQTT 스캔 결과: 자격증명={cred} | 연결={conn} | 도청={intercept} | 심각도={sev}",
+        "zh": "📡 MQTT扫描结果: 凭据={cred} | 连接={conn} | 窃听={intercept} | 严重性={sev}",
+        "en": "📡 MQTT scan: credentials={cred} | connected={conn} | intercepted={intercept} | severity={sev}",
+    },
+
+    # ── AI Agent CI/CD Prompt Injection (v3.2.66) ──────────────────────────
+    "ai_agent_ci_scan_start": {
+        "ko": "🤖 AI 판단: GitHub Actions + AI Agent 탐지 → CI/CD 프롬프트 인젝션 스캔 자동 활성화",
+        "zh": "🤖 AI 判断: 检测到GitHub Actions + AI Agent → 自动启动CI/CD提示词注入扫描",
+        "en": "🤖 AI decision: GitHub Actions + AI agent detected → CI/CD prompt injection scan activated",
+    },
+    "ai_agent_ci_workflow_found": {
+        "ko": "📋 AI Agent 워크플로 발견: {file} — 프롬프트 인젝션 취약성 평가 중",
+        "zh": "📋 发现AI Agent工作流: {file} — 正在评估提示词注入漏洞",
+        "en": "📋 AI agent workflow found: {file} — evaluating prompt injection risk",
+    },
+    "ai_agent_ci_user_input_direct": {
+        "ko": "🚨 [HIGH] 사용자 입력({param}) 소독 없이 AI 에이전트 프롬프트에 직접 삽입!",
+        "zh": "🚨 [HIGH] 用户输入({param})未经清理直接插入AI Agent提示词！",
+        "en": "🚨 [HIGH] User input ({param}) inserted directly into AI agent prompt without sanitization!",
+    },
+    "ai_agent_ci_injection_poc": {
+        "ko": "💥 프롬프트 인젝션 PoC 가능 — Issue/PR에 악성 지시 삽입 시 CI 명령 실행",
+        "zh": "💥 提示词注入PoC可行 — 在Issue/PR中插入恶意指令可执行CI命令",
+        "en": "💥 Prompt injection PoC viable — malicious instructions in Issue/PR execute CI commands",
+    },
+    "ai_agent_ci_secrets_exfil": {
+        "ko": "🚨 [CRITICAL] AI 에이전트가 CI 환경 시크릿 탈취 명령 실행 가능 → 공급망 완전 오염",
+        "zh": "🚨 [CRITICAL] AI Agent可执行CI环境密钥泄露命令 → 供应链完全污染",
+        "en": "🚨 [CRITICAL] AI agent can execute CI secret exfiltration → full supply chain compromise",
+    },
+    "ai_agent_ci_safe": {
+        "ko": "✅ AI Agent 워크플로: 사용자 입력 소독 또는 권한 제한 — 안전",
+        "zh": "✅ AI Agent工作流: 用户输入已清理或权限受限 — 安全",
+        "en": "✅ AI agent workflow: user input sanitized or permissions limited — safe",
+    },
+    "ai_agent_ci_summary": {
+        "ko": "🔗 AI Agent CI 스캔 결과: 워크플로={wf} | 취약={vuln} | 인젝션가능={inj} | 심각도={sev}",
+        "zh": "🔗 AI Agent CI扫描结果: 工作流={wf} | 漏洞={vuln} | 可注入={inj} | 严重性={sev}",
+        "en": "🔗 AI agent CI scan: workflows={wf} | vulnerable={vuln} | injectable={inj} | severity={sev}",
+    },
+
     # ── OAuth 오픈 클라이언트 등록 체인 공격 (v3.2.65) ─────────────────────
     "oauth_meta_probe":          {"ko": "🔍 OAuth 메타데이터 엔드포인트 탐지 중 ({url})",
                                    "zh": "🔍 正在探测OAuth元数据端点 ({url})",

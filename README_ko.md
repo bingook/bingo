@@ -6,7 +6,7 @@
 
 **AI 기반 레드팀 터미널**
 
-[![Version](https://img.shields.io/badge/version-3.2.65-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.66-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -708,10 +708,47 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 ---
 
+## v3.2.66 신규 기능 — 4개 보안 스킬 추가
+
+### 1. OAuth 이메일 미검증 ATO (`sec-web-oauth-email-unverified-ato`)
+
+가장 위험한 OAuth 버그 클래스: **이메일 소유 증명 없이** 계정을 생성하는 IdP. 타겟 사이트가 `email` 클레임만으로 계정을 자동 연결하고 `email_verified`를 확인하지 않는 경우, 공격자가 IdP에서 `victim@target.com`으로 계정 생성 → 해당 IdP를 Social Login으로 사용하는 **모든 사이트**에서 즉시 계정 탈취 가능.
+
+**공격 체인:** 취약 IdP에서 피해자 이메일로 계정 생성 → 타겟에서 OAuth 로그인 → 이메일로 자동 연결 → ATO 완성
+
+**확인 방법:** `id_token` JWT 디코딩 → `email_verified` 필드 확인. `false`인데 타겟이 무시하면 Critical.
+
+---
+
+### 2. IoT MQTT 브로커 자격증명 탈취 (`sec-iot-mqtt-credential-leak`)
+
+라이브 채팅·IoT 서비스가 프론트엔드 JS 번들에 MQTT 브로커 자격증명(host/port/username/password)을 하드코딩하는 취약점. 공격자가 브라우저 DevTools에서 추출 후 브로커에 직접 연결, `#` 와일드카드로 모든 사용자 대화를 실시간 도청하거나 악성 메시지 주입 가능.
+
+**도구:** `mosquitto_sub`, `mqttx`, 브라우저 DevTools
+
+---
+
+### 3. Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`)
+
+Redis 복제 서브시스템의 **Use-After-Free** 취약점 (버전 7.0.0~7.2.4). 인증 후 `SLAVEOF`로 타겟을 악성 마스터에 연결 → 조작된 RDB 스트림으로 UAF 트리거 → `FUNCTION LOAD` (Lua) 결합 시 **원격 코드 실행** 달성.
+
+**패치:** Redis 7.2.5+. 완화: 강력한 `requirepass`, `bind 127.0.0.1`, SLAVEOF/FUNCTION 명령 비활성화.
+
+---
+
+### 4. AI 에이전트 CI/CD 프롬프트 인젝션 (`ai-agent-ci-prompt-inject`)
+
+GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini CLI)가 GitHub Issue 본문, PR 설명, 커밋 메시지 등 **사용자 입력을 소독 없이** 프롬프트에 삽입하는 경우, 공격자가 숨겨진 지시를 삽입해 `$GITHUB_TOKEN` 탈취, 백도어 코드 주입, 빌드 파이프라인 오염 가능. **저장소 쓰기 권한 불필요**.
+
+**핵심 위험 패턴:** `${{ github.event.issue.body }}`가 AI 에이전트 프롬프트에 직접 삽입.
+
+---
+
 ## 변경 이력
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.66 | **4개 신규 스킬** — OAuth 이메일 미검증 ATO (`sec-web-oauth-email-unverified-ato`), MQTT 자격증명 탈취 (`sec-iot-mqtt-credential-leak`), Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`), AI 에이전트 CI/CD 프롬프트 인젝션 공급망 공격 (`ai-agent-ci-prompt-inject`); 다국어 i18n 키 21개 추가 |
 | v3.2.65 | **OAuth 오픈 클라이언트 등록 체인 공격** — `/.well-known/oauth-authorization-server` 자동 탐지 → 미인증 클라이언트 등록 → redirect_uri 인가 코드 탈취 → PKCE 우회 → 와일드카드 CORS 악용 → 계정 완전 탈취 (`sec-web-oauth-open-reg`); 프록시 데드락 수정(RLock); DApp 스킬 SyntaxWarning 정리 |
 | v3.2.64 | 프록시 데드락 수정 (RLock), `skills_data15.py` SyntaxWarning 정리 |
 | v3.2.62 | **DApp 지갑 인증** — 테스트 지갑 생성, SIWE 로그인 (EIP-4361), 인증 API 전체 침투 파이프라인 (총 28개 스킬) |

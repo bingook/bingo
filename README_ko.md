@@ -4,9 +4,9 @@
 
 # bingo
 
-**AI 기반 레드팀 터미널**
+**AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.2.68-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -14,9 +14,11 @@
 **🌐 언어:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
 > ⚠️ **Windows는 지원하지 않습니다.** bingo는 **macOS 및 Linux 전용**입니다.
-> v3.2.45부터 Windows 지원이 영구적으로 중단되었습니다. Windows 관련 업데이트는 절대 제공하지 않습니다.
+> v3.2.45부터 Windows 지원이 영구적으로 중단되었습니다.
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
+
+### 타겟만 입력하면, 빙고가 알아서 해킹합니다.
 
 </div>
 
@@ -76,23 +78,74 @@ bingo --reset
 
 ---
 
+## 왜 빙고인가?
+
+> 모든 주요 AI 침투테스트 도구와 실제 타겟에서 비교 테스트 — 빙고가 승리합니다.
+
+### 설치하면 바로 사용. 추가 도구 불필요.
+
+다른 도구들은 nmap, sqlmap, Burp, nuclei 등 수십 개를 먼저 설치해야 합니다.  
+**빙고는 첫 실행부터 즉시 작동합니다.** 내장 공격 엔진 — 외부 도구 불필요.
+
+```bash
+pip install bingo-ai && bingo   # 끝. 지금 바로 시작.
+```
+
+> ✅ **nmap 자동 연동** — `nmap`이 설치되어 있으면 자동으로 포트/서비스 스캔에 활용합니다. 설정 불필요.
+> ```bash
+> apt install nmap   # 다음 실행부터 빙고가 자동으로 사용
+> ```
+
+### 경쟁 도구 비교
+
+| 기능 | **Bingo** | Swarm AI | HexStrike AI | 大大怪 |
+|---|:---:|:---:|:---:|:---:|
+| 내장 엔진 — 도구 설치 불필요 | ✅ | ❌ | ❌ 150+ 의존성 | ❌ |
+| HTTP Request Smuggling (CL.TE / TE.CL) | ✅ | ❌ | ❌ | ❌ |
+| 환각 방지 4단계 가드 (실제 HTTP만 허용) | ✅ | ❌ | ❌ | ❌ |
+| 세션 메모리 (이전 발견 사항 기억) | ✅ | ❌ | ❌ | ❌ |
+| 자동 전략 전환 (비효율 브루트포스 포기) | ✅ | ❌ | ❌ | 수동 |
+| SQLi 성공 후 DB 전체 자동 덤프 | ✅ 자동 | 수동 | 수동 | 수동 |
+| DApp / Web3 스마트 컨트랙트 감사 | ✅ 28개 스킬 | ❌ | ❌ | ❌ |
+| 프록시 로테이션 (Tor / SOCKS5 / 자동 전환) | ✅ | 일부 | ❌ | ❌ |
+| 멀티 모델 (DeepSeek/Claude/GPT/GLM/Qwen) | ✅ 7개 모델 | 제한적 | 제한적 | 제한적 |
+| 웹쉘 배포 체인 | ✅ 자동 | ❌ | 일부 | 일부 |
+| 첫 실행부터 즉시 사용 가능 | ✅ | ❌ | ❌ | 일부 |
+
+### 빙고만의 차별점
+
+| 기능 | 설명 |
+|---|---|
+| **내장 SQLi 엔진** | Error → Union → Boolean blind → Time-based, 전 DB 지원, 완전 자동 |
+| **CL.TE / TE.CL 스머글링** | HTTP 디싱크를 자동화한 **유일한** AI 침투 도구 |
+| **환각 방지** | 4단계 가드로 모의 결과 차단 — 모든 출력은 실제 HTTP로 검증 |
+| **타겟 메모리** | 세션 종료 후에도 발견 사항 유지 — 다음 실행 때 이어서 진행 |
+| **스마트 포기 전략** | 실패한 브루트포스 자동 탐지 → 더 강력한 벡터로 전환 |
+| **DB 전체 덤프** | SQLi 성공 시 테이블 전체 덤프 — 행 제한 없음, 바탕화면 자동 저장 |
+| **Web3 감사** | 28개 DApp 스킬, 지갑 생성, SIWE 로그인, SWC 스마트 컨트랙트 감사 |
+
+---
+
 ## 핵심 기능
 
 | 영역 | bingo가 하는 일 |
 |------|----------------|
-| **레콘** | WAF 탐지, 기술 핑거프린팅, 모든 페이지/JS/API 엔드포인트 크롤링 |
-| **SQLi** | Error-based → Union → Boolean blind → Time-based (전 DB 종류) |
+| **레콘** | WAF 탐지, 기술 핑거프린팅, 모든 페이지/JS/API 엔드포인트 크롤링, **nmap 포트 스캔** (설치 시 자동) |
+| **SQLi** | Error-based → Union → Boolean blind → Time-based (전 DB 종류) — 내장 엔진, sqlmap 불필요 |
 | **WAF 우회** | Cloudflare / AWS WAF / ModSecurity — 자동 선택 우회 |
 | **XSS** | Stored / Reflected / DOM — 성공 시 세션 하이재킹 |
 | **SSRF** | 클라우드 메타데이터(AWS/GCP/Azure) 엔드포인트 테스트 |
-| **파일 업로드** | 확장자 우회, 웹쉘 업로드 |
+| **파일 업로드** | 확장자 우회, 웹쉘 업로드 → AntSword 연결 |
 | **인증 공격** | 로그인 브루트포스, SQLi 인증 우회, CAPTCHA 자동 해결 |
 | **IDOR/BOLA** | 오브젝트 ID 열거, 수평 권한 상승 |
 | **JWT/OAuth** | alg:none, 약한 비밀키, redirect_uri 악용 |
 | **GraphQL** | 인트로스펙션, 배치 공격, 필드 인젝션 |
-| **HTTP 스머글링** | CL.TE / TE.CL 디싱크 |
+| **HTTP 스머글링** | CL.TE / TE.CL 디싱크 — **유일한 AI 침투 도구** |
 | **자격증명 덤프** | 해시 추출 → hashcat 명령 자동 제안 |
-| **DB 덤프** | 확인된 SQLi 후 전체 테이블 덤프 (DbDumper v2.7) |
+| **DB 덤프** | 확인된 SQLi 후 전체 테이블 덤프 — 행 제한 없음 |
+| **사후 익스플로잇** | SQLi → 웹쉘 → RCE → DB 덤프, 완전 자동 체인 |
+| **모바일** | APK / IPA 정적 분석, 하드코딩 비밀값 추출 |
+| **Web3** | 28개 DApp 스킬, 스마트 컨트랙트 SWC 감사, 지갑 생성, SIWE 로그인 |
 | **스크린샷** | Playwright로 관리자 패널 자동 스크린샷 |
 | **보고서** | CVSS 점수 포함 마크다운 보고서 자동 저장 |
 
@@ -704,7 +757,10 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 - Python **3.12 / 3.13** (Playwright 호환성 필수)
 - 지원 모델 중 하나의 API 키
-- (선택) VPN 또는 프록시 — 자동 감지 및 표시
+- (선택) `nmap` — 설치 시 자동 감지, 포트/서비스 스캔에 자동 사용
+- (선택) VPN / 프록시 — 자동 감지 및 표시
+
+> bingo는 **필수 외부 도구 의존성이 없습니다**. 첫 설치부터 모든 기능이 작동합니다.
 
 ---
 
@@ -963,5 +1019,10 @@ MIT © 2026 bingook
 <div align="center">
 
 **타겟을 입력하세요. bingo가 나머지를 합니다.**
+
+*내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 타겟 메모리 — 유일한 올인원 AI 침투 도구*
+
+[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
+[![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

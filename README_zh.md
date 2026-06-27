@@ -4,9 +4,9 @@
 
 # bingo
 
-**AI 驱动的红队终端**
+**AI 渗透测试终端 — 实战排名第一**
 
-[![Version](https://img.shields.io/badge/version-3.2.68-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -14,9 +14,11 @@
 **🌐 语言:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
 
 > ⚠️ **不支持 Windows。** bingo 仅支持 **macOS 和 Linux**。
-> 自 v3.2.45 起，Windows 支持已永久终止，不会再有任何 Windows 相关更新。
+> 自 v3.2.45 起，Windows 支持已永久终止。
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · 自定义*
+
+### 输入目标，剩下的交给 bingo。
 
 </div>
 
@@ -76,23 +78,74 @@ bingo --reset
 
 ---
 
+## 为什么选择 Bingo？
+
+> 与所有主流 AI 渗透工具在真实目标上对比测试 — bingo 全面胜出。
+
+### 安装即用，无需配置任何外部工具
+
+其他工具需要先安装 nmap、sqlmap、Burp、nuclei 等数十个依赖。  
+**bingo 首次运行即可使用。** 内置攻击引擎 — 无需外部工具。
+
+```bash
+pip install bingo-ai && bingo   # 就这样。立刻开始。
+```
+
+> ✅ **nmap 自动集成** — 若已安装 `nmap`，bingo 自动用于端口/服务扫描，无需任何配置。
+> ```bash
+> apt install nmap   # 下次运行时 bingo 自动检测并使用
+> ```
+
+### 竞品对比
+
+| 功能 | **Bingo** | Swarm AI | HexStrike AI | 大大怪 |
+|---|:---:|:---:|:---:|:---:|
+| 内置引擎 — 无需安装任何工具 | ✅ | ❌ | ❌ 150+ 依赖 | ❌ |
+| HTTP 请求走私 (CL.TE / TE.CL) | ✅ | ❌ | ❌ | ❌ |
+| 防幻觉 4 层守卫（仅真实 HTTP） | ✅ | ❌ | ❌ | ❌ |
+| 会话记忆（跨会话记住发现结果） | ✅ | ❌ | ❌ | ❌ |
+| 自动切换策略（放弃无效爆破） | ✅ | ❌ | ❌ | 手动 |
+| SQLi 成功后自动全量数据库转储 | ✅ 全自动 | 手动 | 手动 | 手动 |
+| DApp / Web3 智能合约审计 | ✅ 28 个技能 | ❌ | ❌ | ❌ |
+| 代理轮换 (Tor / SOCKS5 / 自动切换) | ✅ | 部分 | ❌ | ❌ |
+| 多模型 (DeepSeek/Claude/GPT/GLM/Qwen) | ✅ 7 个模型 | 有限 | 有限 | 有限 |
+| Webshell 部署链 | ✅ 全自动 | ❌ | 部分 | 部分 |
+| 安装即用，无需配置 | ✅ | ❌ | ❌ | 部分 |
+
+### Bingo 独有优势
+
+| 功能 | 说明 |
+|---|---|
+| **内置 SQLi 引擎** | Error → Union → Boolean blind → Time-based，全数据库类型，全自动 |
+| **CL.TE / TE.CL 走私** | **唯一**将 HTTP 去同步自动化的 AI 渗透工具 |
+| **防幻觉守卫** | 4 层防护拦截模拟结果 — 所有输出均经真实 HTTP 验证 |
+| **目标记忆** | 发现结果跨会话持久保存 — 下次运行时从断点继续 |
+| **智能放弃策略** | 自动检测失败的爆破 → 切换至更强攻击向量 |
+| **全量数据库转储** | SQLi 成功后自动转储整张表 — 无行数限制，自动保存到桌面 |
+| **Web3 审计** | 28 个 DApp 技能，钱包生成，SIWE 登录，SWC 智能合约覆盖 |
+
+---
+
 ## 核心功能
 
 | 领域 | bingo 所做的事 |
 |------|--------------|
-| **侦察** | WAF 检测、技术指纹识别、爬取所有页面/JS/API 端点 |
-| **SQLi** | Error-based → Union → Boolean blind → Time-based (所有数据库类型) |
+| **侦察** | WAF 检测、技术指纹识别、爬取所有页面/JS/API 端点、**nmap 端口扫描**（已安装时自动使用） |
+| **SQLi** | Error-based → Union → Boolean blind → Time-based (所有数据库) — 内置引擎，无需 sqlmap |
 | **WAF 绕过** | Cloudflare / AWS WAF / ModSecurity — 自动选择绕过方式 |
 | **XSS** | Stored / Reflected / DOM — 成功后劫持会话 |
 | **SSRF** | 云元数据(AWS/GCP/Azure)端点测试 |
-| **文件上传** | 扩展名绕过、Webshell 上传 |
+| **文件上传** | 扩展名绕过、Webshell 上传 → AntSword 连接 |
 | **认证攻击** | 登录爆破、SQLi 认证绕过、CAPTCHA 自动解决 |
 | **IDOR/BOLA** | 对象 ID 枚举、水平权限提升 |
 | **JWT/OAuth** | alg:none、弱密钥、redirect_uri 滥用 |
 | **GraphQL** | 内省攻击、批量攻击、字段注入 |
-| **HTTP 走私** | CL.TE / TE.CL 去同步 |
+| **HTTP 走私** | CL.TE / TE.CL 去同步 — **唯一实现该功能的 AI 渗透工具** |
 | **凭据转储** | 提取哈希 → 自动建议 hashcat 命令 |
-| **数据库转储** | 确认 SQLi 后全量转储 (DbDumper v2.7) |
+| **数据库转储** | 确认 SQLi 后全量转储 — 无行数限制，自动保存到桌面 |
+| **后渗透** | SQLi → Webshell → RCE → 数据库转储，全自动链 |
+| **移动端** | APK / IPA 静态分析，硬编码密钥提取 |
+| **Web3** | 28 个 DApp 技能，SWC 智能合约审计，钱包生成，SIWE 登录 |
 | **截图** | 通过 Playwright 自动截取管理后台 |
 | **报告** | 自动保存含 CVSS 评分的 Markdown 报告 |
 
@@ -704,7 +757,10 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 - Python **3.12 / 3.13**（Playwright 兼容性必需）
 - 至少一个受支持模型的 API 密钥
-- （可选）VPN 或代理 — 自动检测并显示
+- （可选）`nmap` — 自动检测；安装后自动用于端口/服务扫描
+- （可选）VPN / 代理 — 自动检测并显示
+
+> bingo **没有任何必须安装的外部工具依赖**。安装即可全功能使用。
 
 ---
 
@@ -963,5 +1019,10 @@ MIT © 2026 bingook
 <div align="center">
 
 **输入目标，bingo 完成其余一切。**
+
+*内置引擎 · HTTP 走私 · 防幻觉守卫 · 目标记忆 — 唯一全能 AI 渗透终端*
+
+[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
+[![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

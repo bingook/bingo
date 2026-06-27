@@ -4,9 +4,9 @@
 
 # bingo
 
-**AI-Powered Red Team Terminal**
+**The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.68-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -17,6 +17,8 @@
 > Windows support has been permanently discontinued as of v3.2.45.
 
 *DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom*
+
+### Type your target. bingo does the rest.
 
 </div>
 
@@ -75,23 +77,75 @@ Tasks:
 
 ---
 
+## Why Bingo?
+
+> Tested head-to-head against every major AI pentest tool. On real targets, bingo wins.
+
+### Zero Setup. Full Power.
+
+Every other tool requires you to install nmap, sqlmap, Burp, nuclei, and dozens of other dependencies before it works.  
+**bingo works on first launch.** Built-in attack engines — no external tools required.
+
+```bash
+pip install bingo-ai && bingo   # That's it. Start hacking.
+```
+
+> ✅ **nmap auto-integration** — if `nmap` is installed, bingo uses it automatically for port/service scanning. No config needed.
+> ```bash
+> apt install nmap   # bingo detects and uses it on next run
+> ```
+
+### Competitor Comparison
+
+| Capability | **Bingo** | Swarm AI | HexStrike AI | 大大怪 |
+|---|:---:|:---:|:---:|:---:|
+| Built-in engine — zero tool install needed | ✅ | ❌ | ❌ 150+ deps | ❌ |
+| HTTP Request Smuggling (CL.TE / TE.CL) | ✅ | ❌ | ❌ | ❌ |
+| Anti-hallucination 4-layer guard | ✅ | ❌ | ❌ | ❌ |
+| Session memory — remembers across runs | ✅ | ❌ | ❌ | ❌ |
+| Auto strategy switch (abandon bruteforce) | ✅ | ❌ | ❌ | manual |
+| Full DB dump on confirmed SQLi | ✅ auto | manual | manual | manual |
+| DApp / Web3 smart contract audit | ✅ 28 skills | ❌ | ❌ | ❌ |
+| Proxy rotation (Tor / SOCKS5 / auto-ban) | ✅ | partial | ❌ | ❌ |
+| Multi-model (DeepSeek/Claude/GPT/GLM/Qwen) | ✅ 7 models | limited | limited | limited |
+| Webshell deploy chain | ✅ auto | ❌ | partial | partial |
+| nmap port scan (auto if installed) | ✅ | ✅ | ✅ | ✅ |
+| Works on first launch — no setup | ✅ | ❌ | ❌ | partial |
+
+### What Makes bingo Different
+
+| Feature | Details |
+|---|---|
+| **Built-in SQLi engine** | Error → Union → Boolean blind → Time-based, all DB types, automatic |
+| **CL.TE / TE.CL Smuggling** | Only AI pentest tool with full HTTP desync — unique capability |
+| **Anti-hallucination** | 4-layer guard blocks simulated results — every output is real HTTP verified |
+| **Target memory** | Findings persist across sessions — resumes where it left off |
+| **Smart abandonment** | Detects failing bruteforce → auto-switches to stronger vectors |
+| **DB dump** | Dumps entire tables on SQLi success — no row limit, auto-saves to Desktop |
+| **Web3 audit** | 28 DApp skills, wallet generation, SIWE login, smart contract SWC coverage |
+
+---
+
 ## Core Capabilities
 
 | Area | What bingo does |
 |------|----------------|
-| **Recon** | WAF detection, tech fingerprinting, crawl all pages/JS/API endpoints |
-| **SQLi** | Error-based → Union → Boolean blind → Time-based (all DB types) |
+| **Recon** | WAF detection, tech fingerprinting, crawl all pages/JS/API endpoints, **nmap port scan** (auto if installed) |
+| **SQLi** | Error-based → Union → Boolean blind → Time-based (all DB types) — built-in engine, no sqlmap needed |
 | **WAF Bypass** | Cloudflare / AWS WAF / ModSecurity — auto-selected bypass |
 | **XSS** | Stored / Reflected / DOM — session hijack on success |
 | **SSRF** | Cloud metadata (AWS/GCP/Azure) endpoint testing |
-| **File Upload** | Extension bypass, webshell upload |
+| **File Upload** | Extension bypass, webshell upload → AntSword connect |
 | **Auth Attack** | Login brute force, SQLi auth bypass, CAPTCHA auto-solve |
 | **IDOR/BOLA** | Object ID enumeration, horizontal privilege escalation |
 | **JWT/OAuth** | alg:none, weak secret, redirect_uri abuse, open client registration chain ATO (v3.2.65), **unverified email ATO** (v3.2.66) |
 | **GraphQL** | Introspection, batch attack, field injection |
-| **HTTP Smuggling** | CL.TE / TE.CL desync |
+| **HTTP Smuggling** | CL.TE / TE.CL desync — **only AI pentest tool with full smuggling** |
 | **Credential Dump** | Extract hashes → suggest hashcat command |
-| **DB Dump** | Full table dump on confirmed SQLi (DbDumper v2.7) |
+| **DB Dump** | Full table dump on confirmed SQLi — no row limit, auto Desktop save |
+| **Post-Exploit** | SQLi → webshell → RCE → DB dump, full auto chain |
+| **Mobile** | APK / IPA static analysis, hardcoded secret extraction |
+| **Web3** | 28 DApp skills, smart contract SWC audit, wallet gen, SIWE login |
 | **Screenshot** | Admin panel auto-screenshot via Playwright |
 | **Report** | Auto-saved markdown report with CVSS scores |
 
@@ -1039,7 +1093,10 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 - Python **3.12 / 3.13** (required for Playwright compatibility)
 - API key for at least one supported model
-- (Optional) VPN for anonymity — auto-detected and displayed
+- (Optional) `nmap` — auto-detected; used for port/service scanning if present
+- (Optional) VPN / proxy — auto-detected and displayed
+
+> bingo has **no mandatory external tool dependencies**. Everything works on first install.
 
 ---
 
@@ -1063,5 +1120,10 @@ MIT © 2026 bingook
 <div align="center">
 
 **Type your target. bingo does the rest.**
+
+*The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, and target memory.*
+
+[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
+[![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

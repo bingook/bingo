@@ -574,6 +574,47 @@ _STRINGS = {
         "en": "SQLi hex cursor explosion detected — extraction aborted",
     },
 
+    # ── v3.2.71 — 응답 크기 SQLi 강제 전환 ─────────────────────────
+    "sqli_size_diff_detected": {
+        "ko": "⚡ 응답 크기 차이 감지 — SQLi 강제 우선 전환 (브루트포스/재탐색 중단)",
+        "zh": "⚡ 检测到响应大小差异 — 强制切换SQLi优先（停止暴力破解/侦察）",
+        "en": "⚡ Response size diff detected — forcing SQLi priority (halting brute force/recon)",
+    },
+    "sqli_size_force_hint": {
+        "ko": "⚡ 크기 차이 기반 SQLi 강제 전환 유도 중...",
+        "zh": "⚡ 正在基于响应大小差异强制引导SQLi...",
+        "en": "⚡ Forcing SQLi pivot based on response size difference...",
+    },
+
+    # ── v3.2.71 — 브루트포스 자동 포기 ─────────────────────────────
+    "bruteforce_abort_warn": {
+        "ko": "🛑 브루트포스 연속 실패 임계값 초과 — 자동 포기 후 대안 벡터 전환",
+        "zh": "🛑 暴力破解连续失败超过阈值 — 自动放弃并切换到替代攻击向量",
+        "en": "🛑 Brute force consecutive fail threshold exceeded — auto-abort, switching vectors",
+    },
+    "bruteforce_redirect_hint": {
+        "ko": "🛑 브루트포스 중단 → SQLi / 관리자 패널 등 대안 벡터로 전환 중...",
+        "zh": "🛑 暴力破解已中止 → 正在切换到SQLi/管理员面板等替代向量...",
+        "en": "🛑 Brute force aborted → redirecting to SQLi / admin panel / other vectors...",
+    },
+
+    # ── v3.2.71 — 타겟 메모리 ────────────────────────────────────────
+    "target_memory_loaded": {
+        "ko": "🧠 타겟 메모리 로드 — 이전 세션 SQLi 포인트·유저 정보를 AI에 주입",
+        "zh": "🧠 目标记忆已加载 — 将上次会话SQLi注入点和用户信息注入AI",
+        "en": "🧠 Target memory loaded — injecting previous session SQLi points & user info into AI",
+    },
+    "target_memory_saved": {
+        "ko": "🧠 타겟 메모리 저장됨 — SQLi 포인트 누적 완료",
+        "zh": "🧠 目标记忆已保存 — SQLi注入点已累积",
+        "en": "🧠 Target memory saved — SQLi points accumulated",
+    },
+    "target_memory_not_found": {
+        "ko": "🧠 저장된 타겟 메모리 없음 — 새로 탐색 시작",
+        "zh": "🧠 没有保存的目标记忆 — 开始新的侦察",
+        "en": "🧠 No target memory found — starting fresh recon",
+    },
+
     # ── 멀티 에이전트 / Recon ─────────────────────────────────────
     "recon_start":         {"ko": "정찰 시작",           "zh": "开始侦察",         "en": "Recon started"},
     "port_open":           {"ko": "열린 포트",           "zh": "开放端口",         "en": "Open port"},

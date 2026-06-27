@@ -271,6 +271,13 @@ class BingoTerminal:
             self._tm_available = True
         except Exception:
             self._tm_available = False
+        # 세션 로그 자동 파싱 모듈 (session_parser) — v3.2.72
+        try:
+            from ..core.session_parser import parse_and_save_to_memory as _sp_parse
+            self._sp_parse = _sp_parse
+            self._sp_available = True
+        except Exception:
+            self._sp_available = False
 
     # ── 네트워크 환경 감지 (VPN 자동 판단) ───────────────────────
     def _detect_network_env(self) -> None:
@@ -535,6 +542,42 @@ class BingoTerminal:
         except Exception:
             pass
 
+    # ── v3.2.72: 세션 로그 자동 파싱 → target_memory 저장 ─────────
+    def _auto_parse_session_to_memory(self) -> None:
+        """
+        세션 종료 시 현재 세션 로그를 파싱해 target_memory에 저장.
+        다음 세션 시작 시 이 정보가 AI에게 자동 주입됨.
+        """
+        if not self._sp_available or not self._session_log_path:
+            return
+
+        target = self._agent_state.get("target", "")
+        if not target:
+            return
+
+        _lang = getattr(self.config, "lang", "en")
+        try:
+            sqli_n, user_n, ep_n = self._sp_parse(self._session_log_path, target)
+            if sqli_n + user_n + ep_n > 0:
+                _tpl = self.s.get(
+                    "session_parsed_saved",
+                    "🧠 Session parsed → SQLi={0} / users={1} / endpoints={2} saved to target_memory",
+                )
+                _msg = _tpl.format(sqli_n, user_n, ep_n)
+                self.console.print(
+                    f"[{THEME.get('success', 'green')}]{_msg}[/]"
+                )
+            else:
+                _msg = self.s.get(
+                    "session_parsed_empty",
+                    "📭 Session parsed — no new vulnerability info found",
+                )
+                self.console.print(
+                    f"[{THEME.get('dim', 'dim')}]{_msg}[/]"
+                )
+        except Exception:
+            pass
+
     # ── 채팅 루프 ─────────────────────────────────────────────────
     def _chat_loop(self) -> None:
         _ctrl_c_count = 0  # 연속 Ctrl+C 횟수 추적
@@ -551,6 +594,8 @@ class BingoTerminal:
                         self.console.print(
                             f"[{THEME['dim']}]{self.s['session_done']}: {self._session_log_path}[/]"
                         )
+                    # ── v3.2.72: 세션 로그 자동 파싱 → target_memory 저장 ──
+                    self._auto_parse_session_to_memory()
                     break
                 # 1회 Ctrl+C → 입력 취소, 루프 계속
                 _lang = getattr(self.config, "lang", "en")
@@ -567,6 +612,8 @@ class BingoTerminal:
                     self.console.print(
                         f"[{THEME['dim']}]{self.s['session_done']}: {self._session_log_path}[/]"
                     )
+                # ── v3.2.72: 세션 로그 자동 파싱 → target_memory 저장 ──
+                self._auto_parse_session_to_memory()
                 break
 
             if not user_input.strip():
@@ -2371,6 +2418,8 @@ class BingoTerminal:
 
     def _cmd_quit(self) -> None:
         self.console.print(f"[{THEME['primary']}]{self.s['goodbye']}[/]")
+        # ── v3.2.72: /exit, /quit 명령으로 종료 시에도 세션 파싱 ──
+        self._auto_parse_session_to_memory()
         sys.exit(0)
 
     # ── /login <url> <username> <password> ───────────────────────────

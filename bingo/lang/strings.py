@@ -3623,6 +3623,27 @@ _STRINGS.update({
         "zh": "⚠️  XS泄漏可能 — Frame计数/时序预言机可推断跨租户数据",
         "en": "⚠️  XS-Leak possible — Frame Counting/Timing Oracle allows cross-tenant data inference",
     },
+    # ── v3.2.72: 세션 로그 자동 파싱 관련 ─────────────────────────────
+    "session_parsed_saved": {
+        "ko": "🧠 세션 파싱 완료 → SQLi={0}건 / 유저={1}명 / 엔드포인트={2}건 target_memory에 저장 (다음 세션 자동 로드)",
+        "zh": "🧠 会话解析完成 → SQLi={0}项 / 用户={1}个 / 端点={2}个 已存入target_memory（下次会话自动加载）",
+        "en": "🧠 Session parsed → SQLi={0} / users={1} / endpoints={2} saved to target_memory (auto-loaded next session)",
+    },
+    "session_parsed_empty": {
+        "ko": "📭 세션 파싱 완료 — 새로운 취약점 정보 없음",
+        "zh": "📭 会话解析完成 — 无新漏洞信息",
+        "en": "📭 Session parsed — no new vulnerability info found",
+    },
+    "session_parse_start": {
+        "ko": "🔍 세션 로그 파싱 중 (SQLi/유저/엔드포인트 추출)...",
+        "zh": "🔍 正在解析会话日志（提取SQLi/用户/端点）...",
+        "en": "🔍 Parsing session log (extracting SQLi/users/endpoints)...",
+    },
+    "session_parse_injected": {
+        "ko": "🧠 이전 세션 발견 정보를 AI 컨텍스트에 주입 완료",
+        "zh": "🧠 已将上次会话发现信息注入AI上下文",
+        "en": "🧠 Previous session findings injected into AI context",
+    },
 })
 
 

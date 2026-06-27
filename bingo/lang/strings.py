@@ -3338,6 +3338,228 @@ _STRINGS.update({
         "zh": "📊 自主挖掘结果: 发现={found} | 未确认={unconfirmed} | 已确认={confirmed} | 误报={fp}",
         "en": "📊 Autonomous hunt results: found={found} | unconfirmed={unconfirmed} | confirmed={confirmed} | fp={fp}",
     },
+
+    # ── v3.2.68 신규 스킬 다국어 키 ──────────────────────────────────────────
+
+    # sec-cpp-libc-gotcha
+    "cpp_libc_init": {
+        "ko": "🔍 C/C++ Linux libc 함정 & seccomp/BPF 샌드박스 우회 분석 시작...",
+        "zh": "🔍 开始分析C/C++ Linux libc陷阱和seccomp/BPF沙盒绕过...",
+        "en": "🔍 Starting C/C++ Linux libc gotcha & seccomp/BPF sandbox bypass analysis...",
+    },
+    "cpp_libc_inet_ntoa": {
+        "ko": "⚠️  inet_ntoa() 정적 버퍼 레이스 조건 발견 — inet_ntop로 교체 필요",
+        "zh": "⚠️  发现inet_ntoa()静态缓冲区竞争条件 — 需要替换为inet_ntop",
+        "en": "⚠️  inet_ntoa() static buffer race condition found — replace with inet_ntop",
+    },
+    "cpp_seccomp_vulnerable": {
+        "ko": "🚨 seccomp BPF 필터에 io_uring syscall 미차단 — 샌드박스 우회 가능",
+        "zh": "🚨 seccomp BPF过滤器未拦截io_uring syscall — 可绕过沙盒",
+        "en": "🚨 seccomp BPF filter does not block io_uring syscalls — sandbox bypass possible",
+    },
+    "cpp_libc_safe": {
+        "ko": "✅ libc 함정 미탐지 — AddressSanitizer 추가 검증 권장",
+        "zh": "✅ 未检测到libc陷阱 — 建议使用AddressSanitizer进行额外验证",
+        "en": "✅ No libc gotchas detected — AddressSanitizer additional verification recommended",
+    },
+
+    # sec-windows-driver-registry-tycon
+    "windrv_init": {
+        "ko": "🔍 Windows WDF 드라이버 RTL_QUERY_REGISTRY_TABLE 타입 혼동 분석...",
+        "zh": "🔍 分析Windows WDF驱动程序RTL_QUERY_REGISTRY_TABLE类型混淆...",
+        "en": "🔍 Analyzing Windows WDF driver RTL_QUERY_REGISTRY_TABLE type confusion...",
+    },
+    "windrv_type_confused": {
+        "ko": "🚨 레지스트리 값 타입 혼동 가능 — EntryContext 함수 포인터 덮어쓰기 위험",
+        "zh": "🚨 注册表值类型混淆可能 — EntryContext函数指针覆写风险",
+        "en": "🚨 Registry value type confusion possible — EntryContext function pointer overwrite risk",
+    },
+    "windrv_dos_possible": {
+        "ko": "⚠️  RTL_QUERY_REGISTRY_DIRECT DoS 가능 — 큰 레지스트리 값으로 커널 버퍼 오버플로우",
+        "zh": "⚠️  RTL_QUERY_REGISTRY_DIRECT DoS可能 — 大注册表值导致内核缓冲区溢出",
+        "en": "⚠️  RTL_QUERY_REGISTRY_DIRECT DoS possible — oversized registry value → kernel buffer overflow",
+    },
+    "windrv_safe": {
+        "ko": "✅ 레지스트리 쿼리 처리 안전 — QueryRoutine 콜백 방식 사용 확인",
+        "zh": "✅ 注册表查询处理安全 — 确认使用QueryRoutine回调方式",
+        "en": "✅ Registry query handling safe — QueryRoutine callback pattern confirmed",
+    },
+
+    # sec-web-oauth-dcr-ssrf-chain
+    "dcr_ssrf_init": {
+        "ko": "🔍 OAuth DCR + Open Redirect + Path Normalization → Full-Read SSRF 체인 분석...",
+        "zh": "🔍 分析OAuth DCR + 开放重定向 + 路径规范化 → 完整读取SSRF链...",
+        "en": "🔍 Analyzing OAuth DCR + Open Redirect + Path Normalization → Full-Read SSRF chain...",
+    },
+    "dcr_ssrf_endpoint": {
+        "ko": "📡 OAuth DCR 엔드포인트 발견: {url} — redirect_uri 검증 테스트 중",
+        "zh": "📡 发现OAuth DCR端点: {url} — 正在测试redirect_uri验证",
+        "en": "📡 OAuth DCR endpoint found: {url} — testing redirect_uri validation",
+    },
+    "dcr_ssrf_vulnerable": {
+        "ko": "🚨 DCR redirect_uri 미검증 + Open Redirect 확인 — Full-Read SSRF 가능",
+        "zh": "🚨 DCR redirect_uri未验证 + 开放重定向已确认 — 完整读取SSRF可能",
+        "en": "🚨 DCR redirect_uri unvalidated + Open Redirect confirmed — Full-Read SSRF possible",
+    },
+    "dcr_ssrf_safe": {
+        "ko": "✅ DCR redirect_uri 화이트리스트 검증 확인 — SSRF 체인 불가",
+        "zh": "✅ 确认DCR redirect_uri白名单验证 — SSRF链不可行",
+        "en": "✅ DCR redirect_uri whitelist validation confirmed — SSRF chain not feasible",
+    },
+
+    # sec-web-smuggling-upgrade-bypass
+    "smuggle_upgrade_init": {
+        "ko": "🔍 HTTP Upgrade 헤더 패스스루 취약점 & Request Smuggling 분석...",
+        "zh": "🔍 分析HTTP Upgrade头透传漏洞和请求走私...",
+        "en": "🔍 Analyzing HTTP Upgrade header passthrough vulnerability & Request Smuggling...",
+    },
+    "smuggle_upgrade_vulnerable": {
+        "ko": "🚨 Upgrade 헤더 미검증 패스스루 확인 (CVE-2026-2833) — Request Smuggling 가능",
+        "zh": "🚨 确认Upgrade头未验证透传(CVE-2026-2833) — 请求走私可能",
+        "en": "🚨 Upgrade header unvalidated passthrough confirmed (CVE-2026-2833) — Request Smuggling possible",
+    },
+    "smuggle_cache_poison": {
+        "ko": "⚠️  Cache Poisoning 체인 가능 — 스머글된 응답이 캐시에 저장됨",
+        "zh": "⚠️  缓存投毒链可能 — 走私响应已存储在缓存中",
+        "en": "⚠️  Cache Poisoning chain possible — smuggled response stored in cache",
+    },
+    "smuggle_upgrade_safe": {
+        "ko": "✅ Upgrade 처리 안전 — 101 응답 확인 후 패스스루 전환 확인",
+        "zh": "✅ Upgrade处理安全 — 确认收到101响应后才切换透传",
+        "en": "✅ Upgrade handling safe — switches to passthrough only after 101 response confirmed",
+    },
+
+    # sec-cloud-git-toctou-fsmonitor-rce
+    "git_toctou_init": {
+        "ko": "🔍 Git 디렉터리 삭제 TOCTOU + fsmonitor Hook RCE 분석...",
+        "zh": "🔍 分析Git目录删除TOCTOU + fsmonitor钩子RCE...",
+        "en": "🔍 Analyzing Git directory deletion TOCTOU + fsmonitor hook RCE...",
+    },
+    "git_toctou_dir_bypass": {
+        "ko": "🚨 dir_path_array=[\"/\"] 검증 우회 성공 — .git 삭제 레이스 조건 시도 중",
+        "zh": "🚨 dir_path_array=[\"/\"]验证绕过成功 — 正在尝试.git删除竞争条件",
+        "en": "🚨 dir_path_array=[\"/\"] validation bypass succeeded — attempting .git deletion race",
+    },
+    "git_fsmonitor_rce": {
+        "ko": "💥 fsmonitor 훅 트리거 성공 — 임의 명령 실행 (RCE) 달성!",
+        "zh": "💥 fsmonitor钩子触发成功 — 任意命令执行(RCE)已实现!",
+        "en": "💥 fsmonitor hook triggered successfully — arbitrary command execution (RCE) achieved!",
+    },
+    "git_k8s_privesc": {
+        "ko": "⚠️  K8s 서비스 계정 secrets 업데이트 권한 발견 — 타 인스턴스 접근 가능",
+        "zh": "⚠️  发现K8s服务账户secrets更新权限 — 可访问其他实例",
+        "en": "⚠️  K8s service account secrets update permission found — other instances accessible",
+    },
+
+    # sec-ai-chrome-ext-xss-prompt-inject
+    "chrome_ext_init": {
+        "ko": "🔍 Chrome 확장 Wildcard Origin + DOM-XSS → AI 프롬프트 하이재킹 분석...",
+        "zh": "🔍 分析Chrome扩展通配符来源 + DOM-XSS → AI提示词劫持...",
+        "en": "🔍 Analyzing Chrome extension Wildcard Origin + DOM-XSS → AI prompt hijacking...",
+    },
+    "chrome_ext_wildcard": {
+        "ko": "⚠️  Chrome 확장 wildcard origin 허용 발견: {pattern} — 서브도메인 XSS 탐색 중",
+        "zh": "⚠️  发现Chrome扩展通配符来源允许: {pattern} — 正在探索子域XSS",
+        "en": "⚠️  Chrome extension wildcard origin found: {pattern} — exploring subdomain XSS",
+    },
+    "chrome_ext_xss_found": {
+        "ko": "🚨 서브도메인 DOM-XSS 발견 (dangerouslySetInnerHTML + postMessage 오리진 미검증)",
+        "zh": "🚨 发现子域DOM-XSS (dangerouslySetInnerHTML + postMessage来源未验证)",
+        "en": "🚨 Subdomain DOM-XSS found (dangerouslySetInnerHTML + postMessage origin not verified)",
+    },
+    "chrome_ext_prompt_hijack": {
+        "ko": "💥 AI 어시스턴트 프롬프트 하이재킹 성공 — Gmail/Drive 토큰 탈취 가능",
+        "zh": "💥 AI助手提示词劫持成功 — 可窃取Gmail/Drive令牌",
+        "en": "💥 AI assistant prompt hijacking successful — Gmail/Drive token theft possible",
+    },
+
+    # sec-ai-rag-sqli-vector-store
+    "rag_sqli_init": {
+        "ko": "🔍 AI RAG 벡터 스토어 SQL Injection (CVE-2026-22730 패턴) 분석...",
+        "zh": "🔍 分析AI RAG向量存储SQL注入(CVE-2026-22730模式)...",
+        "en": "🔍 Analyzing AI RAG vector store SQL Injection (CVE-2026-22730 pattern)...",
+    },
+    "rag_sqli_vulnerable": {
+        "ko": "🚨 RAG 메타데이터 필터 SQL Injection 확인 — 테넌트 격리 우회 가능 (CVSS 8.8)",
+        "zh": "🚨 RAG元数据过滤器SQL注入已确认 — 租户隔离可绕过(CVSS 8.8)",
+        "en": "🚨 RAG metadata filter SQL injection confirmed — tenant isolation bypass possible (CVSS 8.8)",
+    },
+    "rag_sqli_delete": {
+        "ko": "💥 DELETE 경로 SQL Injection — 전체 벡터 스토어 삭제 가능 (서비스 중단)",
+        "zh": "💥 DELETE路径SQL注入 — 可删除整个向量存储(服务中断)",
+        "en": "💥 DELETE path SQL injection — entire vector store deletion possible (service disruption)",
+    },
+    "rag_sqli_safe": {
+        "ko": "✅ Spring AI 1.0.4/1.1.3 이상 확인 — 벡터 스토어 필터 이스케이프 패치됨",
+        "zh": "✅ 确认Spring AI 1.0.4/1.1.3或更高版本 — 向量存储过滤器转义已修补",
+        "en": "✅ Spring AI 1.0.4/1.1.3 or higher confirmed — vector store filter escaping patched",
+    },
+
+    # sec-ai-agent-dns-confusion-escape
+    "ai_agent_dns_init": {
+        "ko": "🔍 AI 에이전트 DNS Confusion + 샌드박스 탈출 + Guardrail 우회 분석...",
+        "zh": "🔍 分析AI代理DNS混淆 + 沙盒逃逸 + 护栏绕过...",
+        "en": "🔍 Analyzing AI agent DNS Confusion + sandbox escape + guardrail bypass...",
+    },
+    "ai_agent_detected": {
+        "ko": "📡 AI 에이전트 탐지 (User-Agent: {ua}) — 역공격 시나리오 준비",
+        "zh": "📡 AI代理已检测到(User-Agent: {ua}) — 准备反击场景",
+        "en": "📡 AI agent detected (User-Agent: {ua}) — preparing counterattack scenario",
+    },
+    "ai_agent_dns_confusion": {
+        "ko": "🚨 DNS Confusion 가능 — 프라이빗 DNS 레코드 조작으로 에이전트 스캔 대상 변경 가능",
+        "zh": "🚨 DNS混淆可能 — 操纵私有DNS记录可改变代理扫描目标",
+        "en": "🚨 DNS Confusion possible — private DNS record manipulation can redirect agent scan target",
+    },
+    "ai_agent_aws_token": {
+        "ko": "💥 AWS IMDS 토큰 탈취 성공 — 클라우드 자격증명 획득!",
+        "zh": "💥 AWS IMDS令牌窃取成功 — 获取云凭证!",
+        "en": "💥 AWS IMDS token stolen successfully — cloud credentials obtained!",
+    },
+
+    # sec-web-hmac-bypass-deser
+    "hmac_deser_init": {
+        "ko": "🔍 HMAC IV 구조 오류 서명 우회 → Java 역직렬화 RCE 분석...",
+        "zh": "🔍 分析HMAC IV结构错误签名绕过 → Java反序列化RCE...",
+        "en": "🔍 Analyzing HMAC IV structure flaw signature bypass → Java deserialization RCE...",
+    },
+    "hmac_deser_bypass": {
+        "ko": "🚨 HMAC 서명 우회 가능 — IV 분리 구조 오류로 임의 메시지 서명 생성 가능",
+        "zh": "🚨 HMAC签名可绕过 — IV分离结构错误可生成任意消息签名",
+        "en": "🚨 HMAC signature bypassable — IV separation flaw allows forging arbitrary message signatures",
+    },
+    "hmac_deser_rce": {
+        "ko": "💥 Java 역직렬화 RCE 달성 — ysoserial 페이로드 실행 성공!",
+        "zh": "💥 Java反序列化RCE已实现 — ysoserial载荷执行成功!",
+        "en": "💥 Java deserialization RCE achieved — ysoserial payload executed successfully!",
+    },
+    "hmac_deser_safe": {
+        "ko": "✅ HMAC 검증 안전 — IV 포함 전체 메시지 서명 또는 안전한 직렬화 라이브러리 사용",
+        "zh": "✅ HMAC验证安全 — 包含IV的完整消息签名或使用安全序列化库",
+        "en": "✅ HMAC validation safe — full message including IV signed or safe serialization library used",
+    },
+
+    # sec-cloud-bi-cross-tenant-sqli
+    "bi_cross_tenant_init": {
+        "ko": "🔍 Cloud BI 크로스 테넌트 SQL Injection + XS-Leak + Denial of Wallet 분석...",
+        "zh": "🔍 分析Cloud BI跨租户SQL注入 + XS泄漏 + 拒绝钱包...",
+        "en": "🔍 Analyzing Cloud BI cross-tenant SQL injection + XS-Leak + Denial of Wallet...",
+    },
+    "bi_cross_tenant_0click": {
+        "ko": "🚨 0-click 크로스 테넌트 SQL Injection 확인 — Owner 자격증명으로 피해자 DB 접근",
+        "zh": "🚨 0点击跨租户SQL注入已确认 — 使用所有者凭证访问受害者数据库",
+        "en": "🚨 0-click cross-tenant SQL injection confirmed — victim DB accessed via owner credentials",
+    },
+    "bi_denial_of_wallet": {
+        "ko": "💸 Denial of Wallet 공격 가능 — BigQuery 대용량 쿼리 강제 실행으로 피해자 비용 폭탄",
+        "zh": "💸 拒绝钱包攻击可能 — 强制执行BigQuery大量查询导致受害者费用暴增",
+        "en": "💸 Denial of Wallet possible — forced BigQuery bulk queries cause victim cost explosion",
+    },
+    "bi_xs_leak": {
+        "ko": "⚠️  XS-Leak 가능 — Frame Counting/Timing Oracle로 크로스 테넌트 데이터 추론",
+        "zh": "⚠️  XS泄漏可能 — Frame计数/时序预言机可推断跨租户数据",
+        "en": "⚠️  XS-Leak possible — Frame Counting/Timing Oracle allows cross-tenant data inference",
+    },
 })
 
 

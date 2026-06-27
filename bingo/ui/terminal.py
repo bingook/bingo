@@ -3472,6 +3472,60 @@ class BingoTerminal:
                     if not _has_break and not _has_exit:
                         return ("__BLOCKED__:INFINITE_LOOP_RISK: while True loop has no break/return/raise — will run forever", [])
 
+            # ── 0-C. UNION SQLi 커서 hex 폭발 방지 — _bingo_sqli_guard 주입 (v3.2.70) ─
+            # 증상: UNION 반사 위치 오인으로 SQL 페이로드 문자열 자체를 추출 결과로 착각.
+            #       그 결과를 hex 인코딩 → 커서로 사용 → "333333..." 지수 증가 현상.
+            # 탐지: hex 인코딩 + UNION/CAST/sysobjects SQL 문자열 + HTTP 요청 모두 포함.
+            # 처리: 유효성 검증 헬퍼 _bingo_sqli_guard() 를 자동 주입하여 AI가 재사용 가능.
+            _c_has_hex_enc = bool(_pre_re.search(
+                r'(\.hex\s*\(\s*\)|hexlify\s*\(|binascii\.)',
+                fixed, _pre_re.IGNORECASE
+            ))
+            _c_has_sqli_str = bool(_pre_re.search(
+                r'(sysobjects|xtype\s*=\s*0x55|TOP\s+1\b.{0,60}FROM\s+sys'
+                r'|CAST\s*\(\s*\(\s*SELECT|AS\s+VARCHAR\s*\()',
+                fixed, _pre_re.IGNORECASE
+            ))
+            _c_has_req = bool(_pre_re.search(r'requests\.(get|post)\s*\(', fixed))
+            _c_guard_present = "_bingo_sqli_guard" in fixed
+            if _c_has_hex_enc and _c_has_sqli_str and _c_has_req and not _c_guard_present:
+                _guard_fn = (
+                    "\n\n"
+                    "def _bingo_sqli_guard(val, label='result'):\n"
+                    "    \"\"\"bingo v3.2.70: UNION SQLi 추출 결과 유효성 검증.\n"
+                    "    val 이 SQL 페이로드 문자열이면 None 반환해 hex 폭발 차단.\"\"\"\n"
+                    "    import re as _sg\n"
+                    "    if val is None:\n"
+                    "        return None\n"
+                    "    s = str(val).strip()\n"
+                    "    _sql_pats = [\n"
+                    "        r\"'\\+CAST\\s*\\(\",\n"
+                    "        r\"SELECT\\s+TOP\\s+\\d+\",\n"
+                    "        r\"FROM\\s+sysobjects\",\n"
+                    "        r\"AS\\s+VARCHAR\\s*\\(\",\n"
+                    "        r\"WHERE\\s+xtype\\s*=\",\n"
+                    "    ]\n"
+                    "    for _p in _sql_pats:\n"
+                    "        if _sg.search(_p, s, _sg.IGNORECASE):\n"
+                    "            print(f'[!] _bingo_sqli_guard [{label}]: SQL 페이로드가 결과로 반환됨 — 서버 응답 파싱 실패')\n"
+                    "            print('[!] 수정: re.search(r\\'<marker>(.+?)</marker>\\', html).group(1) 형태로 실제 데이터 추출 필요')\n"
+                    "            return None\n"
+                    "    # hex 커서 폭발 탐지: 800자 초과 순수 hex 문자열\n"
+                    "    if len(s) > 800 and _sg.fullmatch(r'[0-9a-fA-F]+', s):\n"
+                    "        print(f'[!] _bingo_sqli_guard [{label}]: hex 커서 폭발 탐지 ({len(s)}자) — 추출 중단')\n"
+                    "        return None\n"
+                    "    return val\n\n"
+                )
+                # 마지막 import 문 뒤에 삽입
+                _c_last_imp = 0
+                for _c_ln in fixed.splitlines(keepends=True):
+                    _c_sl = _c_ln.strip()
+                    if _c_sl.startswith("import ") or _c_sl.startswith("from "):
+                        _c_last_imp = fixed.find(_c_ln) + len(_c_ln)
+                _c_ins = _c_last_imp if _c_last_imp > 0 else 0
+                fixed = fixed[:_c_ins] + _guard_fn + fixed[_c_ins:]
+                fixed = "__SQLI_GUARD_INJECTED__\n" + fixed
+
             # ── fix 추적 리스트 (어떤 수정이 적용됐는지 메시지에 표시) ────────
             _applied_fix_names: list[str] = []
 
@@ -4528,6 +4582,111 @@ class BingoTerminal:
 
             # 코드 실행
             results_text = self._run_code_blocks(current_response, _loaded_skills)
+
+            # ── SQLi 페이로드 에코 감지 (v3.2.70) ────────────────────────────
+            # 증상: AI가 생성한 스크립트가 HTTP 응답에서 실제 데이터를 파싱하지 않고
+            #       SQL 페이로드 문자열 자체를 "추출 결과"로 출력 → hex 커서 폭발로 이어짐.
+            # 탐지: 출력에 SQL 페이로드 패턴('+CAST(, SELECT TOP, FROM sysobjects) 포함 시.
+            import re as _sqe_re
+            _SQL_ECHO_PATTERNS = [
+                r"'\+CAST\s*\(",          # '+CAST((@@version) AS VARCHAR...)+'
+                r"\+CAST\s*\(\s*\(",      # +CAST((SELECT ...
+                r"SELECT\s+TOP\s+\d+\s+\w+\s+FROM\s+sys",   # SELECT TOP 1 name FROM sysobjects
+                r"AS\s+VARCHAR\s*\(\s*\d+\s*\)\s*\)\+'",    # AS VARCHAR(8000))+'
+                r"WHERE\s+xtype\s*=\s*0x55",                 # WHERE xtype=0x55
+            ]
+            _sqe_combined = "\n".join(results_text) if results_text else ""
+            _sqe_detected = any(
+                _sqe_re.search(p, _sqe_combined, _sqe_re.IGNORECASE)
+                for p in _SQL_ECHO_PATTERNS
+            )
+            if _sqe_detected:
+                _lang = getattr(self.config, "lang", "en")
+                _sqe_warn = self.s.get("sqli_payload_echo_warn", "")
+                if _sqe_warn:
+                    self.console.print(f"\n[bold yellow]{_sqe_warn}[/bold yellow]")
+                _sqe_fix_msg = {
+                    "ko": (
+                        "[⚠ SQLi 페이로드 에코 감지 — 응답 파싱 오류]\n\n"
+                        "스크립트 출력에 SQL 페이로드 문자열이 그대로 포함됐습니다.\n"
+                        "이는 서버 응답(HTML)에서 실제 주입된 데이터를 추출하지 못했음을 의미합니다.\n\n"
+                        "■ 원인: re.search() 패턴이 실제 반사 위치와 불일치하거나 파싱 로직 없음\n"
+                        "■ 해결: 아래 형식으로 응답 파싱 코드를 반드시 추가하세요:\n\n"
+                        "```python\n"
+                        "# HTML 응답에서 마커 사이의 실제 데이터 추출\n"
+                        "import re\n"
+                        "html = r.text  # 서버 실제 응답\n"
+                        "# UNION 반사 위치를 먼저 확인: print(html[:3000])\n"
+                        "m = re.search(r'<td[^>]*>([^<]{3,200})</td>', html)  # 반사 위치에 맞게 수정\n"
+                        "if m:\n"
+                        "    extracted = m.group(1).strip()\n"
+                        "    # SQL 페이로드가 아닌지 검증\n"
+                        "    if not re.search(r'CAST|SELECT|sysobjects', extracted, re.I):\n"
+                        "        print(f'[+] 추출 성공: {extracted}')\n"
+                        "        cursor_hex = extracted.encode('utf-8', errors='replace').hex()\n"
+                        "    else:\n"
+                        "        print('[!] 추출 실패: 반사 위치 재확인 필요')\n"
+                        "```\n"
+                        "hex 커서 사용 전 반드시 실제 데이터인지 확인하세요."
+                    ),
+                    "zh": (
+                        "[⚠ 检测到SQLi载荷回显 — 响应解析错误]\n\n"
+                        "脚本输出包含了原始SQL载荷字符串，而非服务器提取的实际数据。\n"
+                        "这意味着脚本未能从HTTP响应HTML中正确解析反射位置。\n\n"
+                        "■ 原因: re.search()模式与实际反射位置不匹配或缺少解析逻辑\n"
+                        "■ 解决: 必须添加以下响应解析代码:\n\n"
+                        "```python\n"
+                        "import re\n"
+                        "html = r.text\n"
+                        "# 先打印响应确认反射位置: print(html[:3000])\n"
+                        "m = re.search(r'<td[^>]*>([^<]{3,200})</td>', html)  # 按实际位置修改\n"
+                        "if m:\n"
+                        "    extracted = m.group(1).strip()\n"
+                        "    if not re.search(r'CAST|SELECT|sysobjects', extracted, re.I):\n"
+                        "        print(f'[+] 提取成功: {extracted}')\n"
+                        "        cursor_hex = extracted.encode('utf-8', errors='replace').hex()\n"
+                        "    else:\n"
+                        "        print('[!] 提取失败: 需重新确认反射位置')\n"
+                        "```"
+                    ),
+                    "en": (
+                        "[⚠ SQLi PAYLOAD ECHO DETECTED — RESPONSE PARSING FAILURE]\n\n"
+                        "Script output contains raw SQL payload strings instead of actual server data.\n"
+                        "The script failed to parse the real injected value from the HTTP response HTML.\n\n"
+                        "■ Cause: re.search() pattern does not match actual reflection point in HTML\n"
+                        "■ Fix: Add response parsing before hex-encoding the cursor:\n\n"
+                        "```python\n"
+                        "import re\n"
+                        "html = r.text\n"
+                        "# First: print(html[:3000]) to find the actual reflection position\n"
+                        "m = re.search(r'<td[^>]*>([^<]{3,200})</td>', html)  # adjust to match\n"
+                        "if m:\n"
+                        "    extracted = m.group(1).strip()\n"
+                        "    if not re.search(r'CAST|SELECT|sysobjects', extracted, re.I):\n"
+                        "        print(f'[+] Extracted: {extracted}')\n"
+                        "        cursor_hex = extracted.encode('utf-8', errors='replace').hex()\n"
+                        "    else:\n"
+                        "        print('[!] Extraction failed: reflection position mismatch')\n"
+                        "```\n"
+                        "NEVER hex-encode a value before validating it is real extracted data."
+                    ),
+                }.get(_lang, (
+                    "[⚠ SQLi PAYLOAD ECHO] Script printed SQL payload instead of extracted data. "
+                    "Fix response parsing: m = re.search(r'<marker>(.+?)</marker>', html); use m.group(1)."
+                ))
+                self.history.append(Message(role="user", content=f"[EXECUTION RESULT — SQLi PARSE ERROR]\n{_sqe_fix_msg}"))
+                from ..models.registry import ModelRegistry as _MR_sqe
+                _mc_sqe = self.config.get_active_model_config()
+                if not _mc_sqe:
+                    break
+                _m_sqe = _MR_sqe.build(_mc_sqe)
+                self.console.print(
+                    f"\n[bold yellow]{self.s.get('sqli_reparse_hint', '⚡ SQLi 파싱 재시도 유도 중...')}[/bold yellow]"
+                )
+                current_response = self._stream_response(_m_sqe.chat_stream(self._build_messages("")))
+                if current_response:
+                    self.history.append(Message(role="assistant", content=current_response))
+                continue
 
             # ── 환각 감지 (HTTP 응답 지표 없는 출력) ─────────────────────────
             _real_http_indicators = [

@@ -552,6 +552,28 @@ _STRINGS = {
     "sqli_extracting":     {"ko": "DB 추출 중",          "zh": "正在提取数据库",   "en": "Extracting DB"},
     "creds_found":         {"ko": "자격증명 발견",       "zh": "发现凭据",         "en": "Credentials found"},
 
+    # ── SQLi 페이로드 에코 / 커서 폭발 감지 (v3.2.70) ──────────────
+    "sqli_payload_echo_warn": {
+        "ko": "⚠ SQLi 페이로드 에코 감지 — 응답 파싱 오류 (커서 hex 폭발 위험)",
+        "zh": "⚠ 检测到SQLi载荷回显 — 响应解析错误（hex游标爆炸风险）",
+        "en": "⚠ SQLi payload echo detected — response parsing failure (hex cursor explosion risk)",
+    },
+    "sqli_reparse_hint": {
+        "ko": "⚡ SQLi 응답 파싱 재시도 유도 중...",
+        "zh": "⚡ 正在引导重新解析SQLi响应...",
+        "en": "⚡ Guiding SQLi response re-parse...",
+    },
+    "sqli_guard_injected": {
+        "ko": "_bingo_sqli_guard 검증 함수 자동 주입됨",
+        "zh": "已自动注入_bingo_sqli_guard验证函数",
+        "en": "_bingo_sqli_guard validator auto-injected",
+    },
+    "sqli_cursor_explosion": {
+        "ko": "SQLi 커서 hex 폭발 탐지 — 추출 중단",
+        "zh": "检测到SQLi hex游标爆炸 — 已中止提取",
+        "en": "SQLi hex cursor explosion detected — extraction aborted",
+    },
+
     # ── 멀티 에이전트 / Recon ─────────────────────────────────────
     "recon_start":         {"ko": "정찰 시작",           "zh": "开始侦察",         "en": "Recon started"},
     "port_open":           {"ko": "열린 포트",           "zh": "开放端口",         "en": "Open port"},

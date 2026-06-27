@@ -1456,6 +1456,11 @@ class BingoTerminal:
         "payload", "bypass", "shell", "exploit", "scan port",
         "해킹", "취약점 테스트", "침투", "인젝션", "스캔",
         "渗透", "注入", "漏洞", "扫描",
+        # 추가 키워드: 메뉴 옵션에서 자주 등장하는 공격 관련 중국어/한국어
+        # v3.2.68 버그 수정: 盲注 등 PENTEST_STRONG 미포함 키워드로 오분류 방지
+        "盲注", "布尔", "爆破", "枚举", "绕过", "提权", "凭证", "数据库名",
+        "webshell", "반환", "추출해", "덤프", "크랙", "브루트포스",
+        "自动化", "二分法", "管理员", "session", "cookie",
     )
 
     # 개념 질문 접두사 — 이 패턴으로 시작하면 보안 키워드가 있어도 general로 취급
@@ -1572,7 +1577,7 @@ class BingoTerminal:
         )
         return Message(role="system", content=system)
 
-    def _send_message(self, text: str) -> None:
+    def _send_message(self, text: str, _force_pentest: bool = False) -> None:
         # 사용자 메시지 출력
         self._print_user(text)
 
@@ -1586,8 +1591,9 @@ class BingoTerminal:
         model = ModelRegistry.build(model_cfg)
 
         # ── 일반 대화 모드 감지 ────────────────────────────────────────
+        # _force_pentest=True: 메뉴 옵션 선택 등 명백한 침투테스트 명령은 검사 생략
         full_response = ""  # 초기화 — UnboundLocalError 방지
-        if self._is_general_question(text):
+        if not _force_pentest and self._is_general_question(text):
             self.history.append(Message(role="user", content=text))
             self._append_to_session_log("user", text)
 
@@ -5756,11 +5762,13 @@ class BingoTerminal:
                     chosen = options[int(raw) - 1]
                     exec_msg = _s.get("next_steps_executing", "▶ Executing option {n}...").format(n=raw)
                     self.console.print(f"\n[bold cyan]{exec_msg}[/bold cyan]\n")
-                    # 선택된 옵션을 일반 사용자 입력으로 처리
-                    self._send_message(chosen)
+                    # 선택된 옵션을 침투테스트 명령으로 강제 처리 (_force_pentest=True)
+                    # 버그 수정 v3.2.68: 메뉴 옵션 텍스트가 _is_general_question()에 의해
+                    # 일반대화로 오분류되어 코드 블록 실행이 생략되던 문제 해결
+                    self._send_message(chosen, _force_pentest=True)
                 else:
-                    # 숫자가 아니면 그대로 입력으로 처리
-                    self._send_message(raw)
+                    # 숫자가 아니면 그대로 입력으로 처리 (메뉴에서 온 입력 → 침투테스트 강제)
+                    self._send_message(raw, _force_pentest=True)
             else:
                 # 파싱 실패 — 원문 그대로 패널로 표시
                 self.console.print(_Panel(

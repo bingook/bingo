@@ -130,7 +130,7 @@ class ProxyManager:
     """
 
     def __init__(self) -> None:
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # RLock: 같은 스레드 재진입 허용 (데드락 방지)
         self._pool: list[ProxyEntry] = []
         self._index: int = 0          # 현재 사용 중인 인덱스
         self._tor_enabled: bool = False

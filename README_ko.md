@@ -8,7 +8,7 @@
 
 [![Version](https://img.shields.io/badge/version-3.2.68-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
-[![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **🌐 언어:** [English](README.md) · [한국어](README_ko.md) · [中文](README_zh.md)
@@ -702,7 +702,7 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 ## 요구사항
 
-- Python **3.12** (Playwright 호환성 필수)
+- Python **3.12 / 3.13** (Playwright 호환성 필수)
 - 지원 모델 중 하나의 API 키
 - (선택) VPN 또는 프록시 — 자동 감지 및 표시
 

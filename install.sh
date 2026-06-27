@@ -38,14 +38,14 @@ detect_os() {
 }
 
 check_python() {
-    step "Checking Python 3.10+"
+    step "Checking Python 3.12 or 3.13"
     PY=""
-    for cmd in python3 python; do
+    for cmd in python3.13 python3.12 python3 python; do
         if command -v "$cmd" &>/dev/null; then
             ver=$("$cmd" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
             major=$(echo "$ver" | cut -d. -f1)
             minor=$(echo "$ver" | cut -d. -f2)
-            if [ "${major:-0}" -ge 3 ] && [ "${minor:-0}" -ge 10 ]; then
+            if [ "${major:-0}" -ge 3 ] && [ "${minor:-0}" -ge 12 ] && [ "${minor:-0}" -lt 14 ]; then
                 PY="$cmd"
                 ok "Python $ver ($cmd)"
                 break
@@ -54,14 +54,15 @@ check_python() {
     done
 
     if [ -z "$PY" ]; then
-        warn "Python 3.10+ not found. Install it first:"
+        warn "Python 3.12 or 3.13 not found."
+        warn "Python 3.14+ is not yet supported (Playwright limitation)."
         if [ "$OS" = "macos" ]; then
-            info "  brew install python@3.12"
+            info "  brew install python@3.13"
         else
-            info "  sudo apt install python3.12   # Debian/Ubuntu"
-            info "  sudo dnf install python3.12   # Fedora"
+            info "  sudo apt install python3.13   # Debian/Ubuntu"
+            info "  sudo dnf install python3.13   # Fedora"
         fi
-        err "Please install Python 3.10+ and run this script again"
+        err "Please install Python 3.12 or 3.13 and run this script again"
     fi
 }
 

@@ -7,7 +7,7 @@
 **AI-Powered Red Team Terminal**
 
 [![Version](https://img.shields.io/badge/version-3.2.68-brightgreen)](https://github.com/bingook/bingo/releases)
-[![Python](https://img.shields.io/badge/python-3.12-blue)](https://python.org)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 
@@ -1037,7 +1037,7 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 ## Requirements
 
-- Python **3.12** (required for Playwright compatibility)
+- Python **3.12 / 3.13** (required for Playwright compatibility)
 - API key for at least one supported model
 - (Optional) VPN for anonymity — auto-detected and displayed
 

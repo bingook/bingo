@@ -78,51 +78,116 @@ bingo --reset
 
 ---
 
-## 为什么选择 Bingo？
+## bingo 支持的目标类型
 
-> 与所有主流 AI 渗透工具在真实目标上对比测试 — bingo 全面胜出。
-
-### 安装即用，无需配置任何外部工具
-
-其他工具需要先安装 nmap、sqlmap、Burp、nuclei 等数十个依赖。  
-**bingo 首次运行即可使用。** 内置攻击引擎 — 无需外部工具。
+### 🌐 Web 目标
 
 ```bash
-pip install bingo-ai && bingo   # 就这样。立刻开始。
+bingo> https://target.com   # 自动全量扫描，无需任何命令
 ```
 
-> ✅ **nmap 自动集成** — 若已安装 `nmap`，bingo 自动用于端口/服务扫描，无需任何配置。
-> ```bash
-> apt install nmap   # 下次运行时 bingo 自动检测并使用
-> ```
+| 攻击类型 | 覆盖范围 |
+|---------|---------|
+| SQLi | Error → Union → Boolean盲注 → 时间盲注 · 全数据库类型 · 内置引擎 |
+| WAF 绕过 | Cloudflare · AWS WAF · ModSecurity · Nginx · 国产 WAF — 自动选择 |
+| XSS | Stored · Reflected · DOM · 成功后自动 Session 劫持 |
+| SSRF | 云元数据 AWS/GCP/Azure · 内网服务穿透 |
+| HTTP 走私 | CL.TE / TE.CL 报文错位 — 全自动 |
+| 认证攻击 | 暴力破解 · SQLi 绕过 · 验证码自动识别 |
+| IDOR/BOLA | 对象 ID 枚举 · 水平越权 |
+| JWT/OAuth | alg:none · 弱密钥 · redirect_uri 滥用 · 开放客户端注册 ATO |
+| 文件上传 | 扩展名绕过 · Webshell 上传 → AntSword 连接 |
+| 数据库转储 | 整表转储 · 无行数限制 · 自动保存至桌面 |
 
-### 竞品对比
+---
 
-| 功能 | **Bingo** | Swarm AI | HexStrike AI | 大大怪 |
-|---|:---:|:---:|:---:|:---:|
-| 内置引擎 — 无需安装任何工具 | ✅ | ❌ | ❌ 150+ 依赖 | ❌ |
-| HTTP 请求走私 (CL.TE / TE.CL) | ✅ | ❌ | ❌ | ❌ |
-| 防幻觉 4 层守卫（仅真实 HTTP） | ✅ | ❌ | ❌ | ❌ |
-| 会话记忆（跨会话记住发现结果） | ✅ | ❌ | ❌ | ❌ |
-| 自动切换策略（放弃无效爆破） | ✅ | ❌ | ❌ | 手动 |
-| SQLi 成功后自动全量数据库转储 | ✅ 全自动 | 手动 | 手动 | 手动 |
-| DApp / Web3 智能合约审计 | ✅ 28 个技能 | ❌ | ❌ | ❌ |
-| 代理轮换 (Tor / SOCKS5 / 自动切换) | ✅ | 部分 | ❌ | ❌ |
-| 多模型 (DeepSeek/Claude/GPT/GLM/Qwen) | ✅ 7 个模型 | 有限 | 有限 | 有限 |
-| Webshell 部署链 | ✅ 全自动 | ❌ | 部分 | 部分 |
-| 安装即用，无需配置 | ✅ | ❌ | ❌ | 部分 |
+### 📱 Android APK
 
-### Bingo 独有优势
+```bash
+bingo> analyze target.apk
+bingo> target.apk secret scan
+bingo> pentest com.example.app
+```
+
+| 提取内容 | 详情 |
+|---------|------|
+| 硬编码密钥 | AWS Key · Google API · Firebase · Stripe · JWT · GitHub Token |
+| 权限信息 | 全部声明权限 + 危险权限列表 |
+| 暴露组件 | Activity · Service · Receiver · Provider |
+| 网络端点 | 从代码和资源文件提取的 API URL |
+| 深度链接 | Intent Filter · 自定义 Scheme 处理器 |
+| SSL Pinning | 自动检测 → 生成绕过指南 |
+| 第三方 SDK | Firebase · Sentry · Analytics 等 |
+
+---
+
+### 🍎 iOS IPA
+
+```bash
+bingo> analyze target.ipa
+bingo> ios swift decompile target.ipa
+```
+
+| 提取内容 | 详情 |
+|---------|------|
+| Swift / ObjC 反编译 | 通过 Malimite 还原源代码 |
+| 硬编码密钥 | 二进制中的 API Key · Token · 凭证 |
+| URL Scheme | Universal Links · 自定义 Scheme 处理器 |
+| SSL Pinning | 自动生成绕过指南 |
+| 数据存储 | Keychain · UserDefaults · 明文文件 |
+
+---
+
+### 🖥️ Windows EXE / PE
+
+```bash
+bingo> analyze target.exe
+bingo> target.exe reverse engineer
+bingo> malware sample.exe behavior analysis
+```
+
+| 分析内容 | 详情 |
+|---------|------|
+| 静态分析 | PE 头 · 导入/导出表 · 字符串 · 熵值 |
+| 硬编码密钥 | 二进制内的 API Key · 密码 · URL |
+| 加壳检测 | UPX · 自定义壳识别 |
+| 哈希提取 | MD5 · SHA1 · SHA256（VirusTotal 查询用）|
+| 网络指标 | 硬编码 C2 域名 · IP · 端口 |
+| 行为特征 | 可疑 API 调用 · 反调试模式识别 |
+
+---
+
+### ⛓️ DApp / Web3 / 智能合约
+
+```bash
+bingo> dapp pentest https://app.defi-protocol.com
+bingo> audit smart contract for reentrancy
+bingo> analyze solidity contract flash loan
+```
+
+**28 个专用 DApp 技能** — 输入 Web3 关键词自动触发：
+
+| 层级 | 覆盖范围 |
+|------|---------|
+| 智能合约 | 16 个 SWC 漏洞 · 重入 · 溢出 · 访问控制 · delegatecall |
+| DeFi | 闪电贷 · 预言机操控 · MEV 三明治 · 治理攻击 |
+| 钱包认证 | 自动生成测试钱包 · SIWE 登录（EIP-4361）· Session Token |
+| 前端 | JS 注入 · 地址替换 · 盲签名（EIP-7730）|
+| Bybit 向量 | Safe 多签 op-type 篡改（delegatecall 切换）|
+| API | SIWE 登录后对全部认证端点进行渗透测试 |
+
+---
+
+### 🧠 内置智能功能
 
 | 功能 | 说明 |
-|---|---|
-| **内置 SQLi 引擎** | Error → Union → Boolean blind → Time-based，全数据库类型，全自动 |
-| **CL.TE / TE.CL 走私** | **唯一**将 HTTP 去同步自动化的 AI 渗透工具 |
-| **防幻觉守卫** | 4 层防护拦截模拟结果 — 所有输出均经真实 HTTP 验证 |
-| **目标记忆** | 发现结果跨会话持久保存 — 下次运行时从断点继续 |
-| **智能放弃策略** | 自动检测失败的爆破 → 切换至更强攻击向量 |
-| **全量数据库转储** | SQLi 成功后自动转储整张表 — 无行数限制，自动保存到桌面 |
-| **Web3 审计** | 28 个 DApp 技能，钱包生成，SIWE 登录，SWC 智能合约覆盖 |
+|------|------|
+| **目标记忆** | 跨会话保存发现结果 — 下次运行从上次中断处继续 |
+| **防幻觉** | 4层保护 — 所有结果均通过真实 HTTP 请求验证 |
+| **自动策略切换** | 检测无效暴力破解 → 自动转向更强攻击向量 |
+| **nmap 自动集成** | 安装 `nmap` 后自动执行端口扫描 |
+| **代理轮换** | Tor · SOCKS5 · HTTP — WAF 封禁时自动切换 |
+| **会话解析器** | 自动分析历史会话日志 → 注入到下次运行的上下文 |
 
 ---
 
@@ -144,8 +209,10 @@ pip install bingo-ai && bingo   # 就这样。立刻开始。
 | **凭据转储** | 提取哈希 → 自动建议 hashcat 命令 |
 | **数据库转储** | 确认 SQLi 后全量转储 — 无行数限制，自动保存到桌面 |
 | **后渗透** | SQLi → Webshell → RCE → 数据库转储，全自动链 |
-| **移动端** | APK / IPA 静态分析，硬编码密钥提取 |
-| **Web3** | 28 个 DApp 技能，SWC 智能合约审计，钱包生成，SIWE 登录 |
+| **移动端 / APK** | Android APK — 硬编码密钥、暴露组件、SSL Pinning、深度链接 |
+| **移动端 / IPA** | iOS IPA — Swift/ObjC 反编译(Malimite)、密钥、URL Scheme、SSL Pinning |
+| **Windows EXE** | PE 静态分析 — 导入表、字符串、熵值、硬编码密钥、C2 指标 |
+| **DApp / Web3** | 28 个技能 — SWC 审计、闪电贷、预言机攻击、SIWE 登录、钱包生成、EIP-7730 |
 | **截图** | 通过 Playwright 自动截取管理后台 |
 | **报告** | 自动保存含 CVSS 评分的 Markdown 报告 |
 

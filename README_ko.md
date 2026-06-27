@@ -78,51 +78,116 @@ bingo --reset
 
 ---
 
-## 왜 빙고인가?
+## 빙고가 지원하는 타겟
 
-> 모든 주요 AI 침투테스트 도구와 실제 타겟에서 비교 테스트 — 빙고가 승리합니다.
-
-### 설치하면 바로 사용. 추가 도구 불필요.
-
-다른 도구들은 nmap, sqlmap, Burp, nuclei 등 수십 개를 먼저 설치해야 합니다.  
-**빙고는 첫 실행부터 즉시 작동합니다.** 내장 공격 엔진 — 외부 도구 불필요.
+### 🌐 웹 타겟
 
 ```bash
-pip install bingo-ai && bingo   # 끝. 지금 바로 시작.
+bingo> https://target.com   # 자동 전체 스캔, 별도 명령 불필요
 ```
 
-> ✅ **nmap 자동 연동** — `nmap`이 설치되어 있으면 자동으로 포트/서비스 스캔에 활용합니다. 설정 불필요.
-> ```bash
-> apt install nmap   # 다음 실행부터 빙고가 자동으로 사용
-> ```
+| 공격 | 지원 범위 |
+|------|---------|
+| SQLi | Error → Union → Boolean blind → Time-based · 전 DB 타입 · 내장 엔진 |
+| WAF 우회 | Cloudflare · AWS WAF · ModSecurity · Nginx · 중국 WAF — 자동 선택 |
+| XSS | Stored · Reflected · DOM · 성공 시 세션 하이재킹 |
+| SSRF | 클라우드 메타데이터 AWS/GCP/Azure · 내부 서비스 피벗 |
+| HTTP 스머글링 | CL.TE / TE.CL 디싱크 — 완전 자동화 |
+| 인증 공격 | 브루트포스 · SQLi 우회 · CAPTCHA 자동 해결 |
+| IDOR/BOLA | 오브젝트 ID 열거 · 수평 권한 상승 |
+| JWT/OAuth | alg:none · 약한 비밀키 · redirect_uri 악용 · 오픈 클라이언트 등록 ATO |
+| 파일 업로드 | 확장자 우회 · 웹쉘 배포 → AntSword 연결 |
+| DB 덤프 | 전체 테이블 덤프 · 행 제한 없음 · 바탕화면 자동 저장 |
 
-### 경쟁 도구 비교
+---
 
-| 기능 | **Bingo** | Swarm AI | HexStrike AI | 大大怪 |
-|---|:---:|:---:|:---:|:---:|
-| 내장 엔진 — 도구 설치 불필요 | ✅ | ❌ | ❌ 150+ 의존성 | ❌ |
-| HTTP Request Smuggling (CL.TE / TE.CL) | ✅ | ❌ | ❌ | ❌ |
-| 환각 방지 4단계 가드 (실제 HTTP만 허용) | ✅ | ❌ | ❌ | ❌ |
-| 세션 메모리 (이전 발견 사항 기억) | ✅ | ❌ | ❌ | ❌ |
-| 자동 전략 전환 (비효율 브루트포스 포기) | ✅ | ❌ | ❌ | 수동 |
-| SQLi 성공 후 DB 전체 자동 덤프 | ✅ 자동 | 수동 | 수동 | 수동 |
-| DApp / Web3 스마트 컨트랙트 감사 | ✅ 28개 스킬 | ❌ | ❌ | ❌ |
-| 프록시 로테이션 (Tor / SOCKS5 / 자동 전환) | ✅ | 일부 | ❌ | ❌ |
-| 멀티 모델 (DeepSeek/Claude/GPT/GLM/Qwen) | ✅ 7개 모델 | 제한적 | 제한적 | 제한적 |
-| 웹쉘 배포 체인 | ✅ 자동 | ❌ | 일부 | 일부 |
-| 첫 실행부터 즉시 사용 가능 | ✅ | ❌ | ❌ | 일부 |
+### 📱 안드로이드 APK
 
-### 빙고만의 차별점
+```bash
+bingo> analyze target.apk
+bingo> target.apk secret scan
+bingo> pentest com.example.app
+```
+
+| 추출 항목 | 내용 |
+|---------|------|
+| 하드코딩된 비밀값 | AWS 키 · Google API · Firebase · Stripe · JWT · GitHub 토큰 |
+| 권한 | 선언된 전체 + 위험 권한 목록 |
+| 노출된 컴포넌트 | Activity · Service · Receiver · Provider |
+| 네트워크 엔드포인트 | 코드 + 에셋에서 추출한 API URL |
+| 딥 링크 | Intent 필터 · 커스텀 스킴 핸들러 |
+| SSL 핀닝 | 탐지 → 우회 가이드 자동 생성 |
+| 서드파티 SDK | Firebase · Sentry · Analytics 등 |
+
+---
+
+### 🍎 iOS IPA
+
+```bash
+bingo> analyze target.ipa
+bingo> ios swift decompile target.ipa
+```
+
+| 추출 항목 | 내용 |
+|---------|------|
+| Swift / ObjC 디컴파일 | Malimite를 통한 소스 코드 복원 |
+| 하드코딩된 비밀값 | 바이너리 내 API 키 · 토큰 · 자격증명 |
+| URL 스킴 | Universal Links · 커스텀 스킴 핸들러 |
+| SSL 핀닝 | 우회 가이드 자동 생성 |
+| 데이터 저장소 | Keychain · UserDefaults · 평문 파일 |
+
+---
+
+### 🖥️ Windows EXE / PE
+
+```bash
+bingo> analyze target.exe
+bingo> target.exe reverse engineer
+bingo> malware sample.exe behavior analysis
+```
+
+| 분석 항목 | 내용 |
+|---------|------|
+| 정적 분석 | PE 헤더 · 임포트 · 익스포트 · 문자열 · 엔트로피 |
+| 하드코딩된 비밀값 | API 키 · 비밀번호 · 바이너리 내 URL |
+| 패커 탐지 | UPX · 커스텀 패커 식별 |
+| 해시 추출 | MD5 · SHA1 · SHA256 (VirusTotal 조회용) |
+| 네트워크 지표 | 하드코딩된 C2 도메인 · IP · 포트 |
+| 행동 힌트 | 의심스러운 API 호출 · 안티디버그 패턴 |
+
+---
+
+### ⛓️ DApp / Web3 / 스마트 컨트랙트
+
+```bash
+bingo> dapp pentest https://app.defi-protocol.com
+bingo> audit smart contract for reentrancy
+bingo> analyze solidity contract flash loan
+```
+
+**28개 전용 DApp 스킬** — Web3 키워드 입력 시 자동 활성화:
+
+| 레이어 | 지원 범위 |
+|--------|---------|
+| 스마트 컨트랙트 | SWC 16개 취약점 · 재진입 · 오버플로우 · 접근 제어 · delegatecall |
+| DeFi | 플래시 론 · 오라클 조작 · MEV 샌드위치 · 거버넌스 익스플로잇 |
+| 지갑 인증 | 테스트 지갑 자동 생성 · SIWE 로그인(EIP-4361) · 세션 토큰 |
+| 프론트엔드 | JS 인젝션 · 주소 교체 · 블라인드 서명(EIP-7730) |
+| Bybit 벡터 | Safe 멀티시그 op-type 변조(delegatecall 전환) |
+| API | SIWE 로그인 후 인증 엔드포인트 전체 침투 테스트 |
+
+---
+
+### 🧠 내장 지능 기능
 
 | 기능 | 설명 |
-|---|---|
-| **내장 SQLi 엔진** | Error → Union → Boolean blind → Time-based, 전 DB 지원, 완전 자동 |
-| **CL.TE / TE.CL 스머글링** | HTTP 디싱크를 자동화한 **유일한** AI 침투 도구 |
-| **환각 방지** | 4단계 가드로 모의 결과 차단 — 모든 출력은 실제 HTTP로 검증 |
-| **타겟 메모리** | 세션 종료 후에도 발견 사항 유지 — 다음 실행 때 이어서 진행 |
-| **스마트 포기 전략** | 실패한 브루트포스 자동 탐지 → 더 강력한 벡터로 전환 |
-| **DB 전체 덤프** | SQLi 성공 시 테이블 전체 덤프 — 행 제한 없음, 바탕화면 자동 저장 |
-| **Web3 감사** | 28개 DApp 스킬, 지갑 생성, SIWE 로그인, SWC 스마트 컨트랙트 감사 |
+|------|------|
+| **타겟 메모리** | 세션 간 발견 사항 유지 — 이전 결과에서 이어서 진행 |
+| **환각 방지** | 4단계 가드 — 모든 결과는 실제 HTTP 응답으로 검증 |
+| **자동 전략 전환** | 실패한 브루트포스 탐지 → 더 강력한 공격 벡터로 전환 |
+| **nmap 자동 연동** | `nmap` 설치 시 포트 스캔 자동 수행 |
+| **프록시 로테이션** | Tor · SOCKS5 · HTTP — WAF 밴 시 자동 교체 |
+| **세션 파서** | 이전 세션 로그 자동 분석 → 다음 실행에 컨텍스트 주입 |
 
 ---
 
@@ -144,8 +209,10 @@ pip install bingo-ai && bingo   # 끝. 지금 바로 시작.
 | **자격증명 덤프** | 해시 추출 → hashcat 명령 자동 제안 |
 | **DB 덤프** | 확인된 SQLi 후 전체 테이블 덤프 — 행 제한 없음 |
 | **사후 익스플로잇** | SQLi → 웹쉘 → RCE → DB 덤프, 완전 자동 체인 |
-| **모바일** | APK / IPA 정적 분석, 하드코딩 비밀값 추출 |
-| **Web3** | 28개 DApp 스킬, 스마트 컨트랙트 SWC 감사, 지갑 생성, SIWE 로그인 |
+| **모바일 / APK** | 안드로이드 APK — 하드코딩 비밀값, 노출 컴포넌트, SSL 핀닝, 딥 링크 |
+| **모바일 / IPA** | iOS IPA — Swift/ObjC 디컴파일(Malimite), 비밀값, URL 스킴, SSL 핀닝 |
+| **윈도우 EXE** | PE 정적 분석 — 임포트, 문자열, 엔트로피, 하드코딩 비밀값, C2 지표 |
+| **DApp / Web3** | 28개 스킬 — SWC 감사, 플래시 론, 오라클 공격, SIWE 로그인, 지갑 생성, EIP-7730 |
 | **스크린샷** | Playwright로 관리자 패널 자동 스크린샷 |
 | **보고서** | CVSS 점수 포함 마크다운 보고서 자동 저장 |
 

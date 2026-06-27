@@ -77,52 +77,116 @@ Tasks:
 
 ---
 
-## Why Bingo?
+## What bingo Supports
 
-> Tested head-to-head against every major AI pentest tool. On real targets, bingo wins.
-
-### Zero Setup. Full Power.
-
-Every other tool requires you to install nmap, sqlmap, Burp, nuclei, and dozens of other dependencies before it works.  
-**bingo works on first launch.** Built-in attack engines — no external tools required.
+### 🌐 Web Targets
 
 ```bash
-pip install bingo-ai && bingo   # That's it. Start hacking.
+bingo> https://target.com   # auto full scan, no command needed
 ```
 
-> ✅ **nmap auto-integration** — if `nmap` is installed, bingo uses it automatically for port/service scanning. No config needed.
-> ```bash
-> apt install nmap   # bingo detects and uses it on next run
-> ```
+| Attack | Coverage |
+|--------|---------|
+| SQLi | Error → Union → Boolean blind → Time-based · all DB types · built-in engine |
+| WAF Bypass | Cloudflare · AWS WAF · ModSecurity · Nginx · Chinese WAF — auto-selected |
+| XSS | Stored · Reflected · DOM · session hijack on success |
+| SSRF | Cloud metadata AWS/GCP/Azure · internal service pivot |
+| HTTP Smuggling | CL.TE / TE.CL desync — full automated |
+| Auth Attack | Brute force · SQLi bypass · CAPTCHA auto-solve |
+| IDOR/BOLA | Object ID enumeration · horizontal privilege escalation |
+| JWT/OAuth | alg:none · weak secret · redirect_uri abuse · open client registration ATO |
+| File Upload | Extension bypass · webshell deploy → AntSword connect |
+| DB Dump | Full table dump · no row limit · auto-save to Desktop |
 
-### Competitor Comparison
+---
 
-| Capability | **Bingo** | Swarm AI | HexStrike AI | 大大怪 |
-|---|:---:|:---:|:---:|:---:|
-| Built-in engine — zero tool install needed | ✅ | ❌ | ❌ 150+ deps | ❌ |
-| HTTP Request Smuggling (CL.TE / TE.CL) | ✅ | ❌ | ❌ | ❌ |
-| Anti-hallucination 4-layer guard | ✅ | ❌ | ❌ | ❌ |
-| Session memory — remembers across runs | ✅ | ❌ | ❌ | ❌ |
-| Auto strategy switch (abandon bruteforce) | ✅ | ❌ | ❌ | manual |
-| Full DB dump on confirmed SQLi | ✅ auto | manual | manual | manual |
-| DApp / Web3 smart contract audit | ✅ 28 skills | ❌ | ❌ | ❌ |
-| Proxy rotation (Tor / SOCKS5 / auto-ban) | ✅ | partial | ❌ | ❌ |
-| Multi-model (DeepSeek/Claude/GPT/GLM/Qwen) | ✅ 7 models | limited | limited | limited |
-| Webshell deploy chain | ✅ auto | ❌ | partial | partial |
-| nmap port scan (auto if installed) | ✅ | ✅ | ✅ | ✅ |
-| Works on first launch — no setup | ✅ | ❌ | ❌ | partial |
+### 📱 Android APK
 
-### What Makes bingo Different
+```bash
+bingo> analyze target.apk
+bingo> target.apk secret scan
+bingo> pentest com.example.app
+```
 
-| Feature | Details |
-|---|---|
-| **Built-in SQLi engine** | Error → Union → Boolean blind → Time-based, all DB types, automatic |
-| **CL.TE / TE.CL Smuggling** | Only AI pentest tool with full HTTP desync — unique capability |
-| **Anti-hallucination** | 4-layer guard blocks simulated results — every output is real HTTP verified |
-| **Target memory** | Findings persist across sessions — resumes where it left off |
-| **Smart abandonment** | Detects failing bruteforce → auto-switches to stronger vectors |
-| **DB dump** | Dumps entire tables on SQLi success — no row limit, auto-saves to Desktop |
-| **Web3 audit** | 28 DApp skills, wallet generation, SIWE login, smart contract SWC coverage |
+| Extracts | Detail |
+|---------|--------|
+| Hardcoded secrets | AWS keys · Google API · Firebase · Stripe · JWT · GitHub token |
+| Permissions | All declared + dangerous permissions |
+| Exported components | Activities · Services · Receivers · Providers |
+| Network endpoints | API URLs extracted from code + assets |
+| Deep links | Intent filters · custom scheme handlers |
+| SSL pinning | Detected → bypass guide auto-generated |
+| 3rd party SDKs | Firebase · Sentry · Analytics · etc |
+
+---
+
+### 🍎 iOS IPA
+
+```bash
+bingo> analyze target.ipa
+bingo> ios swift decompile target.ipa
+```
+
+| Extracts | Detail |
+|---------|--------|
+| Swift / ObjC decompile | Source code recovery via Malimite |
+| Hardcoded secrets | API keys · tokens · credentials in binary |
+| URL schemes | Universal Links · custom scheme handlers |
+| SSL pinning | Bypass guide auto-generated |
+| Data storage | Keychain · UserDefaults · plaintext files |
+
+---
+
+### 🖥️ Windows EXE / PE
+
+```bash
+bingo> analyze target.exe
+bingo> target.exe reverse engineer
+bingo> malware sample.exe behavior analysis
+```
+
+| Analyzes | Detail |
+|---------|--------|
+| Static analysis | PE header · imports · exports · strings · entropy |
+| Hardcoded secrets | API keys · passwords · URLs embedded in binary |
+| Packer detection | UPX · custom packers identified |
+| Hash extraction | MD5 · SHA1 · SHA256 for VirusTotal lookup |
+| Network indicators | Hardcoded C2 domains · IPs · ports |
+| Behavior hints | Suspicious API calls · anti-debug patterns |
+
+---
+
+### ⛓️ DApp / Web3 / Smart Contract
+
+```bash
+bingo> dapp pentest https://app.defi-protocol.com
+bingo> audit smart contract for reentrancy
+bingo> analyze solidity contract flash loan
+```
+
+**28 dedicated DApp skills** — auto-triggered on Web3 keywords:
+
+| Layer | Coverage |
+|-------|---------|
+| Smart Contract | 16 SWC vulnerabilities · reentrancy · overflow · access control · delegatecall |
+| DeFi | Flash loan · oracle manipulation · MEV sandwich · governance exploit |
+| Wallet Auth | Auto test wallet generation · SIWE login (EIP-4361) · session token |
+| Frontend | JS injection · address swapping · blind signing (EIP-7730) |
+| Bybit Vector | Safe multisig op-type tampering (delegatecall switch) |
+| API | Full authenticated endpoint pentest after SIWE login |
+
+---
+
+### 🧠 Built-in Intelligence
+
+| Feature | What it does |
+|---------|-------------|
+| **Target memory** | Remembers findings across sessions — resumes from where it left off |
+| **Anti-hallucination** | 4-layer guard — every result backed by real HTTP response |
+| **Auto strategy switch** | Detects failing bruteforce → pivots to stronger attack vectors |
+| **nmap auto-integration** | If `nmap` is installed, port scanning happens automatically |
+| **Proxy rotation** | Tor · SOCKS5 · HTTP — auto-rotate on WAF ban |
+| **Session parser** | Auto-analyzes past session logs → injects context into next run |
 
 ---
 
@@ -144,8 +208,10 @@ pip install bingo-ai && bingo   # That's it. Start hacking.
 | **Credential Dump** | Extract hashes → suggest hashcat command |
 | **DB Dump** | Full table dump on confirmed SQLi — no row limit, auto Desktop save |
 | **Post-Exploit** | SQLi → webshell → RCE → DB dump, full auto chain |
-| **Mobile** | APK / IPA static analysis, hardcoded secret extraction |
-| **Web3** | 28 DApp skills, smart contract SWC audit, wallet gen, SIWE login |
+| **Mobile / APK** | Android APK — hardcoded secrets, exported components, SSL pinning, deep links |
+| **Mobile / IPA** | iOS IPA — Swift/ObjC decompile (Malimite), secrets, URL scheme, SSL pinning |
+| **Windows EXE** | PE static analysis — imports, strings, entropy, hardcoded secrets, C2 indicators |
+| **DApp / Web3** | 28 skills — SWC audit, flash loan, oracle attack, SIWE login, wallet gen, EIP-7730 |
 | **Screenshot** | Admin panel auto-screenshot via Playwright |
 | **Report** | Auto-saved markdown report with CVSS scores |
 

@@ -2925,6 +2925,28 @@ _STRINGS.update({
     "proxy_tip_no_proxy":        {"ko": "💡 팁: /proxy add <url> 또는 /proxy tor 로 IP 밴 자동 우회 가능",
                                    "zh": "💡 提示: 使用 /proxy add <url> 或 /proxy tor 自动绕过IP封禁",
                                    "en": "💡 Tip: /proxy add <url> or /proxy tor to auto-rotate past IP bans"},
+    # v3.2.77: 프록시 3개 버그 수정 키
+    "proxy_file_not_found":      {"ko": "❌ 파일을 찾을 수 없습니다: {path}",
+                                   "zh": "❌ 找不到文件: {path}",
+                                   "en": "❌ File not found: {path}"},
+    "proxy_file_empty":          {"ko": "⚠ 파일에서 유효한 프록시를 찾지 못했습니다: {path}\n"
+                                        "   형식: 한 줄에 1개  (예: socks5://1.2.3.4:1080  또는  1.2.3.4:8080)",
+                                   "zh": "⚠ 文件中未找到有效代理: {path}\n"
+                                        "   格式: 每行一个代理 (例: socks5://1.2.3.4:1080 或 1.2.3.4:8080)",
+                                   "en": "⚠ No valid proxies found in file: {path}\n"
+                                        "   Format: one proxy per line (e.g. socks5://1.2.3.4:1080 or 1.2.3.4:8080)"},
+    "proxy_saved":               {"ko": "💾 프록시 설정 저장됨 (~/.config/bingo/proxy_pool.json)",
+                                   "zh": "💾 代理设置已保存 (~/.config/bingo/proxy_pool.json)",
+                                   "en": "💾 Proxy config saved (~/.config/bingo/proxy_pool.json)"},
+    "proxy_restored":            {"ko": "🔁 이전 세션 프록시 {n}개 복원됨 (/proxy list 로 확인)",
+                                   "zh": "🔁 已恢复上次会话代理 {n} 个 (使用 /proxy list 查看)",
+                                   "en": "🔁 Restored {n} proxies from last session (/proxy list to view)"},
+    "proxy_testall_header":      {"ko": "🔍 프록시 풀 전체 테스트 시작 ({total}개) — 완료까지 최대 {secs}초 소요...",
+                                   "zh": "🔍 开始测试整个代理池 ({total}个) — 最长需 {secs} 秒...",
+                                   "en": "🔍 Testing entire proxy pool ({total}) — may take up to {secs}s..."},
+    "proxy_testall_summary":     {"ko": "결과: ✅ 성공 {ok}개  ❌ 실패 {fail}개 (실패 프록시는 자동 밴됨)",
+                                   "zh": "结果: ✅ 成功 {ok} 个  ❌ 失败 {fail} 个 (失败代理已自动屏蔽)",
+                                   "en": "Result: ✅ OK {ok}  ❌ Failed {fail} (failed proxies auto-banned)"},
 
     # v3.2.19: 연결 오류 반복 오탐 수정 (RULE 26-U)
     "conn_error_loop_skip":      {"ko": "⚡ 루프 오탐 건너뜀: 연결 오류 반복은 WAF 차단 — 무한 루프 아님",

@@ -253,6 +253,10 @@ class BingoTerminal:
         self._session_fresh: bool = True   # True = 새 세션, False = 이전 세션 복원
         # 프록시 풀 로테이션 관리자 (v3.2.18)
         self._proxy: ProxyManager = ProxyManager()
+        # v3.2.77: 이전 세션 프록시 풀 자동 복원
+        _proxy_restored = self._proxy.load_config()
+        if _proxy_restored > 0:
+            pass  # 복원 성공 (배너는 _start_banner에서 출력)
         # ── v3.2.71 추가 ────────────────────────────────────────────────
         # 브루트포스 연속 실패 카운터 (자동 포기 + 벡터 전환용)
         self._bruteforce_fail_count: int = 0
@@ -433,6 +437,17 @@ class BingoTerminal:
         self._print_banner()
         self._init_session()
         self._init_session_log()
+
+        # v3.2.77: 이전 세션 프록시 복원 알림
+        _proxy_count = self._proxy.pool_status().get("total", 0)
+        if _proxy_count > 0:
+            _lang = getattr(self.config, "lang", "en")
+            _proxy_restore_msg = {
+                "ko": f"🔁 이전 세션 프록시 {_proxy_count}개 복원됨 (/proxy list 로 확인)",
+                "zh": f"🔁 已恢复上次会话代理 {_proxy_count} 个 (使用 /proxy list 查看)",
+                "en": f"🔁 Restored {_proxy_count} proxies from last session (/proxy list to view)",
+            }.get(_lang, f"🔁 Restored {_proxy_count} proxies from last session")
+            self.console.print(f"[dim]{_proxy_restore_msg}[/dim]")
 
         if not self.config.get_active_model_config():
             self._warn(self.s["no_model_configured"])
@@ -2969,15 +2984,18 @@ class BingoTerminal:
 
         사용법:
           /proxy list          — 현재 풀 상태 표시
-          /proxy add <url>     — 프록시 수동 추가
-          /proxy file <path>   — 파일에서 일괄 로드
+          /proxy add <url>     — 프록시 수동 추가 (세션 간 저장됨)
+          /proxy file <path>   — 파일에서 일괄 로드 (~, $HOME 자동 확장)
           /proxy api [url]     — API에서 자동 수집
           /proxy tor [pass]    — Tor 모드 활성화 (pass: 제어 비밀번호, 선택)
           /proxy rotate        — 즉시 다음 프록시로 전환
           /proxy test          — 현재 프록시 연결 확인
+          /proxy testall       — 풀 전체 프록시 일괄 연결 테스트
           /proxy unban         — 밴된 프록시 전부 해제
-          /proxy clear         — 풀 초기화
+          /proxy clear         — 풀 초기화 (저장된 설정도 삭제)
           /proxy off           — 프록시 비활성화
+        
+        v3.2.77: 프록시 설정 세션 간 자동 저장/복원 (~/.config/bingo/proxy_pool.json)
         """
         from rich.table import Table as _Table
         pm = self._proxy
@@ -3037,6 +3055,7 @@ class BingoTerminal:
                 self._success(
                     self.s.get("proxy_added", "✅ 프록시 추가됨: {url}").format(url=sub_arg)
                 )
+                pm.save_config()  # v3.2.77: 세션 간 저장
             else:
                 self._warn(
                     self.s.get("proxy_add_fail", "❌ 추가 실패 (중복 또는 형식 오류): {url}").format(url=sub_arg)
@@ -3048,10 +3067,29 @@ class BingoTerminal:
             if not sub_arg:
                 self._warn("사용법: /proxy file <파일경로>   (한 줄에 프록시 1개)")
                 return
-            n = pm.load_file(sub_arg)
-            self._success(
-                self.s.get("proxy_file_loaded", "📂 파일에서 {n}개 프록시 로드됨").format(n=n)
-            )
+            import os as _os
+            real_path = _os.path.expandvars(_os.path.expanduser(sub_arg.strip()))
+            if not _os.path.isfile(real_path):
+                self._warn(
+                    self.s.get(
+                        "proxy_file_not_found",
+                        "❌ 파일을 찾을 수 없습니다: {path}",
+                    ).format(path=real_path)
+                )
+                return
+            n = pm.load_file(real_path)
+            if n == 0:
+                self._warn(
+                    self.s.get(
+                        "proxy_file_empty",
+                        "⚠ 파일에서 유효한 프록시를 찾지 못했습니다: {path}",
+                    ).format(path=real_path)
+                )
+            else:
+                self._success(
+                    self.s.get("proxy_file_loaded", "📂 파일에서 {n}개 프록시 로드됨").format(n=n)
+                )
+                pm.save_config()  # v3.2.77: 세션 간 저장
             return
 
         # ─ api ───────────────────────────────────────────────────────
@@ -3085,6 +3123,8 @@ class BingoTerminal:
                 self._success(
                     self.s.get("proxy_api_fetched", "🌐 API에서 {n}개 프록시 수집됨").format(n=n)
                 )
+                if n > 0:
+                    pm.save_config()  # v3.2.77: 세션 간 저장
             return
 
         # ─ tor ───────────────────────────────────────────────────────
@@ -3102,6 +3142,7 @@ class BingoTerminal:
                 if not pm.pool_status()["stem"]:
                     self.console.print("[dim]   Tor 회로 자동 교체 비활성화 (stem 미설치)[/dim]")
                     self.console.print("[dim]   → pip install stem  후 재실행[/dim]")
+                pm.save_config()  # v3.2.77: 세션 간 저장
             else:
                 self._warn("Tor 추가 실패.")
             return
@@ -3183,21 +3224,66 @@ class BingoTerminal:
         # ─ clear ─────────────────────────────────────────────────────
         if sub == "clear":
             pm.clear()
+            pm.save_config()  # v3.2.77: 세션 간 저장 (빈 풀로 덮어씀)
             self._success(self.s.get("proxy_cleared", "🗑 프록시 풀 초기화됨"))
             return
 
         # ─ off ───────────────────────────────────────────────────────
         if sub == "off":
             pm.disable()
+            pm.save_config()  # v3.2.77: 비활성화 상태도 저장
             self._success(self.s.get("proxy_disabled", "⛔ 프록시 비활성화됨"))
             return
 
+        # ─ testall ───────────────────────────────────────────────────
+        if sub in ("testall", "test_all", "testall"):
+            all_items = pm.list_all()
+            if not all_items:
+                self._warn(self.s.get("proxy_pool_empty", "⚠ 사용 가능한 프록시 없음"))
+                return
+            total = len(all_items)
+            _lang = getattr(self.config, "lang", "en")
+            _hdr = {
+                "ko": f"🔍 프록시 풀 전체 테스트 시작 ({total}개) — 완료까지 최대 {total * 15}초 소요...",
+                "zh": f"🔍 开始测试整个代理池 ({total}个) — 最长需 {total * 15} 秒...",
+                "en": f"🔍 Testing entire proxy pool ({total}) — may take up to {total * 15}s...",
+            }.get(_lang, f"🔍 Testing {total} proxies...")
+            self.console.print(f"[cyan]{_hdr}[/cyan]")
+            with self.console.status(f"[cyan]🔍 테스트 중...[/cyan]"):
+                results = pm.test_all()
+            # 결과 테이블 출력
+            from rich.table import Table as _Table
+            rtbl = _Table(title="🌐 Proxy Test Results", border_style="cyan", expand=False)
+            rtbl.add_column("#", style="dim")
+            rtbl.add_column("프록시", style="cyan")
+            rtbl.add_column("결과", style="white")
+            rtbl.add_column("상세", style="dim")
+            ok_count = 0
+            fail_count = 0
+            for i, (proxy_str, (ok, detail)) in enumerate(results.items(), 1):
+                if ok:
+                    ok_count += 1
+                    rtbl.add_row(str(i), proxy_str, "[green]✅ OK[/]", detail[:60])
+                else:
+                    fail_count += 1
+                    rtbl.add_row(str(i), proxy_str, "[red]❌ FAIL[/]", detail[:60])
+            self.console.print(rtbl)
+            _summary = {
+                "ko": f"결과: ✅ 성공 {ok_count}개  ❌ 실패 {fail_count}개 (실패 프록시는 자동 밴됨)",
+                "zh": f"结果: ✅ 成功 {ok_count} 个  ❌ 失败 {fail_count} 个 (失败代理已自动屏蔽)",
+                "en": f"Result: ✅ OK {ok_count}  ❌ Failed {fail_count} (failed proxies auto-banned)",
+            }.get(_lang, f"OK: {ok_count}  Failed: {fail_count}")
+            self.console.print(f"[cyan]{_summary}[/cyan]")
+            pm.save_config()  # 테스트 후 밴된 정보 반영해서 저장
+            return
+
         self._warn(
-            "사용법: /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]\n"
+            "사용법: /proxy [list|add|file|api|tor|rotate|test|testall|unban|clear|off]\n"
             "예시:   /proxy add socks5://1.2.3.4:1080\n"
             "        /proxy tor\n"
             "        /proxy api\n"
-            "        /proxy file ~/proxies.txt"
+            "        /proxy file ~/proxies.txt\n"
+            "        /proxy testall"
         )
 
     def _show_token_usage(self) -> None:

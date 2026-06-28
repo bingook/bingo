@@ -18,13 +18,19 @@ ProxyManager — 프록시 풀 로테이션 관리자 (v3.2.18)
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import time
 import random
 import threading
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
+
+# 세션 간 프록시 풀 저장 경로
+_PROXY_SAVE_PATH = Path.home() / ".config" / "bingo" / "proxy_pool.json"
 
 
 # ── Tor stem import (선택적 — 없어도 동작) ────────────────────────
@@ -167,9 +173,13 @@ class ProxyManager:
         return sum(1 for u in urls if self.add(u))
 
     def load_file(self, path: str) -> int:
-        """파일에서 한 줄씩 읽어 추가. 추가된 개수 반환."""
+        """파일에서 한 줄씩 읽어 추가. 추가된 개수 반환.
+        
+        ~ 및 환경변수($HOME 등) 자동 확장 지원.
+        """
         try:
-            with open(path, encoding="utf-8", errors="ignore") as f:
+            real_path = os.path.expandvars(os.path.expanduser(path.strip()))
+            with open(real_path, encoding="utf-8", errors="ignore") as f:
                 lines = f.read().splitlines()
             return self.add_many(lines)
         except OSError:
@@ -470,6 +480,49 @@ class ProxyManager:
             f"PROXIES = {{'http': '{e.url}', 'https': '{e.url}'}}\n"
             f"# requests.get(url, proxies=PROXIES, verify=False, timeout=15)\n"
         )
+
+    # ── 세션 간 저장/복원 (v3.2.77) ─────────────────────────────────
+    def save_config(self, path: "Path | str | None" = None) -> bool:
+        """
+        현재 프록시 풀을 JSON 파일로 저장.
+
+        저장 항목: 원본 URL 목록 + enabled 상태
+        Returns True on success, False on error.
+        """
+        save_path = Path(path) if path else _PROXY_SAVE_PATH
+        try:
+            save_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                data = {
+                    "enabled": self._enabled,
+                    "proxies": [e.url for e in self._pool if not e.banned],
+                }
+            save_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            return True
+        except Exception:
+            return False
+
+    def load_config(self, path: "Path | str | None" = None) -> int:
+        """
+        JSON 파일에서 프록시 풀 복원.
+
+        Returns: 추가된 프록시 수 (0이면 파일 없음 또는 빈 파일)
+        """
+        load_path = Path(path) if path else _PROXY_SAVE_PATH
+        if not load_path.exists():
+            return 0
+        try:
+            data = json.loads(load_path.read_text(encoding="utf-8"))
+            urls: list[str] = data.get("proxies", [])
+            n = self.add_many(urls)
+            if data.get("enabled", True) and n > 0:
+                self._enabled = True
+            return n
+        except Exception:
+            return 0
 
     # ── 빠른 API 프리셋 ──────────────────────────────────────────
     @staticmethod

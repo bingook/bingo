@@ -3736,6 +3736,33 @@ _STRINGS.update({
         "en": "⚠️ Mock/fake result variable in code — network is live, real HTTP requests work",
     },
 
+    # ── v3.2.83: 화이트박스 하이브리드 모드 ─────────────────────────
+    "wb_hybrid_target": {
+        "ko": "🎯 하이브리드 모드: 타깃 URL → {url}",
+        "zh": "🎯 混合模式：目标 URL → {url}",
+        "en": "🎯 Hybrid mode: target URL → {url}",
+    },
+    "wb_hybrid_hint": {
+        "ko": "소스코드 힌트 + 라이브 HTTP 공격 동시 진행",
+        "zh": "源码提示 + 实时HTTP攻击同步进行",
+        "en": "Source code hints + live HTTP attacks combined",
+    },
+    "wb_ask_path": {
+        "ko": "📂 소스코드 경로 있으면 입력 (없으면 엔터):",
+        "zh": "📂 请输入源代码路径（没有则按回车）:",
+        "en": "📂 Source code path? (press Enter to skip):",
+    },
+    "wb_ask_path_cmd": {
+        "ko": "📂 소스코드 경로 입력 (디렉토리 또는 파일):",
+        "zh": "📂 请输入源代码路径（目录或文件）:",
+        "en": "📂 Enter source code path (directory or file):",
+    },
+    "wb_path_not_found": {
+        "ko": "경로 없음: {path}",
+        "zh": "路径不存在: {path}",
+        "en": "Path not found: {path}",
+    },
+
     # ── v3.2.82: 화이트박스 분석 ──────────────────────────────────────
     "wb_paste_prompt": {
         "ko": "소스코드를 붙여넣으세요. 완료 후 빈 줄에 END 입력:",

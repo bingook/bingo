@@ -1771,6 +1771,7 @@ class BingoTerminal:
                 _target_changed = True
                 self._reset_agent_state()
                 self._agent_state["target"] = new_target
+                self._current_target = new_target
                 self._exec_loop_count = 0
                 self._stuck_count = 0
                 self._recent_results = []
@@ -1779,6 +1780,22 @@ class BingoTerminal:
                 #    (마지막 4턴만 유지하여 과거 컨텍스트 제거)
                 if len(self.history) > 8:
                     self.history = self.history[-4:]
+
+                # ── v3.2.83: 새 타깃 URL 설정 시 소스코드 경로 자동 질문 ──
+                _wb_ask = self.s.get("wb_ask_path", "📂 소스코드 경로 있으면 입력 (없으면 엔터):")
+                self.console.print(f"[{THEME['primary']}]{_wb_ask}[/]", end=" ")
+                try:
+                    _src_path = self._session.prompt("").strip()
+                except (EOFError, KeyboardInterrupt):
+                    _src_path = ""
+                if _src_path:
+                    import os as _os
+                    _real = _os.path.expandvars(_os.path.expanduser(_src_path))
+                    if _os.path.exists(_real):
+                        # 화이트박스 분석 실행 → 하이브리드 모드
+                        self._cmd_whitebox(f"{_real} {new_target}")
+                    else:
+                        self._warn(self.s.get("wb_path_not_found", "경로 없음: {path}").format(path=_real))
         waf_context = self._auto_waf_scan(text)
         burp_context = self._auto_burp_scan(text)  # [v3.2.51] Burp 자동 스캔
         # ── v2.9.2: 새 타겟 전환 시 AI에게 명시적으로 컨텍스트 리셋 알림
@@ -2442,38 +2459,59 @@ class BingoTerminal:
 
     # ── /whitebox ─────────────────────────────────────────────────────
     def _cmd_whitebox(self, arg: str) -> None:
-        """화이트박스 소스코드 분석. /whitebox <path> 또는 /whitebox paste"""
+        """화이트박스 소스코드 분석.
+
+        사용법:
+          /whitebox <path>                — 로컬 파일/디렉토리 분석
+          /whitebox <url> <path>          — 하이브리드: URL + 소스코드 경로
+          /whitebox <path> <url>          — 하이브리드: 소스코드 경로 + URL
+        """
         from ..core.whitebox_analyzer import WhiteboxAnalyzer
         from ..core.vuln_agents import VulnAgentDispatcher
 
         analyzer = WhiteboxAnalyzer()
 
-        if arg.strip() in ("", "paste", "p"):
-            # 붙여넣기 모드
-            self.console.print(
-                f"[{THEME['primary']}]{self.s.get('wb_paste_prompt', '소스코드를 붙여넣으세요. 완료 후 빈 줄에 END 입력:')}[/]"
-            )
-            lines = []
+        # URL 분리: http(s):// 토큰이 있으면 URL, 나머지는 경로
+        import os
+        parts = arg.strip().split()
+        target_url: str = ""
+        path_parts = []
+        for tok in parts:
+            if tok.startswith(("http://", "https://")):
+                target_url = tok
+            else:
+                path_parts.append(tok)
+        code_arg = " ".join(path_parts).strip()
+
+        if not code_arg:
+            # 경로 없이 /whitebox 만 입력 → 경로를 새로 요청
+            _ask = self.s.get("wb_ask_path_cmd", "📂 소스코드 경로 입력 (디렉토리 또는 파일):")
+            self.console.print(f"[{THEME['primary']}]{_ask}[/]", end=" ")
             try:
-                while True:
-                    ln = input()
-                    if ln.strip().upper() == "END":
-                        break
-                    lines.append(ln)
+                code_arg = self._session.prompt("").strip()
             except (EOFError, KeyboardInterrupt):
-                pass
-            code = "\n".join(lines)
-            if not code.strip():
-                self._warn(self.s.get("wb_empty", "코드가 없습니다."))
+                code_arg = ""
+            if not code_arg:
+                self._warn(self.s.get("wb_empty", "경로를 입력하세요."))
                 return
-            result = analyzer.analyze(code, file_hint="(pasted)")
-        else:
-            import os
-            real_path = os.path.expandvars(os.path.expanduser(arg.strip()))
+        real_path = os.path.expandvars(os.path.expanduser(code_arg))
+        self.console.print(
+            f"[{THEME['dim']}]{self.s.get('wb_loading', '분석 중...')} {real_path}[/]"
+        )
+        result = analyzer.analyze_path(real_path)
+
+        # ── URL 타깃 자동 설정 (하이브리드 모드) ─────────────────────
+        if target_url:
+            # 현재 세션의 타깃 URL로 등록 (자동완성·스캔에 사용)
+            self._current_target = target_url
             self.console.print(
-                f"[{THEME['dim']}]{self.s.get('wb_loading', '분석 중...')} {real_path}[/]"
+                f"[{THEME['success']}]"
+                f"{self.s.get('wb_hybrid_target', '🎯 하이브리드 모드: 타깃 URL → {url}').format(url=target_url)}"
+                f"[/]"
             )
-            result = analyzer.analyze_path(real_path)
+            self.console.print(
+                f"[{THEME['dim']}]{self.s.get('wb_hybrid_hint', '소스코드 힌트 + 라이브 HTTP 공격 동시 진행')}[/]"
+            )
 
         if not result.has_hints():
             self.console.print(
@@ -2510,7 +2548,10 @@ class BingoTerminal:
 
         # 상태 저장 → 다음 채팅에 자동 주입
         self._whitebox_result = result
-        self._whitebox_context = result.to_context_injection() if result.has_hints() else ""
+        self._whitebox_context = (
+            result.to_context_injection(target_url=target_url)
+            if result.has_hints() else ""
+        )
 
         # 에이전트 계획 업데이트
         dispatcher = VulnAgentDispatcher()

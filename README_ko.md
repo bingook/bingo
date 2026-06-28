@@ -849,22 +849,52 @@ r = s.get(f"https://{REAL_IP}/", headers={"Host": "target.com"})
 
 ---
 
+## v3.2.84 신규 기능 — URL 입력 시 자동 소스코드 경로 질문
+
+### URL 타입 시 자동 하이브리드 모드 진입 (v3.2.84)
+
+v3.2.84부터 **새 URL을 입력하면 bingo가 자동으로 소스코드 경로를 질문**합니다. 별도의 `/whitebox` 명령이 필요 없습니다.
+
+```
+❯ https://target.com
+📂 소스코드 경로 있으면 입력 (없으면 엔터): /var/www/html/
+📂 소스코드 분석 중... /var/www/html/
+🎯 하이브리드 모드: 타깃 URL → https://target.com
+   소스코드 힌트 + 라이브 HTTP 공격 동시 진행
+```
+
+소스코드가 없으면 **그냥 엔터** → 순수 블랙박스 모드로 계속 진행합니다.
+
+---
+
 ## v3.2.82 신규 기능 — 하이브리드 인텔리전스 엔진
 
 ### 화이트박스 소스코드 분석 (`/whitebox`)
 
-bingo는 이제 진정한 **하이브리드 침투테스트 엔진**으로 동작합니다. 타깃 소스코드에 접근할 수 있다면 파일을 직접 붙여넣거나 경로를 지정하기만 하면 됩니다.
+bingo는 이제 진정한 **하이브리드 침투테스트 엔진**으로 동작합니다. 타깃 소스코드가 있다면 경로를 지정하면 됩니다.
 
 - **SQLi / XSS / SSRF / RCE / 인증우회** 싱크 패턴 정규식 자동 탐지
 - **기술 스택** 자동 식별 (PHP, Python/Django/Flask, Node/Express, Java/Spring, Ruby/Rails, ASP.NET)
 - **엔드포인트 및 폼 파라미터** 자동 추출
 - 탐지된 모든 힌트를 **이후 모든 AI 쿼리**에 구조화된 컨텍스트로 자동 주입
 
+```bash
+# 방법 1 — URL 입력 후 경로 프롬프트에 답변 (권장)
+❯ https://target.com
+📂 소스코드 경로 있으면 입력 (없으면 엔터): /var/www/html/
+
+# 방법 2 — /whitebox 명령에 URL + 경로 (순서 무관)
+/whitebox https://target.com /var/www/html/
+/whitebox /var/www/html/ https://target.com
+
+# 방법 3 — 경로만 (타깃 URL은 별도 입력)
+/whitebox /var/www/html/login.php
+/whitebox /var/www/html/
 ```
-/whitebox /var/www/html/login.php        # 파일 분석
-/whitebox /var/www/html/                 # 디렉토리 전체 분석
-/whitebox paste                          # 코드 직접 붙여넣기
-```
+
+**경로는 수천 개 파일이 있는 디렉토리도 가능** — `.php`, `.py`, `.js`, `.java`, `.rb`, `.cs`, `.go`, `.ts` 파일을 재귀적으로 자동 스캔합니다.
+
+하이브리드 모드에서는 발견된 엔드포인트가 자동으로 전체 URL(`https://target.com/api/login`)로 변환되어 AI 컨텍스트에 주입됩니다. AI가 즉시 실제 HTTP 요청을 보낼 수 있습니다.
 
 ### 취약점 전담 에이전트 디스패처 (`/agent`)
 
@@ -1108,7 +1138,9 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 | 버전 | 요약 |
 |------|------|
-| v3.2.82 | **하이브리드 인텔리전스 엔진** — `/whitebox <경로\|paste>` 소스코드 분석 (SQLi/XSS/SSRF/RCE/인증우회 패턴·기술스택 탐지·엔드포인트 추출 → AI 쿼리에 자동 주입); `/agent [list\|plan\|priority]` 전담 에이전트 디스패처 (8개 취약점 유형 에이전트, 화이트박스 기반 우선순위); `/report [save\|clear]` Proof-by-exploitation 리포트 (실제 PoC 확인 취약점만 포함); 다국어 i18n 키 15개 추가 |
+| v3.2.84 | **URL 자동 소스코드 경로 질문** — 새 URL 입력 시 소스코드 경로 자동 프롬프트; 경로 전용(수천 파일 디렉토리 재귀 스캔); `/whitebox <url> <path>` 순서 무관 파싱; i18n 키 3개 추가 (`wb_ask_path`, `wb_ask_path_cmd`, `wb_path_not_found`) |
+| v3.2.83 | **하이브리드 모드 i18n 완성** — `wb_hybrid_target`, `wb_hybrid_hint` 키 추가 (KO/ZH/EN); 하드코딩 문자열 i18n 교체 |
+| v3.2.82 | **하이브리드 인텔리전스 엔진** — `/whitebox <경로>` 소스코드 분석 (SQLi/XSS/SSRF/RCE/인증우회 패턴·기술스택 탐지·엔드포인트 추출 → AI 쿼리에 자동 주입); `/agent [list\|plan\|priority]` 전담 에이전트 디스패처 (8개 취약점 유형 에이전트, 화이트박스 기반 우선순위); `/report [save\|clear]` Proof-by-exploitation 리포트 (실제 PoC 확인 취약점만 포함); 다국어 i18n 키 15개 추가 |
 | v3.2.68 | **10개 신규 스킬** — C/C++ libc 함정+seccomp 우회, Windows WDF 드라이버 레지스트리 타입 혼동→커널 RCE, OAuth DCR+Open Redirect+경로 정규화→Full-Read SSRF, HTTP Upgrade 패스스루+TE→스머글링+캐시 오염(CVE-2026-2833), Git TOCTOU+fsmonitor→RCE+K8s 권한상승, Chrome 확장 Wildcard+DOM-XSS→AI 프롬프트 하이재킹(ShadowPrompt), AI RAG SQLi 벡터 스토어(CVE-2026-22730), AI 에이전트 DNS Confusion+샌드박스 탈출→AWS 자격증명 탈취, HMAC IV 오류→Java 역직렬화 RCE, Cloud BI 크로스 테넌트 0-click SQLi+XS-Leak+DoW; 다국어 i18n 키 40개 추가 |
 | v3.2.67 | **12개 신규 스킬** — DOM Clobbering XSS, DOMPurify+PP 우회, ImageMagick/GS RCE, AWS ALB 우회, GCP 디버그 RCE, AWS Cognito 고스트 신원, npx 바이너리 혼동, Exim CVE-2026-45185 RCE, Android CVE-2026-0073 ADB RCE, Linux AF_ALG CVE-2026-31431 LPE, AI IDE TOCTOU RCE, AI 자율 헌팅 MCP 루프; 다국어 i18n 키 40개 추가 |
 | v3.2.66 | **4개 신규 스킬** — OAuth 이메일 미검증 ATO (`sec-web-oauth-email-unverified-ato`), MQTT 자격증명 탈취 (`sec-iot-mqtt-credential-leak`), Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`), AI 에이전트 CI/CD 프롬프트 인젝션 공급망 공격 (`ai-agent-ci-prompt-inject`); 다국어 i18n 키 21개 추가 |

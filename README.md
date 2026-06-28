@@ -901,22 +901,48 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 ---
 
-## New in v3.2.82 — Hybrid Intelligence Engine
+## New in v3.2.84 — Hybrid Intelligence Engine (URL-triggered Whitebox Flow)
+
+### Automatic Whitebox Prompt on New Target (v3.2.84)
+
+From v3.2.84, when you type a **new URL target**, bingo automatically asks for a source code path — no separate `/whitebox` command needed:
+
+```
+❯ https://target.com
+📂 Source code path? (press Enter to skip): /var/www/html/
+📂 Analyzing source code... /var/www/html/
+🎯 Hybrid mode: target URL → https://target.com
+   Source code hints + live HTTP attacks combined
+```
+
+Press **Enter** to skip (pure blackbox mode). bingo proceeds normally either way.
 
 ### Whitebox Source Code Analysis (`/whitebox`)
 
-bingo now operates as a true **hybrid pentest engine**. When you have access to target source code, paste it or point bingo to a path and it instantly:
+bingo operates as a true **hybrid pentest engine**. Point it to a local source code path and it instantly:
 
 - Detects **SQLi / XSS / SSRF / RCE / Auth-bypass** sink patterns via regex
 - Identifies **tech stack** (PHP, Python/Django/Flask, Node/Express, Java/Spring, Ruby/Rails, ASP.NET)
 - Extracts **endpoints and form parameters**
 - Auto-injects all findings as a structured context block into **every subsequent AI query**
 
+```bash
+# Method 1 — type URL then answer the path prompt (recommended)
+❯ https://target.com
+📂 Source code path? (press Enter to skip): /var/www/html/
+
+# Method 2 — /whitebox command, URL + path in any order
+/whitebox https://target.com /var/www/html/
+/whitebox /var/www/html/ https://target.com
+
+# Method 3 — path only (set target URL separately)
+/whitebox /var/www/html/login.php
+/whitebox /var/www/html/
 ```
-/whitebox /var/www/html/login.php        # analyze a file
-/whitebox /var/www/html/                 # analyze entire directory
-/whitebox paste                          # paste code interactively
-```
+
+**Path can be a directory with thousands of files** — bingo recursively scans all `.php`, `.py`, `.js`, `.java`, `.rb`, `.cs`, `.go`, `.ts` files automatically.
+
+In hybrid mode, every discovered endpoint is automatically converted to a full URL (`https://target.com/api/login`) and injected into the AI context so it can immediately start sending real HTTP requests against the live target.
 
 ### Specialist Agent Dispatcher (`/agent`)
 
@@ -1160,7 +1186,9 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 | Version | Summary |
 |---------|---------|
-| v3.2.82 | **Hybrid Intelligence Engine** — `/whitebox <path\|paste>` source code analysis (SQLi/XSS/SSRF/RCE/Auth patterns, tech-stack detection, endpoint extraction → auto-inject hints into every AI query); `/agent [list\|plan\|priority]` specialist agent dispatcher (8 vuln-type agents, whitebox-guided execution order); `/report [save\|clear]` Proof-by-exploitation report (only confirmed PoC vulnerabilities included); 15 new multilingual i18n keys |
+| v3.2.84 | **URL-triggered Whitebox Flow** — typing a new target URL automatically asks "Source code path?"; path-only mode (no paste, supports directories with thousands of files); `/whitebox <url> <path>` any-order parsing; 3 new i18n keys (`wb_ask_path`, `wb_ask_path_cmd`, `wb_path_not_found`) |
+| v3.2.83 | **Hybrid Mode i18n** — `wb_hybrid_target`, `wb_hybrid_hint` keys added (KO/ZH/EN); hardcoded strings replaced with i18n; `/whitebox` URL+path any-order parsing |
+| v3.2.82 | **Hybrid Intelligence Engine** — `/whitebox <path>` source code analysis (SQLi/XSS/SSRF/RCE/Auth patterns, tech-stack detection, endpoint extraction → auto-inject hints into every AI query); `/agent [list\|plan\|priority]` specialist agent dispatcher (8 vuln-type agents, whitebox-guided execution order); `/report [save\|clear]` Proof-by-exploitation report (only confirmed PoC vulnerabilities included); 15 new multilingual i18n keys |
 | v3.2.68 | **10 New Skills** — C/C++ libc Gotcha+seccomp Bypass, Windows WDF Driver Registry Type Confusion→Kernel RCE, OAuth DCR+Open Redirect+Path Norm→Full-Read SSRF, HTTP Upgrade Passthrough+TE→Smuggling+Cache Poison (CVE-2026-2833), Git TOCTOU+fsmonitor→RCE+K8s PrivEsc, Chrome Ext Wildcard+DOM-XSS→AI Prompt Hijack (ShadowPrompt), AI RAG SQLi Vector Store (CVE-2026-22730), AI Agent DNS Confusion+Sandbox Escape→AWS Cred Theft, HMAC IV Flaw→Java Deser RCE, Cloud BI Cross-Tenant 0-click SQLi+XS-Leak+DoW; 40 new multilingual i18n keys |
 | v3.2.67 | **12 New Skills** — DOM Clobbering XSS, DOMPurify+PP Bypass, ImageMagick/GS RCE, AWS ALB Bypass, GCP Debug RCE, AWS Cognito Ghost Identity, npx Binary Confusion, Exim CVE-2026-45185 RCE, Android CVE-2026-0073 ADB RCE, Linux AF_ALG CVE-2026-31431 LPE, AI IDE TOCTOU RCE, AI Autonomous Hunt MCP Loop; 40 new multilingual i18n keys |
 | v3.2.66 | **4 New Skills** — OAuth email unverified ATO (`sec-web-oauth-email-unverified-ato`), MQTT credential leak (`sec-iot-mqtt-credential-leak`), Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`), AI Agent CI/CD prompt injection supply chain (`ai-agent-ci-prompt-inject`); 21 new multilingual i18n keys |

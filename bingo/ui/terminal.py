@@ -226,6 +226,14 @@ class BingoTerminal:
         # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
         self._agent_state_path = Path.home() / ".config" / "bingo" / "agent_state.json"
         self._agent_state: dict = self._load_agent_state()
+        # ── 화이트박스 분석 상태 (v3.2.82) ────────────────────────────
+        self._whitebox_context: str = ""          # AI에 주입할 화이트박스 컨텍스트
+        self._whitebox_result = None              # WhiteboxResult 객체
+        # ── Proof-by-exploitation 리포트 ────────────────────────────
+        from ..core.vuln_agents import ProofReport
+        self._proof_report = ProofReport()
+        # ── 전담 에이전트 계획 ─────────────────────────────────────
+        self._agent_plan = None                   # AgentPlan 객체
         # 롤백 매니저
         from ..core.rollback import RollbackManager
         self._rollback = RollbackManager()
@@ -1856,6 +1864,15 @@ class BingoTerminal:
                 + wrapped_text
             )
 
+        # ── 화이트박스 컨텍스트 자동 주입 (v3.2.82) ──────────────────
+        if self._whitebox_context:
+            wrapped_text = (
+                "=== WHITEBOX SOURCE CODE ANALYSIS (pre-loaded, use this to guide testing) ===\n"
+                + self._whitebox_context
+                + "\n=== END WHITEBOX CONTEXT ===\n\n"
+                + wrapped_text
+            )
+
         self.history.append(Message(role="user", content=wrapped_text))
         self._append_to_session_log("user", text)
 
@@ -2333,7 +2350,10 @@ class BingoTerminal:
             "/lang":    self._cmd_lang,
             "/quit":    self._cmd_quit,
             "/exit":    self._cmd_quit,
-            "/session": self._cmd_session,
+            "/session":   self._cmd_session,
+            "/whitebox":  lambda: self._cmd_whitebox(arg),
+            "/agent":     lambda: self._cmd_agent(arg),
+            "/report":    lambda: self._cmd_proof_report(arg),
         }
         fn = dispatch.get(name)
         if fn:
@@ -2419,6 +2439,185 @@ class BingoTerminal:
             self._cmd_proxy(arg)
         else:
             self._warn(self.s["cmd_unknown"].format(name=name))
+
+    # ── /whitebox ─────────────────────────────────────────────────────
+    def _cmd_whitebox(self, arg: str) -> None:
+        """화이트박스 소스코드 분석. /whitebox <path> 또는 /whitebox paste"""
+        from ..core.whitebox_analyzer import WhiteboxAnalyzer
+        from ..core.vuln_agents import VulnAgentDispatcher
+
+        analyzer = WhiteboxAnalyzer()
+
+        if arg.strip() in ("", "paste", "p"):
+            # 붙여넣기 모드
+            self.console.print(
+                f"[{THEME['primary']}]{self.s.get('wb_paste_prompt', '소스코드를 붙여넣으세요. 완료 후 빈 줄에 END 입력:')}[/]"
+            )
+            lines = []
+            try:
+                while True:
+                    ln = input()
+                    if ln.strip().upper() == "END":
+                        break
+                    lines.append(ln)
+            except (EOFError, KeyboardInterrupt):
+                pass
+            code = "\n".join(lines)
+            if not code.strip():
+                self._warn(self.s.get("wb_empty", "코드가 없습니다."))
+                return
+            result = analyzer.analyze(code, file_hint="(pasted)")
+        else:
+            import os
+            real_path = os.path.expandvars(os.path.expanduser(arg.strip()))
+            self.console.print(
+                f"[{THEME['dim']}]{self.s.get('wb_loading', '분석 중...')} {real_path}[/]"
+            )
+            result = analyzer.analyze_path(real_path)
+
+        if not result.has_hints():
+            self.console.print(
+                f"[{THEME['dim']}]{self.s.get('wb_no_hints', '취약점 패턴 없음. 블랙박스 테스트를 계속합니다.')}[/]"
+            )
+        else:
+            # 결과 출력
+            from rich.table import Table
+            table = Table(title=self.s.get("wb_result_title", "🔍 화이트박스 분석 결과"),
+                          border_style=THEME["primary"], show_lines=True)
+            table.add_column("유형", style="bold red", width=8)
+            table.add_column("신뢰도", width=6)
+            table.add_column("엔드포인트", width=20)
+            table.add_column("파라미터", width=12)
+            table.add_column("증거", overflow="fold")
+            for h in result.hints[:20]:
+                table.add_row(
+                    h.vuln_type.upper(),
+                    h.confidence,
+                    h.endpoint,
+                    h.param,
+                    h.evidence[:60],
+                )
+            self.console.print(table)
+            if result.tech_stack:
+                self.console.print(
+                    f"[{THEME['success']}]스택: {', '.join(result.tech_stack)}[/]"
+                )
+            if result.endpoints:
+                self.console.print(
+                    f"[{THEME['dim']}]엔드포인트 {len(result.endpoints)}개 | "
+                    f"파라미터 {len(result.params)}개[/]"
+                )
+
+        # 상태 저장 → 다음 채팅에 자동 주입
+        self._whitebox_result = result
+        self._whitebox_context = result.to_context_injection() if result.has_hints() else ""
+
+        # 에이전트 계획 업데이트
+        dispatcher = VulnAgentDispatcher()
+        self._agent_plan = dispatcher.build_plan(whitebox_result=result)
+        if self._agent_plan.priority:
+            self.console.print(
+                f"[{THEME['success']}]"
+                f"{self.s.get('wb_agent_order', '에이전트 우선순위')}: "
+                f"{' → '.join(self._agent_plan.priority[:6])}"
+                f"[/]"
+            )
+
+    # ── /agent ────────────────────────────────────────────────────────
+    def _cmd_agent(self, arg: str) -> None:
+        """
+        /agent list               — 에이전트 목록 표시
+        /agent plan               — 현재 실행 계획 표시
+        /agent run <type>         — 특정 유형 에이전트 단독 실행
+        /agent priority <t1,t2>  — 우선순위 수동 설정
+        """
+        from ..core.vuln_agents import VulnAgentDispatcher, VULN_TYPES
+
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "list"
+        rest = sub[1].strip() if len(sub) > 1 else ""
+
+        if cmd == "list" or cmd == "":
+            from rich.table import Table
+            table = Table(
+                title=self.s.get("agent_list_title", "🤖 취약점 전담 에이전트 목록"),
+                border_style=THEME["primary"]
+            )
+            table.add_column("ID", width=6)
+            table.add_column("유형", width=35)
+            table.add_column("우선순위", width=10)
+            plan_priority = (self._agent_plan.priority if self._agent_plan else [])
+            for vt, name in VULN_TYPES.items():
+                pri = str(plan_priority.index(vt) + 1) if vt in plan_priority else "-"
+                table.add_row(vt.upper(), name, pri)
+            self.console.print(table)
+
+        elif cmd == "plan":
+            if not self._agent_plan:
+                dispatcher = VulnAgentDispatcher()
+                self._agent_plan = dispatcher.build_plan()
+            self.console.print(
+                f"[{THEME['primary']}]실행 순서: "
+                f"{' → '.join(self._agent_plan.priority)}[/]"
+            )
+            if self._agent_plan.context_injection:
+                self.console.print(
+                    f"[{THEME['dim']}]화이트박스 컨텍스트 주입 활성화[/]"
+                )
+
+        elif cmd == "priority":
+            if not rest:
+                self._warn("사용법: /agent priority sqli,xss,ssrf")
+                return
+            types = [t.strip() for t in rest.split(",")]
+            dispatcher = VulnAgentDispatcher()
+            self._agent_plan = dispatcher.build_plan(
+                whitebox_result=self._whitebox_result,
+                user_specified=types,
+            )
+            self.console.print(
+                f"[{THEME['success']}]에이전트 우선순위 설정: "
+                f"{' → '.join(self._agent_plan.priority)}[/]"
+            )
+
+        else:
+            self._warn(
+                self.s.get(
+                    "agent_usage",
+                    "사용법: /agent [list|plan|priority <types>]"
+                )
+            )
+
+    # ── /report ───────────────────────────────────────────────────────
+    def _cmd_proof_report(self, arg: str) -> None:
+        """
+        /report       — 현재 세션 Proof-by-exploitation 리포트 출력
+        /report save  — 파일 저장
+        /report clear — 초기화
+        """
+        cmd = arg.strip().lower()
+        target = getattr(self, "_current_target", "unknown")
+
+        if cmd == "clear":
+            from ..core.vuln_agents import ProofReport
+            self._proof_report = ProofReport()
+            self.console.print(
+                f"[{THEME['success']}]{self.s.get('report_cleared', '리포트 초기화 완료')}[/]"
+            )
+            return
+
+        md = self._proof_report.generate_markdown(target)
+
+        if cmd == "save":
+            import time
+            fname = f"proof_report_{target.replace('://', '_').replace('/', '_')}_{int(time.time())}.md"
+            Path(fname).write_text(md, encoding="utf-8")
+            self.console.print(
+                f"[{THEME['success']}]{self.s.get('report_saved', '리포트 저장됨')}: {fname}[/]"
+            )
+        else:
+            from rich.markdown import Markdown
+            self.console.print(Markdown(md))
 
     def _cmd_help(self) -> None:
         self.console.print(

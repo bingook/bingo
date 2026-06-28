@@ -901,6 +901,45 @@ Find real IP: `dig TXT target.com` → look for SPF record IP.
 
 ---
 
+## New in v3.2.82 — Hybrid Intelligence Engine
+
+### Whitebox Source Code Analysis (`/whitebox`)
+
+bingo now operates as a true **hybrid pentest engine**. When you have access to target source code, paste it or point bingo to a path and it instantly:
+
+- Detects **SQLi / XSS / SSRF / RCE / Auth-bypass** sink patterns via regex
+- Identifies **tech stack** (PHP, Python/Django/Flask, Node/Express, Java/Spring, Ruby/Rails, ASP.NET)
+- Extracts **endpoints and form parameters**
+- Auto-injects all findings as a structured context block into **every subsequent AI query**
+
+```
+/whitebox /var/www/html/login.php        # analyze a file
+/whitebox /var/www/html/                 # analyze entire directory
+/whitebox paste                          # paste code interactively
+```
+
+### Specialist Agent Dispatcher (`/agent`)
+
+Eight vulnerability-type agents (SQLi, XSS, SSRF, Auth, RCE, IDOR, LFI, CSRF) are now available. After `/whitebox` the dispatcher automatically prioritizes agents matching the detected patterns.
+
+```
+/agent list                   # view all 8 specialist agents
+/agent plan                   # show current execution order (whitebox-guided)
+/agent priority sqli,xss,rce  # override priority manually
+```
+
+### Proof-by-Exploitation Report (`/report`)
+
+bingo now tracks every confirmed exploit in memory. Only vulnerabilities with a working PoC are included in the final report — eliminating false positives.
+
+```
+/report                       # display report in terminal
+/report save                  # save as Markdown file
+/report clear                 # reset for a new target
+```
+
+---
+
 ## New in v3.2.68 — 10 Security Skills Added
 
 ### 1. C/C++ Linux libc Gotchas & seccomp/BPF Sandbox Bypass (`sec-cpp-libc-gotcha`)
@@ -1121,6 +1160,7 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 | Version | Summary |
 |---------|---------|
+| v3.2.82 | **Hybrid Intelligence Engine** — `/whitebox <path\|paste>` source code analysis (SQLi/XSS/SSRF/RCE/Auth patterns, tech-stack detection, endpoint extraction → auto-inject hints into every AI query); `/agent [list\|plan\|priority]` specialist agent dispatcher (8 vuln-type agents, whitebox-guided execution order); `/report [save\|clear]` Proof-by-exploitation report (only confirmed PoC vulnerabilities included); 15 new multilingual i18n keys |
 | v3.2.68 | **10 New Skills** — C/C++ libc Gotcha+seccomp Bypass, Windows WDF Driver Registry Type Confusion→Kernel RCE, OAuth DCR+Open Redirect+Path Norm→Full-Read SSRF, HTTP Upgrade Passthrough+TE→Smuggling+Cache Poison (CVE-2026-2833), Git TOCTOU+fsmonitor→RCE+K8s PrivEsc, Chrome Ext Wildcard+DOM-XSS→AI Prompt Hijack (ShadowPrompt), AI RAG SQLi Vector Store (CVE-2026-22730), AI Agent DNS Confusion+Sandbox Escape→AWS Cred Theft, HMAC IV Flaw→Java Deser RCE, Cloud BI Cross-Tenant 0-click SQLi+XS-Leak+DoW; 40 new multilingual i18n keys |
 | v3.2.67 | **12 New Skills** — DOM Clobbering XSS, DOMPurify+PP Bypass, ImageMagick/GS RCE, AWS ALB Bypass, GCP Debug RCE, AWS Cognito Ghost Identity, npx Binary Confusion, Exim CVE-2026-45185 RCE, Android CVE-2026-0073 ADB RCE, Linux AF_ALG CVE-2026-31431 LPE, AI IDE TOCTOU RCE, AI Autonomous Hunt MCP Loop; 40 new multilingual i18n keys |
 | v3.2.66 | **4 New Skills** — OAuth email unverified ATO (`sec-web-oauth-email-unverified-ato`), MQTT credential leak (`sec-iot-mqtt-credential-leak`), Redis CVE-2026-23631 DarkReplica UAF→RCE (`sec-infra-redis-cve-2026-23631`), AI Agent CI/CD prompt injection supply chain (`ai-agent-ci-prompt-inject`); 21 new multilingual i18n keys |

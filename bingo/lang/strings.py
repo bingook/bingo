@@ -100,6 +100,9 @@ _STRINGS = {
 /waf <url>               WAF 탐지 + 자동 우회 시도
 /crack [hash]            해시 크랙 — 온라인 조회 → 오프라인 크랙
 /stop                    실행 중인 크랙/스캔 중단
+/whitebox <경로|paste>   🔍 소스코드 화이트박스 분석 → 취약점 힌트 추출
+/agent [list|plan|priority] 🤖 취약점 전담 에이전트 관리
+/report [save|clear]     📋 Proof-by-exploitation 리포트
 /tools                   도구 목록 + 자동 설치
 /tools install <이름>    특정 도구 자동 설치
 /tools install all       미설치 도구 전체 설치
@@ -122,6 +125,9 @@ _STRINGS = {
 /waf <url>               WAF 检测 + 自动绕过尝试
 /crack [hash]            哈希破解 — 在线查询 → 离线破解
 /stop                    停止正在运行的破解/扫描
+/whitebox <路径|paste>   🔍 白盒源码分析 → 提取漏洞提示
+/agent [list|plan|priority] 🤖 漏洞专属代理管理
+/report [save|clear]     📋 漏洞利用证明报告
 /tools                   工具列表 + 自动安装
 /tools install <名称>    自动安装指定工具
 /tools install all       安装所有缺失工具
@@ -144,6 +150,9 @@ _STRINGS = {
 /waf <url>               WAF detection + auto bypass attempt
 /crack [hash]            Hash crack — online lookup → offline crack
 /stop                    Stop running crack/scan
+/whitebox <path|paste>   🔍 Whitebox source code analysis → extract attack hints
+/agent [list|plan|priority] 🤖 Vulnerability specialist agent management
+/report [save|clear]     📋 Proof-by-exploitation report
 /tools                   Tool list + auto-install
 /tools install <name>    Auto-install a specific tool
 /tools install all       Install all missing tools
@@ -693,6 +702,15 @@ _SLASH_DESC = {
     "/proxy":   {"ko": "프록시 풀 관리  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]",
                  "zh": "代理池管理  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]",
                  "en": "Proxy pool mgmt  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]"},
+    "/whitebox":{"ko": "소스코드 화이트박스 분석  /whitebox <경로> 또는 /whitebox paste",
+                 "zh": "白盒源码分析  /whitebox <路径> 或 /whitebox paste",
+                 "en": "Whitebox source analysis  /whitebox <path> or /whitebox paste"},
+    "/agent":   {"ko": "취약점 전담 에이전트  /agent [list|plan|priority <유형>]",
+                 "zh": "漏洞专属代理  /agent [list|plan|priority <类型>]",
+                 "en": "Vulnerability agents  /agent [list|plan|priority <type>]"},
+    "/report":  {"ko": "Proof-by-exploitation 리포트  /report [save|clear]",
+                 "zh": "漏洞利用证明报告  /report [save|clear]",
+                 "en": "Proof-by-exploitation report  /report [save|clear]"},
     "/quit":    {"ko": "종료",                        "zh": "退出",                "en": "Quit"},
 }
 
@@ -3716,6 +3734,65 @@ _STRINGS.update({
         "ko": "⚠️ 코드에서 모의/가짜 결과 변수 감지 — 네트워크 연결 정상, 실제 HTTP 요청 실행 가능",
         "zh": "⚠️ 代码中检测到模拟/虚假结果变量 — 网络连接正常，可执行真实HTTP请求",
         "en": "⚠️ Mock/fake result variable in code — network is live, real HTTP requests work",
+    },
+
+    # ── v3.2.82: 화이트박스 분석 ──────────────────────────────────────
+    "wb_paste_prompt": {
+        "ko": "소스코드를 붙여넣으세요. 완료 후 빈 줄에 END 입력:",
+        "zh": "请粘贴源代码。完成后在空行输入 END:",
+        "en": "Paste source code. Type END on an empty line when done:",
+    },
+    "wb_empty": {
+        "ko": "코드가 없습니다. 다시 시도하세요.",
+        "zh": "没有代码，请重试。",
+        "en": "No code provided. Please try again.",
+    },
+    "wb_loading": {
+        "ko": "📂 소스코드 분석 중...",
+        "zh": "📂 正在分析源代码...",
+        "en": "📂 Analyzing source code...",
+    },
+    "wb_no_hints": {
+        "ko": "취약점 패턴 없음 — 블랙박스 테스트를 계속합니다.",
+        "zh": "未发现漏洞模式 — 继续黑盒测试。",
+        "en": "No vulnerability patterns found — continuing blackbox testing.",
+    },
+    "wb_result_title": {
+        "ko": "🔍 화이트박스 분석 결과",
+        "zh": "🔍 白盒分析结果",
+        "en": "🔍 Whitebox Analysis Results",
+    },
+    "wb_agent_order": {
+        "ko": "에이전트 우선순위",
+        "zh": "代理优先级",
+        "en": "Agent priority",
+    },
+    # ── v3.2.82: 전담 에이전트 ──────────────────────────────────────
+    "agent_list_title": {
+        "ko": "🤖 취약점 전담 에이전트 목록",
+        "zh": "🤖 漏洞专属代理列表",
+        "en": "🤖 Vulnerability Specialist Agent List",
+    },
+    "agent_usage": {
+        "ko": "사용법: /agent [list|plan|priority <유형,유형,...>]",
+        "zh": "用法: /agent [list|plan|priority <类型,类型,...>]",
+        "en": "Usage: /agent [list|plan|priority <type,type,...>]",
+    },
+    # ── v3.2.82: Proof-by-exploitation 리포트 ──────────────────────
+    "report_cleared": {
+        "ko": "✅ 리포트 초기화 완료",
+        "zh": "✅ 报告已清除",
+        "en": "✅ Report cleared",
+    },
+    "report_saved": {
+        "ko": "💾 리포트 저장됨",
+        "zh": "💾 报告已保存",
+        "en": "💾 Report saved",
+    },
+    "report_no_proofs": {
+        "ko": "확인된 취약점 없음 (PoC 미입증)",
+        "zh": "无已确认漏洞（PoC未验证）",
+        "en": "No confirmed vulnerabilities (no PoC verified)",
     },
 })
 

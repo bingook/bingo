@@ -497,7 +497,8 @@ def main() -> None:
         return
 
     if args and args[0] == "--version":
-        console.print("[#00ff41]bingo[/] v2.1.9 — Official Release")
+        from . import __version__
+        console.print(f"[#00ff41]bingo[/] v{__version__} — Official Release")
         return
 
     if args and args[0] == "--update":

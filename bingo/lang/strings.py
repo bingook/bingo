@@ -3866,6 +3866,103 @@ _STRINGS.update({
         "zh": "无已确认漏洞（PoC未验证）",
         "en": "No confirmed vulnerabilities (no PoC verified)",
     },
+
+    # ── v3.2.86: Web3/DApp 스마트컨트랙트 감사 출력 ─────────────────
+    "web3_audit_report": {
+        "ko": "🔐 스마트 컨트랙트 감사 보고서",
+        "zh": "🔐 智能合约审计报告",
+        "en": "🔐 Smart Contract Audit Report",
+    },
+    "web3_execution_plan": {
+        "ko": "📋 실행 계획",
+        "zh": "📋 执行计划",
+        "en": "📋 Execution Plan",
+    },
+    "web3_col_action": {
+        "ko": "작업",
+        "zh": "操作",
+        "en": "Action",
+    },
+    "web3_col_result": {
+        "ko": "결과 요약",
+        "zh": "结果摘要",
+        "en": "Result",
+    },
+    "web3_col_severity": {
+        "ko": "위험도",
+        "zh": "严重性",
+        "en": "Severity",
+    },
+    "web3_col_type": {
+        "ko": "취약점 유형",
+        "zh": "漏洞类型",
+        "en": "Vulnerability Type",
+    },
+    "web3_col_desc": {
+        "ko": "설명",
+        "zh": "描述",
+        "en": "Description",
+    },
+    "web3_col_snippet": {
+        "ko": "코드 예시",
+        "zh": "代码片段",
+        "en": "Code Snippet",
+    },
+    "web3_overall_risk": {
+        "ko": "🎯 전체 위험도",
+        "zh": "🎯 整体风险等级",
+        "en": "🎯 Overall Risk",
+    },
+    "web3_vuln_table_title": {
+        "ko": "발견된 취약점 목록",
+        "zh": "发现的漏洞列表",
+        "en": "Discovered Vulnerabilities",
+    },
+    "web3_recommendations": {
+        "ko": "📝 수정 권고사항",
+        "zh": "📝 修复建议",
+        "en": "📝 Recommendations",
+    },
+    "web3_step_complete": {
+        "ko": "✅ 단계 완료",
+        "zh": "✅ 步骤完成",
+        "en": "✅ Step Complete",
+    },
+    "web3_audit_auto_continue": {
+        "ko": "🔄 감사 결과를 보고서로 정리 중...",
+        "zh": "🔄 正在整理审计结果为报告...",
+        "en": "🔄 Compiling audit results into report...",
+    },
+    "web3_audit_complete": {
+        "ko": "✅ 스마트 컨트랙트 감사 완료",
+        "zh": "✅ 智能合约审计完成",
+        "en": "✅ Smart Contract Audit Complete",
+    },
+    "web3_no_vuln": {
+        "ko": "취약점 없음 (Clean)",
+        "zh": "无漏洞 (Clean)",
+        "en": "No Vulnerabilities (Clean)",
+    },
+    "web3_skill_injected": {
+        "ko": "🔗 Web3/DApp 스킬 자동 로드됨",
+        "zh": "🔗 Web3/DApp技能已自动加载",
+        "en": "🔗 Web3/DApp skills auto-loaded",
+    },
+    "web3_skill_injected_zh": {
+        "ko": "🔗 Web3/DApp 스킬 자동 로드됨",
+        "zh": "🔗 Web3/DApp技能已自动加载",
+        "en": "🔗 Web3/DApp skills auto-loaded",
+    },
+    "web3_skill_injected_en": {
+        "ko": "🔗 Web3/DApp 스킬 자동 로드됨",
+        "zh": "🔗 Web3/DApp技能已自动加载",
+        "en": "🔗 Web3/DApp skills auto-loaded",
+    },
+    "web3_rendering_report": {
+        "ko": "📊 감사 결과를 시각화합니다...",
+        "zh": "📊 正在可视化审计结果...",
+        "en": "📊 Rendering audit results...",
+    },
 })
 
 

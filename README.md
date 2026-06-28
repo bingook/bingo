@@ -1186,6 +1186,7 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 | Version | Summary |
 |---------|---------|
+| v3.2.86 | **Web3/DApp Audit UX** — Smart contract audit JSON now renders as a beautiful Rich panel (severity table, vulnerability list, recommendations, overall risk badge); hallucination interceptor exempts legitimate audit JSON; `_execute_ai_commands` auto-completes on Web3 audit result (no more `>` stall); 20+ new i18n keys for Web3 audit output |
 | v3.2.85 | **Proxy i18n Complete** — all `/proxy list` table headers, column names, status messages, usage strings, API preset prompts, Tor/stem hints, test/testall output fully translated (KO/ZH/EN); 35+ new multilingual i18n keys covering every hardcoded proxy string |
 | v3.2.84 | **URL-triggered Whitebox Flow** — typing a new target URL automatically asks "Source code path?"; path-only mode (no paste, supports directories with thousands of files); `/whitebox <url> <path>` any-order parsing; 3 new i18n keys (`wb_ask_path`, `wb_ask_path_cmd`, `wb_path_not_found`) |
 | v3.2.83 | **Hybrid Mode i18n** — `wb_hybrid_target`, `wb_hybrid_hint` keys added (KO/ZH/EN); hardcoded strings replaced with i18n; `/whitebox` URL+path any-order parsing |

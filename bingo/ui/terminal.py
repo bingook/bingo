@@ -1963,6 +1963,14 @@ class BingoTerminal:
                 if '"intents"' in stripped or '"accepted"' in stripped:
                     _is_json_plan = True
 
+        # ── v3.2.86: Web3/DApp 감사 JSON은 환각이 아님 — 면제 ───────────
+        # 스마트컨트랙트 감사 결과(vulnerabilities, severity, overall_risk 등)는
+        # AI가 실제로 도구를 실행하고 반환한 정상 출력이므로 환각 인터셉터에서 제외
+        if _is_json_plan:
+            _web3_exempt = self._is_web3_audit_json(stripped)
+            if _web3_exempt is not None:
+                _is_json_plan = False  # 환각 아님 — 정상 감사 결과 JSON
+
         # ── 패턴 2: AI 자가 고백 감지 ────────────────────────────────────
         _confession_patterns = [
             r"(my|my execution) environment.{0,30}(text|conversation|dialog)",
@@ -2065,6 +2073,213 @@ class BingoTerminal:
         text = re.sub(r"\n?TASK_COMPLETE\n?", f"\n✅ {_t('task_complete', 'Task complete')}\n", text)
         text = re.sub(r"\n?MISSION_COMPLETE\n?", f"\n✅ {_t('mission_complete', 'Mission complete')}\n", text)
         return text
+
+    # ── v3.2.86: Web3/DApp 스마트컨트랙트 감사 JSON 감지 & 렌더링 ──────────
+
+    def _is_web3_audit_json(self, text: str) -> "dict | None":
+        """Web3/DApp 스마트컨트랙트 감사 JSON 응답 감지.
+
+        Returns parsed dict if it looks like an audit/execution report, else None.
+        Exempted from hallucination interceptor — legitimate AI output.
+        """
+        import json as _j
+        stripped = text.strip()
+        if not (stripped.startswith("{") or stripped.startswith("[")):
+            return None
+        try:
+            parsed = _j.loads(stripped)
+        except Exception:
+            return None
+
+        if isinstance(parsed, list):
+            # List of vulnerability objects [{severity, type, ...}, ...]
+            if parsed and isinstance(parsed[0], dict) and any(
+                k in parsed[0]
+                for k in ("severity", "type", "vulnerability", "description", "finding")
+            ):
+                return {"vulnerabilities": parsed}
+            return None
+
+        if isinstance(parsed, dict):
+            # Top-level audit report
+            _audit_keys = {
+                "vulnerabilities", "findings", "issues",
+                "overall_risk", "risk_level", "recommendations",
+                "reentrancy", "audit_result",
+            }
+            if _audit_keys & set(parsed.keys()):
+                return parsed
+
+            # Execution plan: {accepted: true, data: {phase: "execution", steps: [...]}}
+            if parsed.get("accepted") is True and isinstance(parsed.get("data"), dict):
+                _d = parsed["data"]
+                if "steps" in _d or "phase" in _d or "vulnerabilities" in _d:
+                    return parsed
+
+            # Nested data with vulnerability info
+            if "data" in parsed and isinstance(parsed.get("data"), dict):
+                _d2 = parsed["data"]
+                if _audit_keys & set(_d2.keys()):
+                    return parsed
+
+        return None
+
+    def _render_web3_audit_panel(self, data: dict) -> None:
+        """Web3/DApp 컨트랙트 감사 결과를 Rich 패널로 예쁘게 출력.
+
+        지원 포맷:
+        1. 실행 계획: {accepted: true, data: {phase: "execution", steps: [...]}}
+        2. 취약점 보고서: {vulnerabilities: [...], recommendations: [...], overall_risk: "..."}
+        3. 리스트: [{severity, type, description, ...}, ...]
+        """
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich import box
+
+        _lang = getattr(self.config, "lang", "en")
+        s = self.s
+
+        def _t(key: str, fallback: str) -> str:
+            v = s.get(key, fallback)
+            if isinstance(v, dict):
+                return v.get(_lang, v.get("en", fallback))
+            return v or fallback
+
+        # ── 케이스 1: 실행 계획 (steps) ─────────────────────────────────
+        _steps = None
+        _inner = data.get("data", {})
+        if isinstance(_inner, dict) and "steps" in _inner:
+            _steps = _inner.get("steps", [])
+        elif "steps" in data:
+            _steps = data.get("steps", [])
+
+        if _steps:
+            _plan_title = _t("web3_execution_plan", "📋 Execution Plan")
+            step_tbl = Table(box=box.ROUNDED, border_style="cyan", expand=False, show_lines=True)
+            step_tbl.add_column("#", style="dim", width=3)
+            step_tbl.add_column(_t("web3_col_action", "Action"), style="bold cyan", min_width=18)
+            step_tbl.add_column(_t("web3_col_result", "Result"), style="white", min_width=45)
+            for step in _steps:
+                if not isinstance(step, dict):
+                    continue
+                _n = str(step.get("step", "?"))
+                _action = str(step.get("action", ""))
+                _result = str(step.get("result", ""))
+                # 너무 긴 결과 자르기
+                _result_disp = _result[:220] + ("…" if len(_result) > 220 else "")
+                step_tbl.add_row(_n, _action, _result_disp)
+            self.console.print(
+                Panel(step_tbl, title=_plan_title, border_style="cyan", padding=(0, 1))
+            )
+            # steps 안에 nested 취약점 목록도 있으면 이어서 렌더링
+            for step in _steps:
+                if isinstance(step, dict) and "vulnerabilities" in step:
+                    # 단계별 취약점 인라인 표시
+                    _phase_vulns = step["vulnerabilities"]
+                    if isinstance(_phase_vulns, list) and _phase_vulns:
+                        self._render_web3_vuln_table(_phase_vulns, _lang, s, _t)
+            return
+
+        # ── 케이스 2 & 3: 취약점 보고서 ───────────────────────────────────
+        # data 안에 nested된 경우 꺼내기
+        if isinstance(_inner, dict) and ("vulnerabilities" in _inner or "issues" in _inner):
+            data = _inner
+
+        vulns = (
+            data.get("vulnerabilities")
+            or data.get("issues")
+            or data.get("findings")
+            or []
+        )
+        recs = data.get("recommendations", [])
+        overall = str(data.get("overall_risk") or data.get("risk_level") or "")
+
+        # 전체 위험도 배지
+        if overall:
+            _sev_styles: dict[str, str] = {
+                "critical": "bold red", "严重": "bold red", "치명적": "bold red",
+                "high": "red",         "高": "red",         "높음": "red",
+                "medium": "yellow",    "中": "yellow",      "중간": "yellow",
+                "low": "green",        "低": "green",       "낮음": "green",
+            }
+            _col = next(
+                (v for k, v in _sev_styles.items() if k.lower() in overall.lower()),
+                "white",
+            )
+            _risk_label = _t("web3_overall_risk", "🎯 Overall Risk")
+            self.console.print(f"\n[bold]{_risk_label}:[/bold] [{_col}]{overall}[/{_col}]")
+
+        if vulns:
+            self._render_web3_vuln_table(vulns, _lang, s, _t)
+
+        # 권고사항
+        if recs:
+            _rec_title = _t("web3_recommendations", "📝 Recommendations")
+            self.console.print(f"\n[bold cyan]{_rec_title}[/bold cyan]")
+            for i, rec in enumerate(recs, 1):
+                rec_str = rec if isinstance(rec, str) else str(rec)
+                self.console.print(f"  [dim]{i}.[/dim] {rec_str}")
+
+        self.console.print()
+
+    def _render_web3_vuln_table(
+        self,
+        vulns: list,
+        _lang: str,
+        s: dict,
+        _t,
+    ) -> None:
+        """취약점 목록을 Rich 테이블로 렌더링 (내부 헬퍼)."""
+        from rich.table import Table
+        from rich import box
+
+        _vuln_title = _t("web3_vuln_table_title", "Discovered Vulnerabilities")
+        tbl = Table(
+            title=f"[bold red]{_vuln_title}[/bold red]",
+            box=box.ROUNDED,
+            border_style="red",
+            show_lines=True,
+            expand=False,
+        )
+        tbl.add_column(_t("web3_col_severity", "Severity"), style="bold", width=12)
+        tbl.add_column(_t("web3_col_type", "Type"), style="cyan", width=22)
+        tbl.add_column(_t("web3_col_desc", "Description"), style="white", min_width=35)
+        tbl.add_column(_t("web3_col_snippet", "Code"), style="dim", max_width=38)
+
+        _sev_icons = {
+            "critical": "🔴", "严重": "🔴", "치명적": "🔴",
+            "high":     "🟠", "高":   "🟠", "높음":   "🟠",
+            "medium":   "🟡", "中":   "🟡", "중간":   "🟡",
+            "low":      "🟢", "低":   "🟢", "낮음":   "🟢",
+            "info":     "🔵",
+        }
+        _sev_colors: dict[str, str] = {
+            "critical": "bold red", "严重": "bold red", "치명적": "bold red",
+            "high":     "red",      "高":   "red",      "높음":   "red",
+            "medium":   "yellow",   "中":   "yellow",   "중간":   "yellow",
+            "low":      "green",    "低":   "green",    "낮음":   "green",
+        }
+
+        for v in vulns:
+            if not isinstance(v, dict):
+                continue
+            _sev  = str(v.get("severity", "?"))
+            _type = str(v.get("type") or v.get("name") or "Unknown")
+            _desc = str(v.get("description") or v.get("details") or "")[:200]
+            _snip = str(v.get("code_snippet") or v.get("snippet") or "").replace("\n", " ")[:75]
+
+            _sev_key = _sev.lower()
+            _icon  = next((ic for k, ic in _sev_icons.items()  if k.lower() == _sev_key), "⚪")
+            _color = next((c  for k, c  in _sev_colors.items() if k.lower() == _sev_key), "white")
+
+            tbl.add_row(
+                f"[{_color}]{_icon} {_sev}[/{_color}]",
+                _type,
+                _desc,
+                _snip or "-",
+            )
+
+        self.console.print(tbl)
 
     def _collapse_code_blocks(self, text: str) -> str:
         """Python/bash 코드 블록을 접어서 한 줄 요약으로 교체.
@@ -2188,6 +2403,18 @@ class BingoTerminal:
         display = _re.sub(r"SKILL_LOAD:\s*[^\n]*\n?", "", display)
 
         self.console.print()
+
+        # ── v3.2.86: Web3/DApp 감사 JSON 감지 → Rich 패널로 교체 출력 ──
+        _web3_parsed = self._is_web3_audit_json(final.strip())
+        if _web3_parsed is not None:
+            _render_label = self.s.get("web3_rendering_report", "📊 Rendering audit results...")
+            if isinstance(_render_label, dict):
+                _render_label = _render_label.get(getattr(self.config, "lang", "en"), "📊 Rendering audit results...")
+            self.console.print(f"[dim]{_render_label}[/dim]")
+            self._render_web3_audit_panel(_web3_parsed)
+            self.console.print()
+            return final
+
         try:
             _has_rich = "[dim]" in display or "[bold" in display
             _has_md   = "**" in display or "\n# " in display or "\n## " in display
@@ -5056,6 +5283,22 @@ class BingoTerminal:
         while True:
             # 코드 블록 없으면 → AI에게 코드 작성 재촉 (최대 3회)
             if "```" not in current_response:
+                # ── v3.2.86: Web3/DApp 감사 JSON은 코드 블록 없어도 정상 완료 ──
+                _web3_data = self._is_web3_audit_json(current_response.strip())
+                if _web3_data is not None:
+                    # 이미 _stream_response에서 예쁘게 출력됨 → 보고서 자동 저장
+                    _lang = getattr(self.config, "lang", "en")
+                    _done_msg = self.s.get("web3_audit_complete", {
+                        "ko": "✅ 스마트 컨트랙트 감사 완료",
+                        "zh": "✅ 智能合约审计完成",
+                        "en": "✅ Smart Contract Audit Complete",
+                    })
+                    if isinstance(_done_msg, dict):
+                        _done_msg = _done_msg.get(_lang, "✅ Audit Complete")
+                    self.console.print(f"\n[bold green]{_done_msg}[/bold green]")
+                    self._auto_generate_report()
+                    break
+
                 if _no_code_retry >= 3:
                     # 3회 재촉해도 코드 없으면 진짜 완료로 판단
                     self._auto_generate_report()

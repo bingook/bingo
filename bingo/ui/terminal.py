@@ -257,6 +257,8 @@ class BingoTerminal:
         _proxy_restored = self._proxy.load_config()
         if _proxy_restored > 0:
             pass  # 복원 성공 (배너는 _start_banner에서 출력)
+        # v3.2.80: 프록시 교체 알림 콜백 등록
+        self._proxy.on_switch = self._on_proxy_switched
         # ── v3.2.71 추가 ────────────────────────────────────────────────
         # 브루트포스 연속 실패 카운터 (자동 포기 + 벡터 전환용)
         self._bruteforce_fail_count: int = 0
@@ -2773,6 +2775,18 @@ class BingoTerminal:
                 f"   ID: {username}  PW: {'*' * len(password)}"
             )
             self._cmd_cred(f"{username} {password}")
+
+    def _on_proxy_switched(self, old_entry, new_entry, reason: str) -> None:
+        """프록시 교체 시 콘솔 알림 (v3.2.80)."""
+        _old_str = str(old_entry) if old_entry else "—"
+        _new_str = str(new_entry)
+        _key = "proxy_switch_ban" if reason == "ban" else "proxy_switch_rotate"
+        _tpl = self.s.get(_key, "🔄 Proxy switched → {new}")
+        if isinstance(_tpl, dict):
+            _lang = getattr(self.config, "lang", "en")
+            _tpl = _tpl.get(_lang, _tpl.get("en", "🔄 Proxy switched → {new}"))
+        msg = _tpl.format(old=_old_str, new=_new_str)
+        self.console.print(f"\n[{THEME['success']}]{msg}[/]\n")
 
     def _cmd_history(self) -> None:
         if not self.history:

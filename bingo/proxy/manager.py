@@ -142,6 +142,9 @@ class ProxyManager:
         self._tor_enabled: bool = False
         self._tor_ctrl_password: str = ""
         self._enabled: bool = False   # 프록시 기능 활성화 여부
+        # 프록시 교체 시 호출되는 콜백: on_switch(old_entry, new_entry, reason)
+        # reason: "rotate" | "ban"
+        self.on_switch: Optional[callable] = None  # type: ignore[type-arg]
 
     # ── 활성화 상태 ───────────────────────────────────────────────
     @property
@@ -280,12 +283,19 @@ class ProxyManager:
             active = [e for e in self._pool if not e.banned]
             if not active:
                 return None
+            old = active[self._index % len(active)] if active else None
             self._index = (self._index + 1) % len(active)
             entry = active[self._index % len(active)]
             entry.last_used = time.time()
         # Tor 회로 갱신
         if entry.is_tor:
             self.tor_new_circuit()
+        # 교체 콜백
+        if self.on_switch and entry is not old:
+            try:
+                self.on_switch(old, entry, "rotate")
+            except Exception:
+                pass
         return entry
 
     def report_ban(self) -> Optional[ProxyEntry]:
@@ -308,6 +318,12 @@ class ProxyManager:
             entry.last_used = time.time()
         if entry.is_tor:
             self.tor_new_circuit()
+        # 교체 콜백
+        if self.on_switch:
+            try:
+                self.on_switch(cur, entry, "ban")
+            except Exception:
+                pass
         return entry
 
     def report_success(self) -> None:

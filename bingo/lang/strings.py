@@ -2948,6 +2948,17 @@ _STRINGS.update({
                                    "zh": "结果: ✅ 成功 {ok} 个  ❌ 失败 {fail} 个 (失败代理已自动屏蔽)",
                                    "en": "Result: ✅ OK {ok}  ❌ Failed {fail} (failed proxies auto-banned)"},
 
+    # v3.2.80: 프록시 자동 교체 알림
+    "proxy_switch_ban":          {"ko": "🔄 IP 차단 감지 → 프록시 자동 교체\n   ❌ {old}\n   ✅ {new}",
+                                   "zh": "🔄 检测到IP封禁 → 自动切换代理\n   ❌ {old}\n   ✅ {new}",
+                                   "en": "🔄 IP ban detected → proxy auto-switched\n   ❌ {old}\n   ✅ {new}"},
+    "proxy_switch_rotate":       {"ko": "🔄 프록시 수동 교체\n   ❌ {old}\n   ✅ {new}",
+                                   "zh": "🔄 代理手动切换\n   ❌ {old}\n   ✅ {new}",
+                                   "en": "🔄 Proxy manually rotated\n   ❌ {old}\n   ✅ {new}"},
+    "proxy_pool_exhausted":      {"ko": "⚠ 프록시 풀 소진 — 차단 우회 불가. /proxy add 로 추가하세요",
+                                   "zh": "⚠ 代理池已耗尽 — 无法绕过封锁。请用 /proxy add 补充",
+                                   "en": "⚠ Proxy pool exhausted — cannot bypass block. Use /proxy add to refill"},
+
     # v3.2.19: 연결 오류 반복 오탐 수정 (RULE 26-U)
     "conn_error_loop_skip":      {"ko": "⚡ 루프 오탐 건너뜀: 연결 오류 반복은 WAF 차단 — 무한 루프 아님",
                                    "zh": "⚡ 跳过循环误报: 连接错误重复是WAF封锁 — 不是无限循环",

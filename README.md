@@ -1186,6 +1186,7 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 | Version | Summary |
 |---------|---------|
+| v3.2.85 | **Proxy i18n Complete** — all `/proxy list` table headers, column names, status messages, usage strings, API preset prompts, Tor/stem hints, test/testall output fully translated (KO/ZH/EN); 35+ new multilingual i18n keys covering every hardcoded proxy string |
 | v3.2.84 | **URL-triggered Whitebox Flow** — typing a new target URL automatically asks "Source code path?"; path-only mode (no paste, supports directories with thousands of files); `/whitebox <url> <path>` any-order parsing; 3 new i18n keys (`wb_ask_path`, `wb_ask_path_cmd`, `wb_path_not_found`) |
 | v3.2.83 | **Hybrid Mode i18n** — `wb_hybrid_target`, `wb_hybrid_hint` keys added (KO/ZH/EN); hardcoded strings replaced with i18n; `/whitebox` URL+path any-order parsing |
 | v3.2.82 | **Hybrid Intelligence Engine** — `/whitebox <path>` source code analysis (SQLi/XSS/SSRF/RCE/Auth patterns, tech-stack detection, endpoint extraction → auto-inject hints into every AI query); `/agent [list\|plan\|priority]` specialist agent dispatcher (8 vuln-type agents, whitebox-guided execution order); `/report [save\|clear]` Proof-by-exploitation report (only confirmed PoC vulnerabilities included); 15 new multilingual i18n keys |

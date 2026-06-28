@@ -3262,28 +3262,33 @@ class BingoTerminal:
         # ─ list ──────────────────────────────────────────────────────
         if sub in ("", "list", "status"):
             st = pm.pool_status()
+            s = self.s
             tbl = _Table(title="🌐 Proxy Pool Status", border_style="cyan", expand=False)
-            tbl.add_column("항목", style="cyan")
-            tbl.add_column("값", style="white")
-            tbl.add_row("활성화", "✅ ON" if st["enabled"] else "❌ OFF")
-            tbl.add_row("총 프록시", str(st["total"]))
-            tbl.add_row("사용 가능", str(st["active"]))
-            tbl.add_row("밴됨", str(st["banned"]))
-            tbl.add_row("현재 프록시", st["current"])
-            tbl.add_row("Tor 모드", "✅" if st["tor"] else "❌")
-            tbl.add_row("stem (Tor 회로 교체)", "✅ 설치됨" if st["stem"] else "❌ pip install stem")
-            tbl.add_row("PySocks (SOCKS5)", "✅ 설치됨" if st["pysocks"] else "❌ pip install PySocks")
+            tbl.add_column(s.get("proxy_list_col_item", "항목"), style="cyan")
+            tbl.add_column(s.get("proxy_list_col_value", "값"), style="white")
+            _inst = s.get("proxy_list_installed", "✅ 설치됨")
+            tbl.add_row(s.get("proxy_list_enabled", "활성화"),
+                        "✅ ON" if st["enabled"] else "❌ OFF")
+            tbl.add_row(s.get("proxy_list_total", "총 프록시"), str(st["total"]))
+            tbl.add_row(s.get("proxy_list_active", "사용 가능"), str(st["active"]))
+            tbl.add_row(s.get("proxy_list_banned", "밴됨"), str(st["banned"]))
+            tbl.add_row(s.get("proxy_list_current", "현재 프록시"), st["current"])
+            tbl.add_row(s.get("proxy_list_tor", "Tor 모드"), "✅" if st["tor"] else "❌")
+            tbl.add_row(s.get("proxy_list_stem", "stem (Tor 회로 교체)"),
+                        _inst if st["stem"] else "❌ pip install stem")
+            tbl.add_row(s.get("proxy_list_pysocks", "PySocks (SOCKS5)"),
+                        _inst if st["pysocks"] else "❌ pip install PySocks")
             self.console.print(tbl)
 
             items = pm.list_all()
             if items:
                 ptbl = _Table(border_style="dim", expand=False)
                 ptbl.add_column("#", style="dim")
-                ptbl.add_column("프록시", style="cyan")
-                ptbl.add_column("상태", style="white")
-                ptbl.add_column("성공", justify="right")
-                ptbl.add_column("실패", justify="right")
-                ptbl.add_column("지연(ms)", justify="right")
+                ptbl.add_column(s.get("proxy_list_col_proxy", "프록시"), style="cyan")
+                ptbl.add_column(s.get("proxy_list_col_status", "상태"), style="white")
+                ptbl.add_column(s.get("proxy_list_col_success", "성공"), justify="right")
+                ptbl.add_column(s.get("proxy_list_col_fail", "실패"), justify="right")
+                ptbl.add_column(s.get("proxy_list_col_latency", "지연(ms)"), justify="right")
                 for i, e in enumerate(items, 1):
                     status = "[red]BANNED[/]" if e["banned"] else "[green]OK[/]"
                     if e["is_tor"]:
@@ -3297,12 +3302,11 @@ class BingoTerminal:
         # ─ add ───────────────────────────────────────────────────────
         if sub == "add":
             if not sub_arg:
-                self._warn(
+                self._warn(self.s.get("proxy_add_usage",
                     "사용법: /proxy add <url>\n"
                     "예시:   /proxy add socks5://1.2.3.4:1080\n"
                     "        /proxy add http://user:pass@5.6.7.8:3128\n"
-                    "        /proxy add https://9.10.11.12:443"
-                )
+                    "        /proxy add https://9.10.11.12:443"))
                 return
             ok = pm.add(sub_arg)
             if ok:
@@ -3319,7 +3323,8 @@ class BingoTerminal:
         # ─ file ──────────────────────────────────────────────────────
         if sub == "file":
             if not sub_arg:
-                self._warn("사용법: /proxy file <파일경로>   (한 줄에 프록시 1개)")
+                self._warn(self.s.get("proxy_file_usage",
+                    "사용법: /proxy file <파일경로>   (한 줄에 프록시 1개)"))
                 return
             import os as _os
             real_path = _os.path.expandvars(_os.path.expanduser(sub_arg.strip()))
@@ -3350,7 +3355,7 @@ class BingoTerminal:
         if sub == "api":
             if sub_arg:
                 # URL 직접 지정
-                with self.console.status("[cyan]🌐 API에서 프록시 수집 중...[/cyan]"):
+                with self.console.status("[cyan]🌐 ...[/cyan]"):
                     n = pm.fetch_from_api(sub_arg)
                 self._success(
                     self.s.get("proxy_api_fetched", "🌐 API에서 {n}개 프록시 수집됨").format(n=n)
@@ -3358,21 +3363,21 @@ class BingoTerminal:
             else:
                 # 프리셋 선택
                 presets = pm.free_api_urls()
-                self.console.print("[cyan]사용 가능한 무료 프록시 API 프리셋:[/cyan]")
+                self.console.print(f"[cyan]{self.s.get('proxy_api_presets', '사용 가능한 무료 프록시 API 프리셋:')}[/cyan]")
                 for i, (name, url) in enumerate(presets, 1):
                     self.console.print(f"  [bold]{i}.[/bold] {name}")
                     self.console.print(f"     [dim]{url[:80]}...[/dim]")
                 from rich.prompt import Prompt as _P
-                choice = _P.ask("번호 선택 (0=직접입력)", default="1")
+                choice = _P.ask(self.s.get("proxy_api_choice", "번호 선택 (0=직접입력)"), default="1")
                 if choice == "0":
-                    api_url = _P.ask("API URL 입력").strip()
+                    api_url = _P.ask(self.s.get("proxy_api_url_input", "API URL 입력")).strip()
                 else:
                     try:
                         api_url = presets[int(choice) - 1][1]
                     except (ValueError, IndexError):
-                        self._warn("잘못된 선택.")
+                        self._warn(self.s.get("proxy_api_bad_choice", "잘못된 선택."))
                         return
-                with self.console.status(f"[cyan]🌐 {api_url[:60]}... 에서 수집 중...[/cyan]"):
+                with self.console.status(f"[cyan]🌐 {api_url[:60]}...[/cyan]"):
                     n = pm.fetch_from_api(api_url)
                 self._success(
                     self.s.get("proxy_api_fetched", "🌐 API에서 {n}개 프록시 수집됨").format(n=n)
@@ -3394,11 +3399,10 @@ class BingoTerminal:
                     )
                 )
                 if not pm.pool_status()["stem"]:
-                    self.console.print("[dim]   Tor 회로 자동 교체 비활성화 (stem 미설치)[/dim]")
-                    self.console.print("[dim]   → pip install stem  후 재실행[/dim]")
+                    self.console.print(f"[dim]{self.s.get('proxy_tor_stem_missing', '   Tor 회로 자동 교체 비활성화 (stem 미설치)\\n   → pip install stem  후 재실행')}[/dim]")
                 pm.save_config()  # v3.2.77: 세션 간 저장
             else:
-                self._warn("Tor 추가 실패.")
+                self._warn(self.s.get("proxy_tor_fail", "Tor 추가 실패."))
             return
 
         # ─ rotate ────────────────────────────────────────────────────
@@ -3433,7 +3437,7 @@ class BingoTerminal:
                     )
                 )
             with self.console.status(
-                f"[cyan]🔍 {cur} 연결 테스트 중... (최대 15초)[/cyan]"
+                f"[cyan]{self.s.get('proxy_test_checking', '🔍 {url} 연결 테스트 중... (최대 15초)').format(url=str(cur))}[/cyan]"
             ):
                 ok, detail = pm.test_proxy(cur)
             if ok:
@@ -3452,19 +3456,13 @@ class BingoTerminal:
                     ).format(url=str(cur))
                 )
                 # v3.2.74: 실패 원인 상세 출력
-                self.console.print(f"   [red]원인: {detail}[/red]")
+                self.console.print(f"   [red]{self.s.get('proxy_test_fail_reason', '   원인: {detail}').format(detail=detail)}[/red]")
                 if "PySocks" in detail or "pip install" in detail:
-                    self.console.print(
-                        "   [yellow]→ 해결: pip install 'requests[socks]'[/yellow]"
-                    )
+                    self.console.print(f"   [yellow]{self.s.get('proxy_fix_pysocks', '→ 해결: pip install requests[socks]')}[/yellow]")
                 elif "ProxyError" in detail or "SOCKS" in detail:
-                    self.console.print(
-                        "   [yellow]→ 프록시 서버에 연결할 수 없습니다. IP/포트/인증정보를 확인하세요.[/yellow]"
-                    )
+                    self.console.print(f"   [yellow]{self.s.get('proxy_fix_connection', '→ IP/포트/인증정보를 확인하세요.')}[/yellow]")
                 elif "Timeout" in detail:
-                    self.console.print(
-                        "   [yellow]→ 타임아웃. 프록시가 응답하지 않습니다. 다른 프록시를 시도하세요.[/yellow]"
-                    )
+                    self.console.print(f"   [yellow]{self.s.get('proxy_fix_timeout', '→ 타임아웃. 다른 프록시를 시도하세요.')}[/yellow]")
             return
 
         # ─ unban ─────────────────────────────────────────────────────
@@ -3496,22 +3494,20 @@ class BingoTerminal:
                 self._warn(self.s.get("proxy_pool_empty", "⚠ 사용 가능한 프록시 없음"))
                 return
             total = len(all_items)
-            _lang = getattr(self.config, "lang", "en")
-            _hdr = {
-                "ko": f"🔍 프록시 풀 전체 테스트 시작 ({total}개) — 완료까지 최대 {total * 15}초 소요...",
-                "zh": f"🔍 开始测试整个代理池 ({total}个) — 最长需 {total * 15} 秒...",
-                "en": f"🔍 Testing entire proxy pool ({total}) — may take up to {total * 15}s...",
-            }.get(_lang, f"🔍 Testing {total} proxies...")
+            s = self.s
+            _hdr = s.get("proxy_testall_header",
+                "🔍 프록시 풀 전체 테스트 시작 ({total}개) — 완료까지 최대 {secs}초 소요..."
+            ).format(total=total, secs=total * 15)
             self.console.print(f"[cyan]{_hdr}[/cyan]")
-            with self.console.status(f"[cyan]🔍 테스트 중...[/cyan]"):
+            with self.console.status(f"[cyan]{s.get('proxy_testall_testing', '🔍 테스트 중...')}[/cyan]"):
                 results = pm.test_all()
             # 결과 테이블 출력
             from rich.table import Table as _Table
             rtbl = _Table(title="🌐 Proxy Test Results", border_style="cyan", expand=False)
             rtbl.add_column("#", style="dim")
-            rtbl.add_column("프록시", style="cyan")
-            rtbl.add_column("결과", style="white")
-            rtbl.add_column("상세", style="dim")
+            rtbl.add_column(s.get("proxy_testall_col_proxy", "프록시"), style="cyan")
+            rtbl.add_column(s.get("proxy_testall_col_result", "결과"), style="white")
+            rtbl.add_column(s.get("proxy_testall_col_detail", "상세"), style="dim")
             ok_count = 0
             fail_count = 0
             for i, (proxy_str, (ok, detail)) in enumerate(results.items(), 1):
@@ -3522,23 +3518,20 @@ class BingoTerminal:
                     fail_count += 1
                     rtbl.add_row(str(i), proxy_str, "[red]❌ FAIL[/]", detail[:60])
             self.console.print(rtbl)
-            _summary = {
-                "ko": f"결과: ✅ 성공 {ok_count}개  ❌ 실패 {fail_count}개 (실패 프록시는 자동 밴됨)",
-                "zh": f"结果: ✅ 成功 {ok_count} 个  ❌ 失败 {fail_count} 个 (失败代理已自动屏蔽)",
-                "en": f"Result: ✅ OK {ok_count}  ❌ Failed {fail_count} (failed proxies auto-banned)",
-            }.get(_lang, f"OK: {ok_count}  Failed: {fail_count}")
+            _summary = s.get("proxy_testall_summary",
+                "결과: ✅ 성공 {ok}개  ❌ 실패 {fail}개 (실패 프록시는 자동 밴됨)"
+            ).format(ok=ok_count, fail=fail_count)
             self.console.print(f"[cyan]{_summary}[/cyan]")
             pm.save_config()  # 테스트 후 밴된 정보 반영해서 저장
             return
 
-        self._warn(
+        self._warn(self.s.get("proxy_usage",
             "사용법: /proxy [list|add|file|api|tor|rotate|test|testall|unban|clear|off]\n"
             "예시:   /proxy add socks5://1.2.3.4:1080\n"
             "        /proxy tor\n"
             "        /proxy api\n"
             "        /proxy file ~/proxies.txt\n"
-            "        /proxy testall"
-        )
+            "        /proxy testall"))
 
     def _show_token_usage(self) -> None:
         """루프마다 토큰 사용량 추정 + 상태바에 표시."""

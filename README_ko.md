@@ -1138,6 +1138,7 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.85 | **프록시 다국어 완성** — `/proxy list` 테이블 헤더·컬럼·상태 메시지·사용법·API 프리셋 프롬프트·Tor/stem 안내·test/testall 출력 전체 KO/ZH/EN 번역; i18n 키 35개 이상 신규 추가 (하드코딩 한국어 전량 제거) |
 | v3.2.84 | **URL 자동 소스코드 경로 질문** — 새 URL 입력 시 소스코드 경로 자동 프롬프트; 경로 전용(수천 파일 디렉토리 재귀 스캔); `/whitebox <url> <path>` 순서 무관 파싱; i18n 키 3개 추가 (`wb_ask_path`, `wb_ask_path_cmd`, `wb_path_not_found`) |
 | v3.2.83 | **하이브리드 모드 i18n 완성** — `wb_hybrid_target`, `wb_hybrid_hint` 키 추가 (KO/ZH/EN); 하드코딩 문자열 i18n 교체 |
 | v3.2.82 | **하이브리드 인텔리전스 엔진** — `/whitebox <경로>` 소스코드 분석 (SQLi/XSS/SSRF/RCE/인증우회 패턴·기술스택 탐지·엔드포인트 추출 → AI 쿼리에 자동 주입); `/agent [list\|plan\|priority]` 전담 에이전트 디스패처 (8개 취약점 유형 에이전트, 화이트박스 기반 우선순위); `/report [save\|clear]` Proof-by-exploitation 리포트 (실제 PoC 확인 취약점만 포함); 다국어 i18n 키 15개 추가 |

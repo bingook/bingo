@@ -4078,6 +4078,98 @@ _STRINGS.update({
         "zh": "🔇 [SILENT] 完成 — 发现: {total}项 (CRITICAL:{crit} HIGH:{high})",
         "en": "🔇 [SILENT] Done — Findings: {total} (CRITICAL:{crit} HIGH:{high})",
     },
+
+    # ── v3.2.97: HeaSecWebLab 역분석 스킬팩 다국어 ──────────────────────────────
+    "skill_pack_loaded": {
+        "ko": "🎯 스킬팩 로드됨: {name} (+{count}개)",
+        "zh": "🎯 技能包已加载: {name} (+{count}个)",
+        "en": "🎯 Skill pack loaded: {name} (+{count} skills)",
+    },
+    "sqli_closure_detected": {
+        "ko": "🔍 SQLi 클로저 패턴 감지: {pattern}",
+        "zh": "🔍 检测到 SQLi 闭合模式: {pattern}",
+        "en": "🔍 SQLi closure pattern detected: {pattern}",
+    },
+    "sqli_filter_bypass": {
+        "ko": "⚙️ SQLi 키워드 필터 우회 시도 중...",
+        "zh": "⚙️ 正在尝试 SQLi 关键字过滤绕过...",
+        "en": "⚙️ Attempting SQLi keyword filter bypass...",
+    },
+    "jwt_alg_confusion": {
+        "ko": "🔑 JWT 알고리즘 혼동 공격 — RS256→HS256 전환",
+        "zh": "🔑 JWT 算法混淆攻击 — RS256→HS256 切换",
+        "en": "🔑 JWT algorithm confusion attack — RS256→HS256 switch",
+    },
+    "jwt_alg_none": {
+        "ko": "🔑 JWT alg:none 공격 — 서명 검증 우회",
+        "zh": "🔑 JWT alg:none 攻击 — 绕过签名验证",
+        "en": "🔑 JWT alg:none attack — signature verification bypass",
+    },
+    "upload_bypass_start": {
+        "ko": "📤 파일 업로드 우회 시도 ({method})",
+        "zh": "📤 正在尝试文件上传绕过 ({method})",
+        "en": "📤 Attempting file upload bypass ({method})",
+    },
+    "upload_bypass_success": {
+        "ko": "✅ 파일 업로드 우회 성공 — 웹쉘 업로드 완료",
+        "zh": "✅ 文件上传绕过成功 — Webshell 上传完成",
+        "en": "✅ File upload bypass succeeded — webshell uploaded",
+    },
+    "idor_horizontal": {
+        "ko": "🔓 수평 권한상승(IDOR) — 타 사용자 리소스 접근",
+        "zh": "🔓 水平越权(IDOR) — 访问其他用户资源",
+        "en": "🔓 Horizontal privilege escalation (IDOR) — accessing other user resources",
+    },
+    "idor_vertical": {
+        "ko": "🔓 수직 권한상승(IDOR) — 관리자 기능 접근",
+        "zh": "🔓 垂直越权(IDOR) — 访问管理员功能",
+        "en": "🔓 Vertical privilege escalation (IDOR) — accessing admin functions",
+    },
+    "biz_logic_bypass": {
+        "ko": "⚠️ 비즈니스 로직 우회 감지 — {type}",
+        "zh": "⚠️ 检测到业务逻辑绕过 — {type}",
+        "en": "⚠️ Business logic bypass detected — {type}",
+    },
+    "race_condition_start": {
+        "ko": "⚡ 레이스 컨디션 공격 시작 — {threads}개 스레드 동시 전송",
+        "zh": "⚡ 竞态条件攻击开始 — 同时发送 {threads} 个线程",
+        "en": "⚡ Race condition attack started — {threads} threads concurrent",
+    },
+    "ssrf_metadata_probe": {
+        "ko": "🌐 SSRF — 클라우드 메타데이터 엔드포인트 탐색 중",
+        "zh": "🌐 SSRF — 正在探测云元数据端点",
+        "en": "🌐 SSRF — probing cloud metadata endpoints",
+    },
+    "rce_cmd_inject": {
+        "ko": "💀 RCE 명령 인젝션 확인 — 실행 결과: {output}",
+        "zh": "💀 RCE 命令注入已确认 — 执行结果: {output}",
+        "en": "💀 RCE command injection confirmed — output: {output}",
+    },
+    "lfi_to_rce_chain": {
+        "ko": "🔗 LFI→RCE 체인 시도 — {method}",
+        "zh": "🔗 LFI→RCE 链尝试 — {method}",
+        "en": "🔗 LFI→RCE chain attempt — {method}",
+    },
+    "shop_vuln_map": {
+        "ko": "🛒 종합 쇼핑몰 취약점 맵 로드 — {count}개 엔드포인트",
+        "zh": "🛒 综合商城漏洞地图已加载 — {count}个端点",
+        "en": "🛒 Comprehensive shop vuln map loaded — {count} endpoints",
+    },
+    "probability_exploit": {
+        "ko": "🎰 확률/포인트 조작 공격 — 무한 획득 시도",
+        "zh": "🎰 概率/积分操控攻击 — 尝试无限获取",
+        "en": "🎰 Probability/point manipulation attack — attempting infinite gain",
+    },
+    "request_smuggling_start": {
+        "ko": "🚢 HTTP 요청 밀수 공격 시작 — {type}",
+        "zh": "🚢 HTTP 请求走私攻击开始 — {type}",
+        "en": "🚢 HTTP request smuggling attack started — {type}",
+    },
+    "secret_key_found": {
+        "ko": "🔑 민감 키/자격증명 노출 감지 — {location}",
+        "zh": "🔑 检测到敏感密钥/凭据泄露 — {location}",
+        "en": "🔑 Sensitive key/credential exposure detected — {location}",
+    },
 })
 
 

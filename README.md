@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.96-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -47,8 +47,9 @@ cd bingo && bash install.sh
 ## Quick Start
 
 ```bash
-bingo                        # Launch
-bingo scan https://target    # Auto full scan
+bingo                                       # Launch
+bingo scan https://target                   # Auto full scan
+bingo --silent --target https://target      # Headless CI/CD mode (outputs JSON)
 bingo --version
 bingo --reset
 ```
@@ -215,7 +216,7 @@ apt install sqlmap        # → bingo uses sqlmap for advanced SQLi when needed
 | **Recon** | WAF detection, tech fingerprinting, crawl all pages/JS/API endpoints, **nmap port scan** (auto if installed) |
 | **SQLi** | Error-based → Union → Boolean blind → Time-based (all DB types) — built-in engine, no sqlmap needed |
 | **WAF Bypass** | Cloudflare / AWS WAF / ModSecurity — auto-selected bypass |
-| **XSS** | Stored / Reflected / DOM — session hijack on success |
+| **XSS** | Stored / Reflected / DOM — session hijack on success; **Playwright browser auto-verify (v3.2.96)** |
 | **SSRF** | Cloud metadata (AWS/GCP/Azure) endpoint testing |
 | **File Upload** | Extension bypass, webshell upload → AntSword connect |
 | **Auth Attack** | Login brute force, SQLi auth bypass, CAPTCHA auto-solve |
@@ -231,6 +232,9 @@ apt install sqlmap        # → bingo uses sqlmap for advanced SQLi when needed
 | **Windows EXE** | PE static analysis — imports, strings, entropy, hardcoded secrets, C2 indicators |
 | **DApp / Web3** | 28 skills — SWC audit, flash loan, oracle attack, SIWE login, wallet gen, EIP-7730 |
 | **Screenshot** | Admin panel auto-screenshot via Playwright |
+| **Findings Auto-Save** | **[v3.2.96]** Real-time vulnerability detection from code output → JSON report to Desktop |
+| **XSS Browser Verify** | **[v3.2.96]** Playwright confirms XSS execution in real browser → screenshot proof |
+| **Headless / CI Mode** | **[v3.2.96]** `--silent` flag: non-interactive auto-pentest → findings JSON + exit code 0/1 |
 | **Report** | Auto-saved markdown report with CVSS scores |
 
 ---
@@ -523,6 +527,17 @@ Type `/` in the chat to open command menu (arrow keys to navigate).
 | `/lang` | Change language (ko / zh / en) |
 | `/clear` | Clear screen |
 | `/quit` | Exit |
+
+### CLI Flags (outside the chat)
+
+| Flag | Description |
+|------|-------------|
+| `bingo scan <url>` | Full auto pipeline (5 phases, no interaction) |
+| `bingo --silent --target <url>` | **[v3.2.96]** Headless mode — auto-pentest, output JSON findings to stdout, exit 0 (no findings) or 1 (findings) |
+| `bingo --silent --target <url> --output ./out` | Save JSON findings to specified directory |
+| `bingo --version` | Print version and exit |
+| `bingo --reset` | Reset all settings (API keys, config) |
+| `bingo --update` | Update to latest version |
 
 **Tool install examples:**
 ```bash
@@ -886,6 +901,126 @@ bingo> https://app.defi-protocol.com dapp pentest
 
 ---
 
+## New in v3.2.96 — Real-time Findings Engine + XSS Browser Verify + Headless Mode
+
+### 1. Real-time Findings Auto-Detection (`FindingsExporter`)
+
+Every time bingo executes code during a pentest, the output is automatically scanned for vulnerability evidence. Confirmed findings are saved to a JSON report on your Desktop.
+
+**Detected vulnerability types:**
+
+| Type | Evidence pattern |
+|------|-----------------|
+| RCE | `uid=0(root)`, `whoami` output, `uname -a` |
+| LFI | `/etc/passwd` content, `DB_PASSWORD=`, PHP source |
+| Auth Bypass | Admin panel 200 OK, `Set-Cookie: admin=`, welcome dashboard |
+| Credential | Extracted password hashes, plaintext credentials |
+| SSRF | Cloud metadata responses (169.254.169.254, metadata.google) |
+| XSS | `alert(...)`, `<script>`, `window.__BINGO_XSS__=1` |
+| SQLi | DB name/table/column extraction results |
+
+**Report saved automatically to:**
+```
+~/Desktop/dump/<target>/findings_<target>_<timestamp>.json
+```
+
+Every 5 new findings, an interim save is triggered automatically — no data loss if the session ends unexpectedly.
+
+**JSON output format:**
+```json
+{
+  "bingo_version": "3.2.96",
+  "generated_at": "2026-06-29 20:00:00",
+  "target": "https://target.com",
+  "total": 3,
+  "critical": 2,
+  "high": 1,
+  "confirmed": 1,
+  "findings": [
+    {
+      "id": "BINGO-0001",
+      "vuln_type": "sqli",
+      "severity": "HIGH",
+      "target": "https://target.com",
+      "payload": "' OR 1=1--",
+      "evidence": "admin:5f4dcc3b5aa765d61d8327deb882cf99",
+      "timestamp": 1751198400.0,
+      "timestamp_str": "2026-06-29 20:00:00",
+      "confirmed": false,
+      "screenshot_path": "",
+      "notes": ""
+    }
+  ]
+}
+```
+
+Override output path:
+```bash
+export BINGO_REPORTS_DIR=/custom/path   # then run bingo
+```
+
+---
+
+### 2. XSS Browser Auto-Verification (Playwright)
+
+When an XSS payload URL is detected in code execution output, bingo automatically:
+
+1. Launches a headless Chromium browser (Playwright)
+2. Navigates to the XSS payload URL
+3. Checks for `alert()` execution or `window.__BINGO_XSS__ = 1` marker
+4. Takes a screenshot as PoC evidence
+5. Marks the finding as `confirmed: true` in the JSON report
+
+```
+⚡ Finding Auto-Detected → vuln_type: xss
+🌐 Auto-verifying XSS payload in browser...
+  → https://target.com/search?q=<script>alert(1)</script>
+✅ XSS Execution Confirmed in Browser [CONFIRMED]
+   Screenshot: ~/Desktop/dump/target.com/xss_BINGO-0002_1751198400.png
+```
+
+> **Requires:** `pip install playwright && playwright install chromium`
+
+---
+
+### 3. Headless / CI-CD Mode (`--silent`)
+
+Run bingo non-interactively from scripts, pipelines, or automated workflows:
+
+```bash
+# Basic: scan and output JSON to stdout
+bingo --silent --target https://target.com
+
+# With output directory
+bingo --silent --target https://target.com --output ./findings/
+
+# CI/CD usage (GitHub Actions, etc.)
+- name: Run bingo pentest
+  run: bingo --silent --target ${{ secrets.TARGET_URL }} --output ./results/
+  # exit code 0 = no findings, exit code 1 = vulnerabilities found
+```
+
+**Output to stdout:**
+```json
+{
+  "target": "https://target.com",
+  "total": 2,
+  "critical": 1,
+  "high": 1,
+  "confirmed": 1,
+  "findings": [...]
+}
+```
+
+**Exit codes:**
+| Code | Meaning |
+|------|---------|
+| `0` | No findings detected |
+| `1` | Vulnerability findings present |
+| `2` | Error during execution |
+
+---
+
 ## Cloudflare Bypass (Real IP Discovery)
 
 ```python
@@ -1186,6 +1321,10 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 | Version | Summary |
 |---------|---------|
+| v3.2.96 | **Real-time Findings Engine + XSS Playwright Verify + Headless CI Mode** — `FindingsExporter` auto-detects RCE/LFI/CRED/SSRF/XSS/SQLi from code execution output, saves findings JSON to Desktop every 5 detections and on session end; Playwright engine auto-verifies detected XSS payloads in real browser (confirms/screenshots); `--silent --target <url>` headless mode for non-interactive auto-pentest in CI/CD pipelines with JSON output and exit codes 0/1; 10 new i18n keys (KO/ZH/EN) |
+| v3.2.95 | **INFINITE_LOOP_RISK false positive fix + iteration limiter injection** — string literals and comments stripped before `TOP 1` check (eliminates false positives from SQL payloads in code); override mechanism replaced: instead of injecting `seen=set()`, injects a hard 500-iteration limiter `_bingo_ilr_guard` with indentation-aware `break` into loop body; expanded cursor-pattern recognition (OFFSET/ROW_NUMBER/NOT IN/last_hex/last_name vars) |
+| v3.2.94 | **Dead-loop detection overhaul** — separate `_ilr_consecutive` counter tracks consecutive INFINITE_LOOP_RISK blocks; after 3 consecutive blocks `_ilr_override=True` allows auto-injection and execution to break the blocking cycle; loop block and override state are reset on successful execution |
+| v3.2.93 | **i18n deduplication** — removed 21 redundant top-level duplicate keys from `strings.py`; all multilingual output verified consistent across KO/ZH/EN |
 | v3.2.92 | **i18n: extract hint_loop_paused + stream_interrupted to strings.py** — `_prompt_mid_task_hint` and `_stream_response` now use `get_strings()` instead of hardcoded dicts; `hint_loop_paused` / `stream_interrupted` keys added (KO/ZH/EN) |
 | v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + LOOP_BLOCK infinite retry + Ctrl+C hang** — (1) Expanded cursor-pattern detection (`OFFSET`, `ROW_NUMBER`, `NOT IN`, `last_` vars) so legitimate MSSQL `TOP 1` enumeration is no longer false-positively blocked; (2) Added `_loop_block_consecutive` counter — after 2 consecutive `LOOP_BLOCK` rejections the AI is forced to switch enumeration strategy, breaking the infinite cycle; (3) Added `sys.stdout/stderr` flush + newline on `Ctrl+C` in `_stream_response` and `_prompt_mid_task_hint` to restore `prompt_toolkit` responsiveness; (4) Removed duplicate i18n keys from `strings.py`; added `loop_block_escape_title/body` (KO/ZH/EN) |
 | v3.2.90 | **Hotfix: model label dict crash** — Fixed  in ; v3.2.89 changed provider labels to multilingual dicts but missed this reference; now uses  consistently |
@@ -1283,7 +1422,7 @@ MIT © 2026 bingook
 
 *The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, and target memory.*
 
-[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.96-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

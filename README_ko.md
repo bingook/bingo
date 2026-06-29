@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.96-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -48,8 +48,9 @@ cd bingo && bash install.sh
 ## 빠른 시작
 
 ```bash
-bingo                        # 실행
-bingo scan https://target    # 자동 전체 스캔
+bingo                                       # 실행
+bingo scan https://target                   # 자동 전체 스캔
+bingo --silent --target https://target      # 헤드리스 CI/CD 모드 (JSON 출력)
 bingo --version
 bingo --reset
 ```
@@ -556,6 +557,17 @@ bingo scan https://target.com
 | `/clear` | 화면 초기화 |
 | `/quit` | 종료 |
 
+### CLI 플래그 (채팅 외부)
+
+| 플래그 | 설명 |
+|--------|------|
+| `bingo scan <url>` | 자동 전체 파이프라인 (5단계, 비대화식) |
+| `bingo --silent --target <url>` | **[v3.2.96]** 헤드리스 모드 — 자동 침투 후 JSON 발견사항 stdout 출력, 종료 코드 0(없음)/1(발견) |
+| `bingo --silent --target <url> --output ./out` | JSON 발견사항을 지정 디렉토리에 저장 |
+| `bingo --version` | 버전 출력 후 종료 |
+| `bingo --reset` | 전체 설정 초기화 (API 키, 설정) |
+| `bingo --update` | 최신 버전으로 업데이트 |
+
 ---
 
 ## 모바일 — APK / IPA 분석 (v2.2.8)
@@ -808,6 +820,124 @@ bingo> https://app.defi-protocol.com dapp 침투 테스트
 # 7. 프론트엔드 JS 인젝션 / 주소 스와핑 테스트
 # 8. 심각도 등급이 포함된 전체 침투 보고서 생성
 ```
+
+---
+
+## v3.2.96 신기능 — 실시간 발견 엔진 + XSS 브라우저 검증 + 헤드리스 모드
+
+### 1. 실시간 취약점 자동 감지 (`FindingsExporter`)
+
+bingo가 침투 테스트 중 코드를 실행할 때마다, 출력 결과에서 취약점 증거를 자동으로 탐지합니다. 확인된 발견사항은 바탕화면의 JSON 리포트에 저장됩니다.
+
+**감지 취약점 유형:**
+
+| 유형 | 증거 패턴 |
+|------|-----------|
+| RCE | `uid=0(root)`, `whoami` 출력, `uname -a` |
+| LFI | `/etc/passwd` 내용, `DB_PASSWORD=`, PHP 소스 |
+| 인증 우회 | 관리자 패널 200 OK, `Set-Cookie: admin=`, 대시보드 접근 |
+| 자격증명 | 비밀번호 해시 추출, 평문 자격증명 |
+| SSRF | 클라우드 메타데이터 응답 (169.254.169.254, metadata.google) |
+| XSS | `alert(...)`, `<script>`, `window.__BINGO_XSS__=1` |
+| SQLi | DB명/테이블/컬럼 추출 결과 |
+
+**자동 저장 경로:**
+```
+~/Desktop/dump/<타겟>/findings_<타겟>_<타임스탬프>.json
+```
+
+5건 누적 시마다 중간 자동 저장 — 세션이 갑자기 종료되어도 데이터 손실 없음.
+
+**JSON 출력 형식:**
+```json
+{
+  "bingo_version": "3.2.96",
+  "generated_at": "2026-06-29 20:00:00",
+  "target": "https://target.com",
+  "total": 3,
+  "critical": 2,
+  "high": 1,
+  "confirmed": 1,
+  "findings": [
+    {
+      "id": "BINGO-0001",
+      "vuln_type": "sqli",
+      "severity": "HIGH",
+      "target": "https://target.com",
+      "payload": "' OR 1=1--",
+      "evidence": "admin:5f4dcc3b5aa765d61d8327deb882cf99",
+      "timestamp_str": "2026-06-29 20:00:00",
+      "confirmed": false,
+      "screenshot_path": ""
+    }
+  ]
+}
+```
+
+저장 경로 변경:
+```bash
+export BINGO_REPORTS_DIR=/원하는/경로   # 그 후 bingo 실행
+```
+
+---
+
+### 2. XSS 브라우저 자동 검증 (Playwright)
+
+코드 실행 출력에서 XSS 페이로드 URL이 감지되면, bingo가 자동으로:
+
+1. 헤드리스 Chromium 브라우저 실행 (Playwright)
+2. XSS 페이로드 URL로 이동
+3. `alert()` 실행 또는 `window.__BINGO_XSS__ = 1` 마커 확인
+4. 증거 스크린샷 촬영
+5. JSON 리포트에 `confirmed: true` 표시
+
+```
+⚡ 취약점 발견 자동 감지됨 → vuln_type: xss
+🌐 XSS payload 브라우저 자동 검증 중...
+  → https://target.com/search?q=<script>alert(1)</script>
+✅ XSS 브라우저 실행 확인됨 [CONFIRMED]
+   스크린샷: ~/Desktop/dump/target.com/xss_BINGO-0002_1751198400.png
+```
+
+> **필요사항:** `pip install playwright && playwright install chromium`
+
+---
+
+### 3. 헤드리스 / CI-CD 모드 (`--silent`)
+
+스크립트, 파이프라인, 자동화 워크플로우에서 비대화식으로 bingo 실행:
+
+```bash
+# 기본: 스캔 후 JSON을 stdout으로 출력
+bingo --silent --target https://target.com
+
+# 출력 디렉토리 지정
+bingo --silent --target https://target.com --output ./findings/
+
+# GitHub Actions에서 활용
+- name: bingo 침투 테스트
+  run: bingo --silent --target ${{ secrets.TARGET_URL }} --output ./results/
+  # 종료 코드 0 = 발견 없음, 1 = 취약점 발견
+```
+
+**stdout 출력:**
+```json
+{
+  "target": "https://target.com",
+  "total": 2,
+  "critical": 1,
+  "high": 1,
+  "confirmed": 1,
+  "findings": [...]
+}
+```
+
+**종료 코드:**
+| 코드 | 의미 |
+|------|------|
+| `0` | 발견된 취약점 없음 |
+| `1` | 취약점 발견됨 |
+| `2` | 실행 중 오류 발생 |
 
 ---
 
@@ -1138,6 +1268,10 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.96 | **실시간 발견 엔진 + XSS Playwright 검증 + 헤드리스 CI 모드** — `FindingsExporter` 코드 실행 출력에서 RCE/LFI/자격증명/SSRF/XSS/SQLi 자동 감지, 5건마다 + 세션 종료 시 JSON 저장; Playwright 엔진이 감지된 XSS 페이로드를 실제 브라우저에서 자동 검증 (확인/스크린샷); `--silent --target <url>` 헤드리스 모드 — CI/CD 파이프라인에서 비대화식 자동 침투 후 JSON 출력 + 종료 코드 0/1; 10개 신규 i18n 키 (KO/ZH/EN) |
+| v3.2.95 | **INFINITE_LOOP_RISK 오탐 수정 + 반복 제한기 주입** — `TOP 1` 검사 전 문자열 리터럴·주석 제거 (코드 내 SQL 페이로드 오탐 제거); 오버라이드 시 `seen=set()` 대신 500회 하드 제한기 `_bingo_ilr_guard` + 들여쓰기 인식 `break` 주입; 커서 패턴 인식 확장 (OFFSET/ROW_NUMBER/NOT IN/last_hex/last_name 변수) |
+| v3.2.94 | **데드루프 감지 전면 개편** — 별도 `_ilr_consecutive` 카운터로 연속 INFINITE_LOOP_RISK 추적; 3회 연속 차단 후 `_ilr_override=True` → 자동 주입 후 실행 허용, 차단 사이클 탈출; 실행 성공 시 카운터/플래그 리셋 |
+| v3.2.93 | **i18n 중복 키 제거** — `strings.py`에서 중복 최상위 키 21개 제거; KO/ZH/EN 전체 다국어 출력 일관성 검증 완료 |
 | v3.2.92 | **i18n: hint_loop_paused + stream_interrupted 다국어 키 추출** — `_prompt_mid_task_hint`, `_stream_response` 내 하드코딩 메시지를 `get_strings()` 키로 교체; `hint_loop_paused` / `stream_interrupted` (KO/ZH/EN) 추가 |
 | v3.2.91 | **수정: INFINITE_LOOP_RISK 과탐 + LOOP_BLOCK 무한 재시도 + Ctrl+C 무반응** — (1) 커서 패턴 탐지 확장(`OFFSET`, `ROW_NUMBER`, `NOT IN`, `last_` 변수) → 정상적인 MSSQL `TOP 1` 열거 코드 오탐 차단 해결; (2) `_loop_block_consecutive` 카운터 추가 — 동일 패턴 2회 이상 연속 차단 시 AI가 다른 열거 전략으로 강제 전환, 무한 사이클 탈출; (3) `Ctrl+C` 발생 시 `_stream_response` 및 `_prompt_mid_task_hint`에 `sys.stdout/stderr` 플러시 + 개행 추가 → `prompt_toolkit` 응답성 복구; (4) `strings.py` 중복 i18n 키 제거; `loop_block_escape_title/body` (KO/ZH/EN) 신규 추가 |
 | v3.2.90 | **핫픽스: 모델 레이블 dict 크래시** — 에서  수정; v3.2.89에서 label을 dict로 변환했으나 해당 참조를 누락;  일관 적용 |
@@ -1187,7 +1321,7 @@ MIT © 2026 bingook
 
 *내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 타겟 메모리 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.2.76-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.96-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

@@ -79,16 +79,6 @@ _STRINGS = {
         "zh": "再见！感谢使用 Bingo。",
         "en": "Goodbye! Thanks for using Bingo.",
     },
-    "error": {
-        "ko": "오류",
-        "zh": "错误",
-        "en": "Error",
-    },
-    "api_error": {
-        "ko": "API 오류가 발생했습니다",
-        "zh": "API 调用失败",
-        "en": "API call failed",
-    },
     # ── 명령어 ────────────────────────────────────────────────────
     "help_text": {
         "ko": """/login <url> <id> <pw>   🔑 실제 로그인 실행 + 세션 쿠키 자동 저장
@@ -215,8 +205,6 @@ _STRINGS = {
     "waf_auto_scan":        {"ko": "🛡 WAF 자동 스캔",          "zh": "🛡 WAF 自动扫描",         "en": "🛡 WAF auto scan"},
     "waf_running":          {"ko": "wafw00f 실행 중...",         "zh": "wafw00f 执行中...",        "en": "Running wafw00f..."},
     "waf_internal":         {"ko": "내부 WAF 탐지 중...",        "zh": "内部 WAF 检测中...",       "en": "Running internal WAF detector..."},
-    "waf_detected":         {"ko": "🔥 WAF 탐지",               "zh": "🔥 检测到 WAF",            "en": "🔥 WAF detected"},
-    "waf_none":             {"ko": "✓ WAF 없음 — 직접 공격 가능","zh": "✓ 无 WAF — 可直接攻击",    "en": "✓ No WAF — direct attack possible"},
     "waf_fingerprint":      {"ko": "핑거프린트...",              "zh": "指纹识别中...",            "en": "Fingerprinting..."},
     "waf_bypass_ok":        {"ko": "✓ 우회 성공",               "zh": "✓ 绕过成功",              "en": "✓ Bypass successful"},
     "waf_bypass_fail":      {"ko": "우회 실패 — /waf 결과를 AI에게 물어보세요",
@@ -442,7 +430,6 @@ _STRINGS = {
                             "zh": "💡 使用 /skill <关键词> 搜索特定参考资料",
                             "en": "💡 Use /skill <keyword> to search specific references"},
     "skill_db_label":      {"ko": "내장 DB 스킬",    "zh": "内置数据库技能",   "en": "Built-in DB skills"},
-    "skill_col_pack":      {"ko": "스킬 팩",         "zh": "技能包",          "en": "Skill Pack"},
     "skill_col_refs":      {"ko": "레퍼런스 수",     "zh": "参考数量",        "en": "Refs"},
     "skill_col_main":      {"ko": "주요 레퍼런스",   "zh": "主要参考",        "en": "Main References"},
 
@@ -470,16 +457,7 @@ _STRINGS = {
     "skill_applying":      {"ko": "스킬 지식 적용 중...", "zh": "正在应用技能知识...", "en": "Applying skill knowledge..."},
 
     # ── DApp / Web3 / 스마트컨트랙트 ─────────────────────────────────
-    "web3_skill_injected":    {"ko": "🔗 Web3/DApp 스킬 자동 로드됨",
-                               "zh": "🔗 Web3/DApp技能已自动加载",
-                               "en": "🔗 Web3/DApp skills auto-loaded"},
     "web3_skill_injected_ko": {"ko": "🔗 Web3/DApp 스킬 자동 로드됨",
-                               "zh": "🔗 Web3/DApp技能已自动加载",
-                               "en": "🔗 Web3/DApp skills auto-loaded"},
-    "web3_skill_injected_zh": {"ko": "🔗 Web3/DApp 스킬 자동 로드됨",
-                               "zh": "🔗 Web3/DApp技能已自动加载",
-                               "en": "🔗 Web3/DApp skills auto-loaded"},
-    "web3_skill_injected_en": {"ko": "🔗 Web3/DApp 스킬 자동 로드됨",
                                "zh": "🔗 Web3/DApp技能已自动加载",
                                "en": "🔗 Web3/DApp skills auto-loaded"},
     "web3_scan_start":        {"ko": "DApp/Web3 스캔 시작",
@@ -503,9 +481,6 @@ _STRINGS = {
     "web3_flash_loan":        {"ko": "플래시론 공격 벡터",
                                "zh": "闪电贷攻击向量",
                                "en": "Flash loan attack vector"},
-    "web3_audit_complete":    {"ko": "스마트 컨트랙트 감사 완료",
-                               "zh": "智能合约审计完成",
-                               "en": "Smart contract audit complete"},
     "web3_blind_signing":     {"ko": "블라인드 서명 취약점 감지",
                                "zh": "检测到盲签名漏洞",
                                "en": "Blind signing vulnerability detected"},
@@ -628,7 +603,6 @@ _STRINGS = {
     },
 
     # ── 멀티 에이전트 / Recon ─────────────────────────────────────
-    "recon_start":         {"ko": "정찰 시작",           "zh": "开始侦察",         "en": "Recon started"},
     "port_open":           {"ko": "열린 포트",           "zh": "开放端口",         "en": "Open port"},
     "tech_found":          {"ko": "기술스택 식별",       "zh": "技术栈识别",       "en": "Tech stack identified"},
     "subdomain_found":     {"ko": "서브도메인 발견",     "zh": "发现子域名",       "en": "Subdomain found"},
@@ -636,7 +610,6 @@ _STRINGS = {
 
     # ── 보고서 ───────────────────────────────────────────────────
     "report_generating":   {"ko": "보고서 생성 중",      "zh": "正在生成报告",     "en": "Generating report"},
-    "report_saved":        {"ko": "보고서 저장됨",       "zh": "报告已保存",       "en": "Report saved"},
     "severity_critical":   {"ko": "위험 (Critical)",     "zh": "严重 (Critical)",  "en": "Critical"},
     "severity_high":       {"ko": "높음 (High)",         "zh": "高危 (High)",      "en": "High"},
     "severity_medium":     {"ko": "중간 (Medium)",       "zh": "中危 (Medium)",    "en": "Medium"},
@@ -725,12 +698,6 @@ _STRINGS.update({
     "url_404_fallback":     {"ko": "⚠ {url} → 404. 루트 사이트로 분석 전환: {root}",
                              "zh": "⚠ {url} → 404。切换到根站点分析: {root}",
                              "en": "⚠ {url} → 404. Switching to root site analysis: {root}"},
-    "skill_already_builtin":{"ko": "'{name}' 스킬이 이미 내장되어 있습니다. AI가 자동 사용합니다.",
-                             "zh": "技能 '{name}' 已内置，AI 将自动使用。",
-                             "en": "Skill '{name}' is already built-in. AI will use it automatically."},
-    "skill_not_found_tip":  {"ko": "스킬 '{name}'을 찾을 수 없습니다. /skill <키워드> 로 검색해보세요.",
-                             "zh": "未找到技能 '{name}'。请用 /skill <关键词> 搜索。",
-                             "en": "Skill '{name}' not found. Try /skill <keyword> to search."},
     "hackskills_match":     {"ko": "hack-skills 매칭 ({n}개) — AI가 자동 로드:",
                              "zh": "hack-skills 匹配 ({n} 个) — AI 将自动加载:",
                              "en": "hack-skills match ({n}) — AI will auto-load:"},
@@ -1081,9 +1048,6 @@ _STRINGS.update({
                               "en": "💡 Ivanti Sentry not detected — CVE-2026-10520 scan skipped"},
 
     # ── OAuth Chain Attack (Pattern A + B) ───────────────────────────────────
-    "oauth_scan_start":         {"ko": "🤖 AI 판단: OAuth 엔드포인트 감지 → OAuth 체인 취약점 스캔 자동 활성화",
-                                  "zh": "🤖 AI 判断: 检测到 OAuth 端点 → 自动启动 OAuth 链式漏洞扫描",
-                                  "en": "🤖 AI decision: OAuth endpoints detected → OAuth chain vulnerability scan activated"},
     "oauth_metadata":            {"ko": "📋 OAuth 서버 메타데이터 노출: {url}",
                                   "zh": "📋 OAuth 服务器元数据已暴露: {url}",
                                   "en": "📋 OAuth server metadata exposed: {url}"},
@@ -1108,9 +1072,6 @@ _STRINGS.update({
     "oauth_chain_a_score":       {"ko": "🔗 패턴 A (등록체인) 스코어: {score}/5 | 패턴 B (이메일신뢰) 스코어: {bscore}/3",
                                   "zh": "🔗 模式 A（注册链）评分: {score}/5 | 模式 B（邮箱信任）评分: {bscore}/3",
                                   "en": "🔗 Pattern A (Registration Chain) score: {score}/5 | Pattern B (Email Trust) score: {bscore}/3"},
-    "oauth_summary":             {"ko": "🔑 OAuth 스캔 결과: {n}개 발견 | 체인A:{a}/5 체인B:{b}/3 | 심각도: {sev}",
-                                  "zh": "🔑 OAuth 扫描结果: {n} 项发现 | 链A:{a}/5 链B:{b}/3 | 严重性: {sev}",
-                                  "en": "🔑 OAuth scan: {n} findings | ChainA:{a}/5 ChainB:{b}/3 | severity: {sev}"},
     "oauth_no_finding":          {"ko": "✓ OAuth: 취약점 없음 (메타데이터 미노출 또는 모두 패치됨)",
                                   "zh": "✓ OAuth: 无漏洞 (元数据未暴露或全部已修补)",
                                   "en": "✓ OAuth: no vulnerabilities found (metadata not exposed or all patched)"},
@@ -1829,6 +1790,18 @@ _STRINGS.update({
                                         "Rewrite code with one of these strategies NOW."
                                     )},
 
+    # ── v3.2.91: Ctrl+C 힌트 프롬프트 / Stream Interrupted Messages ─────────
+    "hint_loop_paused":         {"ko": ("⚡ [bold]루프 일시정지[/bold] — 힌트를 입력하면 중단 없이 계속 진행\n"
+                                        "   (그냥 Enter 또는 Ctrl+C 한 번 더 → 완전 중단)"),
+                                  "zh": ("⚡ [bold]循环暂停[/bold] — 输入提示则继续执行\n"
+                                         "   (直接回车或再按Ctrl+C → 完全停止)"),
+                                  "en": ("⚡ [bold]Loop paused[/bold] — type a hint to keep going\n"
+                                         "   (press Enter or Ctrl+C again → stop completely)")},
+
+    "stream_interrupted":       {"ko": "⏸ 스트리밍 중단됨 — 힌트를 입력하거나 Enter로 루프를 멈춥니다",
+                                  "zh": "⏸ 流式传输已中断 — 输入提示或按 Enter 停止循环",
+                                  "en": "⏸ Streaming interrupted — type a hint or press Enter to stop the loop"},
+
     # ── Rule 17: 기법 소진 후 피벗 알림 ────────────────────────────────────
     "technique_exhausted":      {"ko": "🔄  [{param}] {technique} 3회 연속 실패 → 기법 소진, 다음으로 전환",
                                   "zh": "🔄  [{param}] {technique} 连续失败3次 → 技术耗尽, 切换下一个",
@@ -1937,9 +1910,6 @@ _STRINGS.update({
     "js_analyze_done":           {"ko": "✅ JS 분석 완료 | 엔드포인트 {ep}개 | 시크릿 {sec}개 | 관리자 경로 {adm}개",
                                    "zh": "✅ JS分析完成 | 接口 {ep}个 | 密钥 {sec}个 | 管理路径 {adm}个",
                                    "en": "✅ JS analysis done | Endpoints: {ep} | Secrets: {sec} | Admin paths: {adm}"},
-    "js_secret_found":           {"ko": "🚨 하드코딩 시크릿 발견: {type} = {value}",
-                                   "zh": "🚨 发现硬编码密钥: {type} = {value}",
-                                   "en": "🚨 Hardcoded secret found: {type} = {value}"},
     "idor_scan_start":           {"ko": "🔁 IDOR 자동 스캔 시작 — 엔드포인트 {count}개",
                                    "zh": "🔁 开始IDOR自动扫描 — {count}个接口",
                                    "en": "🔁 Starting IDOR auto-scan — {count} endpoints"},
@@ -1967,9 +1937,6 @@ _STRINGS.update({
     "upload_bypass_found":       {"ko": "📁 파일 업로드 우회 성공: {filename} ({mime}) → {url}",
                                    "zh": "📁 文件上传绕过成功: {filename} ({mime}) → {url}",
                                    "en": "📁 Upload bypass success: {filename} ({mime}) → {url}"},
-    "upload_rce_confirmed":      {"ko": "🚨 업로드 RCE 확인! 웹쉘: {url}?cmd=id",
-                                   "zh": "🚨 上传RCE已确认! WebShell: {url}?cmd=id",
-                                   "en": "🚨 Upload RCE confirmed! Webshell: {url}?cmd=id"},
     "cms_detected":              {"ko": "🏷️ CMS 감지: {cms_type} (신뢰도: {conf})",
                                    "zh": "🏷️ 检测到CMS: {cms_type} (置信度: {conf})",
                                    "en": "🏷️ CMS detected: {cms_type} (confidence: {conf})"},
@@ -2034,9 +2001,6 @@ _STRINGS.update({
                                    "en": "⚡ Race condition found: {endpoint} | Status variation: {statuses}"},
 
     # ── v2.6.0 TIER2 신규 엔진 ────────────────────────────────────────────────
-    "graphql_introspection":     {"ko": "📊 GraphQL 인트로스펙션 노출: {endpoint} | {type_count}개 타입 | 민감 필드: {sensitive}",
-                                   "zh": "📊 GraphQL内省已暴露: {endpoint} | {type_count}个类型 | 敏感字段: {sensitive}",
-                                   "en": "📊 GraphQL introspection exposed: {endpoint} | {type_count} types | Sensitive: {sensitive}"},
     "graphql_batch_dos":         {"ko": "⚠️ GraphQL 배칭 DoS 가능: {count}개 쿼리 → {time}s",
                                    "zh": "⚠️ GraphQL批量DoS可行: {count}个查询 → {time}s",
                                    "en": "⚠️ GraphQL batch DoS possible: {count} queries → {time}s"},
@@ -2072,9 +2036,6 @@ _STRINGS.update({
     "bizlogic_negative":         {"ko": "💸 비즈니스 로직: 음수 금액 허용 ({amount}) → 환급 공격 가능",
                                    "zh": "💸 业务逻辑: 允许负金额({amount}) → 可发起退款攻击",
                                    "en": "💸 BizLogic: Negative amount accepted ({amount}) → refund attack possible"},
-    "bizlogic_workflow_skip":    {"ko": "⏭️ 워크플로우 스킵: {url} — 결제 없이 주문 완료 가능",
-                                   "zh": "⏭️ 工作流跳过: {url} — 无需支付即可完成订单",
-                                   "en": "⏭️ Workflow skip: {url} — order completion without payment"},
     "dom_xss_found":             {"ko": "🌐 DOM XSS Source/Sink 발견: {source} → {sink} @ {file}:{line}",
                                    "zh": "🌐 发现DOM XSS Source/Sink: {source} → {sink} @ {file}:{line}",
                                    "en": "🌐 DOM XSS source/sink: {source} → {sink} @ {file}:{line}"},
@@ -2330,9 +2291,6 @@ _STRINGS.update({
     "js_scan_start":             {"ko": "🔎 JS 비밀 탐지 스캔 시작: {url}",
                                    "zh": "🔎 开始JS秘密检测扫描: {url}",
                                    "en": "🔎 Starting JS secret scan: {url}"},
-    "js_secret_found":           {"ko": "🔑 JS에서 비밀 탐지! [{kind}] {value}",
-                                   "zh": "🔑 在JS中发现秘密! [{kind}] {value}",
-                                   "en": "🔑 Secret in JS! [{kind}] {value}"},
     "js_endpoint_found":         {"ko": "🌐 숨겨진 API 발견: {endpoint}",
                                    "zh": "🌐 发现隐藏API: {endpoint}",
                                    "en": "🌐 Hidden API endpoint: {endpoint}"},
@@ -2415,9 +2373,6 @@ _STRINGS.update({
     "session_expired":           {"ko": "⚠️ 세션 만료 감지 → 자동 재로그인 시도",
                                    "zh": "⚠️ 检测到会话过期 → 自动重新登录",
                                    "en": "⚠️ Session expired → auto re-login"},
-    "playwright_screenshot":     {"ko": "📸 스크린샷 촬영: {url} | 제목: {title}",
-                                   "zh": "📸 截图: {url} | 标题: {title}",
-                                   "en": "📸 Screenshot: {url} | Title: {title}"},
     "playwright_no_install":     {"ko": "⚠️ Playwright 미설치 → requests fallback 사용",
                                    "zh": "⚠️ Playwright未安装 → 使用requests回退",
                                    "en": "⚠️ Playwright not installed → requests fallback"},
@@ -2954,9 +2909,6 @@ _STRINGS.update({
     "proxy_auto_rotate":         {"ko": "🔄 IP 밴 감지 → 프록시 자동 교체: {url}",
                                    "zh": "🔄 检测到IP封禁 → 自动切换代理: {url}",
                                    "en": "🔄 IP ban detected → auto-rotated proxy: {url}"},
-    "proxy_pool_exhausted":      {"ko": "⚠ 사용 가능한 프록시 소진 — /proxy api 로 새로 수집하거나 /proxy unban 으로 해제",
-                                   "zh": "⚠ 代理池已耗尽 — 使用 /proxy api 补充或 /proxy unban 解封",
-                                   "en": "⚠ Proxy pool exhausted — /proxy api to fetch more or /proxy unban to reset"},
     "proxy_tip_no_proxy":        {"ko": "💡 팁: /proxy add <url> 또는 /proxy tor 로 IP 밴 자동 우회 가능",
                                    "zh": "💡 提示: 使用 /proxy add <url> 或 /proxy tor 自动绕过IP封禁",
                                    "en": "💡 Tip: /proxy add <url> or /proxy tor to auto-rotate past IP bans"},

@@ -4608,12 +4608,15 @@ class BingoTerminal:
 
             # ── 0-A. 무한루프: for/range + TOP 1 + seen=set() 없음 ─────────
             # v3.2.91: 탐지 조건 완화 — 과탐으로 정상 MSSQL 열거 코드 차단 문제 수정
-            # 고객 피드백: for/range TOP1 열거 코드가 계속 차단되어 무한 사이클 발생
+            # v3.2.95: 문자열/주석 내 TOP 1 제외 (Oracle boolean 오탐 수정)
+            #          커서 패턴 확장 (Oracle ROWNUM, FETCH FIRST, LIMIT)
+            #          Override: seen=set() → iteration limiter (500회 break)
             _has_range_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed))
             _has_query = bool(_pre_re.search(
                 r'(requests\.(get|post)|urllib|query|extract|inject|sqli)', fixed, _pre_re.IGNORECASE))
             _has_seen = bool(_pre_re.search(r'\bseen\s*=\s*set\s*\(', fixed))
-            # 커서 패턴 확장: name >, OFFSET, NOT IN, last_/prev_/cursor_ 변수, ROW_NUMBER
+
+            # ── 커서 패턴 확장 (v3.2.95: Oracle ROWNUM / FETCH FIRST / LIMIT 추가) ──
             _has_cursor_pattern = bool(
                 _pre_re.search(
                     r'(name|col|table|item|val)\s*>\s*(last|cursor|prev|0x)',
@@ -4624,23 +4627,78 @@ class BingoTerminal:
                 _pre_re.search(r'\bROW_NUMBER\s*\(', fixed, _pre_re.IGNORECASE) or
                 _pre_re.search(r'\bNOT\s+IN\s*\(', fixed, _pre_re.IGNORECASE) or
                 _pre_re.search(r'\blast\w*\s*=\s*result', fixed, _pre_re.IGNORECASE) or
-                _pre_re.search(r'#.*TOP\s+1', fixed, _pre_re.IGNORECASE)  # 주석 안 TOP 1
+                _pre_re.search(r'#.*TOP\s+1', fixed, _pre_re.IGNORECASE) or
+                # v3.2.95: Oracle 커서 패턴
+                _pre_re.search(r'\bROWNUM\b', fixed, _pre_re.IGNORECASE) or
+                _pre_re.search(r'\bFETCH\s+FIRST\b', fixed, _pre_re.IGNORECASE) or
+                _pre_re.search(r'\bFETCH\s+NEXT\b', fixed, _pre_re.IGNORECASE) or
+                _pre_re.search(r'\bLIMIT\s+\d+', fixed, _pre_re.IGNORECASE) or
+                _pre_re.search(r'\bbit_pos\b|\bbit_idx\b|\bchar_idx\b|\bchar_pos\b', fixed)  # 비트추출 루프
             )
+
+            # ── v3.2.95: 문자열/주석 제거 후 TOP 1 탐지 (False Positive 제거) ──
+            # Oracle boolean blind 코드: payload 문자열 안에만 TOP 1 있을 수 있음
+            # e.g. payload = f"... AND (SELECT TOP 1 ..." → 실제 루프는 비트 추출
+            _code_no_str = fixed
+            # 1. 트리플 따옴표 제거
+            _code_no_str = _pre_re.sub(r'"""[\s\S]*?"""', '""', _code_no_str)
+            _code_no_str = _pre_re.sub(r"'''[\s\S]*?'''", "''", _code_no_str)
+            # 2. 단일 라인 f-string / string 제거 (중첩 따옴표 단순 처리)
+            _code_no_str = _pre_re.sub(r'f?"[^"\n\\]*(?:\\.[^"\n\\]*)*"', '""', _code_no_str)
+            _code_no_str = _pre_re.sub(r"f?'[^'\n\\]*(?:\\.[^'\n\\]*)*'", "''", _code_no_str)
+            # 3. 줄 주석 제거
+            _code_no_str = _pre_re.sub(r'#[^\n]*', '', _code_no_str)
             _has_top1_no_cursor = bool(
-                _pre_re.search(r'\bTOP\s+1\b', fixed, _pre_re.IGNORECASE) and
+                _pre_re.search(r'\bTOP\s+1\b', _code_no_str, _pre_re.IGNORECASE) and
                 not _has_cursor_pattern
             )
+
             if _has_range_loop and _has_query and _has_top1_no_cursor and not _has_seen:
-                # v3.2.94: ILR override mode — 3회 연속 차단 후 seen=set() 자동 주입 후 실행
+                # v3.2.94/95: ILR override mode — 3회 연속 차단 후 iteration limiter 주입 후 실행
                 if self._ilr_override:
                     self._ilr_override = False  # 1회 사용 후 해제
-                    # for 루프 바로 앞에 seen = set() 자동 주입
-                    fixed = _pre_re.sub(
-                        r'(\bfor\b\s+\w+\s+in\s+range\s*\()',
-                        r'seen = set()  # [bingo-ilr-override] auto-injected\n    \g<1>',
-                        fixed, count=1
-                    )
-                    _applied_fix_names.append("ilr_override_seen_injected")
+                    # ── v3.2.95: seen=set() 대신 실제 iteration limiter 주입 ──
+                    # for 루프 앞에 가드 카운터 초기화, 루프 본문 첫 줄에 카운터+break 주입
+                    _ilr_lines = fixed.splitlines(keepends=True)
+                    _ilr_new = []
+                    _ilr_injected = False
+                    _ilr_li = 0
+                    while _ilr_li < len(_ilr_lines):
+                        _ilr_lv = _ilr_lines[_ilr_li]
+                        _ilr_m = _pre_re.match(r'^(\s*)for\s+\w+\s+in\s+range\s*\(', _ilr_lv)
+                        if _ilr_m and not _ilr_injected:
+                            _ilr_ind = _ilr_m.group(1)
+                            # 가드 초기화를 for 앞에 삽입
+                            _ilr_new.append(
+                                f"{_ilr_ind}_bingo_ilr_guard = [0]  "
+                                f"# [bingo-ilr-override] iteration limiter\n"
+                            )
+                            _ilr_new.append(_ilr_lv)
+                            _ilr_li += 1
+                            # 빈 줄 건너뜀
+                            while _ilr_li < len(_ilr_lines) and not _ilr_lines[_ilr_li].strip():
+                                _ilr_new.append(_ilr_lines[_ilr_li])
+                                _ilr_li += 1
+                            # 루프 본문 첫 줄의 들여쓰기 파악 후 가드 체크 주입
+                            if _ilr_li < len(_ilr_lines):
+                                _body_ind = ' ' * (
+                                    len(_ilr_lines[_ilr_li]) - len(_ilr_lines[_ilr_li].lstrip())
+                                )
+                                _ilr_new.append(
+                                    f"{_body_ind}_bingo_ilr_guard[0] += 1\n"
+                                )
+                                _ilr_new.append(
+                                    f"{_body_ind}if _bingo_ilr_guard[0] > 500: "
+                                    f"break  # [bingo-ilr-override] stop at 500\n"
+                                )
+                                # _ilr_li는 전진하지 않음 — 본문 첫 줄은 다음 반복에서 추가
+                            _ilr_injected = True
+                        else:
+                            _ilr_new.append(_ilr_lv)
+                            _ilr_li += 1
+                    if _ilr_injected:
+                        fixed = ''.join(_ilr_new)
+                    _applied_fix_names.append("ilr_override_guard_injected")
                     # fall-through: 나머지 검사 계속 진행 후 수정된 코드 반환
                 else:
                     return ("__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever", [])

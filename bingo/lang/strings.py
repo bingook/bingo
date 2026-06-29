@@ -1800,23 +1800,34 @@ _STRINGS.update({
                                   "zh": "⏭️  无登录表单 ({size}B) — 跳过: {url}",
                                   "en": "⏭️  No login form ({size}B) — skipping: {url}"},
 
-    # ── 무한루프 차단 피드백 ────────────────────────────────────────────────
-    "loop_block_feedback_title": {"ko": "⛔ 코드 블록 거부됨 — 무한루프 패턴 감지",
-                                   "zh": "⛔ 代码块已拒绝 — 检测到无限循环模式",
-                                   "en": "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED"},
+    # ── 스크립트 강제 종료 피드백 (중복 제거됨 v3.2.91 — 원본은 ~1705) ───────
 
-    "loop_block_mandatory_rewrite": {"ko": "필수 재작성 — 커서 페이지네이션 패턴 사용:",
-                                      "zh": "必须重写 — 使用游标分页模式:",
-                                      "en": "MANDATORY REWRITE — Use cursor pagination:"},
+    # ── v3.2.91: LOOP_BLOCK 연속 차단 강제 탈출 안내 ─────────────────────
+    "loop_block_escape_title":     {"ko": "⚠ LOOP_BLOCK 연속 {n}회 — 패턴 전환 필요",
+                                    "zh": "⚠ 连续 {n} 次LOOP_BLOCK — 需要切换模式",
+                                    "en": "⚠ LOOP_BLOCK fired {n} consecutive times — pattern switch required"},
 
-    # ── 스크립트 강제 종료 피드백 ────────────────────────────────────────────
-    "script_killed_mandatory_fix": {"ko": "필수 수정 — 열거 루프에 중복 제거 로직이 없음",
-                                     "zh": "必须修复 — 枚举循环没有去重逻辑",
-                                     "en": "MANDATORY FIX — Your enumeration loop has NO deduplication."},
-
-    "script_killed_cursor_must":   {"ko": "커서 페이지네이션 패턴으로 반드시 재작성하십시오:",
-                                     "zh": "必须用游标分页模式重写:",
-                                     "en": "You MUST rewrite with cursor pagination pattern:"},
+    "loop_block_escape_body":      {"ko": (
+                                        "같은 루프 패턴이 계속 차단되고 있습니다. 다른 열거 전략을 시도하세요:\n"
+                                        "  1) seen=set() + while True + 커서 기반 (name > last_hex)\n"
+                                        "  2) OFFSET N 기반 페이지네이션\n"
+                                        "  3) NOT IN (already_found) 서브쿼리\n"
+                                        "지금 바로 위 전략 중 하나로 코드를 재작성하세요."
+                                    ),
+                                    "zh": (
+                                        "相同的循环模式持续被拦截，请尝试其他枚举策略：\n"
+                                        "  1) seen=set() + while True + 游标 (name > last_hex)\n"
+                                        "  2) 基于 OFFSET N 的分页\n"
+                                        "  3) NOT IN (already_found) 子查询\n"
+                                        "请立即用以上策略之一重写代码。"
+                                    ),
+                                    "en": (
+                                        "The same loop pattern keeps getting blocked. Try a different enumeration strategy:\n"
+                                        "  1) seen=set() + while True + cursor-based (name > last_hex)\n"
+                                        "  2) OFFSET N pagination\n"
+                                        "  3) NOT IN (already_found) subquery\n"
+                                        "Rewrite code with one of these strategies NOW."
+                                    )},
 
     # ── Rule 17: 기법 소진 후 피벗 알림 ────────────────────────────────────
     "technique_exhausted":      {"ko": "🔄  [{param}] {technique} 3회 연속 실패 → 기법 소진, 다음으로 전환",

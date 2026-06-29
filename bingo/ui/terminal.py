@@ -272,6 +272,7 @@ class BingoTerminal:
         self._bruteforce_fail_count: int = 0
         self._bruteforce_abort_triggered: bool = False
         self._mvvs_loop_count: int = 0  # v3.2.87: MVVS 루프당 카운터
+        self._loop_block_consecutive: int = 0  # v3.2.91: LOOP_BLOCK 연속 차단 카운터 (무한사이클 방지)
         # 도메인별 메모리 모듈 (target_memory)
         try:
             from ..core.target_memory import load as _tm_load, save as _tm_save, \
@@ -685,7 +686,15 @@ class BingoTerminal:
     def _prompt_mid_task_hint(self) -> "str | None":
         """Ctrl+C 눌렀을 때 힌트를 입력받고 반환.
         빈 입력 → None (루프 중단), 텍스트 입력 → 힌트 주입 후 루프 계속.
+        v3.2.91: Ctrl+C 후 터미널 상태 dirty 문제 — 플러시 + 개행 삽입으로 복구
         """
+        import sys as _sys
+        # ★ v3.2.91: Ctrl+C 직후 터미널이 mid-line 상태일 수 있음
+        # stdout/stderr를 플러시하고 개행을 강제 삽입해 prompt_toolkit 입력 복구
+        _sys.stdout.write("\n")
+        _sys.stdout.flush()
+        _sys.stderr.flush()
+
         _lang = getattr(self.config, "lang", "en")
         _pause_msg = {
             "ko": (
@@ -702,6 +711,8 @@ class BingoTerminal:
             ),
         }.get(_lang, "⚡ Loop paused — type hint or Enter to stop")
         self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]\n")
+        # ★ v3.2.91: Rich 출력 후 한 번 더 플러시 — 터미널 렌더링 확정
+        self.console.file.flush()
         try:
             hint = self._session.prompt(
                 HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
@@ -2697,6 +2708,11 @@ class BingoTerminal:
 
         # ★ Live 컨텍스트 종료 후 중단 메시지 출력 (Live가 화면을 지우기 전에 출력하면 사라짐)
         if _interrupted:
+            import sys as _sys
+            # v3.2.91: 터미널 플러시 — Live 종료 직후 cursor 위치 확정
+            _sys.stdout.write("\n")
+            _sys.stdout.flush()
+            _sys.stderr.flush()
             _lang = getattr(self.config, "lang", "en")
             _stop_msg = {
                 "ko": "⏸ 스트리밍 중단됨 — 힌트를 입력하거나 Enter로 루프를 멈춥니다",
@@ -2704,6 +2720,7 @@ class BingoTerminal:
                 "en": "⏸ Streaming interrupted — type a hint or press Enter to stop the loop",
             }.get(_lang, "⏸ Interrupted")
             self.console.print(f"[{THEME['warn']}]{_stop_msg}[/]")
+            self.console.file.flush()
 
         # 최종 출력: 코드 블록 접기 + 내부 제어 키워드 제거
         final = self._filter_ai_monologue(full)
@@ -4603,14 +4620,28 @@ class BingoTerminal:
                     fixed = "__ENCODE_INJECTED__\n" + fixed
 
             # ── 0-A. 무한루프: for/range + TOP 1 + seen=set() 없음 ─────────
+            # v3.2.91: 탐지 조건 완화 — 과탐으로 정상 MSSQL 열거 코드 차단 문제 수정
+            # 고객 피드백: for/range TOP1 열거 코드가 계속 차단되어 무한 사이클 발생
             _has_range_loop = bool(_pre_re.search(r'\bfor\b.+\brange\s*\(', fixed))
             _has_query = bool(_pre_re.search(
                 r'(requests\.(get|post)|urllib|query|extract|inject|sqli)', fixed, _pre_re.IGNORECASE))
             _has_seen = bool(_pre_re.search(r'\bseen\s*=\s*set\s*\(', fixed))
+            # 커서 패턴 확장: name >, OFFSET, NOT IN, last_/prev_/cursor_ 변수, ROW_NUMBER
+            _has_cursor_pattern = bool(
+                _pre_re.search(
+                    r'(name|col|table|item|val)\s*>\s*(last|cursor|prev|0x)',
+                    fixed, _pre_re.IGNORECASE
+                ) or
+                _pre_re.search(r'\b(last_|prev_|cursor_)\w+\s*=', fixed) or
+                _pre_re.search(r'\bOFFSET\b', fixed, _pre_re.IGNORECASE) or
+                _pre_re.search(r'\bROW_NUMBER\s*\(', fixed, _pre_re.IGNORECASE) or
+                _pre_re.search(r'\bNOT\s+IN\s*\(', fixed, _pre_re.IGNORECASE) or
+                _pre_re.search(r'\blast\w*\s*=\s*result', fixed, _pre_re.IGNORECASE) or
+                _pre_re.search(r'#.*TOP\s+1', fixed, _pre_re.IGNORECASE)  # 주석 안 TOP 1
+            )
             _has_top1_no_cursor = bool(
-                _pre_re.search(r'TOP\s+1', fixed, _pre_re.IGNORECASE) and
-                not _pre_re.search(r'name\s*>\s*(last|cursor|prev)', fixed, _pre_re.IGNORECASE) and
-                not _pre_re.search(r'\bname\s*>\s*0x', fixed, _pre_re.IGNORECASE)
+                _pre_re.search(r'\bTOP\s+1\b', fixed, _pre_re.IGNORECASE) and
+                not _has_cursor_pattern
             )
             if _has_range_loop and _has_query and _has_top1_no_cursor and not _has_seen:
                 return ("__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever", [])
@@ -5202,9 +5233,31 @@ class BingoTerminal:
         if _hallucination_msgs and not tasks:
             _has_loop_block = any("LOOP_BLOCKED" in m for m in _hallucination_msgs)
             if _has_loop_block:
-                _fb_title = t("loop_block_feedback_title", "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED")
-                _fb_rewrite = t("loop_block_mandatory_rewrite", "MANDATORY REWRITE — Use cursor pagination:")
-                _fb_now = t("loop_block_rewrite_now", "Rewrite with the cursor pagination pattern above NOW.")
+                # v3.2.91: 연속 LOOP_BLOCK 카운터 — 무한 재시도 사이클 방지
+                self._loop_block_consecutive += 1
+                _MAX_LOOP_BLOCK = 2
+                if self._loop_block_consecutive > _MAX_LOOP_BLOCK:
+                    # 루프 카운터 초기화 후 강제 탈출 메시지 반환
+                    self._loop_block_consecutive = 0
+                    _lang = getattr(self.config, "lang", "en")
+                    _n = _MAX_LOOP_BLOCK + 1
+                    _s91 = get_strings(_lang)
+                    _esc_title_tpl = _s91.get("loop_block_escape_title", f"⚠ LOOP_BLOCK {_n}x consecutive — switch pattern")
+                    _esc_title = _esc_title_tpl.replace("{n}", str(_n))
+                    _esc_body = _s91.get("loop_block_escape_body", (
+                        "The same loop pattern keeps getting blocked. Try a different enumeration strategy:\n"
+                        "  1) seen=set() + while True + cursor-based (name > last_hex)\n"
+                        "  2) OFFSET N pagination\n"
+                        "  3) NOT IN (already_found) subquery\n"
+                        "Rewrite code with one of these strategies NOW."
+                    ))
+                    _esc_msg = f"[{_esc_title}]\n{_esc_body}"
+                    self.console.print(f"[{THEME['warn']}]{_esc_title}[/]")
+                    return _esc_msg
+                _s91b = get_strings(getattr(self.config, "lang", "en"))
+                _fb_title = _s91b.get("loop_block_feedback_title", "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED")
+                _fb_rewrite = _s91b.get("loop_block_mandatory_rewrite", "MANDATORY REWRITE — Use cursor pagination:")
+                _fb_now = _s91b.get("loop_block_rewrite_now", "Rewrite with the cursor pagination pattern above NOW.")
                 _hall_feedback = (
                     f"[{_fb_title}]\n"
                     + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
@@ -5239,6 +5292,9 @@ class BingoTerminal:
                     "NO JSON. NO dict literals. Write actual HTTP code NOW."
                 )
             return [_hall_feedback]
+
+        # v3.2.91: 정상 코드 실행 경로 → 연속 LOOP_BLOCK 카운터 리셋
+        self._loop_block_consecutive = 0
 
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
         _BASH_ALLOWED = {

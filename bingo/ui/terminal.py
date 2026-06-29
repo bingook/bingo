@@ -3016,6 +3016,8 @@ class BingoTerminal:
             self._cmd_cost()
         elif name == "/proxy":
             self._cmd_proxy(arg)
+        elif name == "/ctf":
+            self._cmd_ctf(arg)
         else:
             self._warn(self.s["cmd_unknown"].format(name=name))
 
@@ -4222,6 +4224,188 @@ class BingoTerminal:
         self.console.print(
             f"[{THEME['dim']}]  💰 ~{est_tokens:,} tokens  ${self._cost_usd:.4f}[/]"
         )
+
+    # ── /ctf — 웹 실습 환경 보안 점검 ────────────────────────────
+
+    def _cmd_ctf(self, arg: str = "") -> None:
+        """웹 실습 환경 보안 점검 엔진.
+
+        사용법:
+          /ctf <url>                — 플랫폼 전체 항목 보안 점검
+          /ctf <url> --resume=no   — 이전 진행상황 무시하고 처음부터
+          /ctf <url> --headless=no — 브라우저 화면 표시 (디버깅용)
+          /ctf <url> --status      — 현재 진행상황만 출력
+          /ctf <url> --cookie "PHPSESSID=xxx"  — 세션 쿠키 지정
+
+        예시:
+          /ctf http://localhost:8888
+          /ctf http://192.168.1.100:8080 --cookie "token=abc123"
+          /ctf http://lab.example.com --headless=no --resume=no
+        """
+        lang = getattr(self, "_lang", "ko")
+
+        if not arg.strip():
+            self.console.print(
+                f"[{THEME['warn']}]{self.s.get('ctf_usage', self._CTF_USAGE[lang])}[/]"
+            )
+            return
+
+        # ── 인자 파싱 ─────────────────────────────────────────────
+        parts = arg.strip().split()
+        base_url = parts[0]
+        resume = True
+        headless = True
+        cookies: dict = {}
+        status_only = False
+
+        for part in parts[1:]:
+            lp = part.lower()
+            if lp == "--resume=no":
+                resume = False
+            elif lp == "--headless=no":
+                headless = False
+            elif lp == "--status":
+                status_only = True
+            elif lp.startswith("--cookie"):
+                # --cookie "key=value" or --cookie=key=value
+                raw = part.split("=", 1)[1].strip().strip('"\'') if "=" in part else ""
+                if not raw and len(parts) > parts.index(part) + 1:
+                    raw = parts[parts.index(part) + 1].strip().strip('"\'')
+                if "=" in raw:
+                    k, v = raw.split("=", 1)
+                    cookies[k] = v
+
+        # ── 진행상황만 출력 ─────────────────────────────────────────
+        if status_only:
+            from ..tools.ctf_lab_engine import load_state
+            state = load_state(base_url)
+            solved = state.get("solved", [])
+            total = state.get("total", "?")
+            last = state.get("last_updated", "N/A")
+            self.console.print(
+                f"[{THEME['info']}]📊 웹 실습 진행상황[/]\n"
+                f"  타겟: {base_url}\n"
+                f"  완료: {len(solved)}개 / 전체 {total}개\n"
+                f"  최종 업데이트: {last}"
+            )
+            return
+
+        # ── 실행 ──────────────────────────────────────────────────
+        _lang = lang
+
+        def _log(msg: str) -> None:
+            self.console.print(f"[{THEME['dim']}]{msg}[/]")
+
+        def _progress(cur: int, total: int, ch) -> None:
+            pct = cur / total * 100 if total else 0
+            bar_filled = int(pct / 5)
+            bar = "█" * bar_filled + "░" * (20 - bar_filled)
+            label = {
+                "ko": f"🎯 [{cur}/{total}] {ch.title[:30]}",
+                "zh": f"🎯 [{cur}/{total}] {ch.title[:30]}",
+                "en": f"🎯 [{cur}/{total}] {ch.title[:30]}",
+            }.get(_lang, f"[{cur}/{total}]")
+            self.console.print(
+                f"[{THEME['primary']}]{bar} {pct:.0f}% — {label}[/]"
+            )
+
+        start_msg = {
+            "ko": f"🏁 웹 실습 환경 점검 시작: {base_url}\n"
+                  f"   Playwright: {'활성' if headless else '브라우저 표시'} | "
+                  f"이어서: {'예' if resume else '아니오'}",
+            "zh": f"🏁 Web实验环境扫描开始: {base_url}\n"
+                  f"   Playwright: {'无头' if headless else '显示浏览器'} | "
+                  f"续上次: {'是' if resume else '否'}",
+            "en": f"🏁 web lab scan started: {base_url}\n"
+                  f"   Playwright: {'headless' if headless else 'visible'} | "
+                  f"resume: {'yes' if resume else 'no'}",
+        }.get(lang, f"🏁 scan: {base_url}")
+
+        self.console.print(f"[{THEME['success']}]{start_msg}[/]")
+
+        try:
+            from ..tools.ctf_lab_engine import CTFLabEngine
+            engine = CTFLabEngine(
+                base_url=base_url,
+                on_log=_log,
+                on_progress=_progress,
+                resume=resume,
+                headless=headless,
+                use_playwright=True,
+                cookies=cookies,
+            )
+            report = engine.run()
+            engine.close()
+
+            # ── 결과 출력 ──────────────────────────────────────────
+            rate = (report.solved / report.total * 100) if report.total else 0
+            result_msg = {
+                "ko": (
+                    f"\n🏆 웹 실습 점검 결과\n"
+                    f"  ✅ 완료: {report.solved} / {report.total}  ({rate:.1f}%)\n"
+                    f"  ❌ 실패: {report.failed}개\n"
+                    f"  ⏱  소요: {report.elapsed_sec:.1f}초\n"
+                    f"  💾 상태: ~/Desktop/dump/ctf_state/ 에 자동 저장됨"
+                ),
+                "zh": (
+                    f"\n🏆 Web实验安全扫描结果\n"
+                    f"  ✅ 완료: {report.solved} / {report.total}  ({rate:.1f}%)\n"
+                    f"  ❌ 失败: {report.failed}个\n"
+                    f"  ⏱  耗时: {report.elapsed_sec:.1f}秒\n"
+                    f"  💾 状态: 已自动保存至 ~/Desktop/dump/ctf_state/"
+                ),
+                "en": (
+                    f"\n🏆 Web Lab Scan Results\n"
+                    f"  ✅ Solved: {report.solved} / {report.total}  ({rate:.1f}%)\n"
+                    f"  ❌ Failed: {report.failed}\n"
+                    f"  ⏱  Time: {report.elapsed_sec:.1f}s\n"
+                    f"  💾 State saved to ~/Desktop/dump/ctf_state/"
+                ),
+            }.get(lang, report.summary())
+
+            self.console.print(f"[{THEME['success']}]{result_msg}[/]")
+
+            # 실패한 항목 목록 출력
+            failed = [ch for ch in report.challenges if not ch.solved and ch.error]
+            if failed:
+                self.console.print(f"[{THEME['warn']}]\n실패 항목 목록:[/]")
+                for ch in failed[:10]:
+                    self.console.print(
+                        f"[{THEME['dim']}]  • [{ch.category}] {ch.title}: {ch.error}[/]"
+                    )
+
+        except ImportError:
+            self.console.print(
+                f"[{THEME['error']}]❌ ctf_lab_engine 로드 실패 — "
+                f"bingo/tools/ctf_lab_engine.py 확인[/]"
+            )
+        except Exception as e:
+            self.console.print(f"[{THEME['error']}]❌ 웹 실습 점검 오류: {e}[/]")
+
+    _CTF_USAGE = {
+        "ko": (
+            "사용법: /ctf <url>\n"
+            "  예) /ctf http://localhost:8888\n"
+            "      /ctf http://localhost:8888 --resume=no\n"
+            "      /ctf http://localhost:8888 --headless=no\n"
+            "      /ctf http://localhost:8888 --status\n"
+            "      /ctf http://lab.com --cookie \"PHPSESSID=abc\""
+        ),
+        "zh": (
+            "用法: /ctf <url>\n"
+            "  例) /ctf http://localhost:8888\n"
+            "      /ctf http://localhost:8888 --resume=no\n"
+            "      /ctf http://localhost:8888 --headless=no\n"
+            "      /ctf http://localhost:8888 --status"
+        ),
+        "en": (
+            "Usage: /ctf <url>\n"
+            "  e.g. /ctf http://localhost:8888\n"
+            "       /ctf http://localhost:8888 --resume=no\n"
+            "       /ctf http://localhost:8888 --headless=no\n"
+            "       /ctf http://localhost:8888 --status"
+        ),
+    }
 
     # ── Red Team 명령어 ───────────────────────────────────────────
 

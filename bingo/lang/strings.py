@@ -86,6 +86,7 @@ _STRINGS = {
 /session                 현재 인증 세션 확인 | /session clear 초기화
 /hint <메시지>           💬 AI 실행 도중 힌트 주입 (재실행 없이 방향 전환)
 /retry                   🔁 마지막 실패 단계만 재실행 (처음부터 재시작 불필요)
+/ctf <url>               🏁 웹 실습 환경 보안 점검 (--status / --resume=no / --headless=no)
 /scan <url>              빠른 정찰: WAF + 핑거프린트 + 민감파일
 /waf <url>               WAF 탐지 + 자동 우회 시도
 /crack [hash]            해시 크랙 — 온라인 조회 → 오프라인 크랙
@@ -112,6 +113,7 @@ _STRINGS = {
 /session                 查看当前认证会话 | /session clear 清除
 /hint <消息>             💬 执行中注入提示 (无需重启即可改变方向)
 /retry                   🔁 仅重试上次失败步骤 (无需从头重新启动)
+/ctf <url>               🏁 Web实验环境安全扫描 (--status / --resume=no / --headless=no)
 /scan <url>              快速侦察：WAF + 指纹识别 + 敏感文件
 /waf <url>               WAF 检测 + 自动绕过尝试
 /crack [hash]            哈希破解 — 在线查询 → 离线破解
@@ -138,6 +140,7 @@ _STRINGS = {
 /session                 View auth session | /session clear to reset
 /hint <message>          💬 Inject hint mid-execution (redirect without restart)
 /retry                   🔁 Retry only the last failed step (no full restart)
+/ctf <url>               🏁 Web lab security scan (--status / --resume=no / --headless=no)
 /scan <url>              Quick recon: WAF + fingerprint + sensitive files
 /waf <url>               WAF detection + auto bypass attempt
 /crack [hash]            Hash crack — online lookup → offline crack
@@ -678,6 +681,9 @@ _SLASH_DESC = {
     "/proxy":   {"ko": "프록시 풀 관리  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]",
                  "zh": "代理池管理  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]",
                  "en": "Proxy pool mgmt  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]"},
+    "/ctf":     {"ko": "🏁 웹 실습 환경 보안 점검  /ctf <url> [--status|--resume=no|--headless=no]",
+                 "zh": "🏁 Web实验环境安全扫描  /ctf <url> [--status|--resume=no|--headless=no]",
+                 "en": "🏁 Web lab security scan  /ctf <url> [--status|--resume=no|--headless=no]"},
     "/whitebox":{"ko": "소스코드 화이트박스 분석  /whitebox <경로> 또는 /whitebox paste",
                  "zh": "白盒源码分析  /whitebox <路径> 或 /whitebox paste",
                  "en": "Whitebox source analysis  /whitebox <path> or /whitebox paste"},
@@ -4092,7 +4098,7 @@ _STRINGS.update({
         "en": "🔇 [SILENT] Done — Findings: {total} (CRITICAL:{crit} HIGH:{high})",
     },
 
-    # ── v3.2.97: HeaSecWebLab 역분석 스킬팩 다국어 ──────────────────────────────
+    # ── v3.2.97: WebLab 분석 스킬팩 다국어 ──────────────────────────────
     "skill_pack_loaded": {
         "ko": "🎯 스킬팩 로드됨: {name} (+{count}개)",
         "zh": "🎯 技能包已加载: {name} (+{count}个)",
@@ -4223,6 +4229,102 @@ _STRINGS.update({
         "ko": "🌐 소스 엔드포인트 → 전체 URL {count}개 생성됨",
         "zh": "🌐 源端点 → 已生成 {count} 个完整URL",
         "en": "🌐 Source endpoints → {count} full URLs constructed",
+    },
+
+    # ── v3.3.0: CTF 항목 보안 점검 ─────────────────────────────────────────
+    "ctf_usage": {
+        "ko": (
+            "사용법: /ctf <url>\n"
+            "  예) /ctf http://localhost:8888\n"
+            "      /ctf http://localhost:8888 --resume=no\n"
+            "      /ctf http://localhost:8888 --headless=no\n"
+            "      /ctf http://localhost:8888 --status\n"
+            '      /ctf http://lab.com --cookie "PHPSESSID=abc"'
+        ),
+        "zh": (
+            "用法: /ctf <url>\n"
+            "  例) /ctf http://localhost:8888\n"
+            "      /ctf http://localhost:8888 --resume=no\n"
+            "      /ctf http://localhost:8888 --headless=no\n"
+            "      /ctf http://localhost:8888 --status"
+        ),
+        "en": (
+            "Usage: /ctf <url>\n"
+            "  e.g. /ctf http://localhost:8888\n"
+            "       /ctf http://localhost:8888 --resume=no\n"
+            "       /ctf http://localhost:8888 --headless=no\n"
+            "       /ctf http://localhost:8888 --status"
+        ),
+    },
+    "ctf_start": {
+        "ko": "🏁 웹 실습 환경 점검 시작: {url}",
+        "zh": "🏁 Web实验环境扫描开始: {url}",
+        "en": "🏁 web lab scan started: {url}",
+    },
+    "ctf_enumerating": {
+        "ko": "📋 항목 목록 수집 중...",
+        "zh": "📋 正在枚举检测项目列表...",
+        "en": "📋 Enumerating target list...",
+    },
+    "ctf_no_challenges": {
+        "ko": "⚠ 항목을 찾지 못했습니다. URL을 확인하세요.",
+        "zh": "⚠ 未找到任何检测项目，请确认目标URL。",
+        "en": "⚠ No targets found. Check the target URL.",
+    },
+    "ctf_challenge_start": {
+        "ko": "🔓 [{cat}] {title}",
+        "zh": "🔓 [{cat}] {title}",
+        "en": "🔓 [{cat}] {title}",
+    },
+    "ctf_challenge_skip": {
+        "ko": "⏭ 이미 완료됨 — 스킵",
+        "zh": "⏭ 已完成 — 跳过",
+        "en": "⏭ Already completed — skipping",
+    },
+    "ctf_exploit_success": {
+        "ko": "✅ 익스플로잇 성공",
+        "zh": "✅ 漏洞利用成功",
+        "en": "✅ Exploit succeeded",
+    },
+    "ctf_exploit_fail": {
+        "ko": "❌ 익스플로잇 실패",
+        "zh": "❌ 漏洞利用失败",
+        "en": "❌ Exploit failed",
+    },
+    "ctf_submit_ok": {
+        "ko": "🎯 점수 제출 성공!",
+        "zh": "🎯 成功提交得分！",
+        "en": "🎯 Score submitted successfully!",
+    },
+    "ctf_submit_fail": {
+        "ko": "⚠ 점수 제출 실패 (익스플로잇은 성공)",
+        "zh": "⚠ 得分提交失败（但漏洞利用已成功）",
+        "en": "⚠ Score submission failed (exploit was successful)",
+    },
+    "ctf_result": {
+        "ko": "🏆 완료: {solved}/{total} ({pct:.1f}%) | 실패: {failed}개 | {elapsed:.1f}초",
+        "zh": "🏆 完成: {solved}/{total} ({pct:.1f}%) | 失败: {failed}个 | {elapsed:.1f}秒",
+        "en": "🏆 Solved: {solved}/{total} ({pct:.1f}%) | Failed: {failed} | {elapsed:.1f}s",
+    },
+    "ctf_state_saved": {
+        "ko": "💾 진행상황 자동 저장: ~/Desktop/dump/ctf_state/",
+        "zh": "💾 进度已自动保存: ~/Desktop/dump/ctf_state/",
+        "en": "💾 Progress auto-saved to ~/Desktop/dump/ctf_state/",
+    },
+    "ctf_status_header": {
+        "ko": "📊 웹 실습 진행상황",
+        "zh": "📊 Web实验进度",
+        "en": "📊 Web Lab Progress",
+    },
+    "ctf_playwright_active": {
+        "ko": "🎭 Playwright 브라우저 자동화 활성화됨",
+        "zh": "🎭 Playwright 浏览器自动化已启用",
+        "en": "🎭 Playwright browser automation active",
+    },
+    "ctf_playwright_fallback": {
+        "ko": "⚠ Playwright 없음 — requests 모드로 동작 (일부 JS 항목 제한)",
+        "zh": "⚠ 无 Playwright — 使用 requests 模式（部分JS项目受限）",
+        "en": "⚠ Playwright unavailable — running in requests mode (JS targets limited)",
     },
 })
 

@@ -29,7 +29,7 @@ from .skills_data14 import SKILLS_DB_14, MODULE_INDEX_14, TAG_INDEX_14
 from .skills_data15 import SKILLS_DB_15, MODULE_INDEX_15, TAG_INDEX_15
 from .skills_data16 import SKILLS_DB_16, MODULE_INDEX_16, TAG_INDEX_16
 
-# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH + Nuxt.js + Next.js/React + DApp/Web3/SmartContract[28] + HeaSecWebLab 역분석[28] — v3.2.97)
+# 통합 (CyberSecurity-Skills + SecSkills + BurpEngine + PostExploit + SecKnowledge + Mobile + TruffleHog/Malimite + APKToolkit + EXE Phase0 + .NET/CSWSH + Nuxt.js + Next.js/React + DApp/Web3/SmartContract[28] + WebLab 분석[28] — v3.3.0)
 ALL_SKILLS: dict[str, dict] = {
     **SKILLS_DB, **SKILLS_DB_2, **SKILLS_DB_3,
     **SKILLS_DB_4, **SKILLS_DB_5, **SKILLS_DB_6,

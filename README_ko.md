@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.2.99-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.3.2-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -1268,6 +1268,7 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 | 버전 | 요약 |
 |------|------|
+| v3.3.0 | **신규 `/ctf` 명령어** — Playwright 기반 웹 실습 환경 연동; `tools/ctf_lab_engine.py` 신규 추가; i18n 키 14개 (KO/ZH/EN); `/help` 및 슬래시 자동완성 등록 |
 | v3.2.99 | **핫픽스: Ctrl+C 즉시 반응 (Linux/WSL/VM 전 환경)** — 근본 원인 수정: `HEARTBEAT` 30초→1초로 단축하여 코드 실행 중 매 1초마다 `_agent_stop_flag` 체크 (기존 최대 30초 지연); 모든 `subprocess.Popen`에 `start_new_session=True` 추가해 자식 프로세스가 터미널 SIGINT를 가로채지 못하게 격리 (WSL/VM 호환); subprocess 종료 로직을 `os.killpg` + 2초 유예 + `SIGKILL` 폴백으로 강화; `_prompt_mid_task_hint`에서 hint 입력 중 `signal.SIG_DFL` 임시 복원 후 재등록, WSL 커서 복구를 위한 `\r\n` 플러시 추가; 신규 i18n 키 3개 (`ctrl_c_killing_procs/ctrl_c_hint_ready/exec_interrupted_partial`) KO/ZH/EN |
 | v3.2.98 | **핫픽스: `_format_agent_state` 방어 코드 + i18n 키** — `_format_agent_state`의 `AttributeError`/`KeyError` 수정: 메서드 전체 `try/except` 감싸기, `s["key"]` → `s.get("key", 기본값)` 전환, 호출부 `hasattr` 가드 추가; 신규 i18n 키 8개 (`agent_state_corrupted/key_missing/new_target/knowledge_injected/sqli_confirmed/creds_saved`, `whitebox_target_combined/full_urls_built`) KO/ZH/EN |
 | v3.2.97 | **웹 공격 스킬 강화 (+28개)** — SQLi×6 (숫자형/단따옴표/쌍따옴표/괄호/Cookie-Header/Time-based+키워드필터우회), XSS×3 (HTML/JS컨텍스트/파일업로드), 파일업로드 11종 우회, JWT×3 (alg:none/RS256→HS256/jku인젝션), XXE, IDOR×3, 비즈니스로직×2 (인증우회/거래변조), SSRF, RCE×2 (PHP명령인젝션/LFI→RCE), 경로순회, 쇼핑몰로직×24, 브루트포스, 오픈리다이렉트, 비밀키노출, CRLF, PHP역직렬화, 디렉토리리스팅, 요청밀수, 확률조작; 총 스킬 367→**395**개, 총 태그 **1,639**개 |
@@ -1324,7 +1325,7 @@ MIT © 2026 bingook
 
 *내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 타겟 메모리 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.2.99-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.3.2-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

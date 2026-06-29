@@ -1138,6 +1138,7 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.92 | **i18n: hint_loop_paused + stream_interrupted 다국어 키 추출** — `_prompt_mid_task_hint`, `_stream_response` 내 하드코딩 메시지를 `get_strings()` 키로 교체; `hint_loop_paused` / `stream_interrupted` (KO/ZH/EN) 추가 |
 | v3.2.91 | **수정: INFINITE_LOOP_RISK 과탐 + LOOP_BLOCK 무한 재시도 + Ctrl+C 무반응** — (1) 커서 패턴 탐지 확장(`OFFSET`, `ROW_NUMBER`, `NOT IN`, `last_` 변수) → 정상적인 MSSQL `TOP 1` 열거 코드 오탐 차단 해결; (2) `_loop_block_consecutive` 카운터 추가 — 동일 패턴 2회 이상 연속 차단 시 AI가 다른 열거 전략으로 강제 전환, 무한 사이클 탈출; (3) `Ctrl+C` 발생 시 `_stream_response` 및 `_prompt_mid_task_hint`에 `sys.stdout/stderr` 플러시 + 개행 추가 → `prompt_toolkit` 응답성 복구; (4) `strings.py` 중복 i18n 키 제거; `loop_block_escape_title/body` (KO/ZH/EN) 신규 추가 |
 | v3.2.90 | **핫픽스: 모델 레이블 dict 크래시** — 에서  수정; v3.2.89에서 label을 dict로 변환했으나 해당 참조를 누락;  일관 적용 |
 | v3.2.89 | **모델 메뉴 다국어 지원** — `BUILTIN_PROVIDERS` 레이블을 한국어 고정 문자열에서 `{ko/zh/en}` 다국어 dict로 변환; `get_provider_label(info, lang)` 헬퍼 추가; `provider_list(lang)` 언어 파라미터 추가; `_cmd_model`이 현재 언어 설정을 읽어 올바른 언어로 레이블 렌더링 (`★ 추천` → `★ 推荐` / `★ Recommended`; `(로컬)` → `(本地)` / `(Local)`; `커스텀/직접 입력` → `自定义/直接输入` / `Custom/Enter directly`) |

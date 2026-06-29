@@ -232,6 +232,11 @@ class BingoTerminal:
         # ── Proof-by-exploitation 리포트 ────────────────────────────
         from ..core.vuln_agents import ProofReport
         self._proof_report = ProofReport()
+        # ── v3.2.96: 실시간 발견 자동 저장 ──────────────────────────
+        from ..tools.findings_exporter import FindingsExporter
+        self._findings_exporter = FindingsExporter(
+            target=getattr(self._agent_state, "get", lambda k, d=None: d)("target", "")
+        )
         # ── 전담 에이전트 계획 ─────────────────────────────────────
         self._agent_plan = None                   # AgentPlan 객체
         # 롤백 매니저
@@ -6403,6 +6408,9 @@ class BingoTerminal:
             raw_results = "\n".join(results_text)
             # /retry 를 위해 마지막 실행 결과 보존
             self._last_exec_result = raw_results
+
+            # ── v3.2.96: 실시간 발견 자동 저장 + XSS Playwright 자동 검증 ──
+            self._auto_analyze_findings(raw_results, current_response)
             if len(raw_results) > 3000:
                 trimmed = (
                     raw_results[:1500]
@@ -7183,6 +7191,139 @@ class BingoTerminal:
 
             current_response = followup_response
 
+    # ── v3.2.96: 실시간 발견 감지 + XSS Playwright 자동 검증 ──────────────────
+    def _auto_analyze_findings(self, exec_output: str, code_snippet: str = "") -> None:
+        """코드 실행 결과에서 취약점 발견을 감지하고 JSON 자동 누적 저장.
+        XSS payload URL이 감지되면 Playwright로 2차 검증을 수행."""
+        if not exec_output or len(exec_output.strip()) < 15:
+            return
+
+        _lang = getattr(self.config, "lang", "en")
+
+        # ── target 동기화 ────────────────────────────────────────────
+        _target = self._agent_state.get("target", "") or ""
+        if _target and self._findings_exporter.target != _target:
+            # 타겟이 변경됐으면 새 exporter 생성
+            from ..tools.findings_exporter import FindingsExporter
+            self._findings_exporter = FindingsExporter(target=_target)
+
+        # ── 발견 탐지 ─────────────────────────────────────────────────
+        finding = self._findings_exporter.process(
+            output=exec_output,
+            code_snippet=code_snippet[:500] if code_snippet else "",
+        )
+        if not finding:
+            return
+
+        # ── 발견 UI 알림 ──────────────────────────────────────────────
+        _sev_color = {"CRITICAL": "#ff4444", "HIGH": "#ff8c00"}.get(
+            finding.severity, "#ffaa00"
+        )
+        _fe_title = self.s.get(
+            "fe_finding_detected",
+            {"ko": "⚡ 취약점 발견 감지", "zh": "⚡ 检测到漏洞发现", "en": "⚡ Finding Detected"},
+        )
+        _fe_title_str = _fe_title.get(_lang, _fe_title.get("en", "⚡ Finding Detected")) \
+            if isinstance(_fe_title, dict) else str(_fe_title)
+
+        self.console.print(
+            f"\n[{_sev_color}][{finding.severity}] {_fe_title_str}[/]\n"
+            f"[#4a4a4a]  ID: {finding.id}  |  Type: {finding.vuln_type}[/]"
+        )
+
+        # ── XSS URL 탐지 → Playwright 자동 검증 ──────────────────────
+        if finding.vuln_type == "xss":
+            xss_urls = self._findings_exporter.extract_xss_urls(exec_output)
+            if xss_urls:
+                self._playwright_verify_xss(finding, xss_urls)
+
+        # ── 자동 저장 (5개 발견마다 중간 저장) ───────────────────────
+        if len(self._findings_exporter.findings) % 5 == 0:
+            _saved = self._findings_exporter.save()
+            if _saved:
+                _fe_saved = self.s.get(
+                    "fe_auto_saved",
+                    {"ko": "📁 발견 자동 저장", "zh": "📁 发现自动保存", "en": "📁 Findings Auto-Saved"},
+                )
+                _fe_saved_str = _fe_saved.get(_lang, _fe_saved.get("en", "📁 Findings Auto-Saved")) \
+                    if isinstance(_fe_saved, dict) else str(_fe_saved)
+                self.console.print(
+                    f"[#4a4a4a]{_fe_saved_str}: {_saved}[/]"
+                )
+
+    def _playwright_verify_xss(self, finding, xss_urls: list) -> None:
+        """Playwright로 XSS URL을 실제 브라우저에서 검증. confirmed 여부를 finding에 반영."""
+        try:
+            from ..tools.playwright_engine import PlaywrightEngine
+        except ImportError:
+            return
+
+        _lang = getattr(self.config, "lang", "en")
+        _pw_msg = self.s.get(
+            "fe_xss_verify",
+            {"ko": "🌐 XSS 브라우저 검증 중...", "zh": "🌐 正在浏览器验证XSS...", "en": "🌐 Verifying XSS in browser..."},
+        )
+        _pw_msg_str = _pw_msg.get(_lang, _pw_msg.get("en", "🌐 Verifying XSS in browser...")) \
+            if isinstance(_pw_msg, dict) else str(_pw_msg)
+
+        self.console.print(f"[#00d4aa]{_pw_msg_str}[/]")
+
+        try:
+            engine = PlaywrightEngine(headless=True, timeout=15_000)
+        except Exception:
+            return
+
+        confirmed_any = False
+        ss_path = ""
+        import time as _t_pw
+        import re as _re_pw
+
+        for url in xss_urls[:3]:  # 최대 3개 URL 검증
+            try:
+                # param 추출: URL의 마지막 쿼리 파라미터
+                _params_m = _re_pw.findall(r'[?&](\w+)=', url)
+                _params = _params_m if _params_m else ["q"]
+                confirmed_params = engine.dom_xss_test(url, _params)
+                if confirmed_params:
+                    confirmed_any = True
+                    # 스크린샷 저장
+                    _br = engine.screenshot(url)
+                    if _br.screenshot_b64:
+                        import base64 as _b64
+                        _ts_pw = _t_pw.strftime("%Y%m%d_%H%M%S")
+                        _sc_dir = self._findings_exporter._dir
+                        ss_path = str(_sc_dir / f"xss_proof_{_ts_pw}.png")
+                        try:
+                            with open(ss_path, "wb") as _f_ss:
+                                _f_ss.write(_b64.b64decode(_br.screenshot_b64))
+                        except Exception:
+                            ss_path = ""
+                    break
+            except Exception:
+                continue
+
+        engine.close()
+
+        if confirmed_any:
+            self._findings_exporter.mark_confirmed(finding, screenshot_path=ss_path)
+            _confirmed_msg = self.s.get(
+                "fe_xss_confirmed",
+                {"ko": "✅ XSS 브라우저 실행 확인됨 (CONFIRMED)", "zh": "✅ XSS 浏览器执行确认 (CONFIRMED)", "en": "✅ XSS Confirmed in Browser (CONFIRMED)"},
+            )
+            _confirmed_str = _confirmed_msg.get(_lang, _confirmed_msg.get("en", "✅ XSS Confirmed in Browser")) \
+                if isinstance(_confirmed_msg, dict) else str(_confirmed_msg)
+            self.console.print(f"[#00ff41]{_confirmed_str}[/]")
+            if ss_path:
+                self.console.print(f"[#4a4a4a]  Screenshot: {ss_path}[/]")
+        else:
+            _unconf_msg = self.s.get(
+                "fe_xss_unconfirmed",
+                {"ko": "⚠ XSS 브라우저 미확인 (수동 검증 필요)", "zh": "⚠ XSS 浏览器未确认(需手动验证)", "en": "⚠ XSS Not Auto-Confirmed (manual verify needed)"},
+            )
+            _unconf_str = _unconf_msg.get(_lang, _unconf_msg.get("en", "⚠ XSS Not Auto-Confirmed")) \
+                if isinstance(_unconf_msg, dict) else str(_unconf_msg)
+            self.console.print(f"[#ffaa00]{_unconf_str}[/]")
+
     def _auto_generate_report(self) -> None:
         """작업 완료/중단 시 지금까지 발견한 내용을 자동으로 마크다운 보고서로 저장."""
         from ..models.registry import ModelRegistry
@@ -7374,6 +7515,26 @@ class BingoTerminal:
 
         except Exception as e:
             self._error(f"report error: {e}")
+
+        # ── v3.2.96: findings JSON 자동 저장 ─────────────────────────
+        try:
+            _fe_path = self._findings_exporter.save()
+            if _fe_path:
+                _fe_sum = self._findings_exporter.summary()
+                _lang_fe = getattr(self.config, "lang", "en")
+                _fe_done = self.s.get(
+                    "fe_session_saved",
+                    {"ko": "📊 발견 JSON 저장됨", "zh": "📊 发现 JSON 已保存", "en": "📊 Findings JSON Saved"},
+                )
+                _fe_done_str = _fe_done.get(_lang_fe, _fe_done.get("en", "📊 Findings JSON Saved")) \
+                    if isinstance(_fe_done, dict) else str(_fe_done)
+                self.console.print(
+                    f"\n[#00d4aa]{_fe_done_str}:[/]\n"
+                    f"[bold white]  {_fe_path.absolute()}[/bold white]\n"
+                    f"[#4a4a4a]  {_fe_sum}[/]"
+                )
+        except Exception:
+            pass
 
     def _suggest_next_steps(self) -> None:
         """Agent 루프 중단/보고서 생성 후 AI가 현황 요약 + 선택지 3~5개를 제시한다.

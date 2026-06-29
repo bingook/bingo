@@ -395,6 +395,70 @@ def _run_update(sl: dict, lang: str = "en") -> None:
         console.print(f"[#4a4a4a]  {' '.join(pip_cmd)}[/]")
 
 
+def _run_silent_mode(target: str, cfg: "BingoConfig", extra_args: list, s: dict) -> None:
+    """bingo --silent --target <url>
+    비대화식 자동 침투 → findings JSON 출력 후 종료.
+    findings 존재 시 exit(1), 없으면 exit(0).
+    """
+    import json as _json
+    import time as _time_silent
+    from pathlib import Path as _Path_silent
+    from .redteam.pipeline import RedTeamPipeline
+
+    # 출력 디렉토리
+    output_dir = "."
+    if "--output" in extra_args:
+        _idx = extra_args.index("--output")
+        output_dir = extra_args[_idx + 1] if _idx + 1 < len(extra_args) else "."
+
+    # 단계 선택
+    phases = None
+    if "--phase" in extra_args:
+        _idx = extra_args.index("--phase")
+        phases = extra_args[_idx + 1].split(",") if _idx + 1 < len(extra_args) else None
+
+    _findings_buf: list[str] = []
+    _log_buf: list[str] = []
+
+    def _silent_log(msg: str) -> None:
+        _log_buf.append(msg)
+        # 핵심 발견만 표시 (stderr)
+        if any(k in msg for k in ("[HIGH]", "[CRITICAL]", "SQLi", "XSS", "RCE", "LFI", "Admin")):
+            print(f"[bingo] {msg}", file=sys.stderr)
+
+    model_cfg = cfg.get_active_model_config() if cfg.models else None
+    pipeline = RedTeamPipeline(
+        target=target,
+        model_config=model_cfg,
+        output_dir=output_dir,
+        on_progress=_silent_log,
+    )
+
+    report_path = ""
+    try:
+        report_path = pipeline.run(phases=phases)
+    except KeyboardInterrupt:
+        pass
+
+    # findings_exporter로 JSON 생성
+    from .tools.findings_exporter import FindingsExporter
+    _fe = FindingsExporter(target=target, output_dir=output_dir)
+    # 파이프라인 로그에서 발견 추출
+    full_log = "\n".join(_log_buf)
+    _fe.process(full_log, code_snippet=f"pipeline phases={phases}")
+    _fe_path = _fe.save()
+
+    result_obj = {
+        "target": target,
+        "report_md": report_path,
+        "findings_json": str(_fe_path) if _fe_path else None,
+        "summary": _fe.summary(),
+        "total_findings": len(_fe.findings),
+    }
+    print(json.dumps(result_obj, ensure_ascii=False, indent=2))
+    sys.exit(1 if _fe.findings else 0)
+
+
 def main() -> None:
     """bingo 명령어 진입점"""
     args = sys.argv[1:]
@@ -402,6 +466,29 @@ def main() -> None:
     # 언어 먼저 로드
     _cfg_for_lang = BingoConfig.load()
     sl = get_strings(_cfg_for_lang.lang)
+
+    # ── v3.2.96: bingo --silent --target <url> ───────────────────
+    # 비대화식/CI 헤드리스 모드: findings JSON 출력 후 자동 종료
+    if "--silent" in args:
+        _target_idx = args.index("--target") if "--target" in args else -1
+        if _target_idx == -1 or _target_idx + 1 >= len(args):
+            # --target이 없으면 스캔 모드 첫 인자 탐색
+            _positional = [a for a in args if not a.startswith("-")]
+            if not _positional:
+                console.print(
+                    "[#ff4444]Usage: bingo --silent --target <url> "
+                    "[--output ./reports] [--phase recon,scan,exploit][/]"
+                )
+                sys.exit(2)
+            _silent_target = _positional[0]
+        else:
+            _silent_target = args[_target_idx + 1]
+        _silent_extra = [
+            a for a in args
+            if a not in ("--silent", "--target", _silent_target)
+        ]
+        _run_silent_mode(_silent_target, _cfg_for_lang, _silent_extra, sl)
+        return  # _run_silent_mode 내부에서 sys.exit()
 
     # ── bingo scan <url> ─────────────────────────────────────────
     if args and args[0] == "scan":
@@ -494,6 +581,10 @@ def main() -> None:
         console.print("  [#4a4a4a]scan:[/]")
         console.print(f"    [#00d4aa]--output ./reports[/]       {sl['cli_help_output']}")
         console.print(f"    [#00d4aa]--phase recon,scan,exploit[/] {sl['cli_help_phase']}")
+        console.print()
+        console.print("  [#4a4a4a]silent (headless/CI) mode:[/]")
+        console.print(f"    [#00d4aa]bingo --silent --target <url>[/]              {sl.get('cli_help_silent', 'Non-interactive scan, outputs findings JSON, exits 0/1')}")
+        console.print(f"    [#00d4aa]bingo --silent --target <url> --output ./out[/]  {sl.get('cli_help_silent_out', 'Save findings to directory')}")
         return
 
     if args and args[0] == "--version":

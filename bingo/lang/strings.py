@@ -4024,6 +4024,60 @@ _STRINGS.update({
         "zh": "请简要总结之前的进度，并继续下一步工作。",
         "en": "Please briefly summarize progress so far and continue with the next step.",
     },
+
+    # ── v3.2.96: FindingsExporter / XSS Playwright 자동 검증 다국어 ────────────
+    "fe_finding_detected": {
+        "ko": "⚡ 취약점 발견 자동 감지됨",
+        "zh": "⚡ 自动检测到漏洞发现",
+        "en": "⚡ Finding Auto-Detected",
+    },
+    "fe_auto_saved": {
+        "ko": "📁 발견 중간 자동 저장",
+        "zh": "📁 发现中途自动保存",
+        "en": "📁 Findings Auto-Saved (interim)",
+    },
+    "fe_session_saved": {
+        "ko": "📊 세션 발견 JSON 자동 저장됨",
+        "zh": "📊 会话发现 JSON 已自动保存",
+        "en": "📊 Session Findings JSON Auto-Saved",
+    },
+    "fe_xss_verify": {
+        "ko": "🌐 XSS payload 브라우저 자동 검증 중...",
+        "zh": "🌐 正在通过浏览器自动验证 XSS payload...",
+        "en": "🌐 Auto-verifying XSS payload in browser...",
+    },
+    "fe_xss_confirmed": {
+        "ko": "✅ XSS 브라우저 실행 확인됨 [CONFIRMED]",
+        "zh": "✅ XSS 浏览器执行已确认 [CONFIRMED]",
+        "en": "✅ XSS Execution Confirmed in Browser [CONFIRMED]",
+    },
+    "fe_xss_unconfirmed": {
+        "ko": "⚠ XSS 브라우저 자동 확인 실패 (수동 검증 권장)",
+        "zh": "⚠ XSS 浏览器自动确认失败 (建议手动验证)",
+        "en": "⚠ XSS Browser Auto-Confirm Failed (manual verify recommended)",
+    },
+
+    # ── v3.2.96: CLI --silent 헤드리스 모드 다국어 ──────────────────────────────
+    "cli_help_silent": {
+        "ko": "비대화식(헤드리스) 모드 — 자동 침투 후 findings JSON 출력 (CI/CD 용)",
+        "zh": "非交互(无界面)模式 — 自动渗透后输出 findings JSON (CI/CD)",
+        "en": "Non-interactive (headless) mode — auto-pentest then output findings JSON (CI/CD)",
+    },
+    "cli_help_silent_out": {
+        "ko": "결과 저장 디렉토리 지정",
+        "zh": "指定结果保存目录",
+        "en": "Specify output directory for results",
+    },
+    "cli_silent_start": {
+        "ko": "🔇 [SILENT] 비대화식 자동 침투 시작: {target}",
+        "zh": "🔇 [SILENT] 启动非交互式自动渗透: {target}",
+        "en": "🔇 [SILENT] Starting non-interactive auto-pentest: {target}",
+    },
+    "cli_silent_done": {
+        "ko": "🔇 [SILENT] 완료 — 발견: {total}건 (CRITICAL:{crit} HIGH:{high})",
+        "zh": "🔇 [SILENT] 完成 — 发现: {total}项 (CRITICAL:{crit} HIGH:{high})",
+        "en": "🔇 [SILENT] Done — Findings: {total} (CRITICAL:{crit} HIGH:{high})",
+    },
 })
 
 

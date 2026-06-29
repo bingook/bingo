@@ -1839,6 +1839,19 @@ _STRINGS.update({
                                   "zh": "⚠ Ctrl+C — 收集部分结果后等待输入提示",
                                   "en": "⚠ Ctrl+C — collecting partial results, waiting for hint"},
 
+    # ── v3.3.3: /dev/tty 기반 hint 입력 — VM/WSL 환경 근본 수정 ─────────────
+    "hint_tty_active":          {"ko": "🔧 터미널 직접 입력 모드 (VM/Kali 환경 최적화)",
+                                  "zh": "🔧 终端直接输入模式（针对 VM/Kali 环境优化）",
+                                  "en": "🔧 Direct TTY input mode (optimized for VM/Kali env)"},
+
+    "hint_tty_fallback":        {"ko": "ℹ  표준 입력 모드로 전환 중...",
+                                  "zh": "ℹ  切换到标准输入模式...",
+                                  "en": "ℹ  Falling back to standard input mode..."},
+
+    "hint_termios_restored":    {"ko": "✅ 터미널 설정 복원 완료",
+                                  "zh": "✅ 终端设置已恢复",
+                                  "en": "✅ Terminal settings restored"},
+
     # ── Rule 17: 기법 소진 후 피벗 알림 ────────────────────────────────────
     "technique_exhausted":      {"ko": "🔄  [{param}] {technique} 3회 연속 실패 → 기법 소진, 다음으로 전환",
                                   "zh": "🔄  [{param}] {technique} 连续失败3次 → 技术耗尽, 切换下一个",

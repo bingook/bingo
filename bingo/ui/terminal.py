@@ -696,16 +696,21 @@ class BingoTerminal:
 
         v3.2.91: Ctrl+C 후 터미널 상태 dirty 문제 — 플러시 + 개행 삽입으로 복구
         v3.2.99: WSL/VM 호환 강화 — tty 리셋 + signal.SIG_DFL 임시 복원 후 재등록
+        v3.3.3: 근본 수정 — Windows+VM+Kali Linux 환경에서 Ctrl+C 이후 stdin이
+                EOFError 상태로 빠지는 문제를 /dev/tty 직접 읽기 + termios 복원으로 해결.
+                stdin 오염에 무관하게 항상 제어 터미널에서 입력 수신.
+                macOS 직접 사용 환경에서도 동일 코드 경로 사용 — 동작 차이 없음.
         """
         import sys as _sys
         import signal as _signal
+        import os as _os
 
-        # ★ v3.2.99: WSL/VM에서 SIGINT 핸들러가 prompt_toolkit 입력을 방해하는 문제 방지
-        # hint 프롬프트 동안만 SIGINT를 기본값(SIG_DFL)으로 복원하여 KeyboardInterrupt 발생하게 함
+        # ★ v3.3.3: hint 프롬프트 동안 SIGINT를 SIG_DFL로 복원
+        # (prompt_toolkit 내부에서 KeyboardInterrupt가 올바르게 raise되도록)
         _orig_sigint = _signal.getsignal(_signal.SIGINT)
         _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
 
-        # ★ v3.2.99: \r\n 강제 삽입 — WSL/VM 커서가 줄 중간에 걸려 있을 때 복구
+        # ★ v3.3.3: \r\n 강제 삽입 — 커서가 줄 중간에 걸려 있을 때 복구
         _sys.stdout.write("\r\n")
         _sys.stdout.flush()
         _sys.stderr.write("\r\n")
@@ -715,9 +720,63 @@ class BingoTerminal:
         _s_hint = get_strings(_lang)
         _pause_msg = _s_hint.get("hint_loop_paused", "⚡ Loop paused — type hint or Enter to stop")
         self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]\n")
-        # Rich 출력 후 한 번 더 플러시 — 터미널 렌더링 확정
         self.console.file.flush()
 
+        # ★ v3.3.3: /dev/tty 가용성 확인 (Unix 전용 — Windows native는 미해당)
+        # Windows+VM+Kali 환경: Kali 쪽(Linux)에서 실행되므로 /dev/tty 사용 가능
+        # macOS 직접 사용: 마찬가지로 /dev/tty 사용 가능
+        _tty_available = _os.path.exists("/dev/tty")
+
+        # ★ v3.3.3: termios 임포트 시도 (Linux/macOS 전용 — 없으면 fallback)
+        _termios = None
+        _tty_mod = None
+        try:
+            import termios as _termios_mod
+            import tty as _tty_mod
+            _termios = _termios_mod
+        except ImportError:
+            pass
+
+        # ★ v3.3.3: /dev/tty 기반 입력 시도
+        # stdin이 EOF 상태여도 제어 터미널(실제 키보드)에서 직접 읽음
+        if _tty_available and _termios is not None:
+            _tty_fd = None
+            _old_settings = None
+            try:
+                _tty_fd = open("/dev/tty", "r")  # noqa: WPS515
+                # 현재 터미널 설정 저장
+                _old_settings = _termios.tcgetattr(_tty_fd)
+
+                # prompt_toolkit이 /dev/tty에서 직접 읽도록 stdin을 일시 교체
+                _orig_stdin = _sys.stdin
+                _sys.stdin = _tty_fd
+                try:
+                    hint = self._session.prompt(
+                        HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
+                        style=PT_STYLE,
+                    )
+                    return hint.strip() if hint.strip() else None
+                except (EOFError, KeyboardInterrupt):
+                    return None
+                finally:
+                    _sys.stdin = _orig_stdin
+            except Exception:
+                # /dev/tty 열기/읽기 실패 시 fallback으로 진행
+                pass
+            finally:
+                # ★ v3.3.3: termios 복원 — Ctrl+C 이후 터미널이 raw 모드로 남는 현상 방지
+                if _old_settings is not None and _tty_fd is not None:
+                    try:
+                        _termios.tcsetattr(_tty_fd, _termios.TCSADRAIN, _old_settings)
+                    except Exception:
+                        pass
+                if _tty_fd is not None:
+                    try:
+                        _tty_fd.close()
+                    except Exception:
+                        pass
+
+        # Fallback: /dev/tty 없거나 termios 없는 환경 (Windows native 등)
         try:
             hint = self._session.prompt(
                 HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
@@ -727,7 +786,7 @@ class BingoTerminal:
         except (EOFError, KeyboardInterrupt):
             return None
         finally:
-            # ★ v3.2.99: 원래 SIGINT 핸들러 복원 + stop_flag 클리어 (hint 입력 후 루프 재개 준비)
+            # ★ v3.3.3: 원래 SIGINT 핸들러 복원 + stop_flag 클리어
             _signal.signal(_signal.SIGINT, _orig_sigint)
             self._agent_stop_flag.clear()
 

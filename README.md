@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.3.2-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.3.3-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -1321,6 +1321,7 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 | Version | Summary |
 |---------|---------|
+| v3.3.3 | **Hotfix: `/hint` reliable input in VM/Kali environments** — Root-cause fix for `EOFError` on `stdin` after `Ctrl+C` inside Windows+VM+Kali Linux: `_prompt_mid_task_hint` now reads directly from `/dev/tty` (controlling terminal) instead of `sys.stdin`, with `termios` save/restore to prevent raw-mode leakage; transparent fallback for environments without `/dev/tty`; 3 new i18n keys (`hint_tty_active/hint_tty_fallback/hint_termios_restored`) KO/ZH/EN; no behavior change on macOS or other UNIX environments |
 | v3.3.0 | **New `/ctf` command** — Playwright-based web lab runner; new `tools/ctf_lab_engine.py`; 14 new i18n keys (KO/ZH/EN); `/ctf` added to `/help` and slash autocomplete |
 | v3.2.99 | **Hotfix: Ctrl+C instant response on all environments (Linux/WSL/VM)** — Root-cause fix: `HEARTBEAT` reduced 30s→1s so `_agent_stop_flag` is polled every 1s during code execution (was 30s delay); all `subprocess.Popen` calls now use `start_new_session=True` to isolate child processes from terminal SIGINT (WSL/VM compatibility); subprocess termination upgraded to `os.killpg` + 2s grace + `SIGKILL` fallback; `_prompt_mid_task_hint` restores `signal.SIG_DFL` during hint input then re-registers original handler, adds `\r\n` flush for WSL cursor recovery; 3 new i18n keys (`ctrl_c_killing_procs/ctrl_c_hint_ready/exec_interrupted_partial`) KO/ZH/EN |
 | v3.2.98 | **Hotfix: `_format_agent_state` defensive guard + i18n keys** — Fixed `AttributeError`/`KeyError` in `_format_agent_state`: wrapped body in `try/except`, replaced all `s["key"]` with `s.get("key", default)`, added `hasattr` guard at call site; added 8 new i18n keys (`agent_state_corrupted/key_missing/new_target/knowledge_injected/sqli_confirmed/creds_saved`, `whitebox_target_combined/full_urls_built`) KO/ZH/EN |
@@ -1426,7 +1427,7 @@ MIT © 2026 bingook
 
 *The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, and target memory.*
 
-[![Version](https://img.shields.io/badge/version-3.3.2-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.3.3-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

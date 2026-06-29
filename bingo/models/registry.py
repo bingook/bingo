@@ -2,9 +2,28 @@ from .base import BaseModel, ClaudeModel, ModelConfig
 
 # ── 내장 프로바이더 정보 ──────────────────────────────────────────
 # 최신순 → 구버전 순으로 정렬 (2026-06 기준)
+# ── label 다국어 헬퍼 ────────────────────────────────────────────────
+# v3.2.89: label 값을 {ko/zh/en} dict로 변경 → _cmd_model에서 lang 적용
+# 고객 피드백: 모델 선택 화면에 한국어가 섞여 나옴
+def _label(ko: str, zh: str, en: str) -> dict:
+    return {"ko": ko, "zh": zh, "en": en}
+
+
+def get_provider_label(info: dict, lang: str = "en") -> str:
+    """label이 dict면 lang 키로, str이면 그대로 반환"""
+    lbl = info.get("label", "")
+    if isinstance(lbl, dict):
+        return lbl.get(lang) or lbl.get("en") or next(iter(lbl.values()), "")
+    return lbl
+
+
 BUILTIN_PROVIDERS: dict[str, dict] = {
     "deepseek": {
-        "label": "DeepSeek  ★ 추천",
+        "label": _label(
+            ko="DeepSeek  ★ 추천",
+            zh="DeepSeek  ★ 推荐",
+            en="DeepSeek  ★ Recommended",
+        ),
         "base_url": "https://api.deepseek.com/v1",
         "default_model": "deepseek-v4-pro",
         "max_tokens": 8192,        # DeepSeek V4 최대 출력 8K
@@ -144,7 +163,11 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "note": "qwen3.7-max 최신 플래그십 / qwen-turbo 저렴 옵션",
     },
     "ollama": {
-        "label": "Ollama (로컬)",
+        "label": _label(
+            ko="Ollama (로컬)",
+            zh="Ollama (本地)",
+            en="Ollama (Local)",
+        ),
         "base_url": "http://localhost:11434/v1",
         "default_model": "llama3",
         "max_tokens": 8192,        # 로컬 모델 안전 기본값
@@ -153,7 +176,11 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "note": "로컬 실행 — 모델 목록은 ollama list 로 확인",
     },
     "custom": {
-        "label": "커스텀 / 직접 입력",
+        "label": _label(
+            ko="커스텀 / 직접 입력",
+            zh="自定义 / 直接输入",
+            en="Custom / Enter directly",
+        ),
         "base_url": "",
         "default_model": "",
         "max_tokens": 8192,        # 커스텀 안전 기본값
@@ -182,6 +209,6 @@ class ModelRegistry:
         return BaseModel(config)
 
     @staticmethod
-    def provider_list() -> list[tuple[str, str]]:
-        """(id, label) 목록"""
-        return [(k, v["label"]) for k, v in BUILTIN_PROVIDERS.items()]
+    def provider_list(lang: str = "en") -> list[tuple[str, str]]:
+        """(id, label) 목록 — lang에 맞는 레이블 반환"""
+        return [(k, get_provider_label(v, lang)) for k, v in BUILTIN_PROVIDERS.items()]

@@ -3751,8 +3751,10 @@ class BingoTerminal:
         )
 
     def _cmd_model(self) -> None:
-        from ..models.registry import BUILTIN_PROVIDERS
+        from ..models.registry import BUILTIN_PROVIDERS, get_provider_label
         from ..models.base import ModelConfig
+
+        _lang = getattr(self.config, "lang", "en")
 
         self.console.print(f"\n[{THEME['primary']}]{self.s['select_model']}[/]\n")
 
@@ -3768,7 +3770,9 @@ class BingoTerminal:
         providers = list(BUILTIN_PROVIDERS.items())
         self.console.print(f"  [{THEME['secondary']}]{self.s['models_add_new']}[/]")
         for i, (pid, info) in enumerate(providers, len(self.config.models) + 1):
-            self.console.print(f"  [{THEME['dim']}]{i}[/] — {info['label']}")
+            # v3.2.89: 언어별 레이블 사용
+            _lbl = get_provider_label(info, _lang)
+            self.console.print(f"  [{THEME['dim']}]{i}[/] — {_lbl}")
 
         raw = Prompt.ask(f"\n[{THEME['primary']}]{self.s['select_number']}[/]").strip()
         try:
@@ -3787,8 +3791,9 @@ class BingoTerminal:
         new_idx = idx - len(self.config.models)
         if 0 <= new_idx < len(providers):
             pid, info = providers[new_idx]
+            _lbl = get_provider_label(info, _lang)
             api_key = Prompt.ask(
-                f"[{THEME['primary']}]{info['label']} {self.s['enter_api_key']}[/]",
+                f"[{THEME['primary']}]{_lbl} {self.s['enter_api_key']}[/]",
                 password=True,
             )
             default_url = info["base_url"]

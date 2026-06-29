@@ -1639,10 +1639,11 @@ class BingoTerminal:
         }.get(_lang, "English")
 
         _model_name = model_cfg.model if model_cfg else "unknown"
-        from ..models.registry import BUILTIN_PROVIDERS
+        from ..models.registry import BUILTIN_PROVIDERS, get_provider_label
         _raw_provider = model_cfg.provider if model_cfg else "unknown"
         _provider_info = BUILTIN_PROVIDERS.get(_raw_provider, {})
-        _provider_label = _provider_info.get("label", _raw_provider.capitalize())
+        # v3.2.90: label이 dict일 수 있으므로 get_provider_label() 사용
+        _provider_label = get_provider_label(_provider_info, _lang) if _provider_info else _raw_provider.capitalize()
         _provider_short = _provider_label.split()[0] if _provider_label else _raw_provider.capitalize()
 
         # 현재 날짜/시간 — 로컬 시스템 시간 사용

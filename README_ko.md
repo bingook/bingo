@@ -1138,6 +1138,7 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.90 | **핫픽스: 모델 레이블 dict 크래시** — 에서  수정; v3.2.89에서 label을 dict로 변환했으나 해당 참조를 누락;  일관 적용 |
 | v3.2.89 | **모델 메뉴 다국어 지원** — `BUILTIN_PROVIDERS` 레이블을 한국어 고정 문자열에서 `{ko/zh/en}` 다국어 dict로 변환; `get_provider_label(info, lang)` 헬퍼 추가; `provider_list(lang)` 언어 파라미터 추가; `_cmd_model`이 현재 언어 설정을 읽어 올바른 언어로 레이블 렌더링 (`★ 추천` → `★ 推荐` / `★ Recommended`; `(로컬)` → `(本地)` / `(Local)`; `커스텀/직접 입력` → `自定义/直接输入` / `Custom/Enter directly`) |
 | v3.2.88 | **세션 불러오기 (`/load`)** — 이전 세션 `.md` 파일 경로를 프롬프트에 직접 붙여넣으면 bingo가 자동 감지 → 전체 대화 히스토리 복원 → 타겟 URL 추출 → AI 자동 재개; `/load <경로>` 명령어도 추가; `_chat_loop`의 스마트 경로 자동 감지 (`/load` 접두사 없어도 동작); 로드 상태 메시지 i18n 키 6개 신규; `/help` 및 슬래시 자동완성에 `/load` 추가 |
 | v3.2.87 | **MVVS — 다중 벡터 검증 시스템** — 모든 잠재적 취약점은 *다른 기법*을 사용한 2차 벡터 확인을 자동 트리거함 (에러 기반 SQLi → 시간 기반 SLEEP, 반사형 XSS → 저장형 컨텍스트 탐지 등); `_detect_vuln_signal` 정규식 엔진이 코드 실행 출력에서 실제 취약점 증거 파싱; `_mvvs_trigger`가 AI 결론 전 동적 재검증 프롬프트 주입; 신뢰도 태깅(`[SUSPECTED]` → `[LIKELY]` → `[CONFIRMED]` / `[FALSE POSITIVE]`); 시스템 프롬프트에 MVVS 검증 매트릭스 + Gate [8] 사전 체크리스트 추가; MVVS 상태 메시지 i18n 키 8개 신규 추가 |

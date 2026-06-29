@@ -1790,6 +1790,21 @@ _STRINGS.update({
                                         "Rewrite code with one of these strategies NOW."
                                     )},
 
+    # ── v3.2.94: ILR override 다국어 메시지 ──────────────────────────────────
+    "ilr_override_title":       {"ko": "⚡ ILR {n}회 연속 차단 → override: 다음 실행 시 seen=set() 자동 주입",
+                                  "zh": "⚡ ILR 连续拦截{n}次 → override: 下次运行自动注入 seen=set()",
+                                  "en": "⚡ ILR {n}x blocked → override: seen=set() auto-inject next run"},
+    "ilr_override_body":        {"ko": ("INFINITE_LOOP_RISK가 코드를 3회 연속 차단했습니다.\n"
+                                        "bingo가 다음 for/range 루프에 seen=set()을 자동 주입하고 직접 실행합니다.\n"
+                                        "작업: 같은 열거 코드를 다시 생성하세요. bingo가 루프 가드를 자동으로 수정합니다."),
+                                  "zh": ("INFINITE_LOOP_RISK 已连续拦截您的代码3次。\n"
+                                         "bingo 将在下次 for/range 循环中自动注入 seen=set() 并直接执行。\n"
+                                         "操作: 重新生成相同的枚举代码，bingo 将自动修复循环保护。"),
+                                  "en": ("INFINITE_LOOP_RISK blocked your code 3 times in a row.\n"
+                                         "bingo will AUTO-INJECT seen=set() into your next for/range loop and run it directly.\n"
+                                         "ACTION: regenerate the same enumeration code. "
+                                         "bingo will fix the loop guard automatically.")},
+
     # ── v3.2.91: Ctrl+C 힌트 프롬프트 / Stream Interrupted Messages ─────────
     "hint_loop_paused":         {"ko": ("⚡ [bold]루프 일시정지[/bold] — 힌트를 입력하면 중단 없이 계속 진행\n"
                                         "   (그냥 Enter 또는 Ctrl+C 한 번 더 → 완전 중단)"),

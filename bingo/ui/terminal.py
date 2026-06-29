@@ -273,6 +273,8 @@ class BingoTerminal:
         self._bruteforce_abort_triggered: bool = False
         self._mvvs_loop_count: int = 0  # v3.2.87: MVVS 루프당 카운터
         self._loop_block_consecutive: int = 0  # v3.2.91: LOOP_BLOCK 연속 차단 카운터 (무한사이클 방지)
+        self._ilr_consecutive: int = 0         # v3.2.94: INFINITE_LOOP_RISK 전용 연속 카운터
+        self._ilr_override: bool = False       # v3.2.94: ILR 3회 연속 차단 후 override 허용 플래그
         # 도메인별 메모리 모듈 (target_memory)
         try:
             from ..core.target_memory import load as _tm_load, save as _tm_save, \
@@ -696,20 +698,8 @@ class BingoTerminal:
         _sys.stderr.flush()
 
         _lang = getattr(self.config, "lang", "en")
-        _pause_msg = {
-            "ko": (
-                "⚡ [bold]루프 일시정지[/bold] — 힌트를 입력하면 중단 없이 계속 진행\n"
-                "   (그냥 Enter 또는 Ctrl+C 한 번 더 → 완전 중단)"
-            ),
-            "zh": (
-                "⚡ [bold]循环暂停[/bold] — 输入提示则继续执行\n"
-                "   (直接回车或再按Ctrl+C → 完全停止)"
-            ),
-            "en": (
-                "⚡ [bold]Loop paused[/bold] — type a hint to keep going\n"
-                "   (press Enter or Ctrl+C again → stop completely)"
-            ),
-        }.get(_lang, "⚡ Loop paused — type hint or Enter to stop")
+        _s_hint = get_strings(_lang)
+        _pause_msg = _s_hint.get("hint_loop_paused", "⚡ Loop paused — type hint or Enter to stop")
         self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]\n")
         # ★ v3.2.91: Rich 출력 후 한 번 더 플러시 — 터미널 렌더링 확정
         self.console.file.flush()
@@ -2714,11 +2704,8 @@ class BingoTerminal:
             _sys.stdout.flush()
             _sys.stderr.flush()
             _lang = getattr(self.config, "lang", "en")
-            _stop_msg = {
-                "ko": "⏸ 스트리밍 중단됨 — 힌트를 입력하거나 Enter로 루프를 멈춥니다",
-                "zh": "⏸ 流式传输已中断 — 输入提示或按 Enter 停止循环",
-                "en": "⏸ Streaming interrupted — type a hint or press Enter to stop the loop",
-            }.get(_lang, "⏸ Interrupted")
+            _s_int = get_strings(_lang)
+            _stop_msg = _s_int.get("stream_interrupted", "⏸ Interrupted")
             self.console.print(f"[{THEME['warn']}]{_stop_msg}[/]")
             self.console.file.flush()
 
@@ -4644,7 +4631,19 @@ class BingoTerminal:
                 not _has_cursor_pattern
             )
             if _has_range_loop and _has_query and _has_top1_no_cursor and not _has_seen:
-                return ("__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever", [])
+                # v3.2.94: ILR override mode — 3회 연속 차단 후 seen=set() 자동 주입 후 실행
+                if self._ilr_override:
+                    self._ilr_override = False  # 1회 사용 후 해제
+                    # for 루프 바로 앞에 seen = set() 자동 주입
+                    fixed = _pre_re.sub(
+                        r'(\bfor\b\s+\w+\s+in\s+range\s*\()',
+                        r'seen = set()  # [bingo-ilr-override] auto-injected\n    \g<1>',
+                        fixed, count=1
+                    )
+                    _applied_fix_names.append("ilr_override_seen_injected")
+                    # fall-through: 나머지 검사 계속 진행 후 수정된 코드 반환
+                else:
+                    return ("__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever", [])
 
             # ── 0-B. 무한루프: while True + break 없음 ─────────────────────
             if _pre_re.search(r'\bwhile\s+True\s*:', fixed):
@@ -5156,7 +5155,11 @@ class BingoTerminal:
                 _block_reason = _checked[len("__BLOCKED__:"):]
                 _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])
                 self.console.print(f"[bold red]{_loop_label}[/]")
-                _hallucination_msgs.append(f"LOOP_BLOCKED: {_block_reason}")
+                # v3.2.94: ILR 전용 카운터 별도 집계 (LOOP_BLOCK 공유 카운터와 분리)
+                if "INFINITE_LOOP_RISK" in _block_reason:
+                    _hallucination_msgs.append(f"ILR_BLOCKED: {_block_reason}")
+                else:
+                    _hallucination_msgs.append(f"LOOP_BLOCKED: {_block_reason}")
                 continue  # 이 코드블록 실행 건너뜀
             elif _checked == "__WARN_SYNTAX__":
                 # Python 3.12 호환 f-string (실행은 시도, 조용한 안내만)
@@ -5231,8 +5234,64 @@ class BingoTerminal:
 
         # 모든 블록이 환각으로 차단됐을 경우 → 강제 수정 메시지 반환
         if _hallucination_msgs and not tasks:
+            _has_ilr = any("ILR_BLOCKED" in m for m in _hallucination_msgs)
             _has_loop_block = any("LOOP_BLOCKED" in m for m in _hallucination_msgs)
-            if _has_loop_block:
+
+            # ── v3.2.94: INFINITE_LOOP_RISK 전용 카운터 처리 ────────────────
+            # 기존 버그: ILR 탈출 후 카운터 0 리셋 → AI 무시 → 탈출-리셋 무한사이클
+            # 수정: ILR 전용 _ilr_consecutive 사용, 3회 초과 시 override 플래그 세팅
+            #        다음 코드 실행 시 _precheck에서 seen=set() 자동 주입 후 코드 실행
+            if _has_ilr:
+                self._ilr_consecutive += 1
+                _MAX_ILR = 2
+                _lang = getattr(self.config, "lang", "en")
+                _s94 = get_strings(_lang)
+                if self._ilr_consecutive > _MAX_ILR:
+                    # override 플래그 세팅 — 다음 호출 시 seen=set() 자동 주입 후 실행
+                    self._ilr_consecutive = 0
+                    self._ilr_override = True
+                    _ilr_ov_title = _s94.get(
+                        "ilr_override_title",
+                        f"⚡ ILR {_MAX_ILR + 1}x blocked — override: seen=set() auto-inject next run"
+                    )
+                    _ilr_ov_body = _s94.get(
+                        "ilr_override_body",
+                        (
+                            "INFINITE_LOOP_RISK blocked your code 3 times in a row.\n"
+                            "bingo will AUTO-INJECT seen=set() into your next for/range loop "
+                            "and run it directly — no more blocking.\n"
+                            "ACTION: regenerate the same enumeration code. "
+                            "bingo will fix the loop guard automatically."
+                        )
+                    )
+                    self.console.print(f"[{THEME['warn']}]{_ilr_ov_title}[/]")
+                    return f"[{_ilr_ov_title}]\n{_ilr_ov_body}"
+                # ILR 1~2회차: 구체적 패턴 안내
+                _fb_title = _s94.get("loop_block_feedback_title", "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED")
+                _fb_rewrite = _s94.get("loop_block_mandatory_rewrite", "MANDATORY REWRITE — Use cursor pagination:")
+                _fb_now = _s94.get("loop_block_rewrite_now", "Rewrite with the cursor pagination pattern above NOW.")
+                _hall_feedback = (
+                    f"[{_fb_title}]\n"
+                    + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
+                    + "\n\nYour enumeration loop will print the SAME table name forever!\n"
+                    "ROOT CAUSE: SELECT TOP 1 without cursor + no seen=set()\n\n"
+                    f"{_fb_rewrite}\n"
+                    "  seen = set()\n"
+                    "  last_hex = ''\n"
+                    "  while True:\n"
+                    "      cursor_clause = f' AND name > {last_hex}' if last_hex else ''\n"
+                    "      payload = f\"AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55{cursor_clause})\"\n"
+                    "      result = extract_char_by_char(payload)  # your existing extract fn\n"
+                    "      if not result or result in seen:\n"
+                    "          break\n"
+                    "      seen.add(result)\n"
+                    "      last_hex = '0x' + result.encode().hex().upper()\n"
+                    "      print(result)\n\n"
+                    "DO NOT use: for i in range(N): query('SELECT TOP 1 name ... LIKE ...')\n"
+                    f"{_fb_now}"
+                )
+
+            elif _has_loop_block:
                 # v3.2.91: 연속 LOOP_BLOCK 카운터 — 무한 재시도 사이클 방지
                 self._loop_block_consecutive += 1
                 _MAX_LOOP_BLOCK = 2
@@ -5293,8 +5352,10 @@ class BingoTerminal:
                 )
             return [_hall_feedback]
 
-        # v3.2.91: 정상 코드 실행 경로 → 연속 LOOP_BLOCK 카운터 리셋
+        # v3.2.91/94: 정상 코드 실행 경로 → 연속 카운터 리셋
         self._loop_block_consecutive = 0
+        self._ilr_consecutive = 0   # v3.2.94: ILR 카운터도 리셋
+        self._ilr_override = False  # v3.2.94: override 잔류 플래그 클리어
 
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
         _BASH_ALLOWED = {

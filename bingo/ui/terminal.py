@@ -693,21 +693,31 @@ class BingoTerminal:
     def _prompt_mid_task_hint(self) -> "str | None":
         """Ctrl+C 눌렀을 때 힌트를 입력받고 반환.
         빈 입력 → None (루프 중단), 텍스트 입력 → 힌트 주입 후 루프 계속.
+
         v3.2.91: Ctrl+C 후 터미널 상태 dirty 문제 — 플러시 + 개행 삽입으로 복구
+        v3.2.99: WSL/VM 호환 강화 — tty 리셋 + signal.SIG_DFL 임시 복원 후 재등록
         """
         import sys as _sys
-        # ★ v3.2.91: Ctrl+C 직후 터미널이 mid-line 상태일 수 있음
-        # stdout/stderr를 플러시하고 개행을 강제 삽입해 prompt_toolkit 입력 복구
-        _sys.stdout.write("\n")
+        import signal as _signal
+
+        # ★ v3.2.99: WSL/VM에서 SIGINT 핸들러가 prompt_toolkit 입력을 방해하는 문제 방지
+        # hint 프롬프트 동안만 SIGINT를 기본값(SIG_DFL)으로 복원하여 KeyboardInterrupt 발생하게 함
+        _orig_sigint = _signal.getsignal(_signal.SIGINT)
+        _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
+
+        # ★ v3.2.99: \r\n 강제 삽입 — WSL/VM 커서가 줄 중간에 걸려 있을 때 복구
+        _sys.stdout.write("\r\n")
         _sys.stdout.flush()
+        _sys.stderr.write("\r\n")
         _sys.stderr.flush()
 
         _lang = getattr(self.config, "lang", "en")
         _s_hint = get_strings(_lang)
         _pause_msg = _s_hint.get("hint_loop_paused", "⚡ Loop paused — type hint or Enter to stop")
         self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]\n")
-        # ★ v3.2.91: Rich 출력 후 한 번 더 플러시 — 터미널 렌더링 확정
+        # Rich 출력 후 한 번 더 플러시 — 터미널 렌더링 확정
         self.console.file.flush()
+
         try:
             hint = self._session.prompt(
                 HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
@@ -716,6 +726,10 @@ class BingoTerminal:
             return hint.strip() if hint.strip() else None
         except (EOFError, KeyboardInterrupt):
             return None
+        finally:
+            # ★ v3.2.99: 원래 SIGINT 핸들러 복원 + stop_flag 클리어 (hint 입력 후 루프 재개 준비)
+            _signal.signal(_signal.SIGINT, _orig_sigint)
+            self._agent_stop_flag.clear()
 
     # ── 메시지 전송 + 스트리밍 출력 ──────────────────────────────
     def _inject_warmup_history(self) -> None:
@@ -5464,6 +5478,7 @@ class BingoTerminal:
                         ["python3", task["path"]],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                        start_new_session=True,  # v3.2.99: WSL/VM Ctrl+C 격리
                     )
                     stdout, stderr = proc.communicate()
                     output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
@@ -5503,6 +5518,7 @@ class BingoTerminal:
                     proc = subprocess.Popen(
                         task["cmd"], shell=True,
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        start_new_session=True,  # v3.2.99: WSL/VM Ctrl+C 격리
                     )
                     stdout, stderr = proc.communicate()
                     output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
@@ -5540,12 +5556,14 @@ class BingoTerminal:
                         ["python3", "-u", task["path"]],  # -u: unbuffered
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                         env=env, bufsize=0,
+                        start_new_session=True,  # v3.2.99: WSL/VM Ctrl+C 격리
                     )
                 else:
                     p = subprocess.Popen(
                         task["cmd"], shell=True,
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                         env=env, bufsize=0,
+                        start_new_session=True,  # v3.2.99: WSL/VM Ctrl+C 격리
                     )
                 with proc_list_lock:
                     proc_registry.append(p)
@@ -5794,40 +5812,69 @@ class BingoTerminal:
         for _th in threads:
             _th.start()
 
-        # 30초마다 진행 상황 표시 + 10분 소프트 타임아웃
+        # 30초마다 진행 상황 표시 + Ctrl+C 즉시 감지 (v3.2.99)
         _s = self.s
         self.console.print(
             f"[{THEME['dim']}]⏳ {_s.get('exec_parallel', 'Running')} "
             f"{len(threads)} {_s.get('exec_scripts', 'scripts in parallel')}...[/]"
         )
 
-        HEARTBEAT = 30  # 30초마다 상태 표시
+        # ★ v3.2.99: HEARTBEAT 30→1 — Ctrl+C 후 최대 1초 내 반응 (기존 최대 30초)
+        HEARTBEAT = 1   # 1초마다 stop_flag 체크 (heartbeat 출력은 30초마다)
         elapsed = 0
+        _heartbeat_print_interval = 30  # 화면 출력은 30초에 한 번
         while any(_th.is_alive() for _th in threads):
             for _th in threads:
                 _th.join(timeout=HEARTBEAT)
             elapsed += HEARTBEAT
-            if any(_th.is_alive() for _th in threads):
-                self.console.print(
-                    f"[{THEME['dim']}]  ⏱ {elapsed}s {_s.get('exec_running', 'running')}...[/]"
-                )
-            # Ctrl+C 감지 시 현재까지 결과 수집 후 종료
+
+            # ★ Ctrl+C 감지 즉시 처리 (우선순위 최상위)
             if self._agent_stop_flag.is_set():
                 self.console.print(
                     f"[{THEME['warn']}]⚠ {_s.get('exec_timeout_soft', 'Interrupted — collecting partial results')}[/]"
                 )
+                # ★ v3.2.99: os.killpg로 프로세스 그룹 전체 종료 (WSL/VM 호환)
+                import signal as _sig
+                import os as _os
                 with proc_list_lock:
                     for p in proc_registry:
                         try:
-                            p.terminate()
+                            pgid = _os.getpgid(p.pid)
+                            _os.killpg(pgid, _sig.SIGTERM)
+                        except Exception:
+                            try:
+                                p.terminate()
+                            except Exception:
+                                pass
+                # 2초 대기 후 강제 kill (좀비 방지)
+                import time as _kt
+                _kt.sleep(2)
+                with proc_list_lock:
+                    for p in proc_registry:
+                        try:
+                            if p.poll() is None:
+                                try:
+                                    pgid = _os.getpgid(p.pid)
+                                    _os.killpg(pgid, _sig.SIGKILL)
+                                except Exception:
+                                    try:
+                                        p.kill()
+                                    except Exception:
+                                        pass
                         except Exception:
                             pass
                 for _th in threads:
-                    _th.join(timeout=5)
+                    _th.join(timeout=3)
                 for i, r in enumerate(results_text):
                     if not r:
                         results_text[i] = "=== INTERRUPTED — partial results only ==="
                 break
+
+            # 30초마다 진행상황 heartbeat 출력
+            if elapsed % _heartbeat_print_interval == 0 and any(_th.is_alive() for _th in threads):
+                self.console.print(
+                    f"[{THEME['dim']}]  ⏱ {elapsed}s {_s.get('exec_running', 'running')}...[/]"
+                )
 
         return [r for r in results_text if r]
 

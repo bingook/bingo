@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.2.98-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.99-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -929,7 +929,7 @@ Every 5 new findings, an interim save is triggered automatically — no data los
 **JSON output format:**
 ```json
 {
-  "bingo_version": "3.2.98",
+  "bingo_version": "3.2.99",
   "generated_at": "2026-06-29 20:00:00",
   "target": "https://target.com",
   "total": 3,
@@ -1321,6 +1321,7 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 | Version | Summary |
 |---------|---------|
+| v3.2.99 | **Hotfix: Ctrl+C instant response on all environments (Linux/WSL/VM)** — Root-cause fix: `HEARTBEAT` reduced 30s→1s so `_agent_stop_flag` is polled every 1s during code execution (was 30s delay); all `subprocess.Popen` calls now use `start_new_session=True` to isolate child processes from terminal SIGINT (WSL/VM compatibility); subprocess termination upgraded to `os.killpg` + 2s grace + `SIGKILL` fallback; `_prompt_mid_task_hint` restores `signal.SIG_DFL` during hint input then re-registers original handler, adds `\r\n` flush for WSL cursor recovery; 3 new i18n keys (`ctrl_c_killing_procs/ctrl_c_hint_ready/exec_interrupted_partial`) KO/ZH/EN |
 | v3.2.98 | **Hotfix: `_format_agent_state` defensive guard + i18n keys** — Fixed `AttributeError`/`KeyError` in `_format_agent_state`: wrapped body in `try/except`, replaced all `s["key"]` with `s.get("key", default)`, added `hasattr` guard at call site; added 8 new i18n keys (`agent_state_corrupted/key_missing/new_target/knowledge_injected/sqli_confirmed/creds_saved`, `whitebox_target_combined/full_urls_built`) KO/ZH/EN |
 | v3.2.97 | **Advanced Web Attack Skill Pack (+28 skills)** — 28 new skills across SQLi×6 (numeric/single-quote/double-quote/bracket/cookie-header/time-based+filter-bypass), XSS×3 (HTML/JS-context/file-upload), file-upload bypass×11, JWT×3 (alg:none/RS256→HS256/jku), XXE, IDOR×3, business-logic×2 (auth-bypass/transaction-fraud), SSRF, RCE×2 (PHP-cmd/LFI→RCE), path-traversal, shop-logic×24, brute-force, open-redirect, secret-key-exposure, CRLF, PHP-deserialization, directory-listing, request-smuggling, probability-manipulation; total skills 367→**395**, total tags **1,639** |
 | v3.2.96 | **Real-time Findings Engine + XSS Playwright Verify + Headless CI Mode** — `FindingsExporter` auto-detects RCE/LFI/CRED/SSRF/XSS/SQLi from code execution output, saves findings JSON to Desktop every 5 detections and on session end; Playwright engine auto-verifies detected XSS payloads in real browser (confirms/screenshots); `--silent --target <url>` headless mode for non-interactive auto-pentest in CI/CD pipelines with JSON output and exit codes 0/1; 10 new i18n keys (KO/ZH/EN) |
@@ -1424,7 +1425,7 @@ MIT © 2026 bingook
 
 *The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, and target memory.*
 
-[![Version](https://img.shields.io/badge/version-3.2.98-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.99-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

@@ -1820,6 +1820,19 @@ _STRINGS.update({
                                   "zh": "⏸ 流式传输已中断 — 输入提示或按 Enter 停止循环",
                                   "en": "⏸ Streaming interrupted — type a hint or press Enter to stop the loop"},
 
+    # ── v3.2.99: Ctrl+C 즉시 반응 관련 ─────────────────────────────────────
+    "ctrl_c_killing_procs":     {"ko": "⚡ 실행 중인 스크립트 즉시 종료 중...",
+                                  "zh": "⚡ 正在立即终止运行中的脚本...",
+                                  "en": "⚡ Killing running scripts immediately..."},
+
+    "ctrl_c_hint_ready":        {"ko": "✅ 중단 완료 — 이제 hint를 입력하세요 (Enter = 완전 중단)",
+                                  "zh": "✅ 已中断 — 现在输入提示（回车 = 完全停止）",
+                                  "en": "✅ Stopped — enter a hint now (Enter = stop completely)"},
+
+    "exec_interrupted_partial": {"ko": "⚠ Ctrl+C — 부분 결과 수집 후 hint 입력 대기 중",
+                                  "zh": "⚠ Ctrl+C — 收集部分结果后等待输入提示",
+                                  "en": "⚠ Ctrl+C — collecting partial results, waiting for hint"},
+
     # ── Rule 17: 기법 소진 후 피벗 알림 ────────────────────────────────────
     "technique_exhausted":      {"ko": "🔄  [{param}] {technique} 3회 연속 실패 → 기법 소진, 다음으로 전환",
                                   "zh": "🔄  [{param}] {technique} 连续失败3次 → 技术耗尽, 切换下一个",

@@ -271,6 +271,7 @@ class BingoTerminal:
         # 브루트포스 연속 실패 카운터 (자동 포기 + 벡터 전환용)
         self._bruteforce_fail_count: int = 0
         self._bruteforce_abort_triggered: bool = False
+        self._mvvs_loop_count: int = 0  # v3.2.87: MVVS 루프당 카운터
         # 도메인별 메모리 모듈 (target_memory)
         try:
             from ..core.target_memory import load as _tm_load, save as _tm_save, \
@@ -1775,6 +1776,7 @@ class BingoTerminal:
                 self._exec_loop_count = 0
                 self._stuck_count = 0
                 self._recent_results = []
+                self._mvvs_loop_count = 0  # v3.2.87: MVVS 카운터 리셋
                 # ── v2.9.2: 새 타겟 전환 시 대화 히스토리에서 이전 CMS/그누보드
                 #    관련 메시지가 AI를 오염시키지 않도록 히스토리 트리밍
                 #    (마지막 4턴만 유지하여 과거 컨텍스트 제거)
@@ -2280,6 +2282,299 @@ class BingoTerminal:
             )
 
         self.console.print(tbl)
+
+    # ── v3.2.87: MVVS — Multi-Vector Verification System ─────────────────────
+    # 고객 피드백: "bingo가 취약점을 한 번만 확인하고 끝냄, 幻觉率(환각률)이 높음"
+    # 해결: 코드 실행 결과에서 취약점 신호 감지 → 자동으로 다른 기법으로 2차 검증 강제
+
+    _MVVS_SIGNALS: "dict[str, list[tuple[str, str]]]" = {
+        # (regex_pattern, description)
+        "sqli": [
+            (r"sql\s*(?:syntax|error|inject)|syntax error|ORA-\d{4,}|mysql_fetch|pg_query",    "SQL error message"),
+            (r"80040e14|80040e07|80040e01|ODBC.*SQL|OLE DB.*SQL",                                 "OLEDB/ODBC SQL error"),
+            (r"(?:WAITFOR|pg_sleep|SLEEP)\s*\([^)]+\).*?(?:\d{2,}\.?\d*\s*sec|took\s*\d+s)",    "Time-based SQLi delay"),
+            (r"size.*?(\d{4,}).*?vs.*?(\d{4,})|length.*differ|response.*differ",                 "Response size difference"),
+            (r"1=1.{0,30}200|boolean.{0,30}differ|true.*false.*differ",                          "Boolean-based difference"),
+        ],
+        "xss": [
+            (r"<script[^>]*>\s*alert|onerror\s*=|onload\s*=|javascript\s*:",                     "XSS payload reflected"),
+            (r"xss.*(?:confirm|alert|prompt)\s*\(",                                               "XSS execution confirmed"),
+            (r"payload.*reflect|reflect.*payload",                                                "Reflected payload"),
+        ],
+        "idor": [
+            (r"(?:user|member|account|customer)_?(?:id|no|seq)\s*[=:]\s*\d+.{0,100}(?:name|email|phone|address)", "IDOR — other user data"),
+            (r"(?:unauthorized|forbidden|403).{0,50}(?:bypass|200|success|ok\b)",                "Authorization bypass"),
+            (r"(?:admin|관리자|root).{0,40}(?:access|panel|dashboard).{0,40}(?:200|success|ok\b)", "Admin access"),
+        ],
+        "rce": [
+            (r"uid=\d+\(|root:|/etc/(?:passwd|shadow)|/bin/(?:sh|bash)",                         "RCE — system file output"),
+            (r"(?:cmd|command|shell).{0,30}(?:output|result|executed)",                           "Command execution output"),
+            (r"Windows\s+NT.{0,20}(?:Microsoft|System32)|whoami.*?[a-zA-Z]+\\[a-zA-Z]+",         "RCE — Windows output"),
+        ],
+        "ssrf": [
+            (r"169\.254\.169\.254|metadata\.google\.internal|100\.100\.100\.200",                "Cloud metadata access"),
+            (r"(?:internal|private|10\.|172\.1[6-9]\.|192\.168\.).{0,60}(?:200|open|connect)",   "Internal network access"),
+        ],
+        "path_traversal": [
+            (r"root:x:0:0|daemon:x:|/etc/passwd.*root",                                          "Path traversal — /etc/passwd"),
+            (r"\[boot\s+loader\]|C:\\Windows\\System32",                                          "Path traversal — system files"),
+        ],
+    }
+
+    def _detect_vuln_signal(
+        self, combined_output: str
+    ) -> "list[tuple[str, str, str]]":
+        """코드 실행 결과에서 취약점 신호 감지.
+
+        Returns: [(vuln_type, pattern_description, matched_snippet), ...]
+        """
+        import re as _re
+        found: list[tuple[str, str, str]] = []
+        if not combined_output:
+            return found
+        for vuln_type, patterns in self._MVVS_SIGNALS.items():
+            for regex, desc in patterns:
+                m = _re.search(regex, combined_output, _re.IGNORECASE | _re.DOTALL)
+                if m:
+                    snippet = m.group(0)[:120].replace("\n", " ")
+                    found.append((vuln_type, desc, snippet))
+                    break  # 같은 유형은 첫 번째 매칭만
+        return found
+
+    def _mvvs_trigger(
+        self,
+        vuln_signals: "list[tuple[str, str, str]]",
+        combined_output: str,
+        model_cfg,
+    ) -> "str | None":
+        """MVVS: 감지된 신호에 대해 다른 기법으로 2차 검증 프롬프트 자동 주입.
+
+        Returns: AI의 2차 검증 응답 (또는 None if skipped)
+        """
+        import re as _re
+        from ..models.registry import ModelRegistry
+
+        if not vuln_signals or not model_cfg:
+            return None
+
+        _lang = getattr(self.config, "lang", "en")
+
+        # 이미 이 루프에서 MVVS가 실행된 횟수 추적 (무한 루프 방지)
+        _mvvs_count = getattr(self, "_mvvs_loop_count", 0)
+        if _mvvs_count >= 2:
+            return None  # 동일 루프에서 최대 2회
+        self._mvvs_loop_count = _mvvs_count + 1  # type: ignore[attr-defined]
+
+        # 신호별 2차 검증 지시
+        _verify_instructions: dict[str, dict[str, str]] = {
+            "sqli": {
+                "ko": (
+                    "SQL 인젝션 신호 감지됨 → 다른 기법으로 즉시 재검증하세요:\n"
+                    "① 에러 기반 발견 → 타임 기반(SLEEP/WAITFOR)으로 재확인\n"
+                    "② 타임 기반 발견 → 불리언 기반(AND 1=1 vs AND 1=2)으로 재확인\n"
+                    "③ 크기 차이 발견 → 에러 기반으로 재확인\n"
+                    "2가지 기법이 모두 확인되어야 [CONFIRMED] 태그를 붙이세요."
+                ),
+                "zh": (
+                    "检测到SQL注入信号 → 立即用不同技术重新验证:\n"
+                    "① 错误注入发现 → 用时间盲注(SLEEP/WAITFOR)再确认\n"
+                    "② 时间盲注发现 → 用布尔盲注(AND 1=1 vs AND 1=2)再确认\n"
+                    "③ 响应大小差异 → 用错误注入再确认\n"
+                    "两种技术都确认后才能标记[CONFIRMED]。"
+                ),
+                "en": (
+                    "SQL injection signal detected → immediately reverify with different technique:\n"
+                    "① Error-based found → confirm via time-based (SLEEP/WAITFOR)\n"
+                    "② Time-based found → confirm via boolean-based (AND 1=1 vs AND 1=2)\n"
+                    "③ Size diff found → confirm via error-based\n"
+                    "Only tag [CONFIRMED] after 2 different techniques agree."
+                ),
+            },
+            "xss": {
+                "ko": (
+                    "XSS 신호 감지됨 → 다른 파라미터/컨텍스트에서 재검증하세요:\n"
+                    "① 동일 파라미터에 다른 페이로드 시도 (SVG, img onerror, iframe)\n"
+                    "② 다른 파라미터에 동일 페이로드 시도\n"
+                    "실제 스크립트 실행 또는 반사 확인 후 [CONFIRMED] 태그."
+                ),
+                "zh": (
+                    "检测到XSS信号 → 在不同参数/上下文中重新验证:\n"
+                    "① 同一参数尝试不同载荷 (SVG, img onerror, iframe)\n"
+                    "② 不同参数尝试相同载荷\n"
+                    "确认实际脚本执行或反射后才标记[CONFIRMED]。"
+                ),
+                "en": (
+                    "XSS signal detected → reverify in different param/context:\n"
+                    "① Same param with different payload (SVG, img onerror, iframe)\n"
+                    "② Different param with same payload\n"
+                    "Tag [CONFIRMED] only after actual reflection/execution confirmed."
+                ),
+            },
+            "idor": {
+                "ko": (
+                    "IDOR/미인증 접근 신호 감지됨 → 최소 3개의 다른 ID/객체로 재검증하세요:\n"
+                    "① 연속 ID 3개 이상 시도 (id=100, 101, 102)\n"
+                    "② 다른 사용자 계정으로 로그인 후 접근 시도\n"
+                    "③ 인증 헤더 제거 후 접근 시도\n"
+                    "3개 이상 확인 후 [CONFIRMED] 태그."
+                ),
+                "zh": (
+                    "检测到IDOR/未授权访问信号 → 用至少3个不同ID/对象重新验证:\n"
+                    "① 尝试连续3个以上ID (id=100, 101, 102)\n"
+                    "② 用不同账户登录后尝试访问\n"
+                    "③ 移除认证头后尝试访问\n"
+                    "确认3个以上后标记[CONFIRMED]。"
+                ),
+                "en": (
+                    "IDOR/unauthorized access signal detected → reverify with 3+ different IDs:\n"
+                    "① Try 3+ sequential IDs (id=100, 101, 102)\n"
+                    "② Try with different user account\n"
+                    "③ Try removing auth header\n"
+                    "Tag [CONFIRMED] after 3+ confirmations."
+                ),
+            },
+            "rce": {
+                "ko": (
+                    "RCE 신호 감지됨 → 다른 명령으로 즉시 재검증하세요:\n"
+                    "① id/whoami 발견 → uname -a 또는 hostname으로 재확인\n"
+                    "② /etc/passwd 발견 → /proc/version 또는 /etc/os-release 확인\n"
+                    "③ 네트워크 연결 확인: ping 또는 curl 내부 서비스\n"
+                    "다른 명령으로 재확인 후 [CONFIRMED] 태그."
+                ),
+                "zh": (
+                    "检测到RCE信号 → 立即用不同命令重新验证:\n"
+                    "① 发现id/whoami → 用uname -a或hostname再确认\n"
+                    "② 发现/etc/passwd → 检查/proc/version或/etc/os-release\n"
+                    "③ 确认网络连接: ping或curl内部服务\n"
+                    "用不同命令确认后标记[CONFIRMED]。"
+                ),
+                "en": (
+                    "RCE signal detected → immediately reverify with different command:\n"
+                    "① id/whoami found → confirm with uname -a or hostname\n"
+                    "② /etc/passwd found → check /proc/version or /etc/os-release\n"
+                    "③ Confirm network: ping or curl internal service\n"
+                    "Tag [CONFIRMED] after different command confirms."
+                ),
+            },
+            "ssrf": {
+                "ko": (
+                    "SSRF 신호 감지됨 → 다른 내부 주소로 재검증하세요:\n"
+                    "① 메타데이터 접근 → 다른 경로로 재확인 (/latest/user-data)\n"
+                    "② 내부 IP 접근 → 다른 포트/서비스 확인\n"
+                    "내부 네트워크 접근 재확인 후 [CONFIRMED] 태그."
+                ),
+                "zh": (
+                    "检测到SSRF信号 → 用不同内部地址重新验证:\n"
+                    "① 元数据访问 → 用不同路径再确认 (/latest/user-data)\n"
+                    "② 内部IP访问 → 确认不同端口/服务\n"
+                    "确认内部网络访问后标记[CONFIRMED]。"
+                ),
+                "en": (
+                    "SSRF signal detected → reverify with different internal address:\n"
+                    "① Metadata access → confirm with different path (/latest/user-data)\n"
+                    "② Internal IP access → confirm different port/service\n"
+                    "Tag [CONFIRMED] after internal network access confirmed."
+                ),
+            },
+            "path_traversal": {
+                "ko": (
+                    "경로 순회 신호 감지됨 → 다른 파일로 재검증하세요:\n"
+                    "① /etc/passwd 발견 → /etc/hosts 또는 /etc/shadow 확인\n"
+                    "② Windows 파일 발견 → C:\\Windows\\win.ini 확인\n"
+                    "다른 파일 접근 확인 후 [CONFIRMED] 태그."
+                ),
+                "zh": (
+                    "检测到路径遍历信号 → 用不同文件重新验证:\n"
+                    "① 发现/etc/passwd → 检查/etc/hosts或/etc/shadow\n"
+                    "② 发现Windows文件 → 检查C:\\Windows\\win.ini\n"
+                    "确认不同文件访问后标记[CONFIRMED]。"
+                ),
+                "en": (
+                    "Path traversal signal detected → reverify with different file:\n"
+                    "① /etc/passwd found → check /etc/hosts or /etc/shadow\n"
+                    "② Windows file found → check C:\\Windows\\win.ini\n"
+                    "Tag [CONFIRMED] after different file access confirmed."
+                ),
+            },
+        }
+
+        # 신호 요약 구성
+        signal_summary = "\n".join(
+            f"  [{vuln_type.upper()}] {desc}: {snippet!r}"
+            for vuln_type, desc, snippet in vuln_signals
+        )
+
+        # 2차 검증 지시 수집
+        verify_steps: list[str] = []
+        seen_types: set[str] = set()
+        for vuln_type, _, _ in vuln_signals:
+            if vuln_type not in seen_types and vuln_type in _verify_instructions:
+                inst = _verify_instructions[vuln_type]
+                verify_steps.append(inst.get(_lang, inst.get("en", "")))
+                seen_types.add(vuln_type)
+
+        if not verify_steps:
+            return None
+
+        verify_body = "\n\n".join(verify_steps)
+
+        _label = self.s.get("mvvs_triggered", {
+            "ko": "🔍 MVVS — 2차 검증 자동 실행 중...",
+            "zh": "🔍 MVVS — 自动执行二次验证...",
+            "en": "🔍 MVVS — Auto-triggering secondary verification...",
+        })
+        if isinstance(_label, dict):
+            _label = _label.get(_lang, "🔍 MVVS — Secondary verification...")
+
+        self.console.print(f"\n[bold cyan]{_label}[/bold cyan]")
+        self.console.print(f"[dim]  Signals: {', '.join(f'{t}({d})' for t, d, _ in vuln_signals)}[/dim]")
+
+        mvvs_prompt = (
+            "[BINGO MVVS — MULTI-VECTOR VERIFICATION REQUIRED]\n\n"
+            f"Vulnerability signals detected in last execution output:\n"
+            f"{signal_summary}\n\n"
+            f"CONFIDENCE STATUS: [SUSPECTED ⚠️] — needs 2nd vector confirmation\n\n"
+            f"MANDATORY VERIFICATION STEPS:\n{verify_body}\n\n"
+            "RULES:\n"
+            "- Write Python code using a DIFFERENT technique from what you just used\n"
+            "- Do NOT repeat the same payload — use a different attack vector\n"
+            "- Include print() statements showing actual server response\n"
+            "- After verification code runs: tag finding as [CONFIRMED ✅] or [FALSE POSITIVE ❌]\n"
+            "- If [CONFIRMED]: THEN proceed with full exploitation\n"
+            "- If [FALSE POSITIVE]: note why and move to next vector\n\n"
+            "Write verification code NOW:"
+        )
+        self.history.append(Message(role="user", content=mvvs_prompt))
+
+        from ..models.registry import ModelRegistry
+        model = ModelRegistry.build(model_cfg)
+        verify_response = self._stream_response(model.chat_stream(self._build_messages("")))
+        if verify_response:
+            self.history.append(Message(role="assistant", content=verify_response))
+            # [CONFIRMED] 태그 감지 → 콘솔 강조 표시
+            import re as _re
+            if _re.search(r'\[CONFIRMED\s*✅?\]', verify_response):
+                _conf_msg = self.s.get("mvvs_confirmed", {
+                    "ko": "✅ [CONFIRMED] — 2차 검증 통과, 취약점 확인됨",
+                    "zh": "✅ [CONFIRMED] — 二次验证通过，漏洞确认",
+                    "en": "✅ [CONFIRMED] — Secondary verification passed",
+                })
+                if isinstance(_conf_msg, dict):
+                    _conf_msg = _conf_msg.get(_lang, "✅ Confirmed.")
+                self.console.print(f"\n[bold green]{_conf_msg}[/bold green]")
+            elif _re.search(r'\[FALSE\s*POSITIVE\s*❌?\]', verify_response):
+                _fp_msg = self.s.get("mvvs_false_positive", {
+                    "ko": "❌ [FALSE POSITIVE] — 2차 검증 실패, 오탐 처리",
+                    "zh": "❌ [FALSE POSITIVE] — 二次验证失败，误报处理",
+                    "en": "❌ [FALSE POSITIVE] — Secondary verification failed",
+                })
+                if isinstance(_fp_msg, dict):
+                    _fp_msg = _fp_msg.get(_lang, "❌ False positive.")
+                self.console.print(f"\n[bold red]{_fp_msg}[/bold red]")
+            return verify_response
+        else:
+            self.history.pop()
+            return None
 
     def _collapse_code_blocks(self, text: str) -> str:
         """Python/bash 코드 블록을 접어서 한 줄 요약으로 교체.
@@ -6391,6 +6686,26 @@ class BingoTerminal:
                     self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
                     self._suggest_next_steps()
                     break
+
+            # ── v3.2.87: MVVS — Multi-Vector Verification System ─────────────
+            # 코드 실행 결과에서 취약점 신호 감지 → 다른 기법으로 2차 검증 자동 주입
+            # 근거: 고객 피드백 "bingo는 한 번만 확인하고 끝냄 / 환각률 높음"
+            self._mvvs_loop_count = 0  # 루프 시작마다 리셋
+            _mvvs_signals = self._detect_vuln_signal(_combined_out)
+            if _mvvs_signals:
+                _mvvs_verify_resp = self._mvvs_trigger(_mvvs_signals, _combined_out, model_cfg)
+                if _mvvs_verify_resp:
+                    # 2차 검증 응답이 코드 블록을 포함하면 실행 → 다음 루프에서 처리
+                    if "```" in _mvvs_verify_resp:
+                        current_response = _mvvs_verify_resp
+                        continue
+                    # 텍스트만이면 followup_response로 처리 (아래 흐름 계속)
+                    followup_response = _mvvs_verify_resp
+                    self.history.append(Message(role="assistant", content=followup_response))
+                    self._append_to_session_log("assistant", followup_response)
+                    self._notify_hashes_found(followup_response)
+                    current_response = followup_response
+                    continue
 
             # AI 피드백
             model = ModelRegistry.build(model_cfg)

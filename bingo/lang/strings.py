@@ -3963,6 +3963,48 @@ _STRINGS.update({
         "zh": "📊 正在可视化审计结果...",
         "en": "📊 Rendering audit results...",
     },
+
+    # ── v3.2.87: MVVS — Multi-Vector Verification System i18n 키 ──────────
+    "mvvs_triggered": {
+        "ko": "🔍 MVVS — 2차 검증 자동 실행 중...",
+        "zh": "🔍 MVVS — 自动执行二次验证...",
+        "en": "🔍 MVVS — Auto-triggering secondary verification...",
+    },
+    "mvvs_confirmed": {
+        "ko": "✅ [CONFIRMED] — 2차 검증 통과, 취약점 확인됨",
+        "zh": "✅ [CONFIRMED] — 二次验证通过，漏洞确认",
+        "en": "✅ [CONFIRMED] — Secondary verification passed",
+    },
+    "mvvs_false_positive": {
+        "ko": "❌ [FALSE POSITIVE] — 2차 검증 실패, 오탐으로 처리",
+        "zh": "❌ [FALSE POSITIVE] — 二次验证失败，判定为误报",
+        "en": "❌ [FALSE POSITIVE] — Secondary verification failed, marked as false positive",
+    },
+    "mvvs_suspected": {
+        "ko": "⚠️  [SUSPECTED] — 단일 신호 감지, 검증 필요",
+        "zh": "⚠️  [SUSPECTED] — 单一信号检测，需要验证",
+        "en": "⚠️  [SUSPECTED] — Single signal detected, needs verification",
+    },
+    "mvvs_likely": {
+        "ko": "🟡 [LIKELY] — 부분 검증 완료, 추가 확인 권장",
+        "zh": "🟡 [LIKELY] — 部分验证完成，建议进一步确认",
+        "en": "🟡 [LIKELY] — Partially verified, further confirmation recommended",
+    },
+    "mvvs_signal_found": {
+        "ko": "⚡ 취약점 신호 감지됨 — 자동 재검증 시작",
+        "zh": "⚡ 检测到漏洞信号 — 开始自动重新验证",
+        "en": "⚡ Vulnerability signal detected — starting auto re-verification",
+    },
+    "mvvs_no_signal": {
+        "ko": "✓ 취약점 신호 없음 — 계속 진행",
+        "zh": "✓ 未检测到漏洞信号 — 继续",
+        "en": "✓ No vulnerability signal — continuing",
+    },
+    "mvvs_max_retry": {
+        "ko": "ℹ️  MVVS 최대 재시도 도달 — 다음 단계로 진행",
+        "zh": "ℹ️  MVVS 已达最大重试次数 — 进入下一步",
+        "en": "ℹ️  MVVS max retry reached — proceeding to next step",
+    },
 })
 
 

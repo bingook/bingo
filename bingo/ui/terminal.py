@@ -6427,7 +6427,7 @@ class BingoTerminal:
                 self.history = system_msgs + non_system[-16:]
 
             self._parse_agent_state(raw_results)
-            state_summary = self._format_agent_state()
+            state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
             # v3.2.74: 프록시 상태를 state_summary에 포함
             if self._proxy.enabled:
                 _pe = self._proxy.current()
@@ -8140,38 +8140,47 @@ class BingoTerminal:
             return ""
 
     def _format_agent_state(self) -> str:
-        """agent_state를 AI에게 주입할 요약 문자열로 변환."""
-        s = self._agent_state
-        lines = ["=== AGENT ACCUMULATED KNOWLEDGE (DO NOT RE-EXTRACT) ==="]
+        """agent_state를 AI에게 주입할 요약 문자열로 변환.
 
-        if s["confirmed_sqli"]:
-            lines.append("✅ SQLi: CONFIRMED (boolean blind)")
-        if s["bool_true_len"]:
-            lines.append(f"✅ Boolean baseline: TRUE={s['bool_true_len']}B, FALSE={s['bool_false_len']}B (use this, do NOT re-calibrate)")
-        if s["waf"]:
-            lines.append(f"✅ WAF: {s['waf']}")
-        if s["db_name"]:
-            lines.append(f"✅ Database: {s['db_name']} (confirmed, do NOT extract again)")
-        if s["tables"]:
-            lines.append(f"✅ Tables: {', '.join(s['tables'])} (confirmed, do NOT re-enumerate)")
-        if s["columns"]:
-            for tbl, cols in s["columns"].items():
-                lines.append(f"✅ Columns ({tbl}): {', '.join(cols)}")
-        if s["credentials"]:
-            lines.append(f"✅ Credentials found: {s['credentials']}")
-            lines.append("⚡ NEXT: crack/verify these credentials")
-        else:
-            if s["columns"]:
-                lines.append("⚡ NEXT: extract actual DATA from g5_member (mb_id, mb_password)")
-            elif s["tables"]:
-                lines.append("⚡ NEXT: enumerate columns in g5_member")
-            elif s["db_name"]:
-                lines.append("⚡ NEXT: enumerate tables in " + s["db_name"])
-            elif s["confirmed_sqli"]:
-                lines.append("⚡ NEXT: extract database name")
+        방어 코드: _agent_state 키 누락 시 KeyError 방지 위해 .get() 사용.
+        """
+        try:
+            s = self._agent_state if isinstance(self._agent_state, dict) else {}
+            lines = ["=== AGENT ACCUMULATED KNOWLEDGE (DO NOT RE-EXTRACT) ==="]
 
-        lines.append("=== END KNOWLEDGE ===\n")
-        return "\n".join(lines) + "\n"
+            if s.get("confirmed_sqli"):
+                lines.append("✅ SQLi: CONFIRMED (boolean blind)")
+            if s.get("bool_true_len"):
+                lines.append(
+                    f"✅ Boolean baseline: TRUE={s.get('bool_true_len')}B, "
+                    f"FALSE={s.get('bool_false_len')}B (use this, do NOT re-calibrate)"
+                )
+            if s.get("waf"):
+                lines.append(f"✅ WAF: {s.get('waf')}")
+            if s.get("db_name"):
+                lines.append(f"✅ Database: {s.get('db_name')} (confirmed, do NOT extract again)")
+            if s.get("tables"):
+                lines.append(f"✅ Tables: {', '.join(s.get('tables', []))} (confirmed, do NOT re-enumerate)")
+            if s.get("columns"):
+                for tbl, cols in s.get("columns", {}).items():
+                    lines.append(f"✅ Columns ({tbl}): {', '.join(cols)}")
+            if s.get("credentials"):
+                lines.append(f"✅ Credentials found: {s.get('credentials')}")
+                lines.append("⚡ NEXT: crack/verify these credentials")
+            else:
+                if s.get("columns"):
+                    lines.append("⚡ NEXT: extract actual DATA from g5_member (mb_id, mb_password)")
+                elif s.get("tables"):
+                    lines.append("⚡ NEXT: enumerate columns in g5_member")
+                elif s.get("db_name"):
+                    lines.append("⚡ NEXT: enumerate tables in " + s.get("db_name", ""))
+                elif s.get("confirmed_sqli"):
+                    lines.append("⚡ NEXT: extract database name")
+
+            lines.append("=== END KNOWLEDGE ===\n")
+            return "\n".join(lines) + "\n"
+        except Exception:
+            return ""
 
     def _notify_hashes_found(self, text: str) -> None:
         """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행

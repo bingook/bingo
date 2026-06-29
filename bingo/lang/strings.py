@@ -4170,6 +4170,47 @@ _STRINGS.update({
         "zh": "🔑 检测到敏感密钥/凭据泄露 — {location}",
         "en": "🔑 Sensitive key/credential exposure detected — {location}",
     },
+    # ── v3.2.98: agent_state 방어 코드 관련 ──────────────────────────────
+    "agent_state_corrupted": {
+        "ko": "⚠️ agent_state 손상 감지 — 기본값으로 초기화됨",
+        "zh": "⚠️ 检测到 agent_state 损坏 — 已重置为默认值",
+        "en": "⚠️ agent_state corruption detected — reset to defaults",
+    },
+    "agent_state_key_missing": {
+        "ko": "⚠️ agent_state 키 누락 ({key}) — 기본값 사용",
+        "zh": "⚠️ agent_state 键缺失 ({key}) — 使用默认值",
+        "en": "⚠️ agent_state key missing ({key}) — using default",
+    },
+    "agent_state_new_target": {
+        "ko": "🆕 새 타겟 감지 — agent_state 초기화: {target}",
+        "zh": "🆕 检测到新目标 — 重置 agent_state: {target}",
+        "en": "🆕 New target detected — agent_state reset: {target}",
+    },
+    "agent_state_knowledge_injected": {
+        "ko": "🧠 누적 지식 {count}개 항목 AI에 주입됨",
+        "zh": "🧠 已将 {count} 条累积知识注入AI上下文",
+        "en": "🧠 Injected {count} accumulated knowledge items into AI context",
+    },
+    "agent_state_sqli_confirmed": {
+        "ko": "✅ SQLi 확인됨 — agent_state에 저장 (세션 재시작 시 유지)",
+        "zh": "✅ SQLi 已确认 — 已保存到 agent_state（会话重启后保留）",
+        "en": "✅ SQLi confirmed — saved to agent_state (persists across restart)",
+    },
+    "agent_state_creds_saved": {
+        "ko": "🔑 자격증명 agent_state에 저장됨 — 자동 복구 활성화",
+        "zh": "🔑 凭据已保存到 agent_state — 自动恢复已启用",
+        "en": "🔑 Credentials saved to agent_state — auto-recovery enabled",
+    },
+    "whitebox_target_combined": {
+        "ko": "🔗 화이트박스+블랙박스 하이브리드 모드 — {target}",
+        "zh": "🔗 白盒+黑盒混合模式 — {target}",
+        "en": "🔗 Whitebox+Blackbox hybrid mode — {target}",
+    },
+    "whitebox_full_urls_built": {
+        "ko": "🌐 소스 엔드포인트 → 전체 URL {count}개 생성됨",
+        "zh": "🌐 源端点 → 已生成 {count} 个完整URL",
+        "en": "🌐 Source endpoints → {count} full URLs constructed",
+    },
 })
 
 

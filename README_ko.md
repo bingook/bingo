@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.2.97-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.98-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -851,7 +851,7 @@ bingo가 침투 테스트 중 코드를 실행할 때마다, 출력 결과에서
 **JSON 출력 형식:**
 ```json
 {
-  "bingo_version": "3.2.97",
+  "bingo_version": "3.2.98",
   "generated_at": "2026-06-29 20:00:00",
   "target": "https://target.com",
   "total": 3,
@@ -1268,6 +1268,7 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 | 버전 | 요약 |
 |------|------|
+| v3.2.98 | **핫픽스: `_format_agent_state` 방어 코드 + i18n 키** — `_format_agent_state`의 `AttributeError`/`KeyError` 수정: 메서드 전체 `try/except` 감싸기, `s["key"]` → `s.get("key", 기본값)` 전환, 호출부 `hasattr` 가드 추가; 신규 i18n 키 8개 (`agent_state_corrupted/key_missing/new_target/knowledge_injected/sqli_confirmed/creds_saved`, `whitebox_target_combined/full_urls_built`) KO/ZH/EN |
 | v3.2.97 | **웹 공격 스킬 강화 (+28개)** — SQLi×6 (숫자형/단따옴표/쌍따옴표/괄호/Cookie-Header/Time-based+키워드필터우회), XSS×3 (HTML/JS컨텍스트/파일업로드), 파일업로드 11종 우회, JWT×3 (alg:none/RS256→HS256/jku인젝션), XXE, IDOR×3, 비즈니스로직×2 (인증우회/거래변조), SSRF, RCE×2 (PHP명령인젝션/LFI→RCE), 경로순회, 쇼핑몰로직×24, 브루트포스, 오픈리다이렉트, 비밀키노출, CRLF, PHP역직렬화, 디렉토리리스팅, 요청밀수, 확률조작; 총 스킬 367→**395**개, 총 태그 **1,639**개 |
 | v3.2.96 | **실시간 발견 엔진 + XSS Playwright 검증 + 헤드리스 CI 모드** — `FindingsExporter` 코드 실행 출력에서 RCE/LFI/자격증명/SSRF/XSS/SQLi 자동 감지, 5건마다 + 세션 종료 시 JSON 저장; Playwright 엔진이 감지된 XSS 페이로드를 실제 브라우저에서 자동 검증 (확인/스크린샷); `--silent --target <url>` 헤드리스 모드 — CI/CD 파이프라인에서 비대화식 자동 침투 후 JSON 출력 + 종료 코드 0/1; 10개 신규 i18n 키 (KO/ZH/EN) |
 | v3.2.95 | **INFINITE_LOOP_RISK 오탐 수정 + 반복 제한기 주입** — `TOP 1` 검사 전 문자열 리터럴·주석 제거 (코드 내 SQL 페이로드 오탐 제거); 오버라이드 시 `seen=set()` 대신 500회 하드 제한기 `_bingo_ilr_guard` + 들여쓰기 인식 `break` 주입; 커서 패턴 인식 확장 (OFFSET/ROW_NUMBER/NOT IN/last_hex/last_name 변수) |
@@ -1322,7 +1323,7 @@ MIT © 2026 bingook
 
 *내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 타겟 메모리 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.2.97-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.2.98-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

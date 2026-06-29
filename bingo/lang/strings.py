@@ -103,6 +103,7 @@ _STRINGS = {
 /whitebox <경로|paste>   🔍 소스코드 화이트박스 분석 → 취약점 힌트 추출
 /agent [list|plan|priority] 🤖 취약점 전담 에이전트 관리
 /report [save|clear]     📋 Proof-by-exploitation 리포트
+/load <세션파일경로>      📂 이전 세션 불러오기 + AI 자동 재개 (경로 직접 붙여넣기도 가능)
 /tools                   도구 목록 + 자동 설치
 /tools install <이름>    특정 도구 자동 설치
 /tools install all       미설치 도구 전체 설치
@@ -128,6 +129,7 @@ _STRINGS = {
 /whitebox <路径|paste>   🔍 白盒源码分析 → 提取漏洞提示
 /agent [list|plan|priority] 🤖 漏洞专属代理管理
 /report [save|clear]     📋 漏洞利用证明报告
+/load <会话文件路径>      📂 加载历史会话 + AI自动续接 (直接粘贴路径也可)
 /tools                   工具列表 + 自动安装
 /tools install <名称>    自动安装指定工具
 /tools install all       安装所有缺失工具
@@ -153,6 +155,7 @@ _STRINGS = {
 /whitebox <path|paste>   🔍 Whitebox source code analysis → extract attack hints
 /agent [list|plan|priority] 🤖 Vulnerability specialist agent management
 /report [save|clear]     📋 Proof-by-exploitation report
+/load <session-file>     📂 Load previous session + auto-resume AI (paste path directly too)
 /tools                   Tool list + auto-install
 /tools install <name>    Auto-install a specific tool
 /tools install all       Install all missing tools
@@ -711,6 +714,9 @@ _SLASH_DESC = {
     "/report":  {"ko": "Proof-by-exploitation 리포트  /report [save|clear]",
                  "zh": "漏洞利用证明报告  /report [save|clear]",
                  "en": "Proof-by-exploitation report  /report [save|clear]"},
+    "/load":    {"ko": "이전 세션 불러오기 + AI 자동 재개  /load <파일경로>",
+                 "zh": "加载历史会话 + AI自动续接  /load <文件路径>",
+                 "en": "Load previous session + auto-resume AI  /load <file-path>"},
     "/quit":    {"ko": "종료",                        "zh": "退出",                "en": "Quit"},
 }
 
@@ -4004,6 +4010,38 @@ _STRINGS.update({
         "ko": "ℹ️  MVVS 최대 재시도 도달 — 다음 단계로 진행",
         "zh": "ℹ️  MVVS 已达最大重试次数 — 进入下一步",
         "en": "ℹ️  MVVS max retry reached — proceeding to next step",
+    },
+    # ── v3.2.88: /load 세션 복원 ──────────────────────────────────────
+    # 고객 피드백: "哥，不可以直接喂会话吗" — 세션 파일 직접 입력 → 이어가기
+    "load_success": {
+        "ko": "✅ 세션 복원 완료 — 이전 작업을 이어 진행합니다",
+        "zh": "✅ 会话恢复完成 — 继续上次任务",
+        "en": "✅ Session loaded — resuming previous task",
+    },
+    "load_not_found": {
+        "ko": "❌ 파일을 찾을 수 없습니다",
+        "zh": "❌ 找不到文件",
+        "en": "❌ File not found",
+    },
+    "load_parse_fail": {
+        "ko": "⚠️  대화 내용을 파싱하지 못했습니다 (bingo 세션 파일 형식 아님?)",
+        "zh": "⚠️  无法解析对话内容（不是bingo会话文件？）",
+        "en": "⚠️  Could not parse conversation (not a bingo session file?)",
+    },
+    "load_usage": {
+        "ko": "사용법: /load <세션파일경로>\n예) /load ~/.config/bingo/sessions/session_20260629_134027.md\n\n💡 경로를 직접 붙여넣기해도 자동으로 인식됩니다",
+        "zh": "用法: /load <会话文件路径>\n例) /load ~/.config/bingo/sessions/session_20260629_134027.md\n\n💡 直接粘贴路径也会自动识别",
+        "en": "Usage: /load <session-file-path>\nEx)   /load ~/.config/bingo/sessions/session_20260629_134027.md\n\n💡 You can also paste the path directly without /load",
+    },
+    "load_auto_detected": {
+        "ko": "📂 세션 파일 경로 감지됨 — 자동 로드 중...",
+        "zh": "📂 检测到会话文件路径 — 自动加载中...",
+        "en": "📂 Session file path detected — auto-loading...",
+    },
+    "load_resuming": {
+        "ko": "이전 작업에서 어디까지 진행됐는지 간략히 요약하고, 다음 단계를 이어서 진행해 주세요.",
+        "zh": "请简要总结之前的进度，并继续下一步工作。",
+        "en": "Please briefly summarize progress so far and continue with the next step.",
     },
 })
 

@@ -650,6 +650,21 @@ class BingoTerminal:
                 self._handle_command(user_input.strip())
                 continue
 
+            # v3.2.88: 세션 파일 경로 자동 감지
+            # 고객이 .md 파일 경로를 직접 붙여넣으면 /load 로 자동 라우팅
+            # 고객 피드백: "哥，不可以直接喂会话吗" — 경로 붙여넣기만 해도 동작
+            _stripped = user_input.strip()
+            if (
+                _stripped.endswith(".md")
+                and ("session" in _stripped or "sessions" in _stripped or ".config" in _stripped)
+                and len(_stripped.split()) == 1
+            ):
+                self.console.print(
+                    f"[{THEME['dim']}]{self.s.get('load_auto_detected', '📂 Session file path detected — auto-loading...')}[/]"
+                )
+                self._cmd_load(_stripped)
+                continue
+
             # 자연어 자격증명 파싱 — "아이디 admin 비번 1234 로그인해줘" 형태 자동 감지
             self._try_natural_language_login(user_input)
 
@@ -2893,6 +2908,7 @@ class BingoTerminal:
             "/whitebox":  lambda: self._cmd_whitebox(arg),
             "/agent":     lambda: self._cmd_agent(arg),
             "/report":    lambda: self._cmd_proof_report(arg),
+            "/load":      lambda: self._cmd_load(arg),
         }
         fn = dispatch.get(name)
         if fn:
@@ -3150,6 +3166,117 @@ class BingoTerminal:
                     "사용법: /agent [list|plan|priority <types>]"
                 )
             )
+
+    # ── /load ─────────────────────────────────────────────────────────
+    # v3.2.88: 세션 파일 경로 입력 → 히스토리 복원 후 AI 재개
+    # 고객 피드백: "哥，不可以直接喂会话吗" — 세션 파일을 bingo에 직접 먹여서 이어가고 싶음
+    def _load_session_from_file(self, path_str: str) -> bool:
+        """세션 .md 파일을 읽어 대화 히스토리를 복원한다.
+        Returns True if loading succeeded.
+        """
+        _lang = getattr(self.config, "lang", "en")
+        path = Path(os.path.expanduser(os.path.expandvars(path_str.strip())))
+
+        if not path.exists():
+            _msg = {
+                "ko": f"❌ 파일을 찾을 수 없습니다: {path}",
+                "zh": f"❌ 找不到文件: {path}",
+                "en": f"❌ File not found: {path}",
+            }.get(_lang, f"❌ File not found: {path}")
+            self.console.print(f"[{THEME['warn']}]{_msg}[/]")
+            return False
+
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except Exception as e:
+            self.console.print(f"[{THEME['warn']}]❌ Read error: {e}[/]")
+            return False
+
+        # ── 마크다운 파싱: ### **YOU** / ### **bingo** 섹션 분리 ──────
+        import re as _re
+        pattern = _re.compile(
+            r"###\s+\*\*(YOU|bingo)\*\*\s+`[^`]*`\n(.*?)(?=\n###\s+\*\*(?:YOU|bingo)\*\*|\Z)",
+            _re.DOTALL,
+        )
+        matches = pattern.findall(raw)
+
+        if not matches:
+            _msg = {
+                "ko": f"⚠️  대화 내용을 파싱하지 못했습니다 (bingo 세션 파일 형식 아님?): {path.name}",
+                "zh": f"⚠️  无法解析对话内容（不是bingo会话文件？）: {path.name}",
+                "en": f"⚠️  Could not parse conversation (not a bingo session file?): {path.name}",
+            }.get(_lang, f"⚠️  Parse failed: {path.name}")
+            self.console.print(f"[{THEME['warn']}]{_msg}[/]")
+            return False
+
+        # 기존 히스토리 초기화 후 복원
+        # (워밍업 히스토리는 유지 — 롤 확인 후 user/assistant만 제거)
+        self.history = [m for m in self.history if m.role == "system"]
+
+        loaded_count = 0
+        for speaker, content in matches:
+            role = "user" if speaker == "YOU" else "assistant"
+            self.history.append(Message(role=role, content=content.strip()))
+            loaded_count += 1
+
+        # 타겟 URL 추출 시도 (첫 user 메시지에서)
+        for m in self.history:
+            if m.role == "user":
+                url_match = _re.search(r"https?://[^\s\"'<>]+", m.content)
+                if url_match and not getattr(self, "_current_target", None):
+                    self._current_target = url_match.group(0)
+                break
+
+        _msg = {
+            "ko": f"✅ 세션 복원 완료 — {loaded_count}개 메시지 로드됨 ({path.name})\n   이전 작업을 이어 진행합니다...",
+            "zh": f"✅ 会话恢复完成 — 已加载 {loaded_count} 条消息 ({path.name})\n   继续上次任务...",
+            "en": f"✅ Session loaded — {loaded_count} messages restored ({path.name})\n   Resuming previous task...",
+        }.get(_lang, f"✅ Session loaded: {loaded_count} messages ({path.name})")
+        self.console.print(f"\n[{THEME['success']}]{_msg}[/]\n")
+        return True
+
+    def _cmd_load(self, arg: str) -> None:
+        """/load <path>  또는 경로 직접 입력 → 세션 파일 복원 후 AI 재개"""
+        _lang = getattr(self.config, "lang", "en")
+        path_str = arg.strip()
+
+        if not path_str:
+            _usage = {
+                "ko": "사용법: /load <세션파일경로>\n예) /load ~/.config/bingo/sessions/session_20260629_134027.md",
+                "zh": "用法: /load <会话文件路径>\n例) /load ~/.config/bingo/sessions/session_20260629_134027.md",
+                "en": "Usage: /load <session-file-path>\nEx)   /load ~/.config/bingo/sessions/session_20260629_134027.md",
+            }.get(_lang, "Usage: /load <path>")
+            self._warn(_usage)
+            return
+
+        ok = self._load_session_from_file(path_str)
+        if not ok:
+            return
+
+        # 복원 후 AI에게 자동 재개 요청
+        from ..models.registry import ModelRegistry
+        model_cfg = self.config.get_active_model_config()
+        if not model_cfg:
+            self._warn(self.s["no_model_configured"])
+            return
+
+        _target = getattr(self, "_current_target", "")
+        _auto_msg = {
+            "ko": f"위 대화 내용을 확인했습니다. 이전 작업에서 어디까지 진행됐는지 간략히 요약하고, 다음 단계를 이어서 진행해 주세요.{' 타겟: ' + _target if _target else ''}",
+            "zh": f"已确认上述对话内容。请简要总结之前的进度，并继续下一步工作。{' 目标: ' + _target if _target else ''}",
+            "en": f"I've loaded the previous session. Please briefly summarize progress so far and continue with the next step.{' Target: ' + _target if _target else ''}",
+        }.get(_lang, "Continue from the loaded session.")
+
+        self.history.append(Message(role="user", content=_auto_msg))
+        self._append_to_session_log("user", _auto_msg)
+        model = ModelRegistry.build(model_cfg)
+        response = self._stream_response(
+            model.chat_stream(self._build_messages(""))
+        )
+        if response:
+            self.history.append(Message(role="assistant", content=response))
+            self._append_to_session_log("assistant", response)
+            self._execute_ai_commands(response)
 
     # ── /report ───────────────────────────────────────────────────────
     def _cmd_proof_report(self, arg: str) -> None:

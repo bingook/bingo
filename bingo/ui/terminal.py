@@ -709,15 +709,15 @@ class BingoTerminal:
                 if _orch_was_running and _orch_eng_ref is not None:
                     _orch_stopped_msg = self.s.get("orch_ctrlc_stopped", "⏹ Orchestrator stopped")
                     self.console.print(f"\n[{THEME['warn']}]{_orch_stopped_msg}[/]")
-                    # 백그라운드 스레드가 현재 send_fn 마무리할 때까지 최대 3초 대기
+                    # ★ v3.5.15: 스레드가 살아있어도 힌트를 항상 표시
+                    # (engine.py에서 _stop_evt 즉시 처리 → 스레드가 빠르게 종료됨)
                     _thr = getattr(_orch_eng_ref, "_thread", None)
                     if _thr and _thr.is_alive():
-                        _thr.join(timeout=3.0)
-                    # 스레드가 종료된 경우에만 메인 스레드에서 힌트 표시
-                    if not (_thr and _thr.is_alive()):
-                        self._agent_stop_flag.clear()  # 힌트 LLM 스트리밍을 위해 플래그 리셋
-                        self._suggest_next_steps()
-                        self._agent_stop_flag.clear()  # 힌트 도중 Ctrl+C 후 재리셋
+                        _thr.join(timeout=8.0)  # 최대 8초 대기 (LLM 스트리밍 마무리)
+                    # ★ v3.5.15: alive 여부 무관하게 항상 힌트 표시
+                    self._agent_stop_flag.clear()  # 힌트 LLM 스트리밍을 위해 플래그 리셋
+                    self._suggest_next_steps()
+                    self._agent_stop_flag.clear()  # 힌트 도중 Ctrl+C 후 재리셋
                     _ctrl_c_count = 0  # 힌트 표시 후 카운터 초기화 (다음 Ctrl+C가 force quit 안 되도록)
                 continue
             except EOFError:

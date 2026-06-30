@@ -248,6 +248,9 @@ class OrchestratorEngine:
             ]
             result = ""
             for chunk in model.chat_stream(msgs):
+                # ★ v3.5.15: 정지 요청 시 즉시 LLM 결정 중단
+                if self._stop_evt.is_set():
+                    return ""
                 result += chunk.text
                 if chunk.done:
                     break
@@ -440,6 +443,9 @@ Respond ONLY in JSON."""
                 except Exception as e:
                     self._error = str(e)
                     _print(f"[red]{_s.get('orch_ui_exec_error', '❌ Execution error: {err}').format(err=e)}[/red]")
+                # ★ v3.5.15: send_fn 완료 후 정지 요청 확인 → 즉시 루프 탈출
+                if self._stop_evt.is_set():
+                    break
 
             # 9. 목표 달성 확인
             if goal_done:
@@ -449,8 +455,9 @@ Respond ONLY in JSON."""
                 break
 
             # 10. 스텝 간 대기
-            if not self._stop_evt.wait(timeout=self._step_delay):
-                pass  # 타임아웃 = 정상 진행
+            # ★ v3.5.15: wait()가 True(이벤트 설정됨) 반환 시 즉시 탈출
+            if self._stop_evt.wait(timeout=self._step_delay):
+                break  # 정지 요청 → 루프 즉시 종료
 
         if not goal_done:
             _print(

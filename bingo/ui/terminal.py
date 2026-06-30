@@ -8249,9 +8249,19 @@ class BingoTerminal:
                 )
                 self.console.print()
 
+                # ── /dev/tty 직접 입력 (prompt_toolkit 충돌 방지) ─────────
+                _tty_path = "/dev/tty"
+                import os as _os_ns
+                raw = ""
                 try:
-                    raw = input("  > ").strip()
-                except (EOFError, KeyboardInterrupt):
+                    if _os_ns.path.exists(_tty_path):
+                        with open(_tty_path, "r") as _tr, open(_tty_path, "w") as _tw:
+                            _tw.write("  > ")
+                            _tw.flush()
+                            raw = _tr.readline().strip()
+                    else:
+                        raw = input("  > ").strip()
+                except (EOFError, KeyboardInterrupt, OSError):
                     return
 
                 if raw == "0" or raw == "":

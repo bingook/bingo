@@ -1,0 +1,31 @@
+name: ffuf
+command: ffuf
+short_description: 고속 웹 디렉토리/파라미터 퍼징
+description: |
+  Fast web fuzzer for directory discovery and parameter brute force.
+  Use FUZZ keyword in URL. Requires a wordlist.
+args: []
+parameters:
+  - name: url
+    type: string
+    description: "URL with FUZZ keyword e.g. https://target.com/FUZZ"
+    required: true
+    flag: "-u"
+  - name: wordlist
+    type: string
+    description: "Path to wordlist file"
+    required: true
+    flag: "-w"
+  - name: threads
+    type: string
+    description: "Number of threads (default 40)"
+    flag: "-t"
+  - name: filter_code
+    type: string
+    description: "Filter HTTP status codes e.g. 404,400"
+    flag: "-fc"
+  - name: output
+    type: string
+    description: "Output file path"
+    flag: "-o"
+enabled: true

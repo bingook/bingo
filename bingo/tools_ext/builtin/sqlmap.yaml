@@ -1,0 +1,30 @@
+name: sqlmap
+command: sqlmap
+short_description: SQL 인젝션 자동 탐지 & 익스플로잇
+description: |
+  Automatic SQL injection detection and exploitation.
+  Use --batch for non-interactive mode. Add --dbs to enumerate databases.
+args: ["--batch", "--random-agent"]
+parameters:
+  - name: url
+    type: string
+    description: "Target URL with parameter e.g. http://target.com/page?id=1"
+    required: true
+    flag: "-u"
+  - name: data
+    type: string
+    description: "POST data string"
+    flag: "--data"
+  - name: level
+    type: string
+    description: "Test level 1-5 (default 1)"
+    flag: "--level"
+  - name: risk
+    type: string
+    description: "Risk level 1-3 (default 1)"
+    flag: "--risk"
+  - name: dbs
+    type: string
+    description: "Enumerate databases (pass 'true')"
+    flag: "--dbs"
+enabled: true

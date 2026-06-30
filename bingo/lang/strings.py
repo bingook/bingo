@@ -4408,6 +4408,187 @@ _STRINGS.update({
         "zh": "✅ tgtylab 6层 + reverselab规范 加载完成 (v3.3.5)",
         "en": "✅ tgtylab 6-layer + reverselab rules loaded (v3.3.5)",
     },
+
+    # ── v3.4.0: 역할 기반 테스팅 ─────────────────────────────────────
+    "role_loaded": {
+        "ko": "🎯 역할 로드됨: {role}",
+        "zh": "🎯 角色已加载: {role}",
+        "en": "🎯 Role loaded: {role}",
+    },
+    "role_not_found": {
+        "ko": "❌ 역할을 찾을 수 없음: {role}",
+        "zh": "❌ 未找到角色: {role}",
+        "en": "❌ Role not found: {role}",
+    },
+    "role_list_header": {
+        "ko": "📋 사용 가능한 역할 목록",
+        "zh": "📋 可用角色列表",
+        "en": "📋 Available roles",
+    },
+    "role_switched": {
+        "ko": "✅ 역할 전환 → {role}",
+        "zh": "✅ 角色切换 → {role}",
+        "en": "✅ Role switched → {role}",
+    },
+    "role_cleared": {
+        "ko": "역할 해제됨",
+        "zh": "角色已清除",
+        "en": "Role cleared",
+    },
+
+    # ── v3.4.0: 취약점 관리 ───────────────────────────────────────────
+    "vuln_saved": {
+        "ko": "💾 취약점 저장됨 [{id}] {title}",
+        "zh": "💾 漏洞已保存 [{id}] {title}",
+        "en": "💾 Vulnerability saved [{id}] {title}",
+    },
+    "vuln_list_header": {
+        "ko": "🔴 취약점 목록 ({count}건)",
+        "zh": "🔴 漏洞列表 ({count}条)",
+        "en": "🔴 Vulnerability list ({count} items)",
+    },
+    "vuln_updated": {
+        "ko": "✅ 취약점 업데이트됨 [{id}]",
+        "zh": "✅ 漏洞已更新 [{id}]",
+        "en": "✅ Vulnerability updated [{id}]",
+    },
+    "vuln_removed": {
+        "ko": "🗑 취약점 삭제됨 [{id}]",
+        "zh": "🗑 漏洞已删除 [{id}]",
+        "en": "🗑 Vulnerability removed [{id}]",
+    },
+    "vuln_cleared": {
+        "ko": "🗑 취약점 전체 초기화 ({count}건 삭제)",
+        "zh": "🗑 所有漏洞已清空 ({count}条已删除)",
+        "en": "🗑 All vulnerabilities cleared ({count} removed)",
+    },
+    "vuln_stats": {
+        "ko": "📊 취약점 통계 | 전체: {total} | Critical: {critical} | High: {high}",
+        "zh": "📊 漏洞统计 | 总计: {total} | 严重: {critical} | 高危: {high}",
+        "en": "📊 Vuln stats | Total: {total} | Critical: {critical} | High: {high}",
+    },
+
+    # ── v3.4.0: 배치 작업 ─────────────────────────────────────────────
+    "batch_start": {
+        "ko": "⚡ 배치 시작 [{id}] — {count}개 타겟",
+        "zh": "⚡ 批次开始 [{id}] — {count}个目标",
+        "en": "⚡ Batch started [{id}] — {count} targets",
+    },
+    "batch_task_done": {
+        "ko": "  ✓ [{seq}/{total}] {target} 완료",
+        "zh": "  ✓ [{seq}/{total}] {target} 完成",
+        "en": "  ✓ [{seq}/{total}] {target} done",
+    },
+    "batch_task_failed": {
+        "ko": "  ✗ [{seq}/{total}] {target} 실패: {error}",
+        "zh": "  ✗ [{seq}/{total}] {target} 失败: {error}",
+        "en": "  ✗ [{seq}/{total}] {target} failed: {error}",
+    },
+    "batch_complete": {
+        "ko": "✅ 배치 완료 [{id}] — 성공: {done} / 실패: {failed}",
+        "zh": "✅ 批次完成 [{id}] — 成功: {done} / 失败: {failed}",
+        "en": "✅ Batch complete [{id}] — done: {done} / failed: {failed}",
+    },
+
+    # ── v3.4.0: YAML 도구 레시피 ──────────────────────────────────────
+    "tool_ext_loaded": {
+        "ko": "🔧 외부 도구 로드됨: {name}",
+        "zh": "🔧 外部工具已加载: {name}",
+        "en": "🔧 External tool loaded: {name}",
+    },
+    "tool_ext_not_found": {
+        "ko": "❌ 도구를 찾을 수 없음: {name}",
+        "zh": "❌ 未找到工具: {name}",
+        "en": "❌ Tool not found: {name}",
+    },
+    "tool_ext_not_installed": {
+        "ko": "⚠ {name} 설치되지 않음 — 먼저 설치하세요",
+        "zh": "⚠ {name} 未安装 — 请先安装",
+        "en": "⚠ {name} not installed — install it first",
+    },
+    "tool_ext_list": {
+        "ko": "🔧 사용 가능한 외부 도구 ({count}개)",
+        "zh": "🔧 可用外部工具 ({count}个)",
+        "en": "🔧 Available external tools ({count})",
+    },
+
+    # ── v3.4.0: 프로젝트 블랙보드 ────────────────────────────────────
+    "board_fact_saved": {
+        "ko": "📌 블랙보드 저장됨: {key} = {value}",
+        "zh": "📌 黑板已记录: {key} = {value}",
+        "en": "📌 Blackboard saved: {key} = {value}",
+    },
+    "board_fact_removed": {
+        "ko": "🗑 블랙보드 항목 삭제: {key}",
+        "zh": "🗑 黑板条目已删除: {key}",
+        "en": "🗑 Blackboard entry removed: {key}",
+    },
+    "board_cleared": {
+        "ko": "🗑 블랙보드 초기화 ({count}개 삭제)",
+        "zh": "🗑 黑板已清空 ({count}条已删除)",
+        "en": "🗑 Blackboard cleared ({count} removed)",
+    },
+    "board_list_header": {
+        "ko": "📌 블랙보드 — {target}",
+        "zh": "📌 黑板 — {target}",
+        "en": "📌 Blackboard — {target}",
+    },
+
+    # ── v3.4.0: 지식 베이스 ───────────────────────────────────────────
+    "kb_loaded": {
+        "ko": "📚 지식 베이스 로드됨: {count}개 파일",
+        "zh": "📚 知识库已加载: {count}个文件",
+        "en": "📚 Knowledge base loaded: {count} files",
+    },
+    "kb_injected": {
+        "ko": "📚 KB 컨텍스트 주입됨 (쿼리: {query})",
+        "zh": "📚 KB上下文已注入 (查询: {query})",
+        "en": "📚 KB context injected (query: {query})",
+    },
+    "kb_no_match": {
+        "ko": "📚 관련 KB 없음: {query}",
+        "zh": "📚 无相关知识库: {query}",
+        "en": "📚 No matching KB for: {query}",
+    },
+
+    # ── v3.4.0: 공격 체인 ────────────────────────────────────────────
+    "chain_step_added": {
+        "ko": "⛓ 체인 단계 추가 [{seq}] {type}: {title}",
+        "zh": "⛓ 攻击链步骤已添加 [{seq}] {type}: {title}",
+        "en": "⛓ Chain step added [{seq}] {type}: {title}",
+    },
+    "chain_header": {
+        "ko": "⛓ 공격 체인 — {session}",
+        "zh": "⛓ 攻击链 — {session}",
+        "en": "⛓ Attack chain — {session}",
+    },
+    "chain_cleared": {
+        "ko": "🗑 공격 체인 초기화 ({count}단계 삭제)",
+        "zh": "🗑 攻击链已清空 ({count}步已删除)",
+        "en": "🗑 Attack chain cleared ({count} steps removed)",
+    },
+
+    # ── v3.4.0: HITL ──────────────────────────────────────────────────
+    "hitl_prompt": {
+        "ko": "⚠️  [HITL] 위험 작업 확인 필요: {action}",
+        "zh": "⚠️  [HITL] 需要确认危险操作: {action}",
+        "en": "⚠️  [HITL] Confirm dangerous action: {action}",
+    },
+    "hitl_allowed": {
+        "ko": "✅ [HITL] 허용됨: {action}",
+        "zh": "✅ [HITL] 已允许: {action}",
+        "en": "✅ [HITL] Allowed: {action}",
+    },
+    "hitl_cancelled": {
+        "ko": "🚫 [HITL] 취소됨: {action}",
+        "zh": "🚫 [HITL] 已取消: {action}",
+        "en": "🚫 [HITL] Cancelled: {action}",
+    },
+    "hitl_always": {
+        "ko": "✅ [HITL] '항상 허용' 등록: {action}",
+        "zh": "✅ [HITL] '始终允许'已注册: {action}",
+        "en": "✅ [HITL] 'Always allow' registered: {action}",
+    },
 })
 
 

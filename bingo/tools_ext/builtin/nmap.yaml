@@ -1,0 +1,22 @@
+name: nmap
+command: nmap
+short_description: 네트워크 포트 스캔 & 서비스 핑거프린팅
+description: |
+  Network mapper — port scan, OS detection, service version detection.
+  Use for initial recon on any target IP or domain.
+args: ["-sV", "-sC", "--open"]
+parameters:
+  - name: target
+    type: string
+    description: "IP address or domain"
+    required: true
+    position: 0
+  - name: ports
+    type: string
+    description: "Port range e.g. 80,443,8080 or 1-65535"
+    flag: "-p"
+  - name: timing
+    type: string
+    description: "Timing template T1-T5 (default T3)"
+    flag: "-T"
+enabled: true

@@ -1,0 +1,26 @@
+name: nuclei
+command: nuclei
+short_description: CVE/취약점 템플릿 기반 자동 스캐너
+description: |
+  Template-based vulnerability scanner with 9000+ community templates.
+  Use -t for specific template paths or categories (cves, exposures, etc.).
+args: ["-silent"]
+parameters:
+  - name: target
+    type: string
+    description: "Target URL or IP"
+    required: true
+    flag: "-u"
+  - name: templates
+    type: string
+    description: "Template path or category e.g. cves/2024"
+    flag: "-t"
+  - name: severity
+    type: string
+    description: "Filter by severity: critical,high,medium,low"
+    flag: "-severity"
+  - name: rate_limit
+    type: string
+    description: "Max requests per second (default 150)"
+    flag: "-rate-limit"
+enabled: true

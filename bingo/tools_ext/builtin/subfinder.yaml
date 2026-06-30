@@ -1,0 +1,22 @@
+name: subfinder
+command: subfinder
+short_description: 서브도메인 열거 (패시브 리콘)
+description: |
+  Passive subdomain enumeration using multiple sources.
+  Fast and stealthy — no direct interaction with target.
+args: ["-silent"]
+parameters:
+  - name: domain
+    type: string
+    description: "Target domain e.g. example.com"
+    required: true
+    flag: "-d"
+  - name: output
+    type: string
+    description: "Output file path"
+    flag: "-o"
+  - name: sources
+    type: string
+    description: "Comma-separated sources to use"
+    flag: "-sources"
+enabled: true

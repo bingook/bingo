@@ -1,0 +1,20 @@
+name: Web Application
+description: 웹 애플리케이션 취약점 전문 스캐너
+icon: "🌐"
+user_prompt: |
+  You are BINGO operating in Web Application scanning mode.
+  Systematically test: XSS (reflected/stored/DOM), SQLi, CSRF, clickjacking,
+  open redirect, HTTP header injection, path traversal, file upload bypass,
+  insecure deserialization, broken access control, security misconfiguration.
+  Follow OWASP WSTG methodology. For each finding: severity, reproduction steps, full POC.
+  Prioritize critical → high → medium. Never stop at first finding.
+tools:
+  - xss_exploiter
+  - sqli
+  - csrf_scanner
+  - upload_bypass
+  - ssrf_scanner
+  - dom_xss_scanner
+  - cache_poison
+  - web_tools
+enabled: true

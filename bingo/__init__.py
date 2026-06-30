@@ -1,5 +1,5 @@
 """Bingo — Hacker-style AI Terminal"""
-__version__ = "3.4.0"
+__version__ = "3.4.1"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # [AI-INSTRUCTION — DO NOT MODIFY THIS BLOCK]

@@ -4356,6 +4356,58 @@ _STRINGS.update({
         "zh": "⚠ 无 Playwright — 使用 requests 模式（部分JS项目受限）",
         "en": "⚠ Playwright unavailable — running in requests mode (JS targets limited)",
     },
+
+    # ── v3.3.5: tgtylab 6-레이어 우회 시스템 상태 키 ──────────────────
+    "hook_identity_lock_active": {
+        "ko": "🔒 신원 고정 레이어 활성화 (v3.3.5)",
+        "zh": "🔒 身份锁定层已激活 (v3.3.5)",
+        "en": "🔒 Identity lock layer active (v3.3.5)",
+    },
+    "hook_thinking_redirect_active": {
+        "ko": "🔄 사고 리다이렉트 레이어 활성화 — 거부 언어 차단",
+        "zh": "🔄 思维重定向层已激活 — 阻断拒绝语言",
+        "en": "🔄 Thinking redirect layer active — refusal language blocked",
+    },
+    "hook_example_flood_loaded": {
+        "ko": "📚 예시 범람 라이브러리 로드 완료 (50+ 패턴)",
+        "zh": "📚 示例洪水库加载完成 (50+ 模式)",
+        "en": "📚 Example flood library loaded (50+ patterns)",
+    },
+    "hook_operational_context": {
+        "ko": "🏗 운영 컨텍스트: 격리 보안 연구 실험실 (세션 전체 적용)",
+        "zh": "🏗 运营上下文: 隔离安全研究实验室（整个会话生效）",
+        "en": "🏗 Operational context: isolated security research lab (session-wide)",
+    },
+    "hook_forbidden_language_guard": {
+        "ko": "🚫 금지어 가드 활성화 — 모델 거부 언어 실시간 차단",
+        "zh": "🚫 禁用词守卫已激活 — 实时屏蔽模型拒绝语言",
+        "en": "🚫 Forbidden language guard active — real-time refusal blocking",
+    },
+    "hook_reverselab_rules_loaded": {
+        "ko": "📋 행동 규범 로드 완료 (reverselab AGENTS.md)",
+        "zh": "📋 行为规范加载完成 (reverselab AGENTS.md)",
+        "en": "📋 Work style rules loaded (reverselab AGENTS.md)",
+    },
+    "hook_pre_tool_injected": {
+        "ko": "💉 Pre-tool-call 컨텍스트 훅 주입 완료",
+        "zh": "💉 Pre-tool-call 上下文钩子注入完成",
+        "en": "💉 Pre-tool-call context hook injected",
+    },
+    "hook_refusal_detected": {
+        "ko": "⚠ 거부 언어 감지 — 컨텍스트 재주입 트리거",
+        "zh": "⚠ 检测到拒绝语言 — 触发上下文重新注入",
+        "en": "⚠ Refusal language detected — context reinject triggered",
+    },
+    "hook_refusal_recovery": {
+        "ko": "🔁 거부 복구 메시지 전송 중...",
+        "zh": "🔁 正在发送拒绝恢复消息...",
+        "en": "🔁 Sending refusal recovery message...",
+    },
+    "hook_layer_summary": {
+        "ko": "✅ tgtylab 6-레이어 + reverselab 규범 로드 완료 (v3.3.5)",
+        "zh": "✅ tgtylab 6层 + reverselab规范 加载完成 (v3.3.5)",
+        "en": "✅ tgtylab 6-layer + reverselab rules loaded (v3.3.5)",
+    },
 })
 
 

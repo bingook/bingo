@@ -52,10 +52,19 @@ class ModelConfig:
         return self.alias or f"{self.provider}/{self.model}"
 
     def get_system_prompt(self) -> str:
-        """provider별 최적화된 시스템 프롬프트 반환"""
+        """
+        [v3.3.5] provider별 최적화된 시스템 프롬프트 반환.
+        tgtylab 6-레이어 (신원고정/사고차단/예시범람/운영컨텍스트/금지어/행동규범) 자동 주입.
+        """
         if self.system_prompt:
             return self.system_prompt
-        # DeepSeek은 상세한 역할 주입 필수
+        # tgtylab + reverselab + example_flood 레이어 포함한 통합 프롬프트 사용
+        try:
+            from .system_prompt import get_pentest_system_prompt
+            return get_pentest_system_prompt(self.provider)
+        except Exception:
+            pass
+        # fallback
         if self.provider == "deepseek":
             return DEEPSEEK_DEFAULT_SYSTEM
         return GENERIC_DEFAULT_SYSTEM

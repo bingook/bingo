@@ -54,23 +54,44 @@ class WhiteboxResult:
                 lines.append(f"{vt.upper()} 취약 가능성 {cnt}개")
         return " | ".join(lines) if lines else "분석 완료 (특이사항 없음)"
 
-    def to_context_injection(self) -> str:
+    def to_context_injection(self, target_url: str = "") -> str:
         """AI에게 전달할 화이트박스 컨텍스트 문자열 생성."""
         lines = ["[WHITEBOX CONTEXT — 소스코드 분석 결과]"]
+        if target_url:
+            lines.append(f"Target URL: {target_url}")
+            lines.append(
+                "Hybrid Mode: combine source code hints below with live blackbox "
+                f"testing against {target_url}"
+            )
         if self.tech_stack:
             lines.append(f"Tech Stack: {', '.join(self.tech_stack)}")
         if self.endpoints:
-            lines.append(f"Endpoints: {', '.join(self.endpoints[:20])}")
+            # URL이 있으면 절대 경로로 조합
+            if target_url:
+                base = target_url.rstrip("/")
+                combined = [
+                    f"{base}{ep}" if ep.startswith("/") else f"{base}/{ep}"
+                    for ep in self.endpoints[:20]
+                ]
+                lines.append(f"Full URLs to test: {', '.join(combined)}")
+            else:
+                lines.append(f"Endpoints: {', '.join(self.endpoints[:20])}")
         if self.params:
             lines.append(f"Parameters: {', '.join(self.params[:30])}")
         if self.forms:
             for f in self.forms[:5]:
-                lines.append(f"Form: action={f.get('action','?')} params={f.get('params',[])}")
+                action = f.get('action', '?')
+                if target_url and action.startswith("/"):
+                    action = target_url.rstrip("/") + action
+                lines.append(f"Form: action={action} params={f.get('params', [])}")
         if self.hints:
             lines.append("Attack Hints:")
             for h in self.hints[:15]:
+                endpoint = h.endpoint
+                if target_url and endpoint.startswith("/"):
+                    endpoint = target_url.rstrip("/") + endpoint
                 lines.append(
-                    f"  [{h.vuln_type.upper()}] {h.endpoint} param={h.param} "
+                    f"  [{h.vuln_type.upper()}] {endpoint} param={h.param} "
                     f"confidence={h.confidence} — {h.evidence[:80]}"
                 )
         lines.append("[/WHITEBOX CONTEXT]")

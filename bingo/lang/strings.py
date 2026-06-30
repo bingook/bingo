@@ -752,6 +752,9 @@ _SLASH_DESC = {
     "/hitl":        {"ko": "인간 확인 게이트  /hitl [on|off|status|log]",
                      "zh": "人工审批门  /hitl [on|off|status|log]",
                      "en": "Human-in-the-loop gate  /hitl [on|off|status|log]"},
+    "/orch":        {"ko": "LLM 오케스트레이터  /orch [start <url>|stop|status|log|report]",
+                     "zh": "LLM编排器  /orch [start <url>|stop|status|log|report]",
+                     "en": "LLM orchestrator  /orch [start <url>|stop|status|log|report]"},
 }
 
 # ── 스킬 시스템 / WAF / 자동 분석 추가 문자열 ──────────────────────────────
@@ -4643,6 +4646,68 @@ _STRINGS.update({
         "ko": "✅ [HITL] '항상 허용' 등록: {action}",
         "zh": "✅ [HITL] '始终允许'已注册: {action}",
         "en": "✅ [HITL] 'Always allow' registered: {action}",
+    },
+
+    # ── v3.5.0: LLM 오케스트레이터 ───────────────────────────────────
+    "orch_started": {
+        "ko": "🤖 오케스트레이터 시작: {target} | 목표={goal} | 스텝={steps}",
+        "zh": "🤖 编排器已启动: {target} | 目标={goal} | 步数={steps}",
+        "en": "🤖 Orchestrator started: {target} | goal={goal} | steps={steps}",
+    },
+    "orch_stopped": {
+        "ko": "⏹ 오케스트레이터 중지됨.",
+        "zh": "⏹ 编排器已停止。",
+        "en": "⏹ Orchestrator stopped.",
+    },
+    "orch_not_running": {
+        "ko": "오케스트레이터가 실행 중이 아닙니다.",
+        "zh": "编排器未在运行。",
+        "en": "Orchestrator is not running.",
+    },
+    "orch_not_started": {
+        "ko": "오케스트레이터가 아직 시작되지 않았습니다.",
+        "zh": "编排器尚未启动。",
+        "en": "Orchestrator has not been started.",
+    },
+    "orch_no_log": {
+        "ko": "오케스트레이터 로그가 없습니다.",
+        "zh": "无编排器日志。",
+        "en": "No orchestrator log.",
+    },
+    "orch_goal_achieved": {
+        "ko": "🎯 오케스트레이터 목표 달성! ({steps} 스텝)",
+        "zh": "🎯 编排器目标达成！({steps} 步)",
+        "en": "🎯 Orchestrator goal achieved! ({steps} steps)",
+    },
+    "orch_step_label": {
+        "ko": "━━━ 오케스트레이터 스텝 {step}/{max_steps} ━━━",
+        "zh": "━━━ 编排器步骤 {step}/{max_steps} ━━━",
+        "en": "━━━ Orchestrator step {step}/{max_steps} ━━━",
+    },
+    "orch_decision_thinking": {
+        "ko": "🧠 LLM 의사결정 중...",
+        "zh": "🧠 LLM决策中...",
+        "en": "🧠 LLM deciding next action...",
+    },
+    "orch_executing": {
+        "ko": "▶ 실행: {command}",
+        "zh": "▶ 执行: {command}",
+        "en": "▶ Executing: {command}",
+    },
+    "orch_completed": {
+        "ko": "⏹ 오케스트레이터 완료 (스텝: {step}/{max_steps})",
+        "zh": "⏹ 编排器完成 (步骤: {step}/{max_steps})",
+        "en": "⏹ Orchestrator completed (steps: {step}/{max_steps})",
+    },
+    "orch_hitl_denied": {
+        "ko": "🚫 [HITL] 거부됨: {action}",
+        "zh": "🚫 [HITL] 已拒绝: {action}",
+        "en": "🚫 [HITL] Denied: {action}",
+    },
+    "orch_board_updated": {
+        "ko": "📌 블랙보드 업데이트: {key} = {value}",
+        "zh": "📌 黑板已更新: {key} = {value}",
+        "en": "📌 Blackboard updated: {key} = {value}",
     },
 })
 

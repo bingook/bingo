@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -1317,6 +1317,91 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 ---
 
+## New in v3.5.0 — LLM Orchestrator: Programmable Attack Pipeline
+
+> **The core limitation of v3.4.x:** six phases were hardcoded, fifteen branches were fixed.
+> Users could not define "if X is found → do Y → else do Z".
+> v3.5.0 solves this with a fully dynamic, LLM-driven orchestration engine.
+
+---
+
+### 🤖 LLM Orchestrator (`/orch`)
+
+The orchestrator replaces the static pipeline with a **self-directing attack loop**.
+Instead of a fixed sequence, the AI analyzes the current state after every step and independently decides the optimal next action.
+
+#### How It Works
+
+```
+LOOP (up to N steps):
+  1. Read Blackboard  ← all discovered facts
+  2. Read AttackChain ← already-completed steps
+  3. Ask decision LLM → JSON: {action, type, reason, command, update_board, goal_achieved}
+  4. HitlGate check   ← dangerous action confirmation
+  5. Execute command  → terminal._send_message(command)
+  6. Update Blackboard with new facts
+  7. Log step to AttackChain
+  8. If goal_achieved == true → stop
+```
+
+The decision LLM runs in a **separate mini-session** (isolated from the main conversation), so the orchestration logic never pollutes the attack conversation.
+
+#### Commands
+
+```bash
+/orch start https://target.com                          # Start with default goal
+/orch start https://target.com "admin panel access"     # Custom goal
+/orch start https://target.com "DB dump" steps=15       # Up to 15 steps
+/orch stop                                              # Stop after current step
+/orch status                                            # Show current state
+/orch log                                               # Step-by-step history
+/orch report                                            # Final attack report
+```
+
+#### Decision JSON Format
+
+At each step, the orchestrator asks the LLM to return:
+
+```json
+{
+  "action":        "SQLi time-based blind on /login",
+  "type":          "vuln",
+  "reason":        "WAF detected, error-based blocked, try time-based",
+  "command":       "로그인 폼에 time-based blind SQLi 전수 테스트해줘",
+  "update_board":  {"sqli_login": "time-based confirmed"},
+  "goal_achieved": false,
+  "confidence":    0.87
+}
+```
+
+#### Comparison: Fixed Pipeline vs. LLM Orchestrator
+
+| Dimension | v3.4.x (Fixed Pipeline) | v3.5.0 (LLM Orchestrator) |
+|-----------|------------------------|--------------------------|
+| Flow control | Hardcoded 6 phases | LLM decides each step |
+| Branching | 15 fixed conditions | Unlimited conditional logic |
+| State awareness | None | Full Blackboard read at each step |
+| Custom goals | Not possible | `/orch start <url> "your goal"` |
+| Speed | Fast (no LLM overhead) | Slightly slower per step |
+| Flexibility | Low | High |
+
+> **When to use each:**
+> - Use the fixed pipeline (`/scan`) for speed in known scenarios.
+> - Use `/orch` for unknown targets where the path depends on what's discovered.
+
+#### Integration with Existing v3.4.0 Modules
+
+The orchestrator reads from and writes to:
+
+| Module | Role |
+|--------|------|
+| **Blackboard** (`/board`) | State store — orchestrator reads facts, writes discoveries |
+| **AttackChain** (`/chain`) | History — every orchestrated step is logged automatically |
+| **HitlGate** (`/hitl`) | Safety — dangerous actions require confirmation before execution |
+| **Roles** (`/role`) | Context — active role influences LLM decision prompts |
+
+---
+
 ## New in v3.4.0 — Intelligence Platform Upgrade (8 New Modules)
 
 v3.4.0 transforms bingo from a pure attack terminal into a **full red team intelligence platform**. Eight independent modules are added, each targeting a specific operational gap.
@@ -1613,6 +1698,12 @@ Adds an optional confirmation gate before dangerous operations. Critical for eng
 
 ---
 
+### New Commands Summary (v3.5.0)
+
+| Command | Module | Description |
+|---------|--------|-------------|
+| `/orch [start\|stop\|status\|log\|report]` | **LLM Orchestrator** | **Dynamic LLM-driven attack pipeline** |
+
 ### New Commands Summary (v3.4.0)
 
 | Command | Module | Description |
@@ -1669,6 +1760,7 @@ No manual configuration needed — activates silently and retries.
 
 | Version | Summary |
 |---------|---------|
+| v3.5.0 | **LLM Orchestrator** — dynamic attack pipeline replacing hardcoded 6-phase flow; decision LLM runs in isolated mini-session; full Blackboard/AttackChain/HitlGate integration; `/orch start\|stop\|status\|log\|report`; custom goal + step limit; structured JSON decision format with confidence scoring; 12 new multilingual i18n keys (KO/ZH/EN) |
 | v3.4.0 | **Intelligence Platform Upgrade** — 8 new modules: role-based testing (5 built-in roles + YAML custom), vulnerability manager (SQLite CRUD, severity/status tracking), project blackboard (cross-session target facts), YAML external tool recipes (nmap/sqlmap/ffuf/nuclei/subfinder), local knowledge base (markdown injection), batch execution (multi-target queue), attack chain tracker (auto-classify steps), Human-in-the-loop gate (dangerous action confirmation); 33 new multilingual i18n keys (KO/ZH/EN) |
 | v3.3.5 | **tgtylab 6-Layer Model Bypass** — Identity Lock (§0), Thinking Redirect (§1), Example Flood 50+ patterns (§2), Operational Context framing (§3), Forbidden Language list (§4), Pre-tool-call hook with refusal detection + context re-injection (§5); new `bingo/hooks/` module; works across DeepSeek/Claude/GPT/GLM/Qwen; 10 new i18n keys |
 | v3.3.4 | **WAF Silent Drop Auto-Bypass** — automatic HTTP-level header evasion (User-Agent/X-Forwarded-For/X-Real-IP) when WAF silent drop is detected (no 429/403, just timeout); no proxy required; 5 new i18n keys |
@@ -1776,9 +1868,9 @@ MIT © 2026 bingook
 
 **Type your target. bingo does the rest.**
 
-*The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, role-based testing, vuln manager, and target memory.*
+*The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, role-based testing, vuln manager, target memory, and LLM Orchestrator.*
 
-[![Version](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

@@ -3105,6 +3105,8 @@ class BingoTerminal:
             self._cmd_chain(arg)
         elif name == "/hitl":
             self._cmd_hitl(arg)
+        elif name == "/orch":
+            self._cmd_orch(arg)
         else:
             self._warn(self.s["cmd_unknown"].format(name=name))
 
@@ -9695,3 +9697,155 @@ class BingoTerminal:
             self.console.print(t)
         else:
             self._warn("Usage: /hitl [on|off|status|log]")
+
+    # ── /orch ─────────────────────────────────────────────────────────
+    def _cmd_orch(self, arg: str = "") -> None:
+        """/orch <sub-command> [options]  — LLM 오케스트레이터 (v3.5.0)
+
+        서브 명령:
+          /orch start <url> [goal] [steps=N]   — 오케스트레이션 시작
+          /orch stop                            — 현재 스텝 완료 후 중지
+          /orch status                          — 현재 상태 확인
+          /orch log                             — 실행 이력 표시
+          /orch report                          — 최종 공격 리포트
+
+        예시:
+          /orch start https://target.com
+          /orch start https://target.com "관리자 패널 접근" steps=15
+          /orch stop
+        """
+        from ..orchestrator.engine import (
+            OrchestratorEngine,
+            global_orchestrator,
+            set_global_orchestrator,
+        )
+
+        sub_parts = arg.strip().split(None, 1)
+        sub = sub_parts[0].lower() if sub_parts else "status"
+        rest = sub_parts[1].strip() if len(sub_parts) > 1 else ""
+
+        # ── stop ──────────────────────────────────────────────────────
+        if sub == "stop":
+            eng = global_orchestrator()
+            if eng and eng.running:
+                eng.stop()
+                self._success(self.s.get("orch_stopped", "⏹ Orchestrator stopped."))
+            else:
+                self._info(self.s.get("orch_not_running", "Orchestrator is not running."))
+            return
+
+        # ── status ────────────────────────────────────────────────────
+        if sub == "status":
+            eng = global_orchestrator()
+            if not eng:
+                self._info(self.s.get("orch_not_started", "Orchestrator has not been started."))
+            else:
+                self.console.print(eng.summary())
+            return
+
+        # ── log ───────────────────────────────────────────────────────
+        if sub == "log":
+            eng = global_orchestrator()
+            if not eng or not eng.log:
+                self._info(self.s.get("orch_no_log", "No orchestrator log."))
+                return
+            from rich.table import Table as _OT
+            ot = _OT(
+                title=f"[bold]🤖 Orchestrator Log — {eng._target}[/bold]",
+                border_style=THEME["primary"],
+            )
+            ot.add_column("#", width=4, justify="right", style="dim")
+            ot.add_column("Type", width=8)
+            ot.add_column("Action", overflow="fold")
+            ot.add_column("Conf", width=6, justify="right")
+            ot.add_column("Achieved", width=9, justify="center")
+            for s in eng.log:
+                ot.add_row(
+                    str(s.step_no),
+                    f"{s.icon()} {s.step_type}",
+                    s.action,
+                    f"{s.confidence:.0%}",
+                    "✅" if s.goal_achieved else "",
+                )
+            self.console.print(ot)
+            return
+
+        # ── report ────────────────────────────────────────────────────
+        if sub == "report":
+            eng = global_orchestrator()
+            if not eng:
+                self._info(self.s.get("orch_not_started", "Orchestrator has not been started."))
+                return
+            self.console.print(eng.report())
+            return
+
+        # ── start ─────────────────────────────────────────────────────
+        if sub == "start":
+            # 형식: <url> ["goal text"] [steps=N]
+            # URL 추출
+            import re as _re_orch
+            url_match = _re_orch.search(r"https?://[^\s\"']+", rest)
+            if not url_match:
+                # 'start' 없이 URL만 입력한 경우
+                url_match = _re_orch.search(r"https?://[^\s\"']+", arg)
+            if not url_match:
+                self._warn(
+                    "Usage: /orch start <url> [goal] [steps=N]\n"
+                    "  예) /orch start https://target.com\n"
+                    '  예) /orch start https://target.com "관리자 패널 접근" steps=15'
+                )
+                return
+
+            target_url = url_match.group(0).rstrip("/")
+            remainder  = rest.replace(target_url, "").strip()
+
+            # steps= 추출
+            max_steps = 10
+            steps_m = _re_orch.search(r"steps\s*=\s*(\d+)", remainder, _re_orch.I)
+            if steps_m:
+                max_steps = max(1, min(int(steps_m.group(1)), 30))
+                remainder = remainder[:steps_m.start()] + remainder[steps_m.end():]
+
+            # goal 추출 (따옴표 또는 나머지 텍스트)
+            goal_m = _re_orch.search(r'"([^"]+)"|\'([^\']+)\'', remainder)
+            if goal_m:
+                goal = goal_m.group(1) or goal_m.group(2)
+            else:
+                goal = remainder.strip() or "관리자 계정 탈취 및 최대 권한 획득"
+
+            # 기존 엔진 중지
+            old_eng = global_orchestrator()
+            if old_eng and old_eng.running:
+                old_eng.stop()
+                time.sleep(0.5)
+
+            # 새 엔진 생성 & 시작
+            eng = OrchestratorEngine(
+                config    = self.config,
+                target    = target_url,
+                goal      = goal,
+                max_steps = max_steps,
+                hitl_enabled = True,
+            )
+            set_global_orchestrator(eng)
+            eng.start(
+                send_fn = self._send_message,
+                console = self.console,
+            )
+            self._success(
+                self.s.get(
+                    "orch_started",
+                    "🤖 Orchestrator started: {target} | goal={goal} | steps={steps}"
+                ).format(target=target_url, goal=goal, steps=max_steps)
+            )
+            return
+
+        # ── 알 수 없는 서브 명령 ──────────────────────────────────────
+        self._warn(
+            "Usage: /orch [start|stop|status|log|report]\n"
+            "  /orch start https://target.com\n"
+            "  /orch stop\n"
+            "  /orch status\n"
+            "  /orch log\n"
+            "  /orch report"
+        )

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bingo-ai"
-version = "3.4.2"
-description = "AI-powered red team terminal — Zero-Hallucination · WAF bypass · XSS·Upload·SSRF·OAuth·GraphQL·Smuggling exploit chains · role-based testing · vuln manager · attack chain · HITL · multi-model · multi-language"
+version = "3.5.0"
+description = "AI-powered red team terminal — Zero-Hallucination · WAF bypass · XSS·Upload·SSRF·OAuth·GraphQL·Smuggling exploit chains · role-based testing · vuln manager · attack chain · HITL · LLM Orchestrator · multi-model · multi-language"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = { text = "MIT" }

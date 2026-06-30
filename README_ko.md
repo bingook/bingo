@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -1264,6 +1264,91 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 ---
 
+## v3.5.0 신규 기능 — LLM 오케스트레이터: 프로그래밍 가능한 공격 파이프라인
+
+> **v3.4.x의 핵심 한계:** 6개 페이즈는 하드코딩되고, 15개 분기는 고정되어 있었습니다.
+> 사용자는 "A를 스캔 → X가 발견되면 B → 아니면 C"를 직접 정의할 수 없었습니다.
+> v3.5.0은 완전 동적 LLM 오케스트레이션 엔진으로 이 한계를 해결합니다.
+
+---
+
+### 🤖 LLM 오케스트레이터 (`/orch`)
+
+오케스트레이터는 정적 파이프라인을 **자기 주도형 공격 루프**로 대체합니다.
+고정된 순서 대신, AI가 매 단계마다 현재 상태를 분석하고 최적의 다음 행동을 스스로 결정합니다.
+
+#### 동작 원리
+
+```
+루프 (최대 N 스텝):
+  1. 블랙보드 읽기   ← 모든 발견된 사실
+  2. 공격 체인 읽기  ← 이미 완료된 단계
+  3. 결정 LLM 질의  → JSON: {action, type, reason, command, update_board, goal_achieved}
+  4. HITL 게이트 확인 ← 위험 작업 사용자 확인
+  5. 명령 실행       → terminal._send_message(command)
+  6. 블랙보드 업데이트 (새 발견 사실 기록)
+  7. 공격 체인에 단계 기록
+  8. goal_achieved == true → 종료
+```
+
+결정 LLM은 **별도 미니 세션**으로 실행되어 (메인 대화와 격리), 오케스트레이션 로직이 공격 대화를 오염시키지 않습니다.
+
+#### 명령어
+
+```bash
+/orch start https://target.com                          # 기본 목표로 시작
+/orch start https://target.com "관리자 패널 접근"        # 커스텀 목표
+/orch start https://target.com "DB 덤프" steps=15       # 최대 15 스텝
+/orch stop                                              # 현재 스텝 완료 후 중지
+/orch status                                            # 현재 상태 표시
+/orch log                                               # 단계별 히스토리
+/orch report                                            # 최종 공격 보고서
+```
+
+#### 결정 JSON 형식
+
+매 스텝에서 오케스트레이터가 LLM에 요청하는 구조:
+
+```json
+{
+  "action":        "로그인 폼 time-based blind SQLi",
+  "type":          "vuln",
+  "reason":        "WAF 감지됨, error-based 차단됨, time-based 시도",
+  "command":       "로그인 폼에 time-based blind SQLi 전수 테스트해줘",
+  "update_board":  {"sqli_login": "time-based 확인됨"},
+  "goal_achieved": false,
+  "confidence":    0.87
+}
+```
+
+#### 비교: 고정 파이프라인 vs. LLM 오케스트레이터
+
+| 차원 | v3.4.x (고정 파이프라인) | v3.5.0 (LLM 오케스트레이터) |
+|------|------------------------|--------------------------|
+| 흐름 제어 | 하드코딩 6 페이즈 | LLM이 매 스텝 결정 |
+| 분기 | 15개 고정 조건 | 무제한 조건 로직 |
+| 상태 인식 | 없음 | 매 스텝마다 블랙보드 전체 읽기 |
+| 커스텀 목표 | 불가 | `/orch start <url> "목표"` |
+| 속도 | 빠름 (LLM 오버헤드 없음) | 스텝당 약간 느림 |
+| 유연성 | 낮음 | 높음 |
+
+> **언제 무엇을 쓸까:**
+> - 알려진 시나리오에서 속도가 중요하면 고정 파이프라인 (`/scan`) 사용.
+> - 발견에 따라 경로가 바뀌는 미지의 타겟에는 `/orch` 사용.
+
+#### 기존 v3.4.0 모듈과의 연동
+
+오케스트레이터는 다음 모듈을 읽고 씁니다:
+
+| 모듈 | 역할 |
+|------|------|
+| **블랙보드** (`/board`) | 상태 저장소 — 사실 읽기 + 발견 사항 기록 |
+| **공격 체인** (`/chain`) | 히스토리 — 모든 오케스트레이트된 단계 자동 기록 |
+| **HITL 게이트** (`/hitl`) | 안전 — 위험 작업 실행 전 확인 요청 |
+| **역할** (`/role`) | 컨텍스트 — 활성 역할이 결정 프롬프트에 반영 |
+
+---
+
 ## v3.4.0 신규 기능 — 인텔리전스 플랫폼 대폭 업그레이드 (8개 신규 모듈)
 
 v3.4.0은 bingo를 단순 공격 터미널에서 **완전한 레드팀 인텔리전스 플랫폼**으로 변환합니다. 8개의 독립 모듈이 추가되어 실전 침투테스트의 모든 운영적 공백을 채웁니다.
@@ -1556,6 +1641,12 @@ enabled: true
 
 ---
 
+### v3.5.0 신규 명령어 요약
+
+| 명령어 | 모듈 | 설명 |
+|--------|------|------|
+| `/orch [start\|stop\|status\|log\|report]` | **LLM 오케스트레이터** | **동적 LLM 주도 공격 파이프라인** |
+
 ### v3.4.0 신규 명령어 요약
 
 | 명령어 | 모듈 | 설명 |
@@ -1611,6 +1702,7 @@ headers = {
 
 | 버전 | 요약 |
 |------|------|
+| v3.5.0 | **LLM 오케스트레이터** — 하드코딩된 6 페이즈 흐름을 대체하는 동적 공격 파이프라인; 결정 LLM은 격리된 미니 세션으로 실행; 블랙보드/공격체인/HITL 완전 연동; `/orch start\|stop\|status\|log\|report`; 커스텀 목표 + 스텝 제한; 신뢰도 점수 포함 구조화된 JSON 결정 형식; 신규 다국어 i18n 키 12개 (KO/ZH/EN) |
 | v3.4.0 | **인텔리전스 플랫폼 대폭 업그레이드** — 8개 신규 모듈: 역할 기반 테스팅 (5개 내장 역할 + YAML 커스텀), 취약점 관리자 (SQLite CRUD, 심각도/상태 추적), 프로젝트 블랙보드 (세션 간 타겟 사실), YAML 외부 도구 레시피 (nmap/sqlmap/ffuf/nuclei/subfinder), 로컬 지식 베이스 (마크다운 주입), 배치 실행 (다중 타겟 큐), 공격 체인 트래커 (단계 자동 분류), HITL 게이트 (위험 작업 확인); 신규 다국어 i18n 키 33개 (KO/ZH/EN) |
 | v3.3.5 | **tgtylab 6레이어 모델 우회** — 정체성 고정(§0), 사고 전환(§1), 예시 홍수 50개+(§2), 운영 컨텍스트 프레이밍(§3), 금지 언어 목록(§4), 사전 도구 훅 + 거부 감지/컨텍스트 재주입(§5); 신규 `bingo/hooks/` 모듈; DeepSeek/Claude/GPT/GLM/Qwen 전 지원; i18n 키 10개 추가 |
 | v3.3.4 | **WAF 무응답 자동 우회** — WAF 무응답(429/403 없이 시간 초과) 감지 시 자동 HTTP 레벨 헤더 우회 (User-Agent/X-Forwarded-For/X-Real-IP); 프록시 불필요; i18n 키 5개 추가 |
@@ -1670,9 +1762,9 @@ MIT © 2026 bingook
 
 **타겟을 입력하세요. bingo가 나머지를 합니다.**
 
-*내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 역할 기반 테스팅 · 취약점 관리 · 타겟 메모리 — 유일한 올인원 AI 침투 도구*
+*내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 역할 기반 테스팅 · 취약점 관리 · 타겟 메모리 · LLM 오케스트레이터 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.4.0-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

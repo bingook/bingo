@@ -3077,6 +3077,23 @@ class BingoTerminal:
             self._cmd_proxy(arg)
         elif name == "/ctf":
             self._cmd_ctf(arg)
+        # ── v3.4.0 신규 명령어 ────────────────────────────────────────
+        elif name == "/role":
+            self._cmd_role(arg)
+        elif name == "/vulns":
+            self._cmd_vulns(arg)
+        elif name == "/board":
+            self._cmd_board(arg)
+        elif name in ("/tools-ext", "/tools_ext"):
+            self._cmd_tools_ext(arg)
+        elif name == "/kb":
+            self._cmd_kb(arg)
+        elif name == "/batch":
+            self._cmd_batch(arg)
+        elif name == "/chain":
+            self._cmd_chain(arg)
+        elif name == "/hitl":
+            self._cmd_hitl(arg)
         else:
             self._warn(self.s["cmd_unknown"].format(name=name))
 
@@ -9301,3 +9318,369 @@ class BingoTerminal:
 
     def _success(self, msg: str) -> None:
         self.console.print(f"[{THEME['success']}]  ✔  {msg}[/]")
+
+    # ══════════════════════════════════════════════════════════════
+    # v3.4.0 명령어 핸들러
+    # ══════════════════════════════════════════════════════════════
+
+    # ── /role ─────────────────────────────────────────────────────
+    def _cmd_role(self, arg: str = "") -> None:
+        """/role [list|set <name>|info]  — 역할 기반 테스트 모드"""
+        from ..roles.manager import RoleManager
+        from rich.table import Table as _T
+        rm = RoleManager()
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "list"
+        param = sub[1].strip() if len(sub) > 1 else ""
+
+        if cmd == "list" or not arg.strip():
+            roles = rm.list_roles()
+            t = _T(title="[bold green]Available Roles[/]", border_style=THEME["primary"])
+            t.add_column("Name", style="cyan", width=20)
+            t.add_column("Description", overflow="fold")
+            for r in roles:
+                t.add_row(r["name"], r.get("description", ""))
+            self.console.print(t)
+            active = rm.get_active()
+            if active:
+                self.console.print(f"\n[{THEME['success']}]Active role: {active}[/]")
+        elif cmd == "set":
+            if not param:
+                self._warn("Usage: /role set <name>")
+                return
+            try:
+                rm.set_role(param)
+                self._success(f"Role set → {param}")
+            except ValueError as e:
+                self._error(str(e))
+        elif cmd == "info":
+            name = param or rm.get_active()
+            if not name:
+                self._warn("No active role. Use /role set <name> first.")
+                return
+            info = rm.get_role_info(name)
+            if info:
+                self.console.print(f"[{THEME['primary']}]Role: {name}[/]")
+                for k, v in info.items():
+                    self.console.print(f"  [dim]{k}:[/] {v}")
+            else:
+                self._error(f"Role '{name}' not found.")
+        elif cmd == "clear":
+            rm.clear_role()
+            self._success("Role cleared.")
+        else:
+            self._warn("Usage: /role [list|set <name>|info|clear]")
+
+    # ── /vulns ────────────────────────────────────────────────────
+    def _cmd_vulns(self, arg: str = "") -> None:
+        """/vulns [list|add|show <id>|del <id>|export]  — 취약점 DB"""
+        from ..vulns.manager import VulnManager
+        from rich.table import Table as _T
+        vm = VulnManager()
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "list"
+        param = sub[1].strip() if len(sub) > 1 else ""
+
+        if cmd == "list" or not arg.strip():
+            vulns = vm.list_vulns()
+            if not vulns:
+                self._info("No vulnerabilities recorded yet. Use /vulns add")
+                return
+            t = _T(title="[bold red]Vulnerability Database[/]", border_style=THEME["primary"], show_lines=True)
+            t.add_column("ID", width=4, style="dim")
+            t.add_column("Type", width=12, style="red")
+            t.add_column("Severity", width=8)
+            t.add_column("Target", width=30, overflow="fold")
+            t.add_column("Summary", overflow="fold")
+            for v in vulns:
+                sev = v.get("severity", "medium").upper()
+                sev_color = {"HIGH": "red", "CRITICAL": "bold red", "MEDIUM": "yellow", "LOW": "green"}.get(sev, "white")
+                t.add_row(
+                    str(v["id"]), v.get("vuln_type", "?"),
+                    f"[{sev_color}]{sev}[/]",
+                    v.get("target", ""), v.get("summary", "")
+                )
+            self.console.print(t)
+        elif cmd == "add":
+            self.console.print(f"[{THEME['primary']}]New vulnerability entry (Ctrl+C to cancel)[/]")
+            try:
+                vuln_type = self._session.prompt("  Type (e.g. SQLi, XSS, RCE): ").strip()
+                severity = self._session.prompt("  Severity [critical/high/medium/low]: ").strip() or "medium"
+                target = self._session.prompt("  Target URL/endpoint: ").strip()
+                summary = self._session.prompt("  Summary: ").strip()
+                notes = self._session.prompt("  Notes (optional): ").strip()
+                vid = vm.add_vuln(vuln_type=vuln_type, severity=severity,
+                                  target=target, summary=summary, notes=notes)
+                self._success(f"Vulnerability #{vid} recorded.")
+            except (KeyboardInterrupt, EOFError):
+                self._info("Cancelled.")
+        elif cmd == "show":
+            if not param.isdigit():
+                self._warn("Usage: /vulns show <id>")
+                return
+            v = vm.get_vuln(int(param))
+            if not v:
+                self._error(f"Vuln #{param} not found.")
+                return
+            for k, val in v.items():
+                self.console.print(f"  [cyan]{k}:[/] {val}")
+        elif cmd == "del":
+            if not param.isdigit():
+                self._warn("Usage: /vulns del <id>")
+                return
+            vm.delete_vuln(int(param))
+            self._success(f"Vuln #{param} deleted.")
+        elif cmd == "export":
+            path = vm.export_json()
+            self._success(f"Exported → {path}")
+        else:
+            self._warn("Usage: /vulns [list|add|show <id>|del <id>|export]")
+
+    # ── /board ────────────────────────────────────────────────────
+    def _cmd_board(self, arg: str = "") -> None:
+        """/board [show|set <k> <v>|del <k>|clear]  — 프로젝트 블랙보드"""
+        from ..blackboard.store import Blackboard
+        from rich.table import Table as _T
+        target = self._agent_state.get("target") or "global"
+        bb = Blackboard(target)
+        sub = arg.strip().split(None, 2)
+        cmd = sub[0].lower() if sub else "show"
+
+        if cmd == "show" or not arg.strip():
+            data = bb.all()
+            if not data:
+                self._info(f"Board for [{target}] is empty. Use /board set <key> <value>")
+                return
+            t = _T(title=f"[bold cyan]Blackboard — {target}[/]", border_style=THEME["primary"])
+            t.add_column("Key", style="cyan", width=20)
+            t.add_column("Value", overflow="fold")
+            for k, v in data.items():
+                t.add_row(k, str(v))
+            self.console.print(t)
+        elif cmd == "set":
+            if len(sub) < 3:
+                self._warn("Usage: /board set <key> <value>")
+                return
+            bb.set(sub[1], sub[2])
+            self._success(f"Set [{sub[1]}] = {sub[2]}")
+        elif cmd == "del":
+            if len(sub) < 2:
+                self._warn("Usage: /board del <key>")
+                return
+            bb.delete(sub[1])
+            self._success(f"Deleted [{sub[1]}]")
+        elif cmd == "clear":
+            bb.clear()
+            self._success("Board cleared.")
+        else:
+            self._warn("Usage: /board [show|set <k> <v>|del <k>|clear]")
+
+    # ── /tools-ext ────────────────────────────────────────────────
+    def _cmd_tools_ext(self, arg: str = "") -> None:
+        """/tools-ext [list|run <name>|reload]  — YAML 정의 외부 CLI 도구"""
+        from ..tools_ext.loader import ToolExtRegistry
+        from rich.table import Table as _T
+        reg = ToolExtRegistry()
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "list"
+        param = sub[1].strip() if len(sub) > 1 else ""
+
+        if cmd == "list" or not arg.strip():
+            tools = reg.list_tools()
+            if not tools:
+                self._info("No external tools defined. Add YAML files to bingo/tools_ext/builtin/")
+                return
+            t = _T(title="[bold cyan]External Tools[/]", border_style=THEME["primary"])
+            t.add_column("Name", style="cyan", width=18)
+            t.add_column("Command", width=30, overflow="fold")
+            t.add_column("Description", overflow="fold")
+            for tool in tools:
+                t.add_row(tool["name"], tool.get("command", ""), tool.get("description", ""))
+            self.console.print(t)
+        elif cmd == "run":
+            if not param:
+                self._warn("Usage: /tools-ext run <tool_name> [args...]")
+                return
+            parts = param.split(None, 1)
+            name = parts[0]
+            extra = parts[1] if len(parts) > 1 else ""
+            result = reg.run(name, extra)
+            self.console.print(result)
+        elif cmd == "reload":
+            reg.reload()
+            self._success("External tools reloaded.")
+        else:
+            self._warn("Usage: /tools-ext [list|run <name>|reload]")
+
+    # ── /kb ───────────────────────────────────────────────────────
+    def _cmd_kb(self, arg: str = "") -> None:
+        """/kb [list|search <kw>|show <name>|reload]  — 로컬 지식베이스"""
+        from ..knowledge.loader import KBLoader
+        from rich.table import Table as _T
+        kb = KBLoader()
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "list"
+        param = sub[1].strip() if len(sub) > 1 else ""
+
+        if cmd == "list" or not arg.strip():
+            docs = kb.list_docs()
+            if not docs:
+                self._info("No KB documents found. Add .md files to bingo/knowledge/base/")
+                return
+            t = _T(title="[bold cyan]Knowledge Base[/]", border_style=THEME["primary"])
+            t.add_column("Name", style="cyan", width=25)
+            t.add_column("Size", width=8)
+            t.add_column("Summary", overflow="fold")
+            for d in docs:
+                t.add_row(d["name"], f"{d.get('size', 0)}B", d.get("summary", ""))
+            self.console.print(t)
+        elif cmd == "search":
+            if not param:
+                self._warn("Usage: /kb search <keyword>")
+                return
+            results = kb.search(param)
+            if not results:
+                self._info(f"No results for '{param}'")
+                return
+            for r in results[:5]:
+                self.console.print(f"[{THEME['primary']}]📄 {r['name']}[/]")
+                self.console.print(f"  [dim]{r['snippet']}[/]\n")
+        elif cmd == "show":
+            if not param:
+                self._warn("Usage: /kb show <name>")
+                return
+            content = kb.get(param)
+            if content:
+                self.console.print(content[:3000])
+            else:
+                self._error(f"Document '{param}' not found.")
+        elif cmd == "reload":
+            kb.reload()
+            self._success("Knowledge base reloaded.")
+        else:
+            self._warn("Usage: /kb [list|search <kw>|show <name>|reload]")
+
+    # ── /batch ────────────────────────────────────────────────────
+    def _cmd_batch(self, arg: str = "") -> None:
+        """/batch [list|add <url>|run|status|clear]  — 멀티타겟 배치"""
+        from ..batch.runner import BatchRunner
+        from rich.table import Table as _T
+        br = BatchRunner()
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "list"
+        param = sub[1].strip() if len(sub) > 1 else ""
+
+        if cmd == "list" or not arg.strip():
+            targets = br.list_targets()
+            if not targets:
+                self._info("Batch queue is empty. Use /batch add <url>")
+                return
+            t = _T(title="[bold cyan]Batch Queue[/]", border_style=THEME["primary"])
+            t.add_column("#", width=4, style="dim")
+            t.add_column("URL", overflow="fold")
+            t.add_column("Status", width=12)
+            for i, tgt in enumerate(targets, 1):
+                status_color = {"done": "green", "running": "yellow", "error": "red"}.get(tgt.get("status", ""), "dim")
+                t.add_row(str(i), tgt["url"], f"[{status_color}]{tgt.get('status', 'pending')}[/]")
+            self.console.print(t)
+        elif cmd == "add":
+            if not param:
+                self._warn("Usage: /batch add <url>")
+                return
+            br.add_target(param)
+            self._success(f"Added → {param}")
+        elif cmd == "run":
+            count = len(br.list_targets())
+            if count == 0:
+                self._warn("Batch queue is empty. Use /batch add <url> first.")
+                return
+            self.console.print(f"[{THEME['primary']}]🚀 Starting batch scan for {count} targets...[/]")
+            results = br.run_all(
+                scan_fn=lambda url: self._send_message(f"이 타겟을 전체 점검해줘: {url}")
+            )
+            self._success(f"Batch complete — {len(results)} targets processed.")
+        elif cmd == "status":
+            results = br.get_results()
+            for r in results:
+                status = r.get("status", "?")
+                color = {"done": "green", "error": "red"}.get(status, "yellow")
+                self.console.print(f"  [{color}]{status}[/] {r['url']}")
+        elif cmd == "clear":
+            br.clear()
+            self._success("Batch queue cleared.")
+        else:
+            self._warn("Usage: /batch [list|add <url>|run|status|clear]")
+
+    # ── /chain ────────────────────────────────────────────────────
+    def _cmd_chain(self, arg: str = "") -> None:
+        """/chain [show|add <step>|clear|export]  — 공격 체인 트래커"""
+        from ..chain.tracker import AttackChain
+        from rich.table import Table as _T
+        target = self._agent_state.get("target") or "global"
+        chain = AttackChain(target)
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "show"
+        param = sub[1].strip() if len(sub) > 1 else ""
+
+        if cmd == "show" or not arg.strip():
+            steps = chain.get_steps()
+            if not steps:
+                self._info(f"No attack chain steps for [{target}]. Use /chain add <step>")
+                return
+            t = _T(title=f"[bold red]Attack Chain — {target}[/]", border_style=THEME["primary"], show_lines=True)
+            t.add_column("#", width=4, style="dim")
+            t.add_column("Step", overflow="fold")
+            t.add_column("Time", width=20, style="dim")
+            for i, s in enumerate(steps, 1):
+                t.add_row(str(i), s["step"], s.get("timestamp", ""))
+            self.console.print(t)
+        elif cmd == "add":
+            if not param:
+                self._warn("Usage: /chain add <step description>")
+                return
+            chain.add_step(param)
+            self._success(f"Step added: {param}")
+        elif cmd == "clear":
+            chain.clear()
+            self._success("Attack chain cleared.")
+        elif cmd == "export":
+            path = chain.export_md()
+            self._success(f"Exported → {path}")
+        else:
+            self._warn("Usage: /chain [show|add <step>|clear|export]")
+
+    # ── /hitl ─────────────────────────────────────────────────────
+    def _cmd_hitl(self, arg: str = "") -> None:
+        """/hitl [on|off|status|log]  — Human-in-the-loop 확인 게이트"""
+        from ..hitl.gate import HitlGate
+        gate = HitlGate()
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "status"
+
+        if cmd == "on":
+            gate.enable()
+            self._success("HITL gate ENABLED — dangerous actions will require confirmation.")
+        elif cmd == "off":
+            gate.disable()
+            self._success("HITL gate DISABLED.")
+        elif cmd == "status" or not arg.strip():
+            state = "ENABLED" if gate.is_enabled() else "DISABLED"
+            color = "red" if gate.is_enabled() else "dim"
+            self.console.print(f"  HITL gate: [{color}]{state}[/]")
+        elif cmd == "log":
+            entries = gate.get_log()
+            if not entries:
+                self._info("No HITL decisions logged yet.")
+                return
+            from rich.table import Table as _T
+            t = _T(title="[bold]HITL Decision Log[/]", border_style=THEME["primary"])
+            t.add_column("Time", width=20, style="dim")
+            t.add_column("Action", overflow="fold")
+            t.add_column("Decision", width=10)
+            for e in entries[-20:]:
+                dec_color = "green" if e.get("approved") else "red"
+                t.add_row(e.get("timestamp", ""), e.get("action", ""),
+                          f"[{dec_color}]{'ALLOW' if e.get('approved') else 'DENY'}[/]")
+            self.console.print(t)
+        else:
+            self._warn("Usage: /hitl [on|off|status|log]")

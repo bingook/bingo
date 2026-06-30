@@ -6471,27 +6471,84 @@ class BingoTerminal:
             import re as _szr
             _combined_out = "\n".join(results_text) if results_text else ""
 
-            # ── v3.5.16: VPN 가상 IP(198.18.x.x) 오염 감지 ──────────────────
-            # macOS VPN 환경에서 DNS가 198.18.0.0/15 가상 IP 반환 → 포트스캔 결과 전부 가짜
+            # ── v3.5.17: VPN 가상 IP(198.18.x.x) 오염 감지 → 실제 IP 자동 조회 ──
+            # macOS VPN: DNS → 198.18.0.0/15 가상 IP 반환 → 포트스캔 결과 전부 가짜
+            # ★ VPN을 끄라는 게 아님 — VPN 유지한 채 실제 IP를 다른 방법으로 찾아서 계속 진행
             if _combined_out and results_text:
                 try:
                     from ..core.phantom_guard import check_vpn_virtual_ip_contamination as _vpn_check
                     _pg_lang_v = getattr(self.config, "lang", "zh")
                     _vpn_warn = _vpn_check(_combined_out, lang=_pg_lang_v)
                     if _vpn_warn:
-                        self.console.print(f"\n[bold yellow]{_vpn_warn}[/bold yellow]")
-                        # AI에게도 경고 주입 — 가짜 결과를 분석하지 않도록
-                        self.history.append(Message(
-                            role="user",
-                            content=(
-                                "[VPN_DNS_SPOOF_DETECTED]\n"
-                                + _vpn_warn
-                                + "\n\nACTION REQUIRED: Do NOT analyze or proceed with these "
-                                + "198.18.x.x virtual IPs. They are fake — the VPN proxy "
-                                + "accepted all connections. Inform the user to disable VPN "
-                                + "and re-run the scan to get real server IPs."
+                        # 현재 세션의 타겟 도메인 추출
+                        _vpn_target = getattr(self.config, "target", "") or ""
+
+                        # ── 실제 IP 조회 시도 (VPN 유지 상태) ─────────────────
+                        _real_ips: list[str] = []
+
+                        # 방법 1: dig @8.8.8.8 (Google DNS 직접 질의 — VPN DNS 우회)
+                        if _vpn_target:
+                            try:
+                                import subprocess as _sp_vpn
+                                _dig_domain = _vpn_target.replace("https://", "").replace("http://", "").split("/")[0]
+                                _dig_r = _sp_vpn.run(
+                                    ["dig", "@8.8.8.8", "+short", _dig_domain],
+                                    capture_output=True, text=True, timeout=8
+                                )
+                                for _line in _dig_r.stdout.strip().splitlines():
+                                    _line = _line.strip()
+                                    import re as _re_vpn2
+                                    if _re_vpn2.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", _line):
+                                        if not _line.startswith("198.18.") and not _line.startswith("198.19."):
+                                            _real_ips.append(_line)
+                            except Exception:
+                                pass
+
+                        # 방법 2: nslookup 백업 (dig 없을 경우)
+                        if not _real_ips and _vpn_target:
+                            try:
+                                import subprocess as _sp_ns
+                                _ns_domain = _vpn_target.replace("https://", "").replace("http://", "").split("/")[0]
+                                _ns_r = _sp_ns.run(
+                                    ["nslookup", _ns_domain, "8.8.8.8"],
+                                    capture_output=True, text=True, timeout=8
+                                )
+                                import re as _re_ns
+                                for _m in _re_ns.finditer(r"Address:\s*([\d.]+)", _ns_r.stdout):
+                                    _ip = _m.group(1).strip()
+                                    if not _ip.startswith("8.8.") and not _ip.startswith("198.18.") and not _ip.startswith("198.19."):
+                                        _real_ips.append(_ip)
+                            except Exception:
+                                pass
+
+                        # ── 결과 처리 ──────────────────────────────────────────
+                        _lang_v = getattr(self.config, "lang", "zh")
+                        if _real_ips:
+                            # 실제 IP 찾음 → AI에게 "이 IP로 다시 스캔하라" 주입
+                            _real_ip_str = ", ".join(_real_ips[:3])
+                            _inject_msg = self.s.get(
+                                "vpn_dns_spoof_inject_ok",
+                                "[VPN_DNS_SPOOF_AUTO_FIXED]\nReal IP for {target} (Google DNS): {ips}\nRe-run scan with these IPs. Keep VPN ON."
+                            ).format(target=_vpn_target, ips=_real_ip_str)
+                            _banner = self.s.get(
+                                "vpn_dns_spoof_fixed",
+                                "🔍 [VPN DNS Spoof] Real IPs: {ips} — continuing"
+                            ).format(ips=f"[bold green]{_real_ip_str}[/bold green]")
+                            self.console.print(f"\n{_banner}")
+                        else:
+                            # 실제 IP 조회 실패 → AI에게 Shodan/crt.sh 대안 지시
+                            _inject_msg = self.s.get(
+                                "vpn_dns_spoof_inject_fail",
+                                "[VPN_DNS_SPOOF_DETECTED]\nAuto-resolve failed. Try Shodan/crt.sh for {target}. Keep VPN ON."
+                            ).format(target=_vpn_target)
+                            _banner_warn = self.s.get(
+                                "vpn_dns_spoof_fallback",
+                                "⚠️  [VPN DNS Spoof] Auto-resolve failed — AI will try Shodan/crt.sh fallback"
                             )
-                        ))
+                            self.console.print(f"\n[bold yellow]{_banner_warn}[/bold yellow]")
+
+                        # AI에게 상황 주입 후 응답 요청
+                        self.history.append(Message(role="user", content=_inject_msg))
                         from ..models.registry import ModelRegistry as _MR_vpn
                         _mc_vpn = self.config.get_active_model_config()
                         if _mc_vpn:

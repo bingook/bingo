@@ -543,11 +543,20 @@ VPN / IP environment (from NETWORK_ENV section):
   These are NOT real server IPs — they are the VPN proxy's internal routing addresses.
   SYMPTOMS: socket.getaddrinfo() or DNS queries return 198.18.x.x for all domains.
   IMPACT:   Port scans on 198.18.x.x are scanning the VPN proxy itself → ALL ports appear OPEN (FAKE).
-  RULE:     If DNS resolution returns 198.18.x.x IPs while VPN is active:
-              1. Do NOT perform port scans on these IPs — results are 100% invalid
-              2. Do NOT analyze these IPs as real servers
-              3. IMMEDIATELY tell the user: "VPN DNS spoofing detected. Disable VPN and retry."
-              4. Suggest: use `dig @8.8.8.8 domain` or Shodan to get real IPs
+
+  ★ IMPORTANT: The user keeps VPN ON intentionally to reach geo-blocked targets.
+    DO NOT tell the user to "disable VPN" — that would make the target unreachable.
+    Instead, resolve the real IP through alternative methods while keeping VPN active.
+
+  RULE — If DNS resolution returns 198.18.x.x IPs:
+    1. Do NOT port-scan 198.18.x.x — results are 100% invalid
+    2. Immediately try to get the REAL IP via:
+         a. dig @8.8.8.8 +short <domain>       ← bypass VPN DNS
+         b. host -t A <domain> 8.8.8.8
+         c. Shodan: https://www.shodan.io/search?query=hostname:<domain>
+         d. crt.sh certificate transparency logs
+    3. Once real IP found → use that IP directly for all connections (VPN stays ON)
+    4. Only if ALL methods fail → report to user with the fallback commands above
 
 307 / All-redirect detection:
   - ALL requests returning same 307 = IP blocked OR auth required

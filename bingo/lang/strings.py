@@ -755,6 +755,10 @@ _SLASH_DESC = {
     "/orch":        {"ko": "LLM 오케스트레이터  /orch [start <url>|stop|status|log|report]",
                      "zh": "LLM编排器  /orch [start <url>|stop|status|log|report]",
                      "en": "LLM orchestrator  /orch [start <url>|stop|status|log|report]"},
+    # ── v3.5.3 PhantomGuard ───────────────────────────────────────────
+    "/reset-phantom": {"ko": "🔄 PhantomGuard 카운터 초기화 + Liveness 재확인",
+                       "zh": "🔄 重置幻影守卫计数器 + 重新检查工具Liveness",
+                       "en": "🔄 Reset PhantomGuard counters + re-run liveness probe"},
 }
 
 # ── 스킬 시스템 / WAF / 자동 분석 추가 문자열 ──────────────────────────────
@@ -4850,6 +4854,60 @@ _STRINGS.update({
             "  Resets: phantom/self-correction-loop/stale-cache/zero-HTTP/hard-restart counters\n"
             "  + Re-runs liveness probe"
         ),
+    },
+})
+
+# ── v3.5.5: OrchestratorEngine 다국어 키 ─────────────────────────────
+_STRINGS.update({
+    "orch_ui_started": {
+        "ko": "🤖 [ORCHESTRATOR] 시작",
+        "zh": "🤖 [编排器] 启动",
+        "en": "🤖 [ORCHESTRATOR] Started",
+    },
+    "orch_ui_step": {
+        "ko": "━━━ ORCHESTRATOR STEP {step}/{total} ━━━",
+        "zh": "━━━ 编排步骤 {step}/{total} ━━━",
+        "en": "━━━ ORCHESTRATOR STEP {step}/{total} ━━━",
+    },
+    "orch_ui_deciding": {
+        "ko": "🧠 LLM 의사결정 중...",
+        "zh": "🧠 LLM 决策中...",
+        "en": "🧠 LLM deciding...",
+    },
+    "orch_ui_no_decision": {
+        "ko": "⚠ 결정 LLM 응답 없음 — 기본 스캔 실행",
+        "zh": "⚠ 决策LLM无响应 — 执行默认扫描",
+        "en": "⚠ Decision LLM returned empty — running default scan",
+    },
+    "orch_ui_hitl_rejected": {
+        "ko": "🚫 [HITL] 거부됨: {action}",
+        "zh": "🚫 [HITL] 已拒绝: {action}",
+        "en": "🚫 [HITL] Rejected: {action}",
+    },
+    "orch_ui_executing": {
+        "ko": "▶ 실행: {cmd}",
+        "zh": "▶ 执行: {cmd}",
+        "en": "▶ Executing: {cmd}",
+    },
+    "orch_ui_exec_error": {
+        "ko": "❌ 실행 오류: {err}",
+        "zh": "❌ 执行错误: {err}",
+        "en": "❌ Execution error: {err}",
+    },
+    "orch_ui_goal_done": {
+        "ko": "🎯 [ORCHESTRATOR] 목표 달성! ({step} 스텝)",
+        "zh": "🎯 [编排器] 目标达成！（{step} 步）",
+        "en": "🎯 [ORCHESTRATOR] Goal achieved! ({step} steps)",
+    },
+    "orch_ui_completed": {
+        "ko": "⏹ [ORCHESTRATOR] 완료 (스텝: {step}/{total})",
+        "zh": "⏹ [编排器] 完成（步骤: {step}/{total}）",
+        "en": "⏹ [ORCHESTRATOR] Completed (steps: {step}/{total})",
+    },
+    "orch_ui_default_goal": {
+        "ko": "관리자 계정 탈취 및 최대 권한 획득",
+        "zh": "夺取管理员账户并获取最高权限",
+        "en": "Obtain admin credentials and maximum privilege",
     },
 })
 

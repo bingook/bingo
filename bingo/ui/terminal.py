@@ -9951,7 +9951,7 @@ class BingoTerminal:
             if goal_m:
                 goal = goal_m.group(1) or goal_m.group(2)
             else:
-                goal = remainder.strip() or "관리자 계정 탈취 및 최대 권한 획득"
+                goal = remainder.strip() or ""  # engine이 lang에 맞는 기본 goal 사용
 
             # 기존 엔진 중지
             old_eng = global_orchestrator()
@@ -9959,13 +9959,15 @@ class BingoTerminal:
                 old_eng.stop()
                 time.sleep(0.5)
 
-            # 새 엔진 생성 & 시작
+            # 새 엔진 생성 & 시작 (lang 전달로 다국어 UI 지원)
+            _cur_lang = self._lang_getter() if hasattr(self, "_lang_getter") else getattr(self.config, "lang", "ko")
             eng = OrchestratorEngine(
                 config    = self.config,
                 target    = target_url,
                 goal      = goal,
                 max_steps = max_steps,
                 hitl_enabled = True,
+                lang      = _cur_lang,
             )
             set_global_orchestrator(eng)
             eng.start(
@@ -10003,8 +10005,7 @@ class BingoTerminal:
                 "PhantomGuard가 비활성화 상태입니다. (초기화 실패)"))
             return
 
-        self._phantom_guard.reset_counters()
-        self._phantom_guard.reset_counters()  # 두 번 호출해 ZeroHttpClaimGuard도 포함
+        self._phantom_guard.reset_counters()  # ZeroHttpClaimGuard + HardSessionRestarter 포함
 
         # Liveness re-probe
         _lr = self._phantom_guard.run_liveness_probe()

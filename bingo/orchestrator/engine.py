@@ -110,14 +110,19 @@ class OrchestratorEngine:
         self,
         config: Any,
         target: str,
-        goal: str = "관리자 계정 탈취 및 최대 권한 획득",
+        goal: str = "",
         max_steps: int = 10,
         hitl_enabled: bool = True,
         step_delay: float = 3.0,
+        lang: str = "ko",
     ) -> None:
+        from ..lang.strings import get_strings as _get_strings
+        self._s = _get_strings(lang)
+        self._lang = lang
+
         self._config = config
         self._target = target.strip().rstrip("/")
-        self._goal = goal
+        self._goal = goal or self._s.get("orch_ui_default_goal", "Obtain admin credentials and maximum privilege")
         self._max_steps = max_steps
         self._hitl_enabled = hitl_enabled
         self._step_delay = step_delay
@@ -272,9 +277,10 @@ Respond ONLY in JSON."""
         gate  = global_gate()
 
         _print = lambda msg: console.print(msg)
+        _s = self._s  # 다국어 문자열 shorthand
 
         _print(
-            f"\n[bold cyan]🤖 [ORCHESTRATOR] 시작[/bold cyan]\n"
+            f"\n[bold cyan]{_s.get('orch_ui_started', '🤖 [ORCHESTRATOR] Started')}[/bold cyan]\n"
             f"  target : {self._target}\n"
             f"  goal   : {self._goal}\n"
             f"  steps  : max {self._max_steps}\n"
@@ -283,7 +289,7 @@ Respond ONLY in JSON."""
         while self._step < self._max_steps and not self._stop_evt.is_set():
             self._step += 1
             _print(
-                f"\n[bold cyan]━━━ ORCHESTRATOR STEP {self._step}/{self._max_steps} ━━━[/bold cyan]"
+                f"\n[bold cyan]{_s.get('orch_ui_step', 'ORCHESTRATOR STEP {step}/{total}').format(step=self._step, total=self._max_steps)}[/bold cyan]"
             )
 
             # 1. 현재 상태 수집
@@ -291,12 +297,12 @@ Respond ONLY in JSON."""
             chain_ctx = chain.summary() if chain.steps() else "(no steps yet)"
 
             # 2. 결정 요청
-            _print("[dim]🧠 LLM 의사결정 중...[/dim]")
+            _print(f"[dim]{_s.get('orch_ui_deciding', '🧠 LLM deciding...')}[/dim]")
             decision_prompt = self._build_decision_prompt(board_ctx, chain_ctx)
             raw_decision = self._call_decision_llm(decision_prompt)
 
             if not raw_decision and not self._stop_evt.is_set():
-                _print("[yellow]⚠ 결정 LLM 응답 없음 — 기본 스캔 실행[/yellow]")
+                _print(f"[yellow]{_s.get('orch_ui_no_decision', '⚠ Decision LLM returned empty — running default scan')}[/yellow]")
 
             # 3. 파싱
             decision = self._parse_decision(raw_decision)
@@ -318,7 +324,7 @@ Respond ONLY in JSON."""
             if self._hitl_enabled and gate.is_dangerous(action):
                 allowed = gate.check(action, target=self._target)
                 if not allowed:
-                    _print(f"[yellow]🚫 [HITL] 거부됨: {action}[/yellow]")
+                    _print(f"[yellow]{_s.get('orch_ui_hitl_rejected', '🚫 [HITL] Rejected: {action}').format(action=action)}[/yellow]")
                     self._log.append(
                         OrchStep(self._step, f"[SKIPPED]{action}", step_type,
                                  reason, command, conf, False)
@@ -341,19 +347,18 @@ Respond ONLY in JSON."""
 
             # 8. 실제 명령 실행
             if command and not self._stop_evt.is_set():
-                _print(f"[cyan]▶ 실행: {command[:120]}...[/cyan]" if len(command) > 120
-                       else f"[cyan]▶ 실행: {command}[/cyan]")
+                _cmd_disp = f"{command[:120]}..." if len(command) > 120 else command
+                _print(f"[cyan]{_s.get('orch_ui_executing', '▶ Executing: {cmd}').format(cmd=_cmd_disp)}[/cyan]")
                 try:
                     send_fn(command)
                 except Exception as e:
                     self._error = str(e)
-                    _print(f"[red]❌ 실행 오류: {e}[/red]")
+                    _print(f"[red]{_s.get('orch_ui_exec_error', '❌ Execution error: {err}').format(err=e)}[/red]")
 
             # 9. 목표 달성 확인
             if goal_done:
                 _print(
-                    f"\n[bold green]🎯 [ORCHESTRATOR] 목표 달성! "
-                    f"({self._step} 스텝)[/bold green]"
+                    f"\n[bold green]{_s.get('orch_ui_goal_done', '🎯 [ORCHESTRATOR] Goal achieved! ({step} steps)').format(step=self._step)}[/bold green]"
                 )
                 break
 
@@ -363,8 +368,7 @@ Respond ONLY in JSON."""
 
         if not goal_done:
             _print(
-                f"\n[bold yellow]⏹ [ORCHESTRATOR] 완료 "
-                f"(스텝: {self._step}/{self._max_steps})[/bold yellow]"
+                f"\n[bold yellow]{_s.get('orch_ui_completed', '⏹ [ORCHESTRATOR] Completed (steps: {step}/{total})').format(step=self._step, total=self._max_steps)}[/bold yellow]"
             )
 
         self._running = False

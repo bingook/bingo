@@ -1695,8 +1695,9 @@ class BingoTerminal:
         import re as _re
         t = text.strip().lower()
 
-        # 1) URL 포함 + pentest 동사/키워드 함께 있어야 pentest
-        #    URL만 있고 "뭐야?", "이게 뭐야" 같은 질문이면 general
+        # 1) URL 포함 → URL 단독 입력이면 무조건 pentest
+        #    URL + pentest 동사 → pentest
+        #    URL + 일반 질문("뭐야?", "이게 뭐야") → general
         if _re.search(r"https?://", t):
             _url_pentest_verbs = (
                 "해킹", "공격", "스캔", "침투", "테스트해", "인젝션", "취약",
@@ -1706,7 +1707,11 @@ class BingoTerminal:
             )
             if any(kw in t for kw in _url_pentest_verbs):
                 return False
-            # URL만 있고 pentest 의도 없으면 general (예: "이 사이트 뭐야?")
+            # URL 제거 후 남는 텍스트가 없으면 → URL 단독 입력 → pentest
+            _text_sans_url = _re.sub(r"https?://[^\s]+", "", t).strip()
+            if not _text_sans_url:
+                return False  # URL만 있음 → pentest 의도로 해석
+            # URL + 일반 질문 텍스트이면 general (예: "이 사이트 뭐야?")
             return True
 
         # 2) 강한 pentest 키워드 포함 → pentest

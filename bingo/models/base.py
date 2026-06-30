@@ -81,7 +81,17 @@ class BaseModel:
         import time as _time
 
         MAX_RETRIES = 3
-        current_messages = list(messages)
+
+        # ── messages 정규화: dict 혼재 시에도 .role / .content 접근 가능하도록 ──
+        # _general_build() 등이 dict 리스트를 반환할 수 있으므로 Message 로 통일
+        current_messages: list[Message] = []
+        for _m in messages:
+            if isinstance(_m, dict):
+                current_messages.append(
+                    Message(role=_m.get("role", "user"), content=_m.get("content", ""))
+                )
+            else:
+                current_messages.append(_m)
 
         for attempt in range(MAX_RETRIES):
             payload = self._build_payload(current_messages)

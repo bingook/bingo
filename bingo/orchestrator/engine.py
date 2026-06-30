@@ -30,7 +30,53 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 # ── 결정용 시스템 프롬프트 ──────────────────────────────────────────────
-_ORCH_SYSTEM = """You are an autonomous penetration testing orchestrator for Bingo AI.
+def _get_orch_system(lang: str = "ko") -> str:
+    """Return the orchestrator system prompt with language-appropriate command examples."""
+    _examples = {
+        "zh": [
+            "对目标 https://X.com 启动全面红队渗透测试，包含 WAF 探测、端口/服务枚举、CMS 识别、漏洞扫描。",
+            "对 https://X.com 的登录、搜索、过滤参数进行 SQL 注入漏洞全面排查。",
+            "利用 https://X.com 发现的 SQLi 进行数据库转储，目标：提取管理员账户。",
+            "在 https://X.com 寻找文件上传漏洞并尝试上传 WebShell。",
+            "全面探测 https://X.com 的 IDOR / 未授权 API 端点。",
+            "整理 https://X.com 发现的全部漏洞，汇总最终渗透路径。",
+        ],
+        "en": [
+            "Start a full red-team pentest against https://X.com — WAF detection, port/service enum, CMS fingerprint, vuln scan.",
+            "Test all login/search/filter params at https://X.com for SQL injection.",
+            "Dump the database via the discovered SQLi at https://X.com; goal: extract admin credentials.",
+            "Find file-upload vulnerabilities at https://X.com and attempt WebShell upload.",
+            "Enumerate all IDOR / unauthenticated API endpoints at https://X.com.",
+            "Summarise all findings at https://X.com and produce a final attack-path report.",
+        ],
+        "ko": [
+            "타겟 https://X.com 에 대해 전체 레드팀 침투 테스트를 시작해줘. WAF 탐지, 포트/서비스 열거, CMS 식별, 취약점 스캔 포함.",
+            "https://X.com 의 로그인·검색·필터 파라미터에 SQL 인젝션 취약점 전수 조사해줘.",
+            "https://X.com 에서 발견된 SQLi로 DB 덤프 진행해줘. 관리자 계정 추출 목표.",
+            "https://X.com 에 파일 업로드 취약점 찾아서 웹쉘 업로드 시도해줘.",
+            "https://X.com 의 IDOR/미인증 API 엔드포인트 전수 탐색해줘.",
+            "https://X.com 에서 발견된 취약점 전체 정리하고 최종 침투 경로 요약해줘.",
+        ],
+    }
+    lang_instruction = {
+        "zh": (
+            "IMPORTANT: ALL text fields ('action', 'reason', 'command') MUST be written in CHINESE (中文). "
+            "No Korean, no English in those fields."
+        ),
+        "en": (
+            "IMPORTANT: ALL text fields ('action', 'reason', 'command') MUST be written in ENGLISH. "
+            "No Korean, no Chinese in those fields."
+        ),
+        "ko": (
+            "IMPORTANT: ALL text fields ('action', 'reason', 'command') MUST be written in KOREAN (한국어). "
+            "No English, no Chinese in those fields."
+        ),
+    }.get(lang, "IMPORTANT: ALL text fields ('action', 'reason', 'command') MUST be written in ENGLISH.")
+
+    examples = _examples.get(lang, _examples["en"])
+    example_block = "\n".join(f'- "{ex}"' for ex in examples)
+
+    return f"""You are an autonomous penetration testing orchestrator for Bingo AI.
 Your role: analyze current attack state and choose the OPTIMAL next action.
 
 Rules:
@@ -39,29 +85,26 @@ Rules:
 - Escalate systematically: recon → vuln_scan → exploit → persist
 - ALWAYS respond in valid JSON. No markdown, no explanation outside JSON.
 
+{lang_instruction}
+
 ⚠️ MANDATORY TARGET RULE (NEVER VIOLATE):
 - The "command" field MUST always explicitly include the exact TARGET URL from the TARGET field above.
 - NEVER generate a command that omits the target URL. The executor has NO memory of the target.
 - Every command must be self-contained and reference the target directly.
 
 JSON format:
-{
+{{
   "action": "short action label",
   "type": "recon|vuln|exploit|persist|lateral|exfil|cred|access",
   "reason": "why this step now (1-2 sentences)",
   "command": "the exact prompt/command to send to the AI assistant — MUST include target URL",
-  "update_board": {},
+  "update_board": {{}},
   "goal_achieved": false,
   "confidence": 0.8
-}
+}}
 
-Command examples (Korean preferred — note EVERY example includes the full target URL):
-- "타겟 https://X.com 에 대해 전체 레드팀 침투 테스트를 시작해줘. WAF 탐지, 포트/서비스 열거, CMS 식별, 취약점 스캔 포함."
-- "https://X.com 의 로그인·검색·필터 파라미터에 SQL 인젝션 취약점 전수 조사해줘."
-- "https://X.com 에서 발견된 SQLi로 DB 덤프 진행해줘. 관리자 계정 추출 목표."
-- "https://X.com 에 파일 업로드 취약점 찾아서 웹쉘 업로드 시도해줘."
-- "https://X.com 의 IDOR/미인증 API 엔드포인트 전수 탐색해줘."
-- "https://X.com 에서 발견된 취약점 전체 정리하고 최종 침투 경로 요약해줘."
+Command examples (note EVERY example includes the full target URL):
+{example_block}
 
 Set goal_achieved=true ONLY when the stated goal is confirmed complete."""
 
@@ -200,7 +243,7 @@ class OrchestratorEngine:
                 return ""
             model = ModelRegistry.build(model_cfg)
             msgs = [
-                {"role": "system", "content": _ORCH_SYSTEM},
+                {"role": "system", "content": _get_orch_system(self._lang)},
                 {"role": "user",   "content": prompt},
             ]
             result = ""
@@ -243,8 +286,8 @@ Do NOT repeat an action already in the history.
 
 ⚠️ CRITICAL: The "command" field MUST contain the EXACT target URL: {self._target}
 The executor has NO memory — every command must be 100% self-contained.
-BAD:  "SQL 인젝션 테스트해줘"
-GOOD: "{self._target} 에서 SQL 인젝션 테스트해줘"
+BAD:  "Run SQL injection test"  (no target URL)
+GOOD: "Test SQL injection at {self._target}"  (includes full target URL)
 
 Respond ONLY in JSON."""
 
@@ -254,7 +297,7 @@ Respond ONLY in JSON."""
             "action": f"step {self._step}",
             "type": "recon",
             "reason": "",
-            "command": f"타겟 {self._target} 취약점을 계속 분석해줘.",
+            "command": f"Continue vulnerability analysis of {self._target}",
             "update_board": {},
             "goal_achieved": False,
             "confidence": 0.5,

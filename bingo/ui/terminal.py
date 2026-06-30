@@ -494,6 +494,22 @@ class BingoTerminal:
         self._clear()
         self._print_banner()
         self._init_session()
+
+        # ★ v3.5.14: HITL 메인-스레드 위임 브리지 등록
+        # 백그라운드 스레드(오케스트레이터)가 HITL 입력을 요청할 때
+        # session.app.exit(HITL_SENTINEL)을 통해 메인 스레드 prompt를 인터럽트
+        try:
+            from ..hitl.gate import register_interrupt_fn as _reg_hitl_fn, HITL_SENTINEL as _HS
+            def _hitl_interrupt_fn():
+                try:
+                    if self._session and self._session.app:
+                        self._session.app.exit(result=_HS)
+                except Exception:
+                    pass
+            _reg_hitl_fn(_hitl_interrupt_fn)
+        except Exception:
+            pass
+
         self._init_session_log()
 
         # v3.2.77: 이전 세션 프록시 복원 알림
@@ -713,6 +729,31 @@ class BingoTerminal:
                 # ── v3.2.72: 세션 로그 자동 파싱 → target_memory 저장 ──
                 self._auto_parse_session_to_memory()
                 break
+
+            # ★ v3.5.14: HITL 위임 sentinel 처리
+            # 백그라운드 스레드가 session.app.exit(result=HITL_SENTINEL)을 호출하면
+            # _get_input()이 sentinel 문자열을 반환 → 여기서 메인 스레드가 처리
+            if user_input == "__bingo_hitl__":
+                from ..hitl.gate import _HITL_REQ, _HITL_RESP
+                import queue as _q
+                try:
+                    _hitl_text = _HITL_REQ.get_nowait()
+                except _q.Empty:
+                    _hitl_text = "⚠️ [HITL] Confirm? [y/N/a(always)] > "
+                try:
+                    from prompt_toolkit.formatted_text import HTML as _PHTML
+                    _ans = self._session.prompt(
+                        _PHTML(f"<ansiyellow>{_hitl_text}</ansiyellow>")
+                    ).strip().lower()
+                except (KeyboardInterrupt, EOFError):
+                    _ans = ""
+                except Exception:
+                    _ans = ""
+                try:
+                    _HITL_RESP.put(_ans)
+                except Exception:
+                    pass
+                continue
 
             if not user_input.strip():
                 continue

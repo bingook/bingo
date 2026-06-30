@@ -4857,6 +4857,25 @@ _STRINGS.update({
     },
 })
 
+# ── v3.5.6: HITL Gate 다국어 키 ─────────────────────────────────────
+_STRINGS.update({
+    "hitl_confirm_prompt": {
+        "ko": "⚠️  [HITL] 위험 작업 확인: {label}\n  [y/N/a(항상허용)] > ",
+        "zh": "⚠️  [HITL] 确认危险操作: {label}\n  [y/N/a(始终允许)] > ",
+        "en": "⚠️  [HITL] Confirm dangerous action: {label}\n  [y/N/a(always)] > ",
+    },
+    "hitl_rejected": {
+        "ko": "🚫 [HITL] 거부됨: {action}",
+        "zh": "🚫 [HITL] 已拒绝: {action}",
+        "en": "🚫 [HITL] Rejected: {action}",
+    },
+    "hitl_allowed": {
+        "ko": "✅ [HITL] 허용됨: {action}",
+        "zh": "✅ [HITL] 已允许: {action}",
+        "en": "✅ [HITL] Allowed: {action}",
+    },
+})
+
 # ── v3.5.5: OrchestratorEngine 다국어 키 ─────────────────────────────
 _STRINGS.update({
     "orch_ui_started": {

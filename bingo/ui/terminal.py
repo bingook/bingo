@@ -1916,12 +1916,19 @@ class BingoTerminal:
                     self.history = self.history[-4:]
 
                 # ── v3.2.83: 새 타깃 URL 설정 시 소스코드 경로 자동 질문 ──
-                _wb_ask = self.s.get("wb_ask_path", "📂 소스코드 경로 있으면 입력 (없으면 엔터):")
-                self.console.print(f"[{THEME['primary']}]{_wb_ask}[/]", end=" ")
-                try:
-                    _src_path = self._session.prompt("").strip()
-                except (EOFError, KeyboardInterrupt):
-                    _src_path = ""
+                # v3.5.6: 오케스트레이터 백그라운드 스레드에서 호출 시
+                #   prompt_toolkit RuntimeError("Application is already running") 방지 →
+                #   메인 스레드에서만 실행
+                import threading as _thr_wb
+                _is_main = (_thr_wb.current_thread() is _thr_wb.main_thread())
+                _src_path = ""
+                if _is_main:
+                    _wb_ask = self.s.get("wb_ask_path", "📂 소스코드 경로 있으면 입력 (없으면 엔터):")
+                    self.console.print(f"[{THEME['primary']}]{_wb_ask}[/]", end=" ")
+                    try:
+                        _src_path = self._session.prompt("").strip()
+                    except (EOFError, KeyboardInterrupt, RuntimeError):
+                        _src_path = ""
                 if _src_path:
                     import os as _os
                     _real = _os.path.expandvars(_os.path.expanduser(_src_path))

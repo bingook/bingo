@@ -1,11 +1,18 @@
 """
-bingo/hitl/gate.py — Human-In-The-Loop 승인 게이트
+bingo/hitl/gate.py — Human-In-The-Loop 승인 게이트  (v3.5.6)
 
 위험 작업(RCE 실행, 페이로드 업로드, 민감 DB 덤프 등) 전
 사용자에게 확인을 요청. 화이트리스트 등록 시 자동 승인.
+
+v3.5.6 변경:
+  - /dev/tty 직접 I/O: prompt_toolkit이 stdin을 점유 중인 백그라운드 스레드에서도
+    사용자 입력을 정상 수신 (Application is already running 오류 방지)
+  - lang 파라미터 추가: 다국어 확인 메시지 지원
+  - check() 에 lang 파라미터 추가
 """
 from __future__ import annotations
 
+import os
 import sys
 from typing import List, Optional, Set
 
@@ -18,13 +25,36 @@ _DEFAULT_DANGEROUS: List[str] = [
 ]
 
 
+def _tty_prompt(prompt_text: str) -> str:
+    """
+    /dev/tty 로 직접 출력·입력.
+
+    prompt_toolkit이 stdin을 점유한 상태에서도 동작한다.
+    macOS / Linux 공통. Windows에서는 fallback으로 input() 사용.
+    """
+    tty_path = "/dev/tty"
+    if os.path.exists(tty_path):
+        try:
+            with open(tty_path, "r") as _r, open(tty_path, "w") as _w:
+                _w.write(prompt_text)
+                _w.flush()
+                return _r.readline().strip().lower()
+        except OSError:
+            pass
+    # fallback — Windows 또는 /dev/tty 없는 환경
+    try:
+        return input(prompt_text).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return ""
+
+
 class HitlGate:
     """
     HITL 게이트.
 
     사용법:
         gate = HitlGate()
-        if gate.check("run_reverse_shell", target="192.168.1.1"):
+        if gate.check("run_reverse_shell", target="192.168.1.1", lang="zh"):
             do_action()
 
     whitelist 에 등록된 작업은 확인 없이 통과.
@@ -48,10 +78,18 @@ class HitlGate:
         return any(kw in a_lower for kw in self._dangerous)
 
     # ── 메인 게이트 ───────────────────────────────────────────────────
-    def check(self, action: str, target: str = "", silent: bool = False) -> bool:
+    def check(
+        self,
+        action: str,
+        target: str = "",
+        silent: bool = False,
+        lang: str = "ko",
+    ) -> bool:
         """
         위험 작업 실행 전 호출.
         Returns True → 실행 허용, False → 거부
+
+        lang: 다국어 확인 메시지 언어 ("ko" | "zh" | "en")
         """
         if not self.enabled:
             return True
@@ -63,12 +101,22 @@ class HitlGate:
         if silent:
             return False
 
-        # 터미널 확인 프롬프트
-        label = f"{action}" + (f" → {target}" if target else "")
+        # 다국어 프롬프트 문자열 로드
         try:
-            ans = input(f"⚠️  [HITL] Confirm dangerous action: {label}\n  [y/N/a(always)] > ").strip().lower()
+            from ..lang.strings import get_strings as _gs
+            _s = _gs(lang)
+        except Exception:
+            _s = {}
+
+        label = f"{action}" + (f" → {target}" if target else "")
+        _default_prompt = "⚠️  [HITL] Confirm dangerous action: {label}\n  [y/N/a(always)] > "
+        prompt_text = _s.get("hitl_confirm_prompt", _default_prompt).format(label=label)
+
+        # /dev/tty 직접 I/O — prompt_toolkit stdin 점유와 충돌 없음
+        try:
+            ans = _tty_prompt(prompt_text)
         except (EOFError, KeyboardInterrupt):
-            return False
+            ans = ""
 
         if ans == "a":
             self._always_allow.add(action)
@@ -98,5 +146,5 @@ def global_gate() -> HitlGate:
     return _gate
 
 
-def check(action: str, target: str = "", silent: bool = False) -> bool:
-    return global_gate().check(action, target, silent)
+def check(action: str, target: str = "", silent: bool = False, lang: str = "ko") -> bool:
+    return global_gate().check(action, target, silent, lang)

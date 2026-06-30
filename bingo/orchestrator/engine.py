@@ -322,7 +322,7 @@ Respond ONLY in JSON."""
 
             # 4. HitlGate (danger 여부 판단)
             if self._hitl_enabled and gate.is_dangerous(action):
-                allowed = gate.check(action, target=self._target)
+                allowed = gate.check(action, target=self._target, lang=self._lang)
                 if not allowed:
                     _print(f"[yellow]{_s.get('orch_ui_hitl_rejected', '🚫 [HITL] Rejected: {action}').format(action=action)}[/yellow]")
                     self._log.append(

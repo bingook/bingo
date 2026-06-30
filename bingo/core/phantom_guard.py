@@ -449,14 +449,59 @@ class TargetMismatchGuard:
         "curl.se",  # 연결성 확인용
     })
 
+    # exec_output에서 실제 HTTP 요청/응답 라인만 추출하는 패턴
+    # JS 분석으로 "발견"된 URL 목록은 제외하고, 실제로 요청한 도메인만 검사
+    _HTTP_EXEC_RE = re.compile(
+        r"""
+        (?:
+            # [STATUS] 200 URL=https://... / [状态] 200 ... URL=...
+            \[(?:STATUS|状态|状况)\]\s+\d+.*?URL\s*=\s*(https?://[^\s\]\n]+)
+        |
+            # requests.get('https://...') / requests.post('https://...')
+            requests\.[a-z]+\(\s*['"]( https?://[^'"]+)['"]
+        |
+            # httpx.get('https://...')
+            httpx\.[a-z]+\(\s*['"](https?://[^'"]+)['"]
+        |
+            # curl https://...
+            \bcurl\b[^\n]*\s(https?://\S+)
+        )
+        """,
+        re.VERBOSE | re.IGNORECASE,
+    )
+
+    def _extract_requested_domains(self, text: str) -> set[str]:
+        """
+        exec_output에서 실제로 HTTP 요청을 보낸 도메인만 추출.
+        JS 분석에서 발견(discover)된 URL 목록은 제외.
+        """
+        domains: set[str] = set()
+        for m in self._HTTP_EXEC_RE.finditer(text):
+            url = next((g for g in m.groups() if g), None)
+            if url:
+                d = self._extract_domain(url.strip())
+                if d:
+                    domains.add(d.lower())
+        return domains
+
     def scan(self, text: str) -> list[str]:
         """
         텍스트에서 허용되지 않은 도메인 목록 반환.
         빈 리스트 = 정상.
         """
+        return self._scan_domains({m.group(1).lower() for m in _DOMAIN_RE.finditer(text)})
+
+    def scan_exec_only(self, exec_output: str) -> list[str]:
+        """
+        exec_output에서 실제 HTTP 요청 라인의 도메인만 검사.
+        JS 분석 "발견 URL 목록"에 있는 3rd-party 도메인은 오탐 방지를 위해 제외.
+        """
+        return self._scan_domains(self._extract_requested_domains(exec_output))
+
+    def _scan_domains(self, found_domains: set[str]) -> list[str]:
+        """도메인 집합에서 허용되지 않은 도메인 반환."""
         if not self.allowed_domains:
             return []
-        found_domains = {m.group(1).lower() for m in _DOMAIN_RE.finditer(text)}
         mismatches = []
         for d in found_domains:
             # 로컬호스트 / IP 제외
@@ -791,10 +836,14 @@ class PhantomGuard:
 
         # ── 5. 타겟 오인 탐지 ───────────────────────────────────────
         if self.session_target:
-            # exec_output 기반 탐지 → 실제 공격 실행 중이므로 즉시 차단
-            exec_mismatches = self._target.scan(exec_output) if exec_output else []
+            # exec_output 기반 탐지 → 실제 HTTP 요청 라인만 검사
+            # (JS 분석으로 "발견"된 3rd-party URL 목록은 오탐 방지를 위해 제외)
+            exec_mismatches = self._target.scan_exec_only(exec_output) if exec_output else []
             if exec_mismatches:
                 self.hard_restarter.record_block()
+                # TARGET_MISMATCH_EXEC 차단 후 다음 AI 응답에서 PhantomGuard 억제
+                # (AI가 "타겟 혼동 설명" 텍스트를 반환할 때 phantom 오탐 방지)
+                self._last_exec_had_real_http = True
                 return PhantomGuardResult(
                     blocked=True,    # 실행 결과에서 타겟 오인 → 차단
                     block_reason="TARGET_MISMATCH_EXEC",

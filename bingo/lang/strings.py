@@ -4946,24 +4946,9 @@ _STRINGS.update({
     },
     # ── TargetMismatchGuard exec 차단 메시지 ───────────────────────────
     "target_mismatch_exec_blocked": {
-        "ko": (
-            "🚨 [타겟 오인 차단 — 실행 결과에서 다른 도메인 감지]\n"
-            "실행 출력에서 세션 타겟({target})이 아닌 도메인이 발견되었습니다.\n"
-            "■ 즉시 {target} 으로 복귀하세요.\n"
-            "■ 이전 세션의 /tmp 임시파일을 참조하지 마세요."
-        ),
-        "zh": (
-            "🚨 [目标混淆阻断 — 执行输出中检测到非会话目标域名]\n"
-            "执行结果中出现了非会话目标({target})的域名。\n"
-            "■ 立即返回 {target}\n"
-            "■ 不要读取 /tmp 残留文件"
-        ),
-        "en": (
-            "🚨 [TARGET MISMATCH BLOCKED — Non-session domain detected in exec output]\n"
-            "Execution output contains a domain other than session target ({target}).\n"
-            "■ Return immediately to: {target}\n"
-            "■ Do NOT read /tmp files from previous sessions"
-        ),
+        "ko": "🚨 타겟 오인 차단 (실행 결과 도메인 불일치)",
+        "zh": "🚨 目标混淆阻断 (执行域名不匹配)",
+        "en": "🚨 Target mismatch blocked (exec domain mismatch)",
     },
     # ── v3.5.8: SPA 오탐 탐지 ────────────────────────────────────────
     "phantom_spa_detected": {

@@ -4928,6 +4928,43 @@ _STRINGS.update({
         "zh": "夺取管理员账户并获取最高权限",
         "en": "Obtain admin credentials and maximum privilege",
     },
+    # ── 타겟 오인 방지 guardrail ────────────────────────────────────────
+    "orch_target_prefix": {
+        "ko": "🎯 [타겟: {target}]\n",
+        "zh": "🎯 [目标: {target}]\n",
+        "en": "🎯 [TARGET: {target}]\n",
+    },
+    "orch_stale_cleaned": {
+        "ko": "🧹 이전 세션 임시파일 정리 완료 (타겟 오인 방지)",
+        "zh": "🧹 已清理上次会话临时文件（防止目标混淆）",
+        "en": "🧹 Stale session temp files cleaned (target-mismatch prevention)",
+    },
+    "orch_target_written": {
+        "ko": "📌 타겟 등록: /tmp/bingo_target.txt → {target}",
+        "zh": "📌 目标已写入: /tmp/bingo_target.txt → {target}",
+        "en": "📌 Target registered: /tmp/bingo_target.txt → {target}",
+    },
+    # ── TargetMismatchGuard exec 차단 메시지 ───────────────────────────
+    "target_mismatch_exec_blocked": {
+        "ko": (
+            "🚨 [타겟 오인 차단 — 실행 결과에서 다른 도메인 감지]\n"
+            "실행 출력에서 세션 타겟({target})이 아닌 도메인이 발견되었습니다.\n"
+            "■ 즉시 {target} 으로 복귀하세요.\n"
+            "■ 이전 세션의 /tmp 임시파일을 참조하지 마세요."
+        ),
+        "zh": (
+            "🚨 [目标混淆阻断 — 执行输出中检测到非会话目标域名]\n"
+            "执行结果中出现了非会话目标({target})的域名。\n"
+            "■ 立即返回 {target}\n"
+            "■ 不要读取 /tmp 残留文件"
+        ),
+        "en": (
+            "🚨 [TARGET MISMATCH BLOCKED — Non-session domain detected in exec output]\n"
+            "Execution output contains a domain other than session target ({target}).\n"
+            "■ Return immediately to: {target}\n"
+            "■ Do NOT read /tmp files from previous sessions"
+        ),
+    },
 })
 
 

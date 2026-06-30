@@ -39,24 +39,29 @@ Rules:
 - Escalate systematically: recon → vuln_scan → exploit → persist
 - ALWAYS respond in valid JSON. No markdown, no explanation outside JSON.
 
+⚠️ MANDATORY TARGET RULE (NEVER VIOLATE):
+- The "command" field MUST always explicitly include the exact TARGET URL from the TARGET field above.
+- NEVER generate a command that omits the target URL. The executor has NO memory of the target.
+- Every command must be self-contained and reference the target directly.
+
 JSON format:
 {
   "action": "short action label",
   "type": "recon|vuln|exploit|persist|lateral|exfil|cred|access",
   "reason": "why this step now (1-2 sentences)",
-  "command": "the exact prompt/command to send to the AI assistant",
+  "command": "the exact prompt/command to send to the AI assistant — MUST include target URL",
   "update_board": {},
   "goal_achieved": false,
   "confidence": 0.8
 }
 
-Command examples (Korean preferred for Bingo AI):
+Command examples (Korean preferred — note EVERY example includes the full target URL):
 - "타겟 https://X.com 에 대해 전체 레드팀 침투 테스트를 시작해줘. WAF 탐지, 포트/서비스 열거, CMS 식별, 취약점 스캔 포함."
-- "SQL 인젝션 취약점 전수 조사해줘. 로그인, 검색, 필터 파라미터 모두 확인."
-- "발견된 SQLi로 DB 덤프 진행해줘. 관리자 계정 추출 목표."
-- "파일 업로드 취약점 찾아서 웹쉘 업로드 시도해줘."
-- "IDOR/미인증 API 엔드포인트 전수 탐색해줘."
-- "현재까지 발견된 취약점 전체 정리하고 최종 침투 경로 요약해줘."
+- "https://X.com 의 로그인·검색·필터 파라미터에 SQL 인젝션 취약점 전수 조사해줘."
+- "https://X.com 에서 발견된 SQLi로 DB 덤프 진행해줘. 관리자 계정 추출 목표."
+- "https://X.com 에 파일 업로드 취약점 찾아서 웹쉘 업로드 시도해줘."
+- "https://X.com 의 IDOR/미인증 API 엔드포인트 전수 탐색해줘."
+- "https://X.com 에서 발견된 취약점 전체 정리하고 최종 침투 경로 요약해줘."
 
 Set goal_achieved=true ONLY when the stated goal is confirmed complete."""
 
@@ -235,6 +240,12 @@ CURRENT STEP: {self._step + 1} / {self._max_steps}
 Decide the single best next action to advance toward the goal.
 Consider what is UNKNOWN and what attack surface remains unexplored.
 Do NOT repeat an action already in the history.
+
+⚠️ CRITICAL: The "command" field MUST contain the EXACT target URL: {self._target}
+The executor has NO memory — every command must be 100% self-contained.
+BAD:  "SQL 인젝션 테스트해줘"
+GOOD: "{self._target} 에서 SQL 인젝션 테스트해줘"
+
 Respond ONLY in JSON."""
 
     # ── JSON 파싱 ──────────────────────────────────────────────────────
@@ -278,6 +289,28 @@ Respond ONLY in JSON."""
 
         _print = lambda msg: console.print(msg)
         _s = self._s  # 다국어 문자열 shorthand
+
+        # ── /tmp 환경 초기화: 타겟 등록 & 이전 세션 stale 파일 제거 ────────
+        import os as _os
+        _tmp_target = "/tmp/bingo_target.txt"
+        try:
+            with open(_tmp_target, "w") as _f:
+                _f.write(self._target + "\n")
+        except OSError:
+            pass
+        # 이전 세션에서 남겨진 stale 임시 파일 목록 (타겟 오염 위험)
+        _stale_files = [
+            "/tmp/reg_resp.txt", "/tmp/kc_cookie.txt", "/tmp/kc_admin.txt",
+            "/tmp/kc_um.txt", "/tmp/kira_login.txt", "/tmp/kc_reg.txt",
+            "/tmp/kc_reg2.txt", "/tmp/work_cookie.txt", "/tmp/n1_waf.txt",
+            "/tmp/step_recalibrate.json",
+        ]
+        for _sf in _stale_files:
+            try:
+                if _os.path.exists(_sf):
+                    _os.remove(_sf)
+            except OSError:
+                pass
 
         _print(
             f"\n[bold cyan]{_s.get('orch_ui_started', '🤖 [ORCHESTRATOR] Started')}[/bold cyan]\n"
@@ -347,6 +380,16 @@ Respond ONLY in JSON."""
 
             # 8. 실제 명령 실행
             if command and not self._stop_evt.is_set():
+                # ── 타겟 URL 하드 주입 guardrail ──────────────────────────────
+                # LLM이 command에 타겟 URL을 빠뜨린 경우 강제로 삽입.
+                # AI 에이전트는 이전 대화 컨텍스트를 신뢰할 수 없으므로
+                # 매 명령에 타겟이 명시되어야 한다.
+                if self._target not in command:
+                    _target_prefix = _s.get(
+                        "orch_target_prefix",
+                        "🎯 [TARGET: {target}]\n",
+                    ).format(target=self._target)
+                    command = _target_prefix + command
                 _cmd_disp = f"{command[:120]}..." if len(command) > 120 else command
                 _print(f"[cyan]{_s.get('orch_ui_executing', '▶ Executing: {cmd}').format(cmd=_cmd_disp)}[/cyan]")
                 try:

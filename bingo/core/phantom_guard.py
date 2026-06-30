@@ -299,6 +299,22 @@ class TargetMismatchGuard:
         # url 자체가 도메인일 수 있음
         return url.strip().lstrip("https://").lstrip("http://").split("/")[0].lower()
 
+    # CDN·분석·공용 도메인: 타겟 오인 판정 제외
+    _SAFE_DOMAINS: frozenset[str] = frozenset({
+        "googleapis.com", "googletagmanager.com", "google.com", "gstatic.com",
+        "fonts.googleapis.com", "ajax.googleapis.com",
+        "cloudflare.com", "cloudflareinsights.com",
+        "jquery.com", "bootstrapcdn.com", "jsdelivr.net",
+        "example.com",   # 연결성 테스트용 허용
+        "amazonaws.com", "fastly.net", "akamai.net", "akamaihd.net",
+        "wp.com", "wordpress.com", "wordpress.org",
+        "kakao.com", "kakaocdn.net",
+        "naver.com", "navercloudplatform.com",
+        "facebook.com", "twitter.com", "instagram.com",
+        "github.com", "githubusercontent.com",
+        "curl.se",  # 연결성 확인용
+    })
+
     def scan(self, text: str) -> list[str]:
         """
         텍스트에서 허용되지 않은 도메인 목록 반환.
@@ -311,6 +327,14 @@ class TargetMismatchGuard:
         for d in found_domains:
             # 로컬호스트 / IP 제외
             if d in ("localhost", "127.0.0.1") or d.replace(".", "").isdigit():
+                continue
+            # CDN / 공용 도메인 제외
+            safe = False
+            for sd in self._SAFE_DOMAINS:
+                if d == sd or d.endswith("." + sd):
+                    safe = True
+                    break
+            if safe:
                 continue
             # 세션 타겟 도메인의 서브도메인이면 허용
             allowed = False
@@ -599,7 +623,7 @@ class PhantomGuard:
                 )
 
         # ── 4. HTTP 0건 취약점 주장 차단 [v2.0.0] ─────────────────
-        if self._enable_zero_http and exec_output is not None:
+        if self._enable_zero_http and exec_output:  # 실행 출력이 있을 때만 (pre-execution 오탐 방지)
             if self._zero_http.check(response_text, exec_output):
                 self.hard_restarter.record_block()
                 return PhantomGuardResult(
@@ -613,10 +637,23 @@ class PhantomGuard:
 
         # ── 5. 타겟 오인 탐지 ───────────────────────────────────────
         if self.session_target:
+            # exec_output 기반 탐지 → 실제 공격 실행 중이므로 즉시 차단
+            exec_mismatches = self._target.scan(exec_output) if exec_output else []
+            if exec_mismatches:
+                self.hard_restarter.record_block()
+                return PhantomGuardResult(
+                    blocked=True,    # 실행 결과에서 타겟 오인 → 차단
+                    block_reason="TARGET_MISMATCH_EXEC",
+                    inject_message=(
+                        f"[TARGET_MISMATCH_BLOCKED — 실행 중 타겟 오인 감지]\n"
+                        f"{self._target.mismatch_msg(exec_mismatches, self.lang)}"
+                    ),
+                )
+            # response/code 기반 탐지 → 경고만
             mismatches = self._target.scan(combined)
             if mismatches:
                 return PhantomGuardResult(
-                    blocked=False,   # 경고만 (차단 X) — 타겟 오인은 주의 수준
+                    blocked=False,   # 경고만 (차단 X) — 아직 실행 전 단계
                     block_reason="TARGET_MISMATCH",
                     inject_message=(
                         f"[TARGET_MISMATCH_WARNING]\n"

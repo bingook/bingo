@@ -3077,6 +3077,17 @@ class BingoTerminal:
             self._cmd_proxy(arg)
         elif name == "/ctf":
             self._cmd_ctf(arg)
+        elif name == "/webshell":
+            _ws_target = arg.strip() or self._agent_state.get("target", "")
+            if not _ws_target:
+                self._warn("Usage: /webshell <url>  예) /webshell https://target.co.kr")
+            else:
+                self._send_message(
+                    f"타겟: {_ws_target}\n"
+                    f"웹쉘 업로드를 시도해줘. "
+                    f"Gnuboard5 취약점 및 범용 GIF polyglot webshell 기법을 포함하여 "
+                    f"업로드 가능한 경로 탐색부터 실행 확인까지 전 과정을 수행해."
+                )
         # ── v3.4.0 신규 명령어 ────────────────────────────────────────
         elif name == "/role":
             self._cmd_role(arg)

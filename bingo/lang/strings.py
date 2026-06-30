@@ -3041,6 +3041,23 @@ _STRINGS.update({
                                    "zh": "⚠ 代理池已耗尽 — 无法绕过封锁。请用 /proxy add 补充",
                                    "en": "⚠ Proxy pool exhausted — cannot bypass block. Use /proxy add to refill"},
 
+    # v3.3.4: Silent drop 자동 HTTP 헤더 우회 (proxy 없을 때)
+    "silent_drop_header_bypass": {"ko": "🔀 Silent drop 감지 → HTTP 헤더 우회 자동 적용 (프록시 없음)",
+                                   "zh": "🔀 检测到静默丢弃 → 自动应用HTTP头部绕过 (无代理)",
+                                   "en": "🔀 Silent drop detected → applying HTTP header bypass (no proxy)"},
+    "silent_drop_ua_rotate":     {"ko": "  • User-Agent → Googlebot 위장",
+                                   "zh": "  • User-Agent → 伪装为Googlebot",
+                                   "en": "  • User-Agent → spoofing as Googlebot"},
+    "silent_drop_xff_inject":    {"ko": "  • X-Forwarded-For: 127.0.0.1 주입",
+                                   "zh": "  • X-Forwarded-For: 127.0.0.1 注入",
+                                   "en": "  • X-Forwarded-For: 127.0.0.1 injected"},
+    "silent_drop_delay_random":  {"ko": "  • 딜레이 랜덤화: 3~7초 (패턴 탐지 회피)",
+                                   "zh": "  • 随机延迟: 3~7秒 (规避模式检测)",
+                                   "en": "  • Randomized delay: 3~7s (evade rate detection)"},
+    "silent_drop_proxy_hint":    {"ko": "💡 팁: /proxy add <url> 또는 /proxy tor 로 IP 밴 자동 우회 가능",
+                                   "zh": "💡 提示: 使用 /proxy add <url> 或 /proxy tor 自动绕过IP封禁",
+                                   "en": "💡 Tip: /proxy add <url> or /proxy tor to auto-rotate past IP bans"},
+
     # v3.2.19: 연결 오류 반복 오탐 수정 (RULE 26-U)
     "conn_error_loop_skip":      {"ko": "⚡ 루프 오탐 건너뜀: 연결 오류 반복은 WAF 차단 — 무한 루프 아님",
                                    "zh": "⚡ 跳过循环误报: 连接错误重复是WAF封锁 — 不是无限循环",

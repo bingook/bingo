@@ -7204,13 +7204,70 @@ class BingoTerminal:
                         }.get(_lang, "⚠ Proxy pool exhausted")
                         self.console.print(f"[{THEME['warn']}]{_proxy_warn}[/]")
                 else:
-                    # 프록시 미설정 시 안내
-                    _proxy_hint_msg = {
-                        "ko": "💡 팁: /proxy add <url> 또는 /proxy tor 로 IP 밴 자동 우회 가능",
-                        "zh": "💡 提示: 使用 /proxy add <url> 或 /proxy tor 自动绕过IP封禁",
-                        "en": "💡 Tip: /proxy add <url> or /proxy tor to auto-rotate past IP bans",
-                    }.get(_lang, "💡 Tip: /proxy add <url> to auto-rotate")
-                    self.console.print(f"[{THEME['dim']}]{_proxy_hint_msg}[/]")
+                    # ── v3.3.4: 프록시 없을 때 silent drop → HTTP 헤더 우회 자동 적용 ──
+                    _is_silent_drop = _has_timeout and not _has_429 and not _has_403
+                    if _is_silent_drop:
+                        # 헤더 우회 적용 안내 출력
+                        _sd_msg = {
+                            "ko": "🔀 Silent drop 감지 → HTTP 헤더 우회 자동 적용 (프록시 없음)",
+                            "zh": "🔀 检测到静默丢弃 → 自동应用HTTP头部绕过 (无代理)",
+                            "en": "🔀 Silent drop detected → applying HTTP header bypass (no proxy)",
+                        }.get(_lang, "🔀 Silent drop → applying header bypass")
+                        self.console.print(f"[{THEME['warn']}]{_sd_msg}[/]")
+                        _sd_ua = {
+                            "ko": "  • User-Agent → Googlebot 위장",
+                            "zh": "  • User-Agent → 伪装为Googlebot",
+                            "en": "  • User-Agent → spoofing as Googlebot",
+                        }.get(_lang, "  • User-Agent → Googlebot")
+                        _sd_xff = {
+                            "ko": "  • X-Forwarded-For: 127.0.0.1 주입",
+                            "zh": "  • X-Forwarded-For: 127.0.0.1 注入",
+                            "en": "  • X-Forwarded-For: 127.0.0.1 injected",
+                        }.get(_lang, "  • X-Forwarded-For: 127.0.0.1")
+                        _sd_delay = {
+                            "ko": "  • 딜레이 랜덤화: 3~7초 (패턴 탐지 회피)",
+                            "zh": "  • 随机延迟: 3~7秒 (规避模式检测)",
+                            "en": "  • Randomized delay: 3~7s (evade rate detection)",
+                        }.get(_lang, "  • Delay: random 3~7s")
+                        self.console.print(f"[{THEME['dim']}]{_sd_ua}[/]")
+                        self.console.print(f"[{THEME['dim']}]{_sd_xff}[/]")
+                        self.console.print(f"[{THEME['dim']}]{_sd_delay}[/]")
+                        # AI에게 주입할 헤더 우회 힌트
+                        import random as _rand
+                        _ua_pool = [
+                            "Googlebot/2.1 (+http://www.google.com/bot.html)",
+                            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0",
+                            "curl/7.68.0",
+                        ]
+                        _chosen_ua = _rand.choice(_ua_pool)
+                        _chosen_delay = round(_rand.uniform(3.0, 7.0), 1)
+                        _proxy_hint_lines = [
+                            "[SILENT_DROP_HEADER_BYPASS_APPLIED: no proxy available]",
+                            "CAUSE: WAF is silently dropping your request (timeout, no response body).",
+                            "ACTION: Update your script with ALL of the following:",
+                            f"  headers = {{",
+                            f"    'User-Agent': '{_chosen_ua}',",
+                            f"    'X-Forwarded-For': '127.0.0.1',",
+                            f"    'X-Real-IP': '127.0.0.1',",
+                            f"    'True-Client-IP': '127.0.0.1',",
+                            f"    'Referer': 'https://www.google.com/',",
+                            f"    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',",
+                            f"  }}",
+                            f"  # ADD before each request: time.sleep({_chosen_delay})",
+                            f"  import time, random",
+                            f"  time.sleep(random.uniform(3.0, 7.0))  # randomized delay",
+                            "If still blocked after 2 retries → use /proxy add <url> or /proxy tor",
+                        ]
+                        _wait_secs = max(_wait_secs, 6)  # silent drop은 좀 더 대기
+                    else:
+                        # 일반 차단 (타임아웃 아님) — 기존 힌트 출력
+                        _proxy_hint_msg = {
+                            "ko": "💡 팁: /proxy add <url> 또는 /proxy tor 로 IP 밴 자동 우회 가능",
+                            "zh": "💡 提示: 使用 /proxy add <url> 或 /proxy tor 自动绕过IP封禁",
+                            "en": "💡 Tip: /proxy add <url> or /proxy tor to auto-rotate past IP bans",
+                        }.get(_lang, "💡 Tip: /proxy add <url> to auto-rotate")
+                        self.console.print(f"[{THEME['dim']}]{_proxy_hint_msg}[/]")
 
                 _block_msg = {
                     "ko": f"⛔ 차단 감지: {', '.join(_detected_blocks)} — {_wait_secs}초 대기 후 재시도...",

@@ -4965,6 +4965,26 @@ _STRINGS.update({
             "■ Do NOT read /tmp files from previous sessions"
         ),
     },
+    # ── v3.5.8: SPA 오탐 탐지 ────────────────────────────────────────
+    "phantom_spa_detected": {
+        "ko": "⚠️ SPA 오탐 차단",
+        "zh": "⚠️ SPA误报拦截",
+        "en": "⚠️ SPA False Positive Blocked",
+    },
+    "spa_detected_detail": {
+        "ko": (
+            "⚠️ [SPA_DETECTED] Next.js/React SPA가 모든 API 경로에 HTML 반환\n"
+            "→ 이 응답들은 실제 API 응답이 아닙니다. 별도 API 서버에서 테스트하세요."
+        ),
+        "zh": (
+            "⚠️ [SPA_DETECTED] Next.js/React SPA对所有API路径返回HTML\n"
+            "→ 这些不是真实API响应。请在独立API服务器上测试。"
+        ),
+        "en": (
+            "⚠️ [SPA_DETECTED] Next.js/React SPA returns HTML for all API paths\n"
+            "→ These are NOT real API responses. Test against the actual API server."
+        ),
+    },
 })
 
 

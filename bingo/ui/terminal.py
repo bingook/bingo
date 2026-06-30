@@ -6321,6 +6321,7 @@ class BingoTerminal:
                             "STALE_CACHE": self.s.get("phantom_stale_cache_blocked", "⛔ 구캐시 차단"),
                             "TARGET_MISMATCH": self.s.get("phantom_target_mismatch", "⚠️ 타겟 오인 경고"),
                             "ZERO_HTTP_CLAIM": self.s.get("phantom_zero_http_blocked", "⛔ HTTP 0건 주장 차단"),
+                            "SPA_DETECTED": self.s.get("phantom_spa_detected", "⚠️ SPA 오탐 차단"),
                         }
                         _pg_label = _pg_label_map.get(_pg_reason, "⚠️ PhantomGuard")
                         self.console.print(f"\n[bold red]{_pg_label}[/bold red]")
@@ -6382,10 +6383,15 @@ class BingoTerminal:
                         exec_output=_combined_out,
                     )
                     if _pg_result2.blocked and _pg_result2.inject_message:
-                        _pg_label2 = self.s.get(
-                            "phantom_stale_cache_blocked" if _pg_result2.block_reason == "STALE_CACHE"
-                            else "phantom_mode_blocked",
-                            "⛔ PhantomGuard (실행결과)"
+                        _pg_label2_map = {
+                            "STALE_CACHE": self.s.get("phantom_stale_cache_blocked", "⛔ 구캐시 차단"),
+                            "TARGET_MISMATCH_EXEC": self.s.get("target_mismatch_exec_blocked", "⛔ 타겟 오인 차단"),
+                            "SPA_DETECTED": self.s.get("phantom_spa_detected", "⚠️ SPA 오탐 차단"),
+                            "ZERO_HTTP_CLAIM": self.s.get("phantom_zero_http_blocked", "⛔ HTTP 0건 주장 차단"),
+                        }
+                        _pg_label2 = _pg_label2_map.get(
+                            _pg_result2.block_reason,
+                            self.s.get("phantom_mode_blocked", "⛔ PhantomGuard (실행결과)"),
                         )
                         self.console.print(f"\n[bold red]{_pg_label2}[/bold red]")
                         self.history.append(

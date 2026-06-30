@@ -70,6 +70,140 @@ _PHANTOM_PATTERNS: list[str] = [
 _COMPILED_PHANTOM = [re.compile(p, re.IGNORECASE) for p in _PHANTOM_PATTERNS]
 
 
+# ══════════════════════════════════════════════════════════════════
+# 실제 HTTP 증거 탐지 헬퍼  [NEW v3.5.8]
+# ══════════════════════════════════════════════════════════════════
+
+def _has_real_http_evidence(exec_output: str) -> bool:
+    """
+    exec_output에 실제 HTTP 요청 증거가 있으면 True.
+
+    사용 목적: 직전 실행에서 실제 HTTP 요청이 성공했을 때
+    AI의 설명/계획 텍스트에서 phantom 패턴이 우연히 매칭되는 오탐을 억제.
+
+    패턴:
+      [200/34610B]   — Bingo code executor 출력 형식
+      STATUS: 200    — requests 출력
+      大小: 123B      — 크기 출력 (Chinese)
+      HTTP/1.1 200   — raw HTTP 헤더
+      발견 68개       — 발견 항목 수 (Korean)
+      发现 68 个      — 발견 항목 수 (Chinese)
+      → <!DOCTYPE    — SPA HTML 반환 포함 (실제 요청 증거)
+    """
+    _REAL_HTTP_PATS = [
+        r'\[\d{3}/\d+B\]',             # [200/34610B]
+        r'\bSTATUS[:：]\s*\d{3}\b',     # STATUS: 200
+        r'大小[:：]\s*\d+\s*B',          # 大小: 123B
+        r'크기[:：]\s*\d+\s*[KMG]?B',   # 크기: 123B
+        r'HTTP/[12](?:\.\d)?\s+\d{3}', # HTTP/1.1 200
+        r'response_code\s*[=:]\s*\d{3}',
+        r'→\s+<!DOCTYPE\s+html',       # → <!DOCTYPE html
+        r'发现\s+\d+\s+个',              # 发现 68 个
+        r'발견\s+\d+\s*개',              # 발견 68개
+        r'\[\d+\]\s+(?:获取|检测|发现)',  # [1] 获取...
+        r'\[\d+/\d+\]\s+\[',           # [001/63] [200/...]
+    ]
+    for pat in _REAL_HTTP_PATS:
+        if re.search(pat, exec_output, re.IGNORECASE):
+            return True
+    return False
+
+
+# ══════════════════════════════════════════════════════════════════
+# SPA Response Detector — Next.js/React 전체 HTML 반환 탐지  [NEW v3.5.8]
+# ══════════════════════════════════════════════════════════════════
+
+_SPA_MIN_RESPONSES = 5  # 최소 발동 조건: HTML 응답 이 수 이상
+
+
+def _detect_spa_responses(exec_output: str) -> "tuple[int, int] | None":
+    """
+    exec_output에서 Next.js/SPA 패턴 감지.
+
+    패턴:
+      [200/34610B] /api/v1/markets → <!DOCTYPE html>...
+      [200/34610B] /api/v1/ticker → <!DOCTYPE html>...
+      ... (모두 동일 크기, HTML 반환)
+
+    동일 크기 HTML 응답 5개 이상 발견 시 (count, avg_size) 반환.
+    """
+    # [상태코드/크기B] ... → (또는 공백) + <!DOCTYPE html 패턴
+    matches = re.findall(
+        r'\[(?:200|301|302)/(\d+)B\][^\n]{0,120}?<!DOCTYPE\s+html',
+        exec_output,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if len(matches) < _SPA_MIN_RESPONSES:
+        return None
+    sizes = [int(s) for s in matches]
+    avg = sum(sizes) / len(sizes)
+    # 15% 이내 변동 → SPA 확정 (CDN 압축 등 소폭 차이 허용)
+    if avg > 0 and all(abs(s - avg) / avg < 0.15 for s in sizes):
+        return len(matches), int(avg)
+    return None
+
+
+def _spa_block_msg(count: int, size: int, target: str, lang: str = "ko") -> str:
+    """SPA 오탐 차단 메시지 (3개국어)."""
+    try:
+        from urllib.parse import urlparse as _up
+        _domain = _up(target).netloc or target
+    except Exception:
+        _domain = target
+
+    msgs: dict[str, str] = {
+        "ko": (
+            f"⚠️ [SPA_DETECTED — Next.js/React SPA 오탐 차단]\n\n"
+            f"{count}개 API 경로 모두 동일 크기({size}B) HTML 응답 → 실제 API 아님!\n\n"
+            f"■ 원인: Next.js SPA의 catch-all 라우터가\n"
+            f"  존재하지 않는 경로를 index.html로 반환\n"
+            f"■ 증거: [200/{size}B] /api/v1/xxx → <!DOCTYPE html> (전부 동일)\n\n"
+            f"■ 올바른 접근:\n"
+            f"  1. JS 분석에서 발견한 실제 API 서버 확인\n"
+            f"     (JS에서 발견된 `apis.{_domain}` 등 별도 호스트)\n"
+            f"  2. Content-Type 먼저 확인:\n"
+            f"     curl -s -I {target}/api/account/info | grep -i content-type\n"
+            f"  3. HTML 반환 = 엔드포인트 없음. JSON 반환 = 실제 API\n"
+            f"  4. /api/account/balance 등 JS에서 추출된 경로는\n"
+            f"     {target} 가 아닌 실제 API 서버에서 테스트할 것\n\n"
+            f"■ 위 200/OK 결과는 전부 HTML 오탐입니다. 취약점 클레임 금지."
+        ),
+        "zh": (
+            f"⚠️ [SPA_DETECTED — Next.js/React SPA误报拦截]\n\n"
+            f"{count}个API路径全部返回相同大小({size}B) HTML → 非真实API！\n\n"
+            f"■ 原因: Next.js SPA的catch-all路由\n"
+            f"  将不存在的路径全部返回index.html\n"
+            f"■ 证据: [200/{size}B] /api/v1/xxx → <!DOCTYPE html> (完全相同)\n\n"
+            f"■ 正确方法:\n"
+            f"  1. 从JS分析中找到真实API服务器\n"
+            f"     (JS中发现的 apis.{_domain} 等独立主机)\n"
+            f"  2. 先确认Content-Type:\n"
+            f"     curl -s -I {target}/api/account/info | grep -i content-type\n"
+            f"  3. HTML返回=端点不存在; JSON返回=真实API\n"
+            f"  4. 从JS提取的路径请在真实API服务器上测试，\n"
+            f"     而非在 {target} 上\n\n"
+            f"■ 当前所有200/OK结果均为HTML误报，禁止声明漏洞。"
+        ),
+        "en": (
+            f"⚠️ [SPA_DETECTED — Next.js/React SPA False Positive Blocked]\n\n"
+            f"{count} API paths all return identical HTML ({size}B) → NOT real API responses!\n\n"
+            f"■ Cause: Next.js SPA catch-all router returns index.html\n"
+            f"  for all non-existent paths\n"
+            f"■ Evidence: [200/{size}B] /api/v1/xxx → <!DOCTYPE html> (all identical)\n\n"
+            f"■ Correct approach:\n"
+            f"  1. Identify real API server from JS analysis\n"
+            f"     (separate host like apis.{_domain} found in JS)\n"
+            f"  2. Check Content-Type first:\n"
+            f"     curl -s -I {target}/api/account/info | grep -i content-type\n"
+            f"  3. HTML response = endpoint not found; JSON = real API\n"
+            f"  4. Test JS-extracted paths against the real API server,\n"
+            f"     not against {target}\n\n"
+            f"■ ALL current 200/OK results are HTML false positives. NO vulnerability claims."
+        ),
+    }
+    return msgs.get(lang, msgs["en"])
+
+
 @dataclass
 class PhantomModeDetector:
     """
@@ -526,6 +660,8 @@ class PhantomGuard:
         self._enable_zero_http = enable_zero_http_guard
         # Liveness 결과 캐시
         self.liveness_result: Optional[LivenessResult] = None
+        # v3.5.8: 직전 실행에 실제 HTTP 증거 있었음 → 다음 pre-exec phantom 오탐 억제
+        self._last_exec_had_real_http: bool = False
 
     # ── 세션 시작 시 도구 liveness probe ─────────────────────────
 
@@ -573,12 +709,30 @@ class PhantomGuard:
     ) -> PhantomGuardResult:
         """
         AI 응답 텍스트, 실행 코드, 실행 결과를 검사해 팬텀 모드 여부 판단.
-        우선순위: PHANTOM > SELF_LOOP > STALE_CACHE > ZERO_HTTP > TARGET_MISMATCH
+        우선순위: PHANTOM > SELF_LOOP > STALE_CACHE > ZERO_HTTP > TARGET_MISMATCH > SPA_DETECTED
+
+        v3.5.8 변경:
+          - 직전 실행에 실제 HTTP 증거가 있었으면 pre-exec phantom 탐지 완화
+            (AI 설명 텍스트에서 phantom 패턴 오탐 방지)
+          - SPA_DETECTED: Next.js/React가 모든 API 경로에 동일 HTML 반환 시 차단
         """
         combined = f"{response_text}\n{code_text}\n{exec_output}"
 
+        # ── 0. v3.5.8: 실제 HTTP 증거 면제 플래그 처리 ─────────────
+        # exec_output이 있는 경우(post-execution): 실제 HTTP 증거 여부 갱신
+        if exec_output and _has_real_http_evidence(exec_output):
+            self._last_exec_had_real_http = True
+
+        # exec_output이 없는 경우(pre-execution): 직전 실행 면제 적용 후 초기화
+        _suppress_phantom_for_real_exec = (not exec_output) and self._last_exec_had_real_http
+        if _suppress_phantom_for_real_exec:
+            # 한 번만 면제 — 이후 초기화 (다음 pre-exec에는 다시 검사)
+            self._last_exec_had_real_http = False
+
         # ── 1. 팬텀 모드 패턴 탐지 ──────────────────────────────────
-        if self._phantom.check(combined):
+        # 직전 실행에 실제 HTTP 증거 있으면 팬텀 탐지 완화
+        # (AI가 실행 결과를 설명하는 텍스트에서 오탐 방지)
+        if not _suppress_phantom_for_real_exec and self._phantom.check(combined):
             if self._phantom.is_critical:
                 self.hard_restarter.record_block()
                 return PhantomGuardResult(
@@ -658,6 +812,20 @@ class PhantomGuard:
                     inject_message=(
                         f"[TARGET_MISMATCH_WARNING]\n"
                         f"{self._target.mismatch_msg(mismatches, self.lang)}"
+                    ),
+                )
+
+        # ── 6. SPA 응답 탐지 [NEW v3.5.8] ────────────────────────────
+        # Next.js/React SPA가 모든 API 경로에 동일한 HTML 반환 시 차단
+        if exec_output:
+            _spa = _detect_spa_responses(exec_output)
+            if _spa is not None:
+                _spa_count, _spa_size = _spa
+                return PhantomGuardResult(
+                    blocked=True,
+                    block_reason="SPA_DETECTED",
+                    inject_message=_spa_block_msg(
+                        _spa_count, _spa_size, self.session_target, self.lang
                     ),
                 )
 

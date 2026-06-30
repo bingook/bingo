@@ -1,21 +1,28 @@
 """
-PhantomGuard — 팬텀 모드 탐지 및 강제 재활성화 v1.0.0
+PhantomGuard — 팬텀 모드 탐지 및 강제 재활성화 v2.0.0
 =========================================================
 문제: agent의 bash/write 도구가 비활성화/일시정지될 때 발생하는
      "Phantom mode → simulated exit" 루프.
      실제 HTTP 요청 0건인 채 분석 결과를 출력하고 자기수정 무한반복.
 
-탐지 4종:
+탐지 8종:
   1. PhantomModeDetector  — 응답에서 "phantom/도구 비활성화/simulated exit" 패턴
   2. StaleCacheGuard      — ScanResult-*.json / case_state.json 반복 읽기 탐지
   3. TargetMismatchGuard  — 현재 세션 타겟과 다른 도메인이 응답에 등장
   4. SelfCorrectionLoop   — "타겟 오인 → 수정 → 재오인" 무한반복 감지
+  5. ToolLivenessProbe    — 세션 시작 시 실제 HTTP 가능 여부 사전 확인  [NEW]
+  6. ZeroHttpClaimGuard   — HTTP 0건인 채 취약점 주장 시 즉시 차단       [NEW]
+  7. HardSessionRestarter — 팬텀 N회 지속 시 세션 히스토리 강제 초기화   [NEW]
+  8. /reset-phantom       — 수동 카운터 초기화 슬래시 커맨드              [NEW]
 
 대응:
   A. 팬텀 모드 → 도구 재활성화 강제 프롬프트 주입
   B. 구캐시    → 해당 파일 읽기 차단 + 신선 스캔 강제
   C. 타겟 오인 → 세션 타겟 재주입
   D. 루프      → 카운터 초기화 + 직접 HTTP 요청 강제
+  E. 도구 불능 → Liveness probe 실패 시 즉시 경고 + 대체 방법 제시
+  F. 0-HTTP   → 주장 자체를 블로킹 + 실 HTTP 강제
+  G. 3회 지속 → 세션 히스토리 초기화 (하드 재시작)
 """
 from __future__ import annotations
 
@@ -454,14 +461,16 @@ class PhantomGuardResult:
 
 class PhantomGuard:
     """
-    통합 팬텀 모드 게이트.
+    통합 팬텀 모드 게이트 v2.0.0.
 
     사용법 (terminal.py 응답 루프):
         _pg = PhantomGuard(session_target=target, lang="ko")
         result = _pg.check_response(response_text, code_text="", exec_output="")
         if result.blocked:
             history.append(Message(role="user", content=result.inject_message))
-            continue
+            if _pg.hard_restarter.should_hard_restart:
+                # 히스토리 초기화 (하드 재시작)
+                ...
     """
 
     def __init__(
@@ -471,13 +480,49 @@ class PhantomGuard:
         phantom_limit: int = 2,
         correction_limit: int = 3,
         cache_reuse_limit: int = 2,
+        hard_restart_threshold: int = 3,
+        enable_liveness_probe: bool = True,
+        enable_zero_http_guard: bool = True,
     ) -> None:
         self.lang = lang
         self.session_target = session_target
+        # 기존 4종
         self._phantom = PhantomModeDetector(consecutive_limit=phantom_limit)
         self._stale = StaleCacheGuard(max_reuse_count=cache_reuse_limit)
         self._target = TargetMismatchGuard(session_target=session_target)
         self._loop = SelfCorrectionLoopBreaker(consecutive_limit=correction_limit)
+        # 신규 4종 [v2.0.0]
+        self._liveness = ToolLivenessProbe()
+        self._zero_http = ZeroHttpClaimGuard()
+        self.hard_restarter = HardSessionRestarter(
+            hard_restart_threshold=hard_restart_threshold
+        )
+        # 설정
+        self._enable_liveness = enable_liveness_probe
+        self._enable_zero_http = enable_zero_http_guard
+        # Liveness 결과 캐시
+        self.liveness_result: Optional[LivenessResult] = None
+
+    # ── 세션 시작 시 도구 liveness probe ─────────────────────────
+
+    def run_liveness_probe(self) -> LivenessResult:
+        """
+        세션 시작 시 호출. 실제 HTTP 가능 여부를 확인하고 결과를 캐싱.
+        terminal.py.__init__() 또는 _detect_network_env() 에서 호출.
+        """
+        if not self._enable_liveness:
+            self.liveness_result = LivenessResult(ok=True, error="probe disabled")
+            return self.liveness_result
+        result = self._liveness.probe(target=self.session_target, timeout=5.0)
+        self.liveness_result = result
+        return result
+
+    def liveness_banner(self) -> str:
+        if self.liveness_result is None:
+            return ""
+        return self._liveness.liveness_banner(self.liveness_result, self.lang)
+
+    # ── 타겟 업데이트 / 카운터 초기화 ────────────────────────────
 
     def update_target(self, new_target: str) -> None:
         """세션 타겟 변경 시 동기화."""
@@ -489,10 +534,12 @@ class PhantomGuard:
         self._target.add_allowed(url_or_domain)
 
     def reset_counters(self) -> None:
-        """새 작업 시작 시 카운터 초기화 (타겟 변경 등)."""
+        """새 작업 시작 시 / /reset-phantom 시 카운터 전체 초기화."""
         self._phantom.reset()
         self._loop.reset()
         self._stale.reset_all()
+        self._zero_http.reset()
+        self.hard_restarter.reset()
 
     def check_response(
         self,
@@ -502,13 +549,14 @@ class PhantomGuard:
     ) -> PhantomGuardResult:
         """
         AI 응답 텍스트, 실행 코드, 실행 결과를 검사해 팬텀 모드 여부 판단.
-        우선순위: PHANTOM > SELF_LOOP > STALE_CACHE > TARGET_MISMATCH
+        우선순위: PHANTOM > SELF_LOOP > STALE_CACHE > ZERO_HTTP > TARGET_MISMATCH
         """
         combined = f"{response_text}\n{code_text}\n{exec_output}"
 
         # ── 1. 팬텀 모드 패턴 탐지 ──────────────────────────────────
         if self._phantom.check(combined):
             if self._phantom.is_critical:
+                self.hard_restarter.record_block()
                 return PhantomGuardResult(
                     blocked=True,
                     block_reason="PHANTOM",
@@ -521,6 +569,7 @@ class PhantomGuard:
         # ── 2. 자기수정 루프 탐지 ───────────────────────────────────
         if self._loop.check(response_text):
             if self._loop.is_critical:
+                self.hard_restarter.record_block()
                 return PhantomGuardResult(
                     blocked=True,
                     block_reason="SELF_LOOP",
@@ -539,6 +588,7 @@ class PhantomGuard:
         if stale_files:
             overused = self._stale.record_and_check(stale_files)
             if overused:
+                self.hard_restarter.record_block()
                 return PhantomGuardResult(
                     blocked=True,
                     block_reason="STALE_CACHE",
@@ -548,7 +598,20 @@ class PhantomGuard:
                     ),
                 )
 
-        # ── 4. 타겟 오인 탐지 ───────────────────────────────────────
+        # ── 4. HTTP 0건 취약점 주장 차단 [v2.0.0] ─────────────────
+        if self._enable_zero_http and exec_output is not None:
+            if self._zero_http.check(response_text, exec_output):
+                self.hard_restarter.record_block()
+                return PhantomGuardResult(
+                    blocked=True,
+                    block_reason="ZERO_HTTP_CLAIM",
+                    inject_message=(
+                        f"[ZERO_HTTP_CLAIM_BLOCKED]\n"
+                        f"{self._zero_http.block_msg(self.session_target, self.lang)}"
+                    ),
+                )
+
+        # ── 5. 타겟 오인 탐지 ───────────────────────────────────────
         if self.session_target:
             mismatches = self._target.scan(combined)
             if mismatches:
@@ -561,6 +624,8 @@ class PhantomGuard:
                     ),
                 )
 
+        # 정상 — hard restarter 성공 기록
+        self.hard_restarter.record_success()
         return PhantomGuardResult(blocked=False)
 
     # ── 편의 헬퍼 ─────────────────────────────────────────────────
@@ -577,3 +642,326 @@ class PhantomGuard:
     def is_stale_cache_code(code: str) -> bool:
         """코드에 구캐시 읽기 패턴이 있는지 빠른 검사."""
         return bool(_STALE_READ_CODE_RE.search(code))
+
+
+# ══════════════════════════════════════════════════════════════════
+# 5. ToolLivenessProbe  [NEW v2.0.0]
+# ══════════════════════════════════════════════════════════════════
+
+@dataclass
+class LivenessResult:
+    ok: bool = False
+    latency_ms: float = 0.0
+    status_code: int = 0
+    error: str = ""
+    probe_url: str = ""
+
+
+class ToolLivenessProbe:
+    """
+    세션 시작 시 실제 HTTP 도구 가동 여부를 사전 확인.
+
+    requests 라이브러리로 가벼운 ping 요청을 보내 도구가 실제로
+    작동하는지 확인한다. 실패 시 경고 메시지를 반환하며,
+    이 결과를 PhantomGuard.liveness_ok 에 저장해 ZeroHttpClaimGuard와 연동.
+    """
+
+    # 폴백 순서: 가장 빠른 것부터
+    _PROBE_URLS: list[str] = [
+        "https://httpbin.org/status/200",
+        "https://www.google.com/favicon.ico",
+        "https://example.com",
+        "http://httpbin.org/status/200",
+    ]
+
+    def probe(self, target: str = "", timeout: float = 5.0) -> LivenessResult:
+        """
+        실제 HTTP 요청으로 도구 가동 여부 확인.
+        target이 주어지면 해당 URL도 시도.
+        """
+        import socket
+
+        urls = list(self._PROBE_URLS)
+        if target:
+            urls.insert(0, target if target.startswith("http") else f"https://{target}")
+
+        for url in urls:
+            try:
+                import urllib.request
+                start = time.time()
+                req = urllib.request.Request(
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0 bingo-liveness-probe/2.0"},
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    latency = (time.time() - start) * 1000
+                    return LivenessResult(
+                        ok=True,
+                        latency_ms=round(latency, 1),
+                        status_code=resp.status,
+                        probe_url=url,
+                    )
+            except Exception as e:
+                continue
+
+        # urllib 실패 → 소켓 TCP 연결 시도 (더 낮은 수준)
+        try:
+            start = time.time()
+            sock = socket.create_connection(("8.8.8.8", 53), timeout=3)
+            sock.close()
+            latency = (time.time() - start) * 1000
+            return LivenessResult(
+                ok=True,
+                latency_ms=round(latency, 1),
+                status_code=0,
+                probe_url="TCP:8.8.8.8:53 (DNS)",
+                error="HTTP probe failed but TCP works",
+            )
+        except Exception as e:
+            return LivenessResult(ok=False, error=str(e))
+
+    def liveness_banner(self, result: LivenessResult, lang: str = "ko") -> str:
+        if result.ok:
+            msgs = {
+                "ko": (
+                    f"[✅ 도구 Liveness OK] {result.probe_url} → "
+                    f"{result.status_code or 'TCP'} ({result.latency_ms:.0f}ms)\n"
+                    "실제 네트워크 연결이 정상 확인되었습니다. 팬텀 모드 아님."
+                ),
+                "zh": (
+                    f"[✅ 工具存活OK] {result.probe_url} → "
+                    f"{result.status_code or 'TCP'} ({result.latency_ms:.0f}ms)\n"
+                    "真实网络连接确认正常。非幻影模式。"
+                ),
+                "en": (
+                    f"[✅ Tool Liveness OK] {result.probe_url} → "
+                    f"{result.status_code or 'TCP'} ({result.latency_ms:.0f}ms)\n"
+                    "Real network connection confirmed. Not in phantom mode."
+                ),
+            }
+        else:
+            msgs = {
+                "ko": (
+                    f"[⚠️ 도구 Liveness FAIL] 실제 HTTP 요청 실패: {result.error}\n"
+                    "네트워크가 차단되었거나 도구가 비활성화되어 있을 수 있습니다.\n"
+                    "■ 대안: subprocess / curl / socket 직접 사용\n"
+                    "■ VPN 연결 상태를 확인하세요."
+                ),
+                "zh": (
+                    f"[⚠️ 工具存活FAIL] 真实HTTP请求失败: {result.error}\n"
+                    "网络可能被阻断或工具已禁用。\n"
+                    "■ 备选: 使用subprocess / curl / socket\n"
+                    "■ 请检查VPN连接状态。"
+                ),
+                "en": (
+                    f"[⚠️ Tool Liveness FAIL] Real HTTP request failed: {result.error}\n"
+                    "Network may be blocked or tools disabled.\n"
+                    "■ Alternative: use subprocess / curl / socket directly\n"
+                    "■ Check VPN connection status."
+                ),
+            }
+        return msgs.get(lang, msgs["en"])
+
+
+# ══════════════════════════════════════════════════════════════════
+# 6. ZeroHttpClaimGuard  [NEW v2.0.0]
+# ══════════════════════════════════════════════════════════════════
+
+# 취약점 주장 패턴 (findings claim)
+_FINDINGS_CLAIM_PATTERNS: list[str] = [
+    # 영문
+    r"\b(?:VERIFIED|CONFIRMED|FOUND|DETECTED|VULNERABLE)\b",
+    r"(?:vulnerability|vuln|CVE|SQLi|XSS|RCE|SSRF|IDOR)\s+(?:found|detected|confirmed|verified)",
+    r"(?:injection|bypass|exposure)\s+(?:confirmed|verified|detected)",
+    r"(?:admin|root|password|credential)\s+(?:found|extracted|obtained|dumped)",
+    # 한국어
+    r"(?:취약점|취약성|버그)\s*(?:발견|확인|검증|존재)",
+    r"(?:SQL\s*인젝션|XSS|RCE|SSRF|IDOR)\s*(?:발견|확인|검증)",
+    r"(?:인증\s*우회|관리자\s*패널)\s*(?:접근|확인)",
+    r"(?:크리덴셜|비밀번호|패스워드)\s*(?:추출|획득|덤프)",
+    # 중국어
+    r"(?:漏洞|SQL注入|XSS|RCE)\s*(?:发现|确认|验证|存在)",
+    r"(?:认证绕过|管理员面板)\s*(?:成功|确认)",
+    r"(?:凭据|密码)\s*(?:提取|获取|确认)",
+]
+
+_COMPILED_FINDINGS = [re.compile(p, re.IGNORECASE) for p in _FINDINGS_CLAIM_PATTERNS]
+
+# 실제 HTTP 요청 증거 패턴 (실행 출력에서)
+_HTTP_EVIDENCE_PATTERNS: list[str] = [
+    r"(?:status|STATUS)[:\s_-]+\d{3}",          # status: 200 / STATUS_CODE: 404
+    r"HTTP/[12][\.\d]*\s+\d{3}",                # HTTP/1.1 200
+    r"<Response\s*\[\d{3}\]>",                   # <Response [200]>
+    r"requests\.(get|post|put|delete|patch)\s*\(", # requests.get(
+    r"r\.(status_code|text|json|headers)\s*",    # r.status_code
+    r"(?:curl|wget)\s+.+\s+https?://",           # curl/wget output
+    r"\d{3}\s+(?:OK|Found|Redirect|Not Found|Forbidden|Internal Server Error)",
+]
+
+_COMPILED_HTTP_EVIDENCE = [re.compile(p, re.IGNORECASE) for p in _HTTP_EVIDENCE_PATTERNS]
+
+
+@dataclass
+class ZeroHttpClaimGuard:
+    """
+    실제 HTTP 요청 0건인 채 취약점 발견을 주장하는 응답 차단.
+
+    실행 출력(exec_output)에 HTTP 증거가 없는데 응답(response_text)에
+    취약점 발견 클레임이 있으면 차단.
+    """
+    _http_confirmed_count: int = field(default=0, init=False, repr=False)
+    _blocked_count: int = field(default=0, init=False, repr=False)
+
+    def has_http_evidence(self, exec_output: str) -> bool:
+        """실행 출력에 실제 HTTP 요청 증거가 있으면 True."""
+        if not exec_output.strip():
+            return False
+        for pat in _COMPILED_HTTP_EVIDENCE:
+            if pat.search(exec_output):
+                self._http_confirmed_count += 1
+                return True
+        return False
+
+    def has_findings_claim(self, response_text: str) -> bool:
+        """응답에 취약점 발견/확인 주장이 있으면 True."""
+        for pat in _COMPILED_FINDINGS:
+            if pat.search(response_text):
+                return True
+        return False
+
+    def check(self, response_text: str, exec_output: str) -> bool:
+        """
+        True = 차단 필요 (HTTP 0건인 채 취약점 주장).
+        조건: 취약점 주장 O + HTTP 증거 X
+        """
+        if not self.has_findings_claim(response_text):
+            return False
+        if self.has_http_evidence(exec_output):
+            return False
+        self._blocked_count += 1
+        return True
+
+    def reset(self) -> None:
+        self._http_confirmed_count = 0
+        self._blocked_count = 0
+
+    def block_msg(self, target: str, lang: str = "ko") -> str:
+        msgs = {
+            "ko": (
+                "[⛔ HTTP 0건 주장 차단 — 실증 없는 취약점 클레임]\n\n"
+                "실행 출력에 실제 HTTP 요청 증거가 없는데\n"
+                "취약점 발견/확인 주장이 감지되었습니다.\n\n"
+                "■ 이것은 환각(hallucination)입니다.\n"
+                "■ 모든 취약점 주장 전에 반드시 실제 HTTP 요청을 실행해야 합니다:\n\n"
+                f"  import requests, urllib3; urllib3.disable_warnings()\n"
+                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
+                f"  print('STATUS:', r.status_code)\n"
+                f"  print('BODY:', r.text[:500])\n\n"
+                "■ 위 코드 실행 결과를 보고 취약점 여부를 판단하세요.\n"
+                "■ 증거 없는 VERIFIED/CONFIRMED 클레임은 절대 금지입니다."
+            ),
+            "zh": (
+                "[⛔ HTTP 0次请求声明拦截 — 无证据漏洞声明]\n\n"
+                "执行输出中没有真实HTTP请求证据，\n"
+                "却检测到漏洞发现/确认声明。\n\n"
+                "■ 这是幻觉(hallucination)。\n"
+                "■ 所有漏洞声明前必须执行真实HTTP请求:\n\n"
+                f"  import requests, urllib3; urllib3.disable_warnings()\n"
+                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
+                f"  print('STATUS:', r.status_code, r.text[:500])\n\n"
+                "■ 禁止无证据的VERIFIED/CONFIRMED声明。"
+            ),
+            "en": (
+                "[⛔ ZERO-HTTP CLAIM BLOCKED — No Evidence for Vulnerability Claim]\n\n"
+                "A vulnerability finding/confirmation was claimed without any\n"
+                "real HTTP request evidence in execution output.\n\n"
+                "■ This is HALLUCINATION.\n"
+                "■ All vuln claims MUST be backed by real HTTP execution:\n\n"
+                f"  import requests, urllib3; urllib3.disable_warnings()\n"
+                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
+                f"  print('STATUS:', r.status_code)\n"
+                f"  print('BODY:', r.text[:500])\n\n"
+                "■ VERIFIED/CONFIRMED claims WITHOUT evidence are FORBIDDEN."
+            ),
+        }
+        return msgs.get(lang, msgs["en"])
+
+
+# ══════════════════════════════════════════════════════════════════
+# 7. HardSessionRestarter  [NEW v2.0.0]
+# ══════════════════════════════════════════════════════════════════
+
+@dataclass
+class HardSessionRestarter:
+    """
+    팬텀 모드가 N회 연속 지속될 때 세션 히스토리 강제 초기화.
+
+    terminal.py가 이 클래스의 .should_hard_restart 를 확인하고
+    self.history 를 시스템 메시지만 남기고 초기화한다.
+    """
+    hard_restart_threshold: int = 3   # 이 횟수 연속 차단 시 hard restart 발동
+    _consecutive_blocks: int = field(default=0, init=False, repr=False)
+    _total_hard_restarts: int = field(default=0, init=False, repr=False)
+    _last_restart_time: float = field(default=0.0, init=False, repr=False)
+
+    def record_block(self) -> None:
+        """팬텀 차단 1회 기록."""
+        self._consecutive_blocks += 1
+
+    def record_success(self) -> None:
+        """정상 실행 1회 → 연속 카운터 초기화."""
+        self._consecutive_blocks = 0
+
+    @property
+    def should_hard_restart(self) -> bool:
+        """hard_restart_threshold 이상 연속 차단 시 True."""
+        return self._consecutive_blocks >= self.hard_restart_threshold
+
+    def do_restart(self) -> None:
+        """hard restart 실행 기록."""
+        self._total_hard_restarts += 1
+        self._last_restart_time = time.time()
+        self._consecutive_blocks = 0
+
+    def reset(self) -> None:
+        self._consecutive_blocks = 0
+
+    def hard_restart_msg(self, target: str, lang: str = "ko") -> str:
+        n = self.hard_restart_threshold
+        msgs = {
+            "ko": (
+                f"[🔄 하드 세션 재시작 — 팬텀 모드 {n}회 연속 차단]\n\n"
+                f"팬텀 모드 / 팬텀 가드 차단이 {n}회 연속 발생했습니다.\n"
+                "대화 히스토리를 초기화하고 새 세션으로 재시작합니다.\n\n"
+                f"■ 재시작 후 첫 번째 작업:\n"
+                f"  import requests, urllib3; urllib3.disable_warnings()\n"
+                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
+                f"  print('STATUS:', r.status_code)\n"
+                f"  print('SERVER:', r.headers.get('Server','?'))\n"
+                f"  print('BODY:', r.text[:500])\n\n"
+                "■ 새 세션: 캐시 없음 / 이전 추정 없음 / 실시간 HTTP만 사용"
+            ),
+            "zh": (
+                f"[🔄 强制会话重启 — 幻影模式连续{n}次拦截]\n\n"
+                f"幻影防护连续拦截{n}次。\n"
+                "正在清空对话历史并以新会话重启。\n\n"
+                f"■ 重启后首个任务:\n"
+                f"  import requests, urllib3; urllib3.disable_warnings()\n"
+                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
+                f"  print(r.status_code, r.text[:500])\n\n"
+                "■ 新会话: 无缓存/无先前假设/仅使用实时HTTP"
+            ),
+            "en": (
+                f"[🔄 HARD SESSION RESTART — Phantom Mode blocked {n}x consecutive]\n\n"
+                f"PhantomGuard blocked {n} consecutive responses.\n"
+                "Clearing conversation history and restarting session.\n\n"
+                f"■ First action after restart:\n"
+                f"  import requests, urllib3; urllib3.disable_warnings()\n"
+                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
+                f"  print('STATUS:', r.status_code)\n"
+                f"  print('SERVER:', r.headers.get('Server','?'))\n"
+                f"  print('BODY:', r.text[:500])\n\n"
+                "■ New session: no cache / no prior assumptions / real-time HTTP only"
+            ),
+        }
+        return msgs.get(lang, msgs["en"])

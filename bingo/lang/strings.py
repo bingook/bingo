@@ -4751,25 +4751,104 @@ _STRINGS.update({
     },
     "phantom_guard_note": {
         "ko": (
-            "v3.5.2 팬텀가드: 팬텀모드·구캐시·타겟오인·자기수정루프 4종 차단.\n"
+            "v3.5.3 팬텀가드 v2: 팬텀모드·구캐시·타겟오인·자기수정루프·HTTP0건주장·하드재시작 차단.\n"
             "  - 팬텀 모드 (도구 비활성화 2회 연속) → 즉시 차단 + 재시도\n"
             "  - 구캐시 (ScanResult-*.json 2회 이상 재사용) → 차단 + 신선스캔\n"
             "  - 타겟 오인 (다른 도메인 감지) → 경고 주입\n"
-            "  - 자기수정 루프 (3회 연속) → 강제 직접 HTTP 실행"
+            "  - 자기수정 루프 (3회 연속) → 강제 직접 HTTP 실행\n"
+            "  - HTTP 0건 주장 (실행 증거 없이 취약점 클레임) → 즉시 차단\n"
+            "  - 하드 재시작 (3회 연속 차단) → 히스토리 초기화 + 세션 재시작\n"
+            "  /reset-phantom 으로 수동 초기화 가능"
         ),
         "zh": (
-            "v3.5.2 幻影防护: 拦截幻影模式·旧缓存·目标混淆·自我修正循环4种问题.\n"
+            "v3.5.3 幻影防护v2: 拦截幻影模式·旧缓存·目标混淆·自我修正循环·HTTP0次声明·强制重启.\n"
             "  - 幻影模式 (工具连续禁用2次) → 立即拦截+重试\n"
             "  - 旧缓存 (ScanResult-*.json复用≥2次) → 拦截+新鲜扫描\n"
             "  - 目标混淆 (检测到其他域名) → 注入警告\n"
-            "  - 自我修正循环 (连续3次) → 强制直接HTTP执行"
+            "  - 自我修正循环 (连续3次) → 强制直接HTTP执行\n"
+            "  - HTTP 0次声明 (无执行证据的漏洞声明) → 立即拦截\n"
+            "  - 强制重启 (连续3次拦截) → 清空历史+重启会话\n"
+            "  使用 /reset-phantom 手动重置"
         ),
         "en": (
-            "v3.5.2 PhantomGuard: Blocks phantom mode, stale cache, target mismatch, self-correction loops.\n"
+            "v3.5.3 PhantomGuard v2: Blocks phantom mode, stale cache, target mismatch, "
+            "self-correction loops, zero-HTTP claims, hard session restart.\n"
             "  - Phantom mode (tools disabled 2x consecutive) → immediate block + retry\n"
             "  - Stale cache (ScanResult-*.json reused 2+x) → block + fresh scan\n"
             "  - Target mismatch (other domain detected) → warning injection\n"
-            "  - Self-correction loop (3x consecutive) → force direct HTTP execution"
+            "  - Self-correction loop (3x consecutive) → force direct HTTP execution\n"
+            "  - Zero-HTTP claim (vuln claim without execution evidence) → immediate block\n"
+            "  - Hard restart (3x consecutive blocks) → clear history + restart session\n"
+            "  Use /reset-phantom to manually reset all counters"
+        ),
+    },
+    # ── v3.5.3 PhantomGuard v2 신규 다국어 키 ──────────────────
+    "phantom_zero_http_blocked": {
+        "ko": "⛔ HTTP 0건 주장 차단 — 실증 없는 취약점 클레임",
+        "zh": "⛔ HTTP 0次请求声明拦截 — 无证据漏洞声明",
+        "en": "⛔ Zero-HTTP Claim Blocked — Vulnerability Claim Without Evidence",
+    },
+    "phantom_hard_restart": {
+        "ko": "🔄 하드 세션 재시작 — 팬텀 모드 3회 연속 차단",
+        "zh": "🔄 强制会话重启 — 幻影模式连续3次拦截",
+        "en": "🔄 Hard Session Restart — Phantom Mode Blocked 3x Consecutive",
+    },
+    "phantom_liveness_ok": {
+        "ko": "도구 Liveness: ✅ 정상 (실제 네트워크 연결 확인)",
+        "zh": "工具存活: ✅ 正常 (真实网络连接确认)",
+        "en": "Tool Liveness: ✅ OK (Real network connection confirmed)",
+    },
+    "phantom_liveness_fail": {
+        "ko": "도구 Liveness: ⚠️ 실패 — 네트워크 연결 확인 필요",
+        "zh": "工具存活: ⚠️ 失败 — 请检查网络连接",
+        "en": "Tool Liveness: ⚠️ FAIL — Check network connection",
+    },
+    "phantom_reset_title": {
+        "ko": "✅ PhantomGuard 카운터 초기화 완료",
+        "zh": "✅ 幻影防护计数器已全部重置",
+        "en": "✅ PhantomGuard Counters Reset Successfully",
+    },
+    "phantom_reset_target": {
+        "ko": "세션 타겟",
+        "zh": "会话目标",
+        "en": "Session Target",
+    },
+    "phantom_reset_note": {
+        "ko": "모든 팬텀 가드 카운터가 0으로 초기화되었습니다. (팬텀/구캐시/루프/HTTP0건/하드재시작)",
+        "zh": "所有幻影防护计数器已重置为0。(幻影/旧缓存/循环/HTTP0次/强制重启)",
+        "en": "All PhantomGuard counters reset to 0. (phantom/stale-cache/loop/zero-HTTP/hard-restart)",
+    },
+    "phantom_guard_not_active": {
+        "ko": "PhantomGuard가 비활성화 상태입니다. (초기화 실패 또는 미지원)",
+        "zh": "幻影防护未激活。(初始化失败或不支持)",
+        "en": "PhantomGuard is not active. (init failed or unsupported)",
+    },
+    "phantom_liveness_probe_start": {
+        "ko": "🔍 도구 Liveness 프로브 실행 중...",
+        "zh": "🔍 正在执行工具存活探测...",
+        "en": "🔍 Running tool liveness probe...",
+    },
+    "phantom_reset_phantom_help": {
+        "ko": (
+            "/reset-phantom\n"
+            "  PhantomGuard 카운터 수동 초기화.\n"
+            "  팬텀 가드가 오탐하거나 정상 세션을 방해할 때 사용.\n"
+            "  초기화 항목: 팬텀/자기수정루프/구캐시/HTTP0건/하드재시작 카운터\n"
+            "  + Liveness 재프로브 실행"
+        ),
+        "zh": (
+            "/reset-phantom\n"
+            "  手动重置幻影防护计数器。\n"
+            "  当幻影防护误报或干扰正常会话时使用。\n"
+            "  重置项目: 幻影/自我修正循环/旧缓存/HTTP0次/强制重启计数器\n"
+            "  + 重新执行存活探测"
+        ),
+        "en": (
+            "/reset-phantom\n"
+            "  Manually reset PhantomGuard counters.\n"
+            "  Use when PhantomGuard causes false positives or disrupts a normal session.\n"
+            "  Resets: phantom/self-correction-loop/stale-cache/zero-HTTP/hard-restart counters\n"
+            "  + Re-runs liveness probe"
         ),
     },
 })

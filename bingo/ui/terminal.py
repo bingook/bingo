@@ -257,6 +257,19 @@ class BingoTerminal:
         # 네트워크 환경 (VPN 감지 결과 캐싱)
         self._net_env: dict = {}
         self._detect_network_env()
+        # v3.5.3: Phantom Guard liveness probe — 네트워크 환경 확인 후 즉시 실행
+        self._pg_liveness_ok: bool = True  # 기본값: 정상 (probe 실패 시 False)
+        try:
+            if self._phantom_guard is not None:
+                import threading as _thr
+                def _run_liveness():
+                    _lr = self._phantom_guard.run_liveness_probe()  # type: ignore[union-attr]
+                    self._pg_liveness_ok = _lr.ok
+                _t = _thr.Thread(target=_run_liveness, daemon=True)
+                _t.start()
+                _t.join(timeout=6.0)  # 최대 6초 대기 (non-blocking)
+        except Exception:
+            pass
         # /retry 용 마지막 실행 결과 캐시
         self._last_exec_result: str = ""
         # 현재 세션에서 실제 확인된 항목 (이전 세션 carry-over 구분용)
@@ -280,7 +293,8 @@ class BingoTerminal:
         self._loop_block_consecutive: int = 0  # v3.2.91: LOOP_BLOCK 연속 차단 카운터 (무한사이클 방지)
         self._ilr_consecutive: int = 0         # v3.2.94: INFINITE_LOOP_RISK 전용 연속 카운터
         self._ilr_override: bool = False       # v3.2.94: ILR 3회 연속 차단 후 override 허용 플래그
-        # v3.5.2: Phantom Mode Guard (팬텀 모드 / 구캐시 / 타겟오인 / 자기수정루프 차단)
+        # v3.5.3: Phantom Mode Guard v2 (팬텀 모드 / 구캐시 / 타겟오인 / 자기수정루프 /
+        #         liveness probe / HTTP0건 차단 / hard session restart)
         try:
             from ..core.phantom_guard import PhantomGuard as _PhantomGuard
             _pg_lang = getattr(self.config, "lang", "ko") if hasattr(self, "config") else "ko"
@@ -290,6 +304,9 @@ class BingoTerminal:
                 phantom_limit=2,
                 correction_limit=3,
                 cache_reuse_limit=2,
+                hard_restart_threshold=3,
+                enable_liveness_probe=True,
+                enable_zero_http_guard=True,
             )
         except Exception:
             self._phantom_guard = None  # type: ignore[assignment]
@@ -3127,6 +3144,8 @@ class BingoTerminal:
             self._cmd_hitl(arg)
         elif name == "/orch":
             self._cmd_orch(arg)
+        elif name == "/reset-phantom":
+            self._cmd_reset_phantom()
         else:
             self._warn(self.s["cmd_unknown"].format(name=name))
 
@@ -6294,6 +6313,7 @@ class BingoTerminal:
                             "SELF_LOOP": self.s.get("phantom_self_loop_blocked", "⛔ 자기수정 루프 차단"),
                             "STALE_CACHE": self.s.get("phantom_stale_cache_blocked", "⛔ 구캐시 차단"),
                             "TARGET_MISMATCH": self.s.get("phantom_target_mismatch", "⚠️ 타겟 오인 경고"),
+                            "ZERO_HTTP_CLAIM": self.s.get("phantom_zero_http_blocked", "⛔ HTTP 0건 주장 차단"),
                         }
                         _pg_label = _pg_label_map.get(_pg_reason, "⚠️ PhantomGuard")
                         self.console.print(f"\n[bold red]{_pg_label}[/bold red]")
@@ -6301,6 +6321,21 @@ class BingoTerminal:
                             Message(role="user", content=_pg_result.inject_message)
                         )
                         if _pg_result.blocked:
+                            # ── v3.5.3: Hard Session Restart 확인 ──────────────
+                            if self._phantom_guard.hard_restarter.should_hard_restart:
+                                _hr_msg = self._phantom_guard.hard_restarter.hard_restart_msg(
+                                    self._phantom_guard.session_target, _pg_lang
+                                )
+                                _hr_label = self.s.get("phantom_hard_restart", "🔄 하드 세션 재시작")
+                                self.console.print(f"\n[bold red]{_hr_label}[/bold red]\n{_hr_msg}")
+                                # 히스토리 초기화 (시스템 메시지만 보존)
+                                self.history = [m for m in self.history if m.role == "system"]
+                                self.history.append(
+                                    Message(role="user", content=_hr_msg)
+                                )
+                                self._phantom_guard.hard_restarter.do_restart()
+                                self._phantom_guard.reset_counters()
+                            # ── 재시도 ─────────────────────────────────────────
                             from ..models.registry import ModelRegistry as _MR_pg
                             _mc_pg = self.config.get_active_model_config()
                             if _mc_pg:
@@ -9954,3 +9989,42 @@ class BingoTerminal:
             "  /orch log\n"
             "  /orch report"
         )
+
+    # ── /reset-phantom ────────────────────────────────────────────
+    def _cmd_reset_phantom(self) -> None:
+        """/reset-phantom  — PhantomGuard 카운터 수동 초기화 (v3.5.3).
+
+        팬텀 모드 탐지 카운터, 자기수정 루프 카운터, 구캐시 히트 카운터,
+        HTTP 0건 차단 카운터, Hard Restart 카운터를 모두 0으로 초기화합니다.
+        팬텀 가드가 오탐하거나 정상 세션을 방해할 때 사용하세요.
+        """
+        if self._phantom_guard is None:
+            self._warn(self.s.get("phantom_guard_not_active",
+                "PhantomGuard가 비활성화 상태입니다. (초기화 실패)"))
+            return
+
+        self._phantom_guard.reset_counters()
+        self._phantom_guard.reset_counters()  # 두 번 호출해 ZeroHttpClaimGuard도 포함
+
+        # Liveness re-probe
+        _lr = self._phantom_guard.run_liveness_probe()
+        self._pg_liveness_ok = _lr.ok
+
+        # 상태 출력
+        _title = self.s.get("phantom_reset_title", "✅ PhantomGuard 카운터 초기화 완료")
+        _live_str = self.s.get("phantom_liveness_ok", "도구 Liveness: ✅ 정상") if _lr.ok else \
+                    self.s.get("phantom_liveness_fail", "도구 Liveness: ⚠️ 실패 — 네트워크 확인 필요")
+        _target = self._phantom_guard.session_target or "(타겟 미설정)"
+
+        self.console.print(
+            f"\n[bold green]{_title}[/bold green]\n"
+            f"  [cyan]{self.s.get('phantom_reset_target', '세션 타겟')}[/cyan]: {_target}\n"
+            f"  {_live_str}\n"
+            f"  [dim]{self.s.get('phantom_reset_note', '모든 팬텀 가드 카운터가 0으로 초기화되었습니다.')}[/dim]\n"
+        )
+
+        # Liveness 실패 시 경고
+        if not _lr.ok:
+            _liveness_banner = self._phantom_guard.liveness_banner()
+            if _liveness_banner:
+                self.console.print(f"[bold yellow]{_liveness_banner}[/bold yellow]")

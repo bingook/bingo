@@ -280,6 +280,19 @@ class BingoTerminal:
         self._loop_block_consecutive: int = 0  # v3.2.91: LOOP_BLOCK 연속 차단 카운터 (무한사이클 방지)
         self._ilr_consecutive: int = 0         # v3.2.94: INFINITE_LOOP_RISK 전용 연속 카운터
         self._ilr_override: bool = False       # v3.2.94: ILR 3회 연속 차단 후 override 허용 플래그
+        # v3.5.2: Phantom Mode Guard (팬텀 모드 / 구캐시 / 타겟오인 / 자기수정루프 차단)
+        try:
+            from ..core.phantom_guard import PhantomGuard as _PhantomGuard
+            _pg_lang = getattr(self.config, "lang", "ko") if hasattr(self, "config") else "ko"
+            self._phantom_guard: "_PhantomGuard | None" = _PhantomGuard(
+                session_target=getattr(self.config, "target", "") if hasattr(self, "config") else "",
+                lang=_pg_lang,
+                phantom_limit=2,
+                correction_limit=3,
+                cache_reuse_limit=2,
+            )
+        except Exception:
+            self._phantom_guard = None  # type: ignore[assignment]
         # 도메인별 메모리 모듈 (target_memory)
         try:
             from ..core.target_memory import load as _tm_load, save as _tm_save, \
@@ -1872,6 +1885,13 @@ class BingoTerminal:
                 self._stuck_count = 0
                 self._recent_results = []
                 self._mvvs_loop_count = 0  # v3.2.87: MVVS 카운터 리셋
+                # v3.5.2: PhantomGuard 타겟 동기화 + 카운터 초기화
+                if self._phantom_guard is not None:
+                    try:
+                        self._phantom_guard.update_target(new_target)
+                        self._phantom_guard.reset_counters()
+                    except Exception:
+                        pass
                 # ── v2.9.2: 새 타겟 전환 시 대화 히스토리에서 이전 CMS/그누보드
                 #    관련 메시지가 AI를 오염시키지 않도록 히스토리 트리밍
                 #    (마지막 4턴만 유지하여 과거 컨텍스트 제거)
@@ -6251,6 +6271,53 @@ class BingoTerminal:
 
             _no_code_retry = 0  # 코드 있으면 카운터 리셋
 
+            # ── v3.5.2: Phantom Guard — 코드 실행 전 팬텀 모드 / 구캐시 / 자기수정루프 탐지 ──
+            if self._phantom_guard is not None:
+                try:
+                    _pg_target = self._agent_state.get("target", "") or getattr(self.config, "target", "")
+                    if _pg_target and _pg_target != self._phantom_guard.session_target:
+                        self._phantom_guard.update_target(_pg_target)
+                    _pg_lang = getattr(self.config, "lang", "ko")
+                    self._phantom_guard.lang = _pg_lang
+                    # 코드 블록 추출 (정규식)
+                    import re as _pgre
+                    _pg_codes = "\n".join(_pgre.findall(r"```(?:python|bash|sh)?\n(.*?)```", current_response, _pgre.DOTALL))
+                    _pg_result = self._phantom_guard.check_response(
+                        response_text=current_response,
+                        code_text=_pg_codes,
+                        exec_output="",
+                    )
+                    if _pg_result.inject_message:
+                        _pg_reason = _pg_result.block_reason
+                        _pg_label_map = {
+                            "PHANTOM": self.s.get("phantom_mode_blocked", "⛔ 팬텀 모드 차단"),
+                            "SELF_LOOP": self.s.get("phantom_self_loop_blocked", "⛔ 자기수정 루프 차단"),
+                            "STALE_CACHE": self.s.get("phantom_stale_cache_blocked", "⛔ 구캐시 차단"),
+                            "TARGET_MISMATCH": self.s.get("phantom_target_mismatch", "⚠️ 타겟 오인 경고"),
+                        }
+                        _pg_label = _pg_label_map.get(_pg_reason, "⚠️ PhantomGuard")
+                        self.console.print(f"\n[bold red]{_pg_label}[/bold red]")
+                        self.history.append(
+                            Message(role="user", content=_pg_result.inject_message)
+                        )
+                        if _pg_result.blocked:
+                            from ..models.registry import ModelRegistry as _MR_pg
+                            _mc_pg = self.config.get_active_model_config()
+                            if _mc_pg:
+                                _m_pg = _MR_pg.build(_mc_pg)
+                                _pg_retry_label = self.s.get("phantom_retrying", "⛔ 팬텀 모드 → 실제 HTTP 코드 재요청 중...")
+                                self.console.print(f"\n[bold red]{_pg_retry_label}[/bold red]")
+                                current_response = self._stream_response(
+                                    _m_pg.chat_stream(self._build_messages(""))
+                                )
+                                if current_response:
+                                    self.history.append(
+                                        Message(role="assistant", content=current_response)
+                                    )
+                            continue
+                except Exception:
+                    pass  # PhantomGuard 오류는 실행 차단하지 않음
+
             # 코드 실행
             results_text = self._run_code_blocks(current_response, _loaded_skills)
 
@@ -6261,6 +6328,44 @@ class BingoTerminal:
             #       있고, 두 값의 차이가 ≥ 100 이면 SQLi로 직행.
             import re as _szr
             _combined_out = "\n".join(results_text) if results_text else ""
+
+            # ── v3.5.2: Phantom Guard (실행 결과 검사) — 구캐시 / 팬텀 재검사 ──
+            if self._phantom_guard is not None and results_text:
+                try:
+                    import re as _pgre2
+                    _pg_codes2 = "\n".join(_pgre2.findall(r"```(?:python|bash|sh)?\n(.*?)```", current_response, _pgre2.DOTALL))
+                    _pg_result2 = self._phantom_guard.check_response(
+                        response_text="",
+                        code_text=_pg_codes2,
+                        exec_output=_combined_out,
+                    )
+                    if _pg_result2.blocked and _pg_result2.inject_message:
+                        _pg_label2 = self.s.get(
+                            "phantom_stale_cache_blocked" if _pg_result2.block_reason == "STALE_CACHE"
+                            else "phantom_mode_blocked",
+                            "⛔ PhantomGuard (실행결과)"
+                        )
+                        self.console.print(f"\n[bold red]{_pg_label2}[/bold red]")
+                        self.history.append(
+                            Message(role="user", content=_pg_result2.inject_message)
+                        )
+                        from ..models.registry import ModelRegistry as _MR_pg2
+                        _mc_pg2 = self.config.get_active_model_config()
+                        if _mc_pg2:
+                            _m_pg2 = _MR_pg2.build(_mc_pg2)
+                            _pg_retry2 = self.s.get("phantom_retrying", "⛔ 구캐시 차단 → 신선 스캔 재요청...")
+                            self.console.print(f"\n[bold red]{_pg_retry2}[/bold red]")
+                            current_response = self._stream_response(
+                                _m_pg2.chat_stream(self._build_messages(""))
+                            )
+                            if current_response:
+                                self.history.append(
+                                    Message(role="assistant", content=current_response)
+                                )
+                        continue
+                except Exception:
+                    pass
+
             _size_diff_pats = [
                 # "34853 vs 34889" / "size=34853, inject=35117" 등
                 r'(\d{4,})\s*[Bb]?\s*(?:vs|→|->|versus|normal[^\d]*)\s*(\d{4,})\s*[Bb]?',

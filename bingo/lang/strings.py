@@ -4722,6 +4722,56 @@ _STRINGS.update({
         "zh": "📌 黑板已更新: {key} = {value}",
         "en": "📌 Blackboard updated: {key} = {value}",
     },
+
+    # ── v3.5.2: Phantom Guard ─────────────────────────────────────────────
+    "phantom_mode_blocked": {
+        "ko": "⛔ 팬텀 모드 차단 — 도구 재활성화 강제",
+        "zh": "⛔ 幻影模式阻断 — 强制重新激活工具",
+        "en": "⛔ Phantom Mode Blocked — Forcing Tool Reactivation",
+    },
+    "phantom_self_loop_blocked": {
+        "ko": "⛔ 자기수정 루프 차단 — 직접 HTTP 실행 강제",
+        "zh": "⛔ 自我修正循环阻断 — 强制直接HTTP执行",
+        "en": "⛔ Self-Correction Loop Blocked — Forcing Direct HTTP Execution",
+    },
+    "phantom_stale_cache_blocked": {
+        "ko": "⛔ 구캐시 차단 — 신선 스캔 강제",
+        "zh": "⛔ 缓存阻断 — 强制新鲜扫描",
+        "en": "⛔ Stale Cache Blocked — Forcing Fresh Scan",
+    },
+    "phantom_target_mismatch": {
+        "ko": "⚠️ 타겟 오인 경고 — 세션 타겟 재확인",
+        "zh": "⚠️ 目标混淆警告 — 重新确认会话目标",
+        "en": "⚠️ Target Mismatch Warning — Reconfirm Session Target",
+    },
+    "phantom_retrying": {
+        "ko": "⛔ 팬텀 모드 차단 → 실제 HTTP 코드 재요청 중...",
+        "zh": "⛔ 幻影模式阻断 → 重新请求真实HTTP代码...",
+        "en": "⛔ Phantom Mode Blocked → Requesting Real HTTP Code...",
+    },
+    "phantom_guard_note": {
+        "ko": (
+            "v3.5.2 팬텀가드: 팬텀모드·구캐시·타겟오인·자기수정루프 4종 차단.\n"
+            "  - 팬텀 모드 (도구 비활성화 2회 연속) → 즉시 차단 + 재시도\n"
+            "  - 구캐시 (ScanResult-*.json 2회 이상 재사용) → 차단 + 신선스캔\n"
+            "  - 타겟 오인 (다른 도메인 감지) → 경고 주입\n"
+            "  - 자기수정 루프 (3회 연속) → 강제 직접 HTTP 실행"
+        ),
+        "zh": (
+            "v3.5.2 幻影防护: 拦截幻影模式·旧缓存·目标混淆·自我修正循环4种问题.\n"
+            "  - 幻影模式 (工具连续禁用2次) → 立即拦截+重试\n"
+            "  - 旧缓存 (ScanResult-*.json复用≥2次) → 拦截+新鲜扫描\n"
+            "  - 目标混淆 (检测到其他域名) → 注入警告\n"
+            "  - 自我修正循环 (连续3次) → 强制直接HTTP执行"
+        ),
+        "en": (
+            "v3.5.2 PhantomGuard: Blocks phantom mode, stale cache, target mismatch, self-correction loops.\n"
+            "  - Phantom mode (tools disabled 2x consecutive) → immediate block + retry\n"
+            "  - Stale cache (ScanResult-*.json reused 2+x) → block + fresh scan\n"
+            "  - Target mismatch (other domain detected) → warning injection\n"
+            "  - Self-correction loop (3x consecutive) → force direct HTTP execution"
+        ),
+    },
 })
 
 

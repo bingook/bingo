@@ -4985,6 +4985,17 @@ _STRINGS.update({
             "→ These are NOT real API responses. Test against the actual API server."
         ),
     },
+    # ── v3.5.11: Ctrl+C / 오케스트레이터 중단 관련 ──────────────────────────
+    "orch_ctrlc_stopped": {
+        "ko": "⏹ 오케스트레이터 중단됨 — 다음 단계를 선택하세요",
+        "zh": "⏹ 编排器已停止 — 请选择下一步",
+        "en": "⏹ Orchestrator stopped — choose next step",
+    },
+    "ctrlc_cancel_hint": {
+        "ko": "(입력 취소 — 다시 입력하거나 Ctrl+C 한 번 더 누르면 종료)",
+        "zh": "(输入已取消 — 重新输入或再按一次 Ctrl+C 退出)",
+        "en": "(Input cancelled — type again or press Ctrl+C once more to quit)",
+    },
 })
 
 

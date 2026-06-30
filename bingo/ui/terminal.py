@@ -466,6 +466,15 @@ class BingoTerminal:
 
         # Ctrl+C → 에이전트 루프 안전 중단 (프로그램 종료 아님)
         def _sigint_handler(sig, frame):
+            # ★ /orch 모드: 백그라운드 오케스트레이터 스레드도 함께 중단
+            try:
+                from ..orchestrator.engine import global_orchestrator as _g_orch_sig
+                _orch_sig = _g_orch_sig()
+                if _orch_sig and _orch_sig.running:
+                    _orch_sig.stop()
+            except Exception:
+                pass
+
             if self._agent_stop_flag.is_set():
                 # 두 번 누르면 완전 종료
                 # (stderr 사용 — Live/Rich 컨텍스트와 충돌 없음)
@@ -651,6 +660,20 @@ class BingoTerminal:
                 _ctrl_c_count = 0  # 입력 성공 시 카운터 초기화
             except KeyboardInterrupt:
                 _ctrl_c_count += 1
+                _lang = getattr(self.config, "lang", "en")
+
+                # ★ /orch 모드: 백그라운드 오케스트레이터를 중단하고 힌트 선택 표시
+                _orch_eng_ref = None
+                _orch_was_running = False
+                try:
+                    from ..orchestrator.engine import global_orchestrator as _g_orch_cl
+                    _orch_eng_ref = _g_orch_cl()
+                    _orch_was_running = bool(_orch_eng_ref and _orch_eng_ref.running)
+                    if _orch_was_running:
+                        _orch_eng_ref.stop()  # stop_evt 설정 → 백그라운드 루프 탈출
+                except Exception:
+                    pass
+
                 if _ctrl_c_count >= 2:
                     # 연속 2회 Ctrl+C → 진짜 종료
                     self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
@@ -661,14 +684,25 @@ class BingoTerminal:
                     # ── v3.2.72: 세션 로그 자동 파싱 → target_memory 저장 ──
                     self._auto_parse_session_to_memory()
                     break
+
                 # 1회 Ctrl+C → 입력 취소, 루프 계속
-                _lang = getattr(self.config, "lang", "en")
-                _cancel_msg = {
-                    "ko": "(입력 취소 — 다시 입력하거나 Ctrl+C 한 번 더 누르면 종료)",
-                    "zh": "(输入已取消 — 重新输入或再按一次 Ctrl+C 退出)",
-                    "en": "(Input cancelled — type again or press Ctrl+C once more to quit)",
-                }.get(_lang, "(Ctrl+C again to quit)")
+                _cancel_msg = self.s.get("ctrlc_cancel_hint", "(Ctrl+C again to quit)")
                 self.console.print(f"\n[{THEME['dim']}]{_cancel_msg}[/]")
+
+                # ★ 오케스트레이터가 실행 중이었다면: 스레드 종료 대기 → 힌트 선택 표시
+                if _orch_was_running and _orch_eng_ref is not None:
+                    _orch_stopped_msg = self.s.get("orch_ctrlc_stopped", "⏹ Orchestrator stopped")
+                    self.console.print(f"\n[{THEME['warn']}]{_orch_stopped_msg}[/]")
+                    # 백그라운드 스레드가 현재 send_fn 마무리할 때까지 최대 3초 대기
+                    _thr = getattr(_orch_eng_ref, "_thread", None)
+                    if _thr and _thr.is_alive():
+                        _thr.join(timeout=3.0)
+                    # 스레드가 종료된 경우에만 메인 스레드에서 힌트 표시
+                    if not (_thr and _thr.is_alive()):
+                        self._agent_stop_flag.clear()  # 힌트 LLM 스트리밍을 위해 플래그 리셋
+                        self._suggest_next_steps()
+                        self._agent_stop_flag.clear()  # 힌트 도중 Ctrl+C 후 재리셋
+                    _ctrl_c_count = 0  # 힌트 표시 후 카운터 초기화 (다음 Ctrl+C가 force quit 안 되도록)
                 continue
             except EOFError:
                 self.console.print(f"\n[{THEME['primary']}]{self.s['goodbye']}[/]")
@@ -8075,8 +8109,16 @@ class BingoTerminal:
         """Agent 루프 중단/보고서 생성 후 AI가 현황 요약 + 선택지 3~5개를 제시한다.
         사용자가 번호를 입력하면 해당 선택지를 자동으로 실행 (인터랙티브).
         히스토리를 오염시키지 않고 전용 패널로 시각적으로 구분해서 표시.
+
+        ★ thread-safety: prompt_toolkit은 메인 스레드에서만 동작.
+           백그라운드(오케스트레이터) 스레드에서 호출되면 조기 종료.
         """
         import re
+        import threading as _thr_mod
+        if _thr_mod.current_thread() is not _thr_mod.main_thread():
+            # 백그라운드 스레드에서 호출됨 — 안전하지 않으므로 즉시 반환
+            return
+
         from ..models.registry import ModelRegistry
         from rich.panel import Panel as _Panel
         from rich.rule import Rule
@@ -8250,10 +8292,14 @@ class BingoTerminal:
                 self.console.print()
 
                 # ── /dev/tty 직접 입력 (prompt_toolkit 충돌 방지) ─────────
+                # ★ SIG_DFL 일시 복원: readline() 블로킹 중 Ctrl+C가 KeyboardInterrupt를 올리게 함
                 _tty_path = "/dev/tty"
                 import os as _os_ns
+                import signal as _sig_mod
                 raw = ""
+                _old_sigint = _sig_mod.getsignal(_sig_mod.SIGINT)
                 try:
+                    _sig_mod.signal(_sig_mod.SIGINT, _sig_mod.SIG_DFL)  # Ctrl+C → KeyboardInterrupt
                     if _os_ns.path.exists(_tty_path):
                         with open(_tty_path, "r") as _tr, open(_tty_path, "w") as _tw:
                             _tw.write("  > ")
@@ -8263,6 +8309,12 @@ class BingoTerminal:
                         raw = input("  > ").strip()
                 except (EOFError, KeyboardInterrupt, OSError):
                     return
+                finally:
+                    # 커스텀 핸들러 복원
+                    try:
+                        _sig_mod.signal(_sig_mod.SIGINT, _old_sigint)
+                    except Exception:
+                        pass
 
                 if raw == "0" or raw == "":
                     self.console.print(

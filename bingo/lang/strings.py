@@ -835,6 +835,13 @@ _STRINGS.update({
     "vpn_ip_blocked":        {"ko": "⛔ 출구 IP 차단됨 — VPN 서버 변경 후 재시도 권장",
                               "zh": "⛔ 出口IP已被封锁 — 建议更换VPN服务器后重试",
                               "en": "⛔ Exit IP blocked — switch VPN server and retry"},
+    # ── v3.5.16: macOS VPN DNS 스푸핑 경고 (198.18.x.x 가상 IP) ────
+    "vpn_dns_spoof_warn":    {"ko": "⚠️  macOS VPN DNS 스푸핑 감지 (198.18.x.x) — DNS가 가짜 IP를 반환합니다. 포트스캔 결과는 무효입니다. VPN을 끄고 다시 스캔하세요.",
+                              "zh": "⚠️  检测到 macOS VPN DNS 欺骗 (198.18.x.x) — DNS 返回的是虚假IP，端口扫描结果无效。请关闭 VPN 后重新扫描。",
+                              "en": "⚠️  macOS VPN DNS spoof detected (198.18.x.x) — DNS returns FAKE IPs. Port scan results are INVALID. Disable VPN and re-scan."},
+    "vpn_dns_spoof_exec":    {"ko": "🛑 [VPN DNS 스푸핑] 실행 결과에 198.18.x.x 가상 IP가 {count}개 감지되었습니다.\n   이 IP들은 실제 서버 IP가 아닌 VPN 프록시 주소입니다.\n   → VPN을 비활성화하고 다시 스캔해야 합니다.",
+                              "zh": "🛑 [VPN DNS欺骗] 在执行结果中检测到 {count} 个 198.18.x.x 虚假IP。\n   这些不是真实服务器IP，而是VPN代理地址。\n   → 请关闭VPN后重新扫描。",
+                              "en": "🛑 [VPN DNS Spoof] {count} virtual IPs (198.18.x.x) detected in execution output.\n   These are NOT real server IPs — they are VPN proxy addresses.\n   → Disable VPN and re-scan."},
     # ── 웹쉘 / Gnuboard5 ────────────────────────────────────────────
     "webshell_phase_start":  {"ko": "🐚 웹쉘 획득 단계 시작",
                               "zh": "🐚 开始 Webshell 获取阶段",

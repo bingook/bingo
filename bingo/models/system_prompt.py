@@ -538,6 +538,17 @@ VPN / IP environment (from NETWORK_ENV section):
   - IP blocked: exit IP banned → tell user to switch VPN server
   - No VPN: be conservative, longer delays
 
+⚠️  CRITICAL — macOS VPN DNS SPOOFING (198.18.0.0/15 virtual IPs):
+  When macOS VPN is active, ALL DNS lookups may return 198.18.x.x or 198.19.x.x virtual IPs.
+  These are NOT real server IPs — they are the VPN proxy's internal routing addresses.
+  SYMPTOMS: socket.getaddrinfo() or DNS queries return 198.18.x.x for all domains.
+  IMPACT:   Port scans on 198.18.x.x are scanning the VPN proxy itself → ALL ports appear OPEN (FAKE).
+  RULE:     If DNS resolution returns 198.18.x.x IPs while VPN is active:
+              1. Do NOT perform port scans on these IPs — results are 100% invalid
+              2. Do NOT analyze these IPs as real servers
+              3. IMMEDIATELY tell the user: "VPN DNS spoofing detected. Disable VPN and retry."
+              4. Suggest: use `dig @8.8.8.8 domain` or Shodan to get real IPs
+
 307 / All-redirect detection:
   - ALL requests returning same 307 = IP blocked OR auth required
   - Do NOT inject into 307 responses — oracle is always invalid

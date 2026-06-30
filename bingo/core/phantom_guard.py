@@ -1219,3 +1219,76 @@ class HardSessionRestarter:
             ),
         }
         return msgs.get(lang, msgs["en"])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VpnVirtualIpGuard — 198.18.x.x / 198.19.x.x VPN 가상 IP 오염 감지
+# ══════════════════════════════════════════════════════════════════════════════
+import re as _re_vpn
+
+_VPN_VIRTUAL_IP_RE = _re_vpn.compile(r'\b198\.1[89]\.\d{1,3}\.\d{1,3}\b')
+
+# 임계값: 실행 결과에 이 개수 이상의 고유 198.18/19.x.x 가 있으면 스푸핑으로 판정
+_VPN_VIRTUAL_IP_THRESHOLD = 4
+
+
+def check_vpn_virtual_ip_contamination(
+    exec_output: str,
+    lang: str = "zh",
+) -> "str | None":
+    """
+    실행 결과에 198.18.x.x / 198.19.x.x 가상 IP가 다수 포함되면 경고 문자열 반환.
+
+    macOS VPN 환경: DNS 쿼리가 198.18.0.0/15 가상 IP로 응답 → 포트 스캔이
+    실제 서버가 아닌 VPN 프록시를 스캔 → 모든 포트 open (완전한 가짜 결과).
+
+    Args:
+        exec_output: Python 스크립트 실행 stdout
+        lang: 경고 메시지 언어 ("ko"/"zh"/"en")
+
+    Returns:
+        경고 메시지 문자열 (오염 감지 시), 또는 None
+    """
+    hits = _VPN_VIRTUAL_IP_RE.findall(exec_output)
+    if not hits:
+        return None
+    unique_ips = set(hits)
+    if len(unique_ips) < _VPN_VIRTUAL_IP_THRESHOLD:
+        return None
+
+    msgs = {
+        "zh": (
+            f"⚠️  [VPN DNS欺骗] 检测到 {len(unique_ips)} 个 198.18.x.x 虚拟IP\n\n"
+            "【根本原因】macOS VPN 将所有 DNS 查询解析为 198.18.0.0/15 虚拟IP段，\n"
+            "这些不是真实服务器IP，而是VPN代理的本地虚拟地址。\n\n"
+            "【结果影响】端口扫描实际上是在扫描VPN代理本身，\n"
+            "所有端口显示为'开放'属于误报，扫描结果完全无效。\n\n"
+            "【解决方案】\n"
+            "  1. 关闭VPN后重新执行DNS解析和端口扫描\n"
+            "  2. 或使用 dig @8.8.8.8 <域名> 获取真实IP后手动扫描\n"
+            "  3. 或通过真实IP直接访问（需先通过其他途径获取）"
+        ),
+        "ko": (
+            f"⚠️  [VPN DNS 스푸핑] {len(unique_ips)}개 198.18.x.x 가상 IP 감지\n\n"
+            "【근본 원인】macOS VPN이 모든 DNS 쿼리를 198.18.0.0/15 가상 IP로 반환합니다.\n"
+            "이 IP들은 실제 서버 IP가 아닌 VPN 프록시의 가상 주소입니다.\n\n"
+            "【영향】포트 스캔이 실제로는 VPN 프록시를 스캔한 것이며,\n"
+            "모든 포트가 'open'으로 나오는 것은 전부 오탐입니다. 결과 무효.\n\n"
+            "【해결책】\n"
+            "  1. VPN을 끄고 DNS 조회 + 포트 스캔 재실행\n"
+            "  2. 또는 dig @8.8.8.8 <도메인> 으로 실제 IP 직접 조회\n"
+            "  3. 또는 실제 IP를 다른 방법으로 확인 후 직접 접근"
+        ),
+        "en": (
+            f"⚠️  [VPN DNS Spoofing] {len(unique_ips)} virtual IPs (198.18.x.x) detected\n\n"
+            "ROOT CAUSE: macOS VPN resolves all DNS queries to 198.18.0.0/15 virtual IPs.\n"
+            "These are NOT real server IPs — they are the VPN proxy's virtual addresses.\n\n"
+            "IMPACT: Port scan actually scanned the VPN proxy itself.\n"
+            "All ports showing 'open' are false positives. Results are INVALID.\n\n"
+            "FIX:\n"
+            "  1. Disable VPN and re-run DNS resolution + port scan\n"
+            "  2. Or use: dig @8.8.8.8 <domain> to get real IPs\n"
+            "  3. Or obtain real IPs through other means (Shodan, crt.sh, etc.)"
+        ),
+    }
+    return msgs.get(lang, msgs["en"])

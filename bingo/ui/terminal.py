@@ -362,15 +362,26 @@ class BingoTerminal:
                 ("172.31.", "VPN"),
                 ("100.64.", "Tailscale/VPN"),("100.65.", "Tailscale/VPN"),
                 ("100.100.", "Tailscale/VPN"),
+                # ★ v3.5.16: 198.18.0.0/15 — macOS VPN 가상 IP 대역
+                # DNS가 이 대역을 반환하면 실제 서버 IP가 아님 (VPN 프록시 경유)
+                # → 포트스캔 결과 전체 무효화 필요
+                ("198.18.", "macOS-VPN-virtual"),
+                ("198.19.", "macOS-VPN-virtual"),
             ]
             # 192.168.x.x 는 일반 공유기도 포함이므로 별도 체크
             _is_192 = _lip.startswith("192.168.")
 
             vpn_hint = ""
+            _is_macos_vpn_virtual = False
             for prefix, label in _vpn_ranges:
                 if _lip.startswith(prefix):
                     vpn_hint = label
+                    if "macOS-VPN-virtual" in label:
+                        _is_macos_vpn_virtual = True
                     break
+
+            # ★ v3.5.16: 198.18.x.x 감지 → net_env에 플래그 기록
+            result["macos_vpn_dns_spoof"] = _is_macos_vpn_virtual
 
             # 외부 API로 실제 출구 IP 조회 (여러 서비스 폴백)
             _public_ip = ""
@@ -454,7 +465,15 @@ class BingoTerminal:
 
         if vpn:
             _txt = self.s.get("vpn_on_banner", "🔒 VPN ON  Exit IP: {ip}  {country}  (local: {local})")
-            return f"[{THEME['warn']}]{_txt.format(ip=pub, country=country, local=local)}[/]"
+            _line = f"[{THEME['warn']}]{_txt.format(ip=pub, country=country, local=local)}[/]"
+            # ★ v3.5.16: 198.18.x.x 가상 IP 경고
+            if env.get("macos_vpn_dns_spoof"):
+                _warn = self.s.get(
+                    "vpn_dns_spoof_warn",
+                    "⚠️  VPN DNS spoof detected (198.18.x.x) — DNS lookups return FAKE IPs. Port scan results will be INVALID. Disable VPN for real IPs."
+                )
+                _line += f"\n[{THEME['error']}]{_warn}[/]"
+            return _line
         elif pub:
             _txt = self.s.get("vpn_off_banner", "🌐 Public IP: {ip}  {country}")
             return f"[{THEME['dim']}]{_txt.format(ip=pub, country=country)}[/]"
@@ -6451,6 +6470,42 @@ class BingoTerminal:
             #       있고, 두 값의 차이가 ≥ 100 이면 SQLi로 직행.
             import re as _szr
             _combined_out = "\n".join(results_text) if results_text else ""
+
+            # ── v3.5.16: VPN 가상 IP(198.18.x.x) 오염 감지 ──────────────────
+            # macOS VPN 환경에서 DNS가 198.18.0.0/15 가상 IP 반환 → 포트스캔 결과 전부 가짜
+            if _combined_out and results_text:
+                try:
+                    from ..core.phantom_guard import check_vpn_virtual_ip_contamination as _vpn_check
+                    _pg_lang_v = getattr(self.config, "lang", "zh")
+                    _vpn_warn = _vpn_check(_combined_out, lang=_pg_lang_v)
+                    if _vpn_warn:
+                        self.console.print(f"\n[bold yellow]{_vpn_warn}[/bold yellow]")
+                        # AI에게도 경고 주입 — 가짜 결과를 분석하지 않도록
+                        self.history.append(Message(
+                            role="user",
+                            content=(
+                                "[VPN_DNS_SPOOF_DETECTED]\n"
+                                + _vpn_warn
+                                + "\n\nACTION REQUIRED: Do NOT analyze or proceed with these "
+                                + "198.18.x.x virtual IPs. They are fake — the VPN proxy "
+                                + "accepted all connections. Inform the user to disable VPN "
+                                + "and re-run the scan to get real server IPs."
+                            )
+                        ))
+                        from ..models.registry import ModelRegistry as _MR_vpn
+                        _mc_vpn = self.config.get_active_model_config()
+                        if _mc_vpn:
+                            _m_vpn = _MR_vpn.build(_mc_vpn)
+                            current_response = self._stream_response(
+                                _m_vpn.chat_stream(self._build_messages(""))
+                            )
+                            if current_response:
+                                self.history.append(
+                                    Message(role="assistant", content=current_response)
+                                )
+                        continue
+                except Exception:
+                    pass  # VPN 감지 오류는 실행 차단하지 않음
 
             # ── v3.5.2: Phantom Guard (실행 결과 검사) — 구캐시 / 팬텀 재검사 ──
             if self._phantom_guard is not None and results_text:

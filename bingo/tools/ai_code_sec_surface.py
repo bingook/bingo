@@ -81,6 +81,12 @@ from urllib.parse import urljoin
 import requests
 from requests.exceptions import RequestException
 
+# VerificationEngine integration — Zero-Hallucination policy
+# VERIFIED must only come from VerificationEngine.verify(), never hardcoded.
+from bingo.redteam.verification import (
+    VerificationEngine, Evidence, VulnType, Verdict
+)
+
 
 # ── Secret patterns ───────────────────────────────────────────────────────────
 
@@ -284,6 +290,15 @@ class AICodeSecSurfaceScanner:
       3. Business logic surface
       4. AI coding artifacts (placeholder creds, debug routes, CORS *)
       5. Config/credential file exposure
+
+    Zero-Hallucination Policy (v3.5.1 fix):
+      evidence_level assignment rules — enforced via VerificationEngine:
+        VERIFIED   — VerificationEngine.verify() returned Verdict.VERIFIED
+                     (file HTTP-200 + meaningful content confirmed by engine)
+        LIKELY     — Regex/pattern matched in an accessible HTTP response body
+                     (secret regex hit, CORS header present, pattern in body)
+        INFERRED   — Endpoint exists (any 2xx/4xx) or version leaked without CVE confirm
+        AI_ANALYSIS— Path guessed from AI patterns, no HTTP confirmation
     """
 
     HEADERS = {
@@ -300,6 +315,8 @@ class AICodeSecSurfaceScanner:
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
         self.session.verify = False
+        # VerificationEngine — every VERIFIED label must pass through this
+        self._verifier = VerificationEngine(min_reproductions=1)
 
     # ── Public entry ──────────────────────────────────────────────────────────
 
@@ -337,7 +354,8 @@ class AICodeSecSurfaceScanner:
                     "AI boilerplate default, allows any origin to read credentialed responses"
                 ),
                 url=self.target,
-                evidence_level="VERIFIED",
+                # Zero-Hallucination: header presence confirmed (LIKELY), not exploit confirmed
+                evidence_level="LIKELY",
                 severity="high",
                 curl_poc=(
                     f'curl -sk "{self.target}" '
@@ -416,7 +434,11 @@ class AICodeSecSurfaceScanner:
                 continue
 
             preview = raw_val[:8] + "***" if len(raw_val) > 8 else raw_val[:4] + "***"
-            ev = "VERIFIED" if sev == "critical" else "LIKELY"
+
+            # Zero-Hallucination policy: regex match alone is NEVER VERIFIED.
+            # Regex match in an accessible HTTP body → LIKELY at most.
+            # VERIFIED requires VerificationEngine confirmation (P5 deterministic check).
+            ev = "LIKELY"
 
             result.findings.append(AICodeSecFinding(
                 finding_type="secret",
@@ -540,6 +562,11 @@ class AICodeSecSurfaceScanner:
             # Scan exposed config for secrets
             self._scan_body_for_secrets(result, body, url)
 
+            # Zero-Hallucination policy: route through VerificationEngine.
+            # Config file HTTP-200 + meaningful content is the one case that can
+            # legitimately reach VERIFIED — but only if the engine confirms it.
+            ev = self._verify_config_exposure(url, body)
+
             result.findings.append(AICodeSecFinding(
                 finding_type="config_exposure",
                 category="secrets",
@@ -549,7 +576,7 @@ class AICodeSecSurfaceScanner:
                     f"AI scaffold commonly exposes this file type"
                 ),
                 url=url,
-                evidence_level="VERIFIED",
+                evidence_level=ev,
                 severity=sev,
                 curl_poc=f'curl -sk "{url}"',
                 remediation=(
@@ -559,6 +586,32 @@ class AICodeSecSurfaceScanner:
                 ),
             ))
             result.config_exposures += 1
+
+    def _verify_config_exposure(self, url: str, body: str) -> str:
+        """
+        Zero-Hallucination gate: run VerificationEngine on an exposed config file.
+        Returns evidence_level string ("VERIFIED" | "LIKELY" | "INFERRED").
+        VERIFIED is only returned when the engine's 5-principle pipeline confirms it.
+        """
+        try:
+            evidence = Evidence(
+                vuln_type=VulnType.INFORMATION_DISCLOSURE,
+                payload=url,
+                request_raw=f"GET {url} HTTP/1.1",
+                response_raw=body[:2000],
+                baseline_response="",
+                reproduction_count=1,
+                notes=f"Config file accessible at {url}",
+            )
+            vr = self._verifier.verify(evidence)
+            if vr.verdict == Verdict.VERIFIED:
+                return "VERIFIED"
+            if vr.verdict == Verdict.LIKELY:
+                return "LIKELY"
+            return "INFERRED"
+        except Exception:
+            # Fallback: never claim VERIFIED on engine error
+            return "LIKELY"
 
     # ── Business logic paths ──────────────────────────────────────────────────
 
@@ -571,16 +624,20 @@ class AICodeSecSurfaceScanner:
             if resp.status_code not in (200, 201, 400, 401, 403, 405, 422):
                 continue
 
-            # 403/401 still interesting — endpoint exists, just auth-protected
+            # Zero-Hallucination policy: business logic endpoint reachable ≠ VERIFIED exploit.
+            # Endpoint existence (any HTTP response) → INFERRED
+            # Endpoint returns 200 → LIKELY (accessible but exploit not confirmed)
+            # VERIFIED requires VerificationEngine confirmation of an actual exploit.
             ev = "LIKELY" if resp.status_code in (200, 201) else "INFERRED"
             sev = "medium" if resp.status_code in (200, 201) else "low"
 
-            # Check for unauthenticated 200 on admin/sensitive endpoints
+            # Unauthenticated 200 on admin endpoint → elevated severity but still LIKELY
+            # (accessible does not mean exploitable without confirmed exploit payload)
             if "admin" in path and resp.status_code == 200:
                 sev = "high"
-                ev = "VERIFIED"
+                ev = "LIKELY"  # NOT VERIFIED — exploit not confirmed by VerificationEngine
 
-            # Look for role/admin fields in JSON response
+            # Role/admin field in JSON response → elevated severity but still LIKELY
             if resp.status_code == 200:
                 try:
                     body_preview = resp.text[:2000]
@@ -588,7 +645,7 @@ class AICodeSecSurfaceScanner:
                         if "mass_assign" in label.lower() or "admin" in label.lower():
                             if pattern.search(body_preview):
                                 sev = "high"
-                                ev = "VERIFIED"
+                                ev = "LIKELY"  # NOT VERIFIED — pattern match ≠ exploit
                 except Exception:
                     pass
 
@@ -658,9 +715,12 @@ class AICodeSecSurfaceScanner:
         critical_count = sum(1 for f in result.findings if f.severity == "critical")
         high_count = sum(1 for f in result.findings if f.severity == "high")
 
+        # Zero-Hallucination policy: aggregate evidence_level reflects the highest
+        # level present among findings — never promoted beyond what findings contain.
+        # "VERIFIED" in ev_set means at least one finding passed VerificationEngine.
         if result.secrets_found > 0 or result.env_file_exposed or critical_count > 0:
             result.severity = "critical"
-            result.evidence_level = "VERIFIED"
+            result.evidence_level = "VERIFIED" if "VERIFIED" in ev_set else "LIKELY"
         elif result.actuator_exposed or high_count >= 2:
             result.severity = "high"
             result.evidence_level = "VERIFIED" if "VERIFIED" in ev_set else "LIKELY"

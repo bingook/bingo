@@ -1477,6 +1477,19 @@ _STRINGS.update({
     "aicsec_no_finding":        {"ko": "✓ AICodeSecSurface: 심각한 AI 코드 보안 이슈 미발견",
                                   "zh": "✓ AICodeSecSurface: 未发现严重 AI 代码安全问题",
                                   "en": "✓ AICodeSecSurface: No critical AI code security issues found"},
+    # v3.5.1 Zero-Hallucination fix — VerificationEngine integration keys
+    "aicsec_ev_policy":         {"ko": "🔒 증거등급 정책 — VERIFIED:검증엔진통과 | LIKELY:HTTP응답패턴매칭 | INFERRED:엔드포인트존재확인 | AI_ANALYSIS:AI패턴추론",
+                                  "zh": "🔒 证据级别策略 — VERIFIED:验证引擎确认 | LIKELY:HTTP响应模式匹配 | INFERRED:端点存在确认 | AI_ANALYSIS:AI模式推断",
+                                  "en": "🔒 Evidence policy — VERIFIED:VerificationEngine passed | LIKELY:HTTP response pattern match | INFERRED:endpoint confirmed | AI_ANALYSIS:AI inference"},
+    "aicsec_not_verified":      {"ko": "⚠️  패턴 매칭만으로는 VERIFIED 불가 — VerificationEngine 5원칙 검증 필요",
+                                  "zh": "⚠️  仅凭模式匹配无法标记 VERIFIED — 需要通过 VerificationEngine 5原则验证",
+                                  "en": "⚠️  Pattern match alone cannot produce VERIFIED — requires VerificationEngine 5-principle check"},
+    "aicsec_biz_logic_note":    {"ko": "ℹ️  비즈니스 로직 경로는 최대 LIKELY — 실제 익스플로잇 성공 전까지 VERIFIED 불가",
+                                  "zh": "ℹ️  业务逻辑路径最高为 LIKELY — 实际利用成功前不得标记 VERIFIED",
+                                  "en": "ℹ️  Business logic paths capped at LIKELY — VERIFIED requires confirmed exploit"},
+    "aicsec_hallucination_fix": {"ko": "✅ v3.5.1 환각 수정: AICodeSecSurface가 VerificationEngine을 우회하여 AI 추론을 직접 VERIFIED로 표기하던 버그 수정",
+                                  "zh": "✅ v3.5.1 幻觉修复: 修复 AICodeSecSurface 绕过 VerificationEngine、将 AI 推理直接标记为 VERIFIED 的漏洞",
+                                  "en": "✅ v3.5.1 hallucination fix: AICodeSecSurface no longer bypasses VerificationEngine to mark AI inferences as VERIFIED"},
 
     # ── CSPT + Cloudflare WAF Bypass + Multi-ContentType Fuzzing (CSPTWafBypass) ──
     "cspt_scan_start":          {"ko": "🌐 AI 판단: CSPT+CloudflareWAF우회+다중ContentType 탐지 활성화 — SPA프레임워크/WAF/OAuth 자동 스캔",

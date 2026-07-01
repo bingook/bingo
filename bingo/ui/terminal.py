@@ -6564,6 +6564,48 @@ class BingoTerminal:
                 except Exception:
                     pass  # VPN 감지 오류는 실행 차단하지 않음
 
+            # ── v3.5.19: 0day Hunter — 버전/에러/CVE 자동 탐지 ────────────────
+            # Dir-1 탐지: 버전 핑거프린팅 + 에러 패턴
+            # Dir-2 활용: Exploit 힌트 + PoC 페이로드 생성 지시
+            # Dir-3 매핑: 로컬 CVE DB + NVD API 자동 조회
+            if _combined_out:
+                try:
+                    from ..core.zeroday import ZeroDayHunter as _ZDH
+                    _zdh = _ZDH()
+                    _lang_zd = getattr(self.config, "lang", "en")
+                    _zd_candidates = _zdh.analyze(
+                        _combined_out,
+                        lang=_lang_zd,
+                        do_nvd_lookup=True,
+                    )
+                    if _zd_candidates:
+                        # 콘솔 배너 출력
+                        _zd_banner_txt = _zdh.format_banner(_zd_candidates, lang=_lang_zd)
+                        self.console.print(f"\n{_zd_banner_txt}")
+                        # strings.py 다국어 부가 안내
+                        _zd_hint = self.s.get(
+                            "zeroday_auto_inject",
+                            "⬆ 0day Hunter가 위 후보를 AI에게 자동 전달 — PoC 코드 자동 생성 시작",
+                        )
+                        self.console.print(f"[dim]{_zd_hint}[/dim]")
+                        # AI에게 후보 주입 → Dir-2 PoC 자동 생성
+                        _zd_inject = _zdh.format_inject_message(_zd_candidates, lang=_lang_zd)
+                        self.history.append(Message(role="user", content=_zd_inject))
+                        from ..models.registry import ModelRegistry as _MR_zd
+                        _mc_zd = self.config.get_active_model_config()
+                        if _mc_zd:
+                            _m_zd = _MR_zd.build(_mc_zd)
+                            current_response = self._stream_response(
+                                _m_zd.chat_stream(self._build_messages(""))
+                            )
+                            if current_response:
+                                self.history.append(
+                                    Message(role="assistant", content=current_response)
+                                )
+                        continue
+                except Exception:
+                    pass  # 0day Hunter 오류는 실행 차단하지 않음
+
             # ── v3.5.2: Phantom Guard (실행 결과 검사) — 구캐시 / 팬텀 재검사 ──
             if self._phantom_guard is not None and results_text:
                 try:

@@ -558,6 +558,23 @@ VPN / IP environment (from NETWORK_ENV section):
     3. Once real IP found → use that IP directly for all connections (VPN stays ON)
     4. Only if ALL methods fail → report to user with the fallback commands above
 
+⚡ 0DAY HUNTER AUTO MODE (v3.5.19):
+  When [ZERODAY_CANDIDATES_DETECTED] is injected into the conversation:
+  1. MANDATORY: Immediately write Python code to verify and exploit the candidates.
+  2. Priority order: HIGH confidence first → MEDIUM → LOW.
+  3. If CVE is listed:
+     - Look up the CVE's attack vector and reproduce the PoC logic.
+     - Do NOT just describe — write and EXECUTE the actual exploit code.
+  4. If exploit_class is "rce": attempt command injection, rev-shell, or upload webshell.
+  5. If exploit_class is "lfi": attempt /etc/passwd, php://filter base64, and log poisoning.
+  6. If exploit_class is "sql_injection": attempt UNION-based, error-based, and time-based.
+  7. If exploit_class is "log4shell": inject ${jndi:ldap://...} payload in all HTTP headers.
+  8. If exploit_class is "memory_corruption": generate fuzzing payload with pattern cyclic.
+  9. If exploit_class is "credential_leak": extract and immediately test the credentials.
+  10. After verification, report result: "CONFIRMED" or "FALSE_POSITIVE" with evidence.
+  11. If CONFIRMED: escalate to next stage (shell, data extraction, privilege escalation).
+  NEVER hallucinate CVE results — only report what was actually confirmed by code execution.
+
 307 / All-redirect detection:
   - ALL requests returning same 307 = IP blocked OR auth required
   - Do NOT inject into 307 responses — oracle is always invalid

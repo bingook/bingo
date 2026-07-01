@@ -4990,6 +4990,42 @@ _STRINGS.update({
             "→ These are NOT real API responses. Test against the actual API server."
         ),
     },
+    # ── v3.5.19: 0day Hunter 다국어 키 ──────────────────────────────────────
+    "zeroday_auto_inject": {
+        "ko": "⬆ 0day Hunter가 위 후보를 AI에게 자동 전달 — PoC 코드 자동 생성 시작",
+        "zh": "⬆ 0day Hunter 已将上述候选项自动传递给 AI — 开始自动生成 PoC 代码",
+        "en": "⬆ 0day Hunter auto-forwarded candidates to AI — PoC code generation starting",
+    },
+    "zeroday_high_found": {
+        "ko": "🔴 [0day] HIGH 신뢰도 {n}개 탐지 — 즉시 PoC 생성",
+        "zh": "🔴 [0day] 检测到 {n} 个高置信度候选项 — 立即生成 PoC",
+        "en": "🔴 [0day] {n} HIGH-confidence candidates — generating PoC now",
+    },
+    "zeroday_cve_matched": {
+        "ko": "🛑 CVE 매핑: {software} {version} → {cves}",
+        "zh": "🛑 CVE 映射: {software} {version} → {cves}",
+        "en": "🛑 CVE match: {software} {version} → {cves}",
+    },
+    "zeroday_no_candidate": {
+        "ko": "✅ [0day] 이 실행 결과에서 0day 후보 없음",
+        "zh": "✅ [0day] 此次执行结果中未发现 0day 候选项",
+        "en": "✅ [0day] No 0day candidates in this execution output",
+    },
+    "zeroday_exploit_hint": {
+        "ko": "💡 Exploit 힌트: {hint}",
+        "zh": "💡 利用提示: {hint}",
+        "en": "💡 Exploit hint: {hint}",
+    },
+    "zeroday_nvd_lookup": {
+        "ko": "🔍 NVD API로 {software} {version} CVE 조회 중...",
+        "zh": "🔍 通过 NVD API 查询 {software} {version} CVE...",
+        "en": "🔍 Looking up CVEs for {software} {version} via NVD API...",
+    },
+    "zeroday_session_reset": {
+        "ko": "🔄 0day Hunter 세션 초기화 (새 타겟)",
+        "zh": "🔄 0day Hunter 会话已重置 (新目标)",
+        "en": "🔄 0day Hunter session reset (new target)",
+    },
     # ── v3.5.11: Ctrl+C / 오케스트레이터 중단 관련 ──────────────────────────
     "orch_ctrlc_stopped": {
         "ko": "⏹ 오케스트레이터 중단됨 — 다음 단계를 선택하세요",

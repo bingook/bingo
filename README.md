@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.19-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -1317,6 +1317,74 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 ---
 
+## New in v3.5.19 — 0day Hunter: Automatic Vulnerability Detection & Exploitation
+
+> **Every pentest execution output is now automatically analyzed for 0day / N-day candidates.**
+> No manual triggers required — the engine runs silently after each AI code execution.
+
+### 🎯 Three Directions, One Engine
+
+#### Direction 1 — Detection
+- **Version fingerprinting**: 35+ software patterns (Apache, nginx, PHP, OpenSSL, Log4j, Confluence, Spring, GitLab, WebLogic, Grafana, etc.)
+- **Error pattern detection**: 33 patterns covering SQL errors, LFI indicators, RCE traces, JNDI references, path disclosure, credential leaks, ASAN crashes, and more
+- Confidence scoring: `HIGH` / `MEDIUM` / `LOW` with session-level deduplication (same candidate reported only once per session)
+
+#### Direction 2 — Exploitation (Automatic PoC Generation)
+- After detection, immediately injects candidates into AI context with exploit class labels
+- Per-class exploit hints:
+  - `rce` → reverse shell payloads, command injection
+  - `lfi` → `/etc/passwd`, `php://filter`, log poisoning
+  - `sql_injection` → error-based, union, blind, time-based
+  - `log4shell` → `${jndi:ldap://...}` payload in all HTTP headers
+  - `memory_corruption` → cyclic pattern fuzzing, ASAN analysis
+  - `credential_leak` → immediate credential testing
+  - `ssrf` → cloud metadata endpoint probing (`169.254.169.254`)
+- AI generates and executes Python PoC code automatically
+
+#### Direction 3 — Utilization (CVE Mapping + Intelligence)
+- **Local CVE DB**: Instant offline mapping for 35 high-impact (software, version) pairs:
+  - `Apache 2.4.49` → `CVE-2021-41773` (path traversal / RCE)
+  - `Log4j 2.14.x` → `CVE-2021-44228` (Log4Shell)
+  - `Confluence 7.13-7.16` → `CVE-2022-26134` (OGNL RCE)
+  - `Spring Boot 2.6-2.7` → `CVE-2022-22965` (Spring4Shell)
+  - `OpenSSL 1.0.1` → `CVE-2014-0160` (Heartbleed)
+  - `GitLab 11.9-12.0` → `CVE-2021-22205` (RCE via ExifTool)
+  - `Grafana 8.x` → `CVE-2021-43798` (path traversal)
+  - And 28 more...
+- **Live NVD API**: Queries `services.nvd.nist.gov/rest/json/cves/2.0` for HIGH-severity CVEs when local DB misses (timeout: 6s, graceful fallback)
+- Direct NVD link: `https://nvd.nist.gov/vuln/search/results?query=CVE-XXXX-XXXXX`
+
+### 🔄 Automatic Flow
+
+```
+AI executes code
+      ↓
+Execution output captured
+      ↓
+ZeroDayHunter.analyze() → Dir-1 Detection
+      ↓
+CVE lookup → Dir-3 Utilization
+      ↓
+[ZERODAY_CANDIDATES_DETECTED] injected into AI history
+      ↓
+AI generates PoC code → Dir-2 Exploitation
+      ↓
+PoC executed → result reported → next stage
+```
+
+### 🖥️ Console Output Example
+
+```
+🎯 0day Hunter: 🔴 HIGH×2 | 🟡 MED×1 — Apache HTTPD 2.4.49 (CVE-2021-41773), lfi_passwd, PHP 7.4.3
+⬆ 0day Hunter auto-forwarded candidates to AI — PoC code generation starting
+```
+
+### Zero Configuration
+
+No setup required. Works in all modes: chat, orch, batch, headless.
+
+---
+
 ## New in v3.5.0 — LLM Orchestrator: Programmable Attack Pipeline
 
 > **The core limitation of v3.4.x:** six phases were hardcoded, fifteen branches were fixed.
@@ -1760,6 +1828,10 @@ No manual configuration needed — activates silently and retries.
 
 | Version | Summary |
 |---------|---------|
+| v3.5.19 | **0day Hunter** — Dir-1 Detection (version fingerprinting + 33 error patterns), Dir-2 Exploitation (per-class PoC payload hints + auto code generation), Dir-3 Utilization (local CVE DB for 35 software × known versions + live NVD API lookup, Shodan fallback hint); activates automatically in every chat execution output; 7 new multilingual i18n keys (KO/ZH/EN); new `bingo/core/zeroday.py` |
+| v3.5.18 | macOS VPN banner wording fix (auto-resolve timing accuracy) |
+| v3.5.17 | **macOS VPN DNS Spoof Auto-Fix** — auto-resolves real IPs via `dig @8.8.8.8` / `nslookup` while keeping VPN active; injects real IPs into AI context; falls back to Shodan/crt.sh hints if DNS resolution fails; LLM explicitly forbidden from asking user to disable VPN |
+| v3.5.16 | macOS VPN `198.18.x.x` virtual IP detection + warning injection |
 | v3.5.0 | **LLM Orchestrator** — dynamic attack pipeline replacing hardcoded 6-phase flow; decision LLM runs in isolated mini-session; full Blackboard/AttackChain/HitlGate integration; `/orch start\|stop\|status\|log\|report`; custom goal + step limit; structured JSON decision format with confidence scoring; 12 new multilingual i18n keys (KO/ZH/EN) |
 | v3.4.0 | **Intelligence Platform Upgrade** — 8 new modules: role-based testing (5 built-in roles + YAML custom), vulnerability manager (SQLite CRUD, severity/status tracking), project blackboard (cross-session target facts), YAML external tool recipes (nmap/sqlmap/ffuf/nuclei/subfinder), local knowledge base (markdown injection), batch execution (multi-target queue), attack chain tracker (auto-classify steps), Human-in-the-loop gate (dangerous action confirmation); 33 new multilingual i18n keys (KO/ZH/EN) |
 | v3.3.5 | **tgtylab 6-Layer Model Bypass** — Identity Lock (§0), Thinking Redirect (§1), Example Flood 50+ patterns (§2), Operational Context framing (§3), Forbidden Language list (§4), Pre-tool-call hook with refusal detection + context re-injection (§5); new `bingo/hooks/` module; works across DeepSeek/Claude/GPT/GLM/Qwen; 10 new i18n keys |
@@ -1870,7 +1942,7 @@ MIT © 2026 bingook
 
 *The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, role-based testing, vuln manager, target memory, and LLM Orchestrator.*
 
-[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.19-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

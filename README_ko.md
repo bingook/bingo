@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.19-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -1264,6 +1264,73 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 ---
 
+## v3.5.19 신규 기능 — 0day Hunter: 자동 취약점 탐지 & 익스플로잇
+
+> **모든 침투 테스트 실행 출력이 자동으로 0day / N-day 후보 분석 대상이 됩니다.**
+> 별도 명령어 불필요 — AI 코드 실행 후 자동으로 분석이 시작됩니다.
+
+### 🎯 3가지 방향, 하나의 엔진
+
+#### 방향 1 — 탐지 (Detection)
+- **버전 핑거프린팅**: Apache, nginx, PHP, OpenSSL, Log4j, Confluence, Spring, GitLab, WebLogic, Grafana 등 35개+ 소프트웨어 패턴
+- **에러 패턴 탐지**: SQL 에러, LFI 지시자, RCE 흔적, JNDI 참조, 경로 노출, 자격증명 유출, ASAN 크래시 등 33개 패턴
+- 신뢰도 점수: `HIGH` / `MEDIUM` / `LOW`, 세션 내 중복 보고 방지
+
+#### 방향 2 — 익스플로잇 (Exploitation, 자동 PoC 생성)
+- 탐지 후 즉시 후보를 AI 컨텍스트에 주입, 익스플로잇 클래스 레이블 포함
+- 클래스별 힌트:
+  - `rce` → 역방향 쉘, 명령어 주입
+  - `lfi` → `/etc/passwd`, `php://filter`, 로그 포이즈닝
+  - `sql_injection` → 에러기반, 유니온, 블라인드, 타임기반
+  - `log4shell` → 모든 HTTP 헤더에 `${jndi:ldap://...}` 페이로드
+  - `memory_corruption` → cyclic 패턴 퍼징, ASAN 분석
+  - `credential_leak` → 발견된 자격증명 즉시 테스트
+- AI가 Python PoC 코드를 자동으로 생성·실행
+
+#### 방향 3 — 활용 (Utilization, CVE 매핑 + 인텔리전스)
+- **로컬 CVE DB**: 네트워크 없어도 즉시 매핑되는 35개 고위험 (소프트웨어, 버전) 쌍:
+  - `Apache 2.4.49` → `CVE-2021-41773` (경로 순회 / RCE)
+  - `Log4j 2.14.x` → `CVE-2021-44228` (Log4Shell)
+  - `Confluence 7.13-7.16` → `CVE-2022-26134` (OGNL RCE)
+  - `Spring Boot 2.6-2.7` → `CVE-2022-22965` (Spring4Shell)
+  - `OpenSSL 1.0.1` → `CVE-2014-0160` (Heartbleed)
+  - `GitLab 11.9-12.0` → `CVE-2021-22205` (RCE via ExifTool)
+  - `Grafana 8.x` → `CVE-2021-43798` (경로 순회)
+  - 그 외 28개...
+- **NVD API 실시간 조회**: 로컬 DB 누락 시 `services.nvd.nist.gov`에서 HIGH 심각도 CVE 검색 (타임아웃: 6초, 실패 시 graceful fallback)
+- NVD 직접 링크 자동 포함
+
+### 🔄 자동 흐름
+
+```
+AI 코드 실행
+      ↓
+실행 출력 캡처
+      ↓
+ZeroDayHunter.analyze() → 방향1 탐지
+      ↓
+CVE 조회 → 방향3 활용
+      ↓
+[ZERODAY_CANDIDATES_DETECTED] AI 히스토리에 주입
+      ↓
+AI가 PoC 코드 생성 → 방향2 익스플로잇
+      ↓
+PoC 실행 → 결과 보고 → 다음 단계
+```
+
+### 🖥️ 콘솔 출력 예시
+
+```
+🎯 0day Hunter: 🔴 HIGH×2 | 🟡 MED×1 — Apache HTTPD 2.4.49 (CVE-2021-41773), lfi_passwd, PHP 7.4.3
+⬆ 0day Hunter가 위 후보를 AI에게 자동 전달 — PoC 코드 자동 생성 시작
+```
+
+### 설정 불필요
+
+별도 설정 없이 작동. 채팅 모드, `/orch`, 배치, 헤드리스 모드 전부 지원.
+
+---
+
 ## v3.5.0 신규 기능 — LLM 오케스트레이터: 프로그래밍 가능한 공격 파이프라인
 
 > **v3.4.x의 핵심 한계:** 6개 페이즈는 하드코딩되고, 15개 분기는 고정되어 있었습니다.
@@ -1702,6 +1769,10 @@ headers = {
 
 | 버전 | 요약 |
 |------|------|
+| v3.5.19 | **0day Hunter** — Dir-1 탐지(버전 핑거프린팅 35개+ 소프트웨어 패턴 + 33개 에러 패턴), Dir-2 익스플로잇(클래스별 PoC 페이로드 힌트 + AI 자동 코드 생성), Dir-3 활용(로컬 CVE DB 35개 (소프트웨어, 버전) 쌍 + NVD API 실시간 조회 + Shodan 폴백 힌트); 채팅 모드 모든 실행 출력에서 자동 작동; 신규 다국어 i18n 키 7개 (KO/ZH/EN); 신규 `bingo/core/zeroday.py` |
+| v3.5.18 | macOS VPN 배너 문구 수정 (자동 조회 시점 정확성) |
+| v3.5.17 | **macOS VPN DNS 스푸핑 자동 해결** — VPN 유지한 채 `dig @8.8.8.8` / `nslookup`으로 실제 IP 자동 조회; AI에 실제 IP 주입; DNS 조회 실패 시 Shodan/crt.sh 힌트 폴백; LLM이 VPN 끄라고 요청 금지 |
+| v3.5.16 | macOS VPN `198.18.x.x` 가상 IP 탐지 + 경고 주입 |
 | v3.5.0 | **LLM 오케스트레이터** — 하드코딩된 6 페이즈 흐름을 대체하는 동적 공격 파이프라인; 결정 LLM은 격리된 미니 세션으로 실행; 블랙보드/공격체인/HITL 완전 연동; `/orch start\|stop\|status\|log\|report`; 커스텀 목표 + 스텝 제한; 신뢰도 점수 포함 구조화된 JSON 결정 형식; 신규 다국어 i18n 키 12개 (KO/ZH/EN) |
 | v3.4.0 | **인텔리전스 플랫폼 대폭 업그레이드** — 8개 신규 모듈: 역할 기반 테스팅 (5개 내장 역할 + YAML 커스텀), 취약점 관리자 (SQLite CRUD, 심각도/상태 추적), 프로젝트 블랙보드 (세션 간 타겟 사실), YAML 외부 도구 레시피 (nmap/sqlmap/ffuf/nuclei/subfinder), 로컬 지식 베이스 (마크다운 주입), 배치 실행 (다중 타겟 큐), 공격 체인 트래커 (단계 자동 분류), HITL 게이트 (위험 작업 확인); 신규 다국어 i18n 키 33개 (KO/ZH/EN) |
 | v3.3.5 | **tgtylab 6레이어 모델 우회** — 정체성 고정(§0), 사고 전환(§1), 예시 홍수 50개+(§2), 운영 컨텍스트 프레이밍(§3), 금지 언어 목록(§4), 사전 도구 훅 + 거부 감지/컨텍스트 재주입(§5); 신규 `bingo/hooks/` 모듈; DeepSeek/Claude/GPT/GLM/Qwen 전 지원; i18n 키 10개 추가 |
@@ -1764,7 +1835,7 @@ MIT © 2026 bingook
 
 *내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 역할 기반 테스팅 · 취약점 관리 · 타겟 메모리 · LLM 오케스트레이터 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.5.0-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.19-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

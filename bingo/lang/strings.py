@@ -5026,6 +5026,47 @@ _STRINGS.update({
         "zh": "🔄 0day Hunter 会话已重置 (新目标)",
         "en": "🔄 0day Hunter session reset (new target)",
     },
+    # ── v3.5.20: 0day Hunter exploit 모듈 연동 키 ───────────────────────────
+    "zeroday_micollab_hint": {
+        "ko": "🎯 Mitel MiCollab exploit 모듈 사용 가능: from bingo.core.exploits.mitel_micollab import MitelMiCollabExploit",
+        "zh": "🎯 Mitel MiCollab exploit 模块可用: from bingo.core.exploits.mitel_micollab import MitelMiCollabExploit",
+        "en": "🎯 Mitel MiCollab exploit module available: from bingo.core.exploits.mitel_micollab import MitelMiCollabExploit",
+    },
+    "zeroday_wappd_hint": {
+        "ko": "📡 MediaTek wappd (CVE-2024-20017) exploit: from bingo.core.exploits.mediatek_wappd import WappdExploit",
+        "zh": "📡 MediaTek wappd (CVE-2024-20017) exploit: from bingo.core.exploits.mediatek_wappd import WappdExploit",
+        "en": "📡 MediaTek wappd (CVE-2024-20017) exploit: from bingo.core.exploits.mediatek_wappd import WappdExploit",
+    },
+    "zeroday_webp_hint": {
+        "ko": "🖼️  libwebp (CVE-2023-4863) exploit: from bingo.core.exploits.webp_cve2023_4863 import WebPExploit",
+        "zh": "🖼️  libwebp (CVE-2023-4863) exploit: from bingo.core.exploits.webp_cve2023_4863 import WebPExploit",
+        "en": "🖼️  libwebp (CVE-2023-4863) exploit: from bingo.core.exploits.webp_cve2023_4863 import WebPExploit",
+    },
+    "zeroday_glibc_hint": {
+        "ko": "⚡ glibc LPE (CVE-2023-4911 Looney Tunables): from bingo.core.exploits.glibc_tunables import GlibcTunablesExploit",
+        "zh": "⚡ glibc LPE (CVE-2023-4911 Looney Tunables): from bingo.core.exploits.glibc_tunables import GlibcTunablesExploit",
+        "en": "⚡ glibc LPE (CVE-2023-4911 Looney Tunables): from bingo.core.exploits.glibc_tunables import GlibcTunablesExploit",
+    },
+    "zeroday_chain_running": {
+        "ko": "🔗 0day 체인 공격 자동 실행 중...",
+        "zh": "🔗 自动执行 0day 链式攻击...",
+        "en": "🔗 Running 0day exploit chain automatically...",
+    },
+    "zeroday_lpe_detected": {
+        "ko": "🔴 LOCAL PRIVILEGE ESCALATION 탐지! glibc {version} — CVE-2023-4911",
+        "zh": "🔴 检测到本地权限提升! glibc {version} — CVE-2023-4911",
+        "en": "🔴 LOCAL PRIVILEGE ESCALATION detected! glibc {version} — CVE-2023-4911",
+    },
+    "zeroday_heap_overflow": {
+        "ko": "🟡 힙 버퍼 오버플로우 탐지! {software} {version} — {cve}",
+        "zh": "🟡 检测到堆缓冲区溢出! {software} {version} — {cve}",
+        "en": "🟡 Heap buffer overflow detected! {software} {version} — {cve}",
+    },
+    "zeroday_udp_overflow": {
+        "ko": "📡 UDP 스택 오버플로우 탐지! MediaTek wappd — CVE-2024-20017",
+        "zh": "📡 检测到 UDP 栈溢出! MediaTek wappd — CVE-2024-20017",
+        "en": "📡 UDP stack overflow detected! MediaTek wappd — CVE-2024-20017",
+    },
     # ── v3.5.11: Ctrl+C / 오케스트레이터 중단 관련 ──────────────────────────
     "orch_ctrlc_stopped": {
         "ko": "⏹ 오케스트레이터 중단됨 — 다음 단계를 선택하세요",

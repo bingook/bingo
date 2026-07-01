@@ -6564,9 +6564,9 @@ class BingoTerminal:
                 except Exception:
                     pass  # VPN 감지 오류는 실행 차단하지 않음
 
-            # ── v3.5.19: 0day Hunter — 버전/에러/CVE 자동 탐지 ────────────────
-            # Dir-1 탐지: 버전 핑거프린팅 + 에러 패턴
-            # Dir-2 활용: Exploit 힌트 + PoC 페이로드 생성 지시
+            # ── v3.5.20: 0day Hunter — 버전/에러/CVE 자동 탐지 + exploit 자동 연동 ─
+            # Dir-1 탐지: 버전 핑거프린팅 + 에러 패턴 (Mitel/wappd/libwebp/glibc 포함)
+            # Dir-2 활용: Exploit 힌트 + PoC 페이로드 생성 지시 + exploit 모듈 직접 실행
             # Dir-3 매핑: 로컬 CVE DB + NVD API 자동 조회
             if _combined_out:
                 try:
@@ -6588,6 +6588,53 @@ class BingoTerminal:
                             "⬆ 0day Hunter가 위 후보를 AI에게 자동 전달 — PoC 코드 자동 생성 시작",
                         )
                         self.console.print(f"[dim]{_zd_hint}[/dim]")
+
+                        # ── v3.5.20: exploit 클래스별 자동 모듈 연동 ──────────────
+                        _exploit_cls_set = {c.exploit_class for c in _zd_candidates}
+
+                        # Mitel MiCollab 자동 탐지 + 연동 힌트 출력
+                        if "micollab_bypass" in _exploit_cls_set or any(
+                            "CVE-2024-35286" in c.cves or "CVE-2024-41713" in c.cves
+                            for c in _zd_candidates
+                        ):
+                            _mc_hint = self.s.get(
+                                "zeroday_micollab_hint",
+                                "🎯 Mitel MiCollab exploit 모듈 사용 가능:"
+                                " from bingo.core.exploits.mitel_micollab import MitelMiCollabExploit",
+                            )
+                            self.console.print(f"[bold red]{_mc_hint}[/bold red]")
+
+                        # MediaTek wappd 연동 힌트
+                        if "memory_corruption" in _exploit_cls_set and any(
+                            "CVE-2024-20017" in c.cves for c in _zd_candidates
+                        ):
+                            _wd_hint = self.s.get(
+                                "zeroday_wappd_hint",
+                                "📡 MediaTek wappd exploit:"
+                                " from bingo.core.exploits.mediatek_wappd import WappdExploit",
+                            )
+                            self.console.print(f"[bold yellow]{_wd_hint}[/bold yellow]")
+
+                        # libwebp 연동 힌트
+                        if any("CVE-2023-4863" in c.cves for c in _zd_candidates):
+                            _wp_hint = self.s.get(
+                                "zeroday_webp_hint",
+                                "🖼️  libwebp exploit:"
+                                " from bingo.core.exploits.webp_cve2023_4863 import WebPExploit",
+                            )
+                            self.console.print(f"[bold yellow]{_wp_hint}[/bold yellow]")
+
+                        # glibc LPE 연동 힌트
+                        if "lpe_critical" in _exploit_cls_set or any(
+                            "CVE-2023-4911" in c.cves for c in _zd_candidates
+                        ):
+                            _gl_hint = self.s.get(
+                                "zeroday_glibc_hint",
+                                "⚡ glibc LPE exploit:"
+                                " from bingo.core.exploits.glibc_tunables import GlibcTunablesExploit",
+                            )
+                            self.console.print(f"[bold red]{_gl_hint}[/bold red]")
+
                         # AI에게 후보 주입 → Dir-2 PoC 자동 생성
                         _zd_inject = _zdh.format_inject_message(_zd_candidates, lang=_lang_zd)
                         self.history.append(Message(role="user", content=_zd_inject))

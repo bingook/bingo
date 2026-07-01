@@ -1,11 +1,19 @@
 """
-0day / N-day 자동 헌팅 모듈  (v3.5.19)
+0day / N-day 자동 헌팅 모듈  (v3.5.20)
 =====================================
 3가지 방향을 채팅 모드에서 자동 실행:
 
   Dir-1 Detection   : 실행 출력에서 비정상 패턴 / 버전 / 에러 탐지
   Dir-2 Exploitation: 탐지된 후보에 PoC 페이로드 제안 (클래스별)
   Dir-3 Utilization : CVE 매핑(NVD API) + 버전 핑거프린팅 + Shodan 연동 힌트
+
+v3.5.20 추가 취약점:
+  - CVE-2024-35286 / CVE-2024-41713 — Mitel MiCollab SQLi + Auth Bypass
+  - 0day LFI — Mitel MiCollab ReconcileWizard Arbitrary File Read
+  - CVE-2024-20017 — MediaTek wappd UDP Stack Buffer Overflow
+  - CVE-2023-4863 — libwebp Huffman Table Heap Overflow (BLASTPASS)
+  - CVE-2023-4911 — glibc GLIBC_TUNABLES LPE (Looney Tunables)
+  - ZeroPath: CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301
 
 모든 네트워크 호출은 timeout=6s, try/except로 보호 — 실패해도 실행 차단 없음.
 """
@@ -61,6 +69,26 @@ _VERSION_PATTERNS: list[tuple[str, str]] = [
     (r"Weblogic[/ ]?([\d.]+)",           "Oracle WebLogic"),
     (r"JBoss[/ ]?([\d.]+)",              "JBoss"),
     (r"GlassFish[/ ]?([\d.]+)",          "GlassFish"),
+    # ── v3.5.20 추가 ──────────────────────────────────────────────────────────
+    # Mitel MiCollab (CVE-2024-35286 / CVE-2024-41713)
+    (r"MiCollab[/ ]?([\d.]+)",           "Mitel MiCollab"),
+    (r"NuPoint[/ ]?([\d.]+)",            "Mitel NuPoint"),
+    (r"npm-pwg[/ ]?([\d.]+)",            "Mitel MiCollab"),
+    # MediaTek wappd (CVE-2024-20017)
+    (r"wappd[/ ]?([\d.]+)",              "MediaTek wappd"),
+    (r"MediaTek[/ ]?MT(7622|7915|7916|7981|7986)", "MediaTek MT76xx"),
+    (r"OpenWrt[/ ]?([\d.]+)",            "OpenWrt"),
+    # libwebp (CVE-2023-4863)
+    (r"libwebp[/ ]?([\d.]+)",            "libwebp"),
+    (r"WebP[/ ]?([\d.]+)",               "libwebp"),
+    # glibc (CVE-2023-4911)
+    (r"GNU libc[/ ]?([\d.]+)",           "glibc"),
+    (r"glibc[/ ]?([\d.]+)",             "glibc"),
+    (r"GLIBC[_ ]([\d.]+)",              "glibc"),
+    # RAGFlow (CVE-2024-43035)
+    (r"RAGFlow[/ ]?([\d.]+)",            "RAGFlow"),
+    # Monaco/LogAI (ZeroPath)
+    (r"LogAI[/ ]?([\d.]+)",              "LogAI"),
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -101,6 +129,29 @@ _ERROR_PATTERNS: list[tuple[str, str, str]] = [
     (r"(secret_key|SECRET_KEY)\s*=\s*['\"][^'\"]{4,}", "secret_key",       "credential_leak"),
     (r"debug\s*=\s*true|DEBUG\s*=\s*True",          "debug_mode",          "info_disclosure"),
     (r"open_basedir|safe_mode",                      "php_config_leak",     "config_disclosure"),
+    # ── v3.5.20 추가 패턴 ────────────────────────────────────────────────────
+    # Mitel MiCollab Auth Bypass (CVE-2024-41713) — ..;/ 경로 정규화
+    (r"\.\.;/npm-admin|/npm-pwg/\.\.\;/",           "micollab_auth_bypass", "micollab_bypass"),
+    (r"Apache-Coyote|Coyote/[\d.]+",                "tomcat_coyote",        "micollab_bypass"),
+    # Mitel MiCollab SQLi (CVE-2024-35286)
+    (r"pg_sleep\(\d+\).*--\s*$",                    "micollab_sqli",        "sql_injection"),
+    (r"ReconcileWizard.*reportName",                 "micollab_lfi",         "lfi_critical"),
+    # MediaTek wappd (CVE-2024-20017)
+    (r"wappd|WAPP.{0,4}(port|7788)",               "mediatek_wappd",       "memory_corruption"),
+    (r"MT(7622|7915|7916|7981|7986).*overflow",     "mediatek_overflow",    "memory_corruption"),
+    # libwebp heap overflow (CVE-2023-4863)
+    (r"heap-buffer-overflow.*libwebp|libwebp.*ASAN","webp_heap_overflow",   "memory_corruption"),
+    (r"ReadHuffmanCodes|VP8L.*Huffman",             "webp_huffman",         "memory_corruption"),
+    (r"Segmentation fault.*dwebp|dwebp.*crash",     "webp_crash",           "memory_corruption"),
+    # glibc GLIBC_TUNABLES (CVE-2023-4911)
+    (r"GLIBC_TUNABLES.*overflow|Looney Tunables",   "glibc_tunables_lpe",   "lpe_critical"),
+    (r"_dl_set_dl_audit|link_map.*corruption",      "glibc_lpe_artifact",   "lpe_critical"),
+    # LogAI path traversal (CVE-2024-9301 — ZeroPath)
+    (r"LogAI.*path.*traversal|logai.*\.\./",        "logai_traversal",      "path_traversal"),
+    # pickle RCE (CVE-2024-48946 — ZeroPath Monaco)
+    (r"pickle\.loads.*untrusted|__reduce__.*RCE",   "pickle_rce",           "rce"),
+    # IDOR (CVE-2024-43035 — RAGFlow)
+    (r"ragflow.*IDOR|object_id.*unauthorized",      "ragflow_idor",         "idor"),
 ]
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -161,6 +212,38 @@ _LOCAL_CVE_DB: dict[tuple[str, str], list[str]] = {
     ("Jira", "8.20"):  ["CVE-2022-0540"],
     # WordPress
     ("WordPress", "5.8"):  ["CVE-2022-21661"],
+    # ── v3.5.20 추가 ──────────────────────────────────────────────────────────
+    # Mitel MiCollab (CVE-2024-35286, CVE-2024-41713)
+    ("Mitel MiCollab", "9.8"):  ["CVE-2024-35286", "CVE-2024-41713"],
+    ("Mitel MiCollab", "9.7"):  ["CVE-2024-35286", "CVE-2024-41713"],
+    ("Mitel MiCollab", "9.6"):  ["CVE-2024-35286"],
+    ("Mitel NuPoint",  "9.8"):  ["CVE-2024-35286"],
+    # MediaTek wappd (CVE-2024-20017)
+    ("MediaTek wappd", "1.0"):  ["CVE-2024-20017"],
+    ("MediaTek MT76xx","7622"): ["CVE-2024-20017"],
+    ("MediaTek MT76xx","7915"): ["CVE-2024-20017"],
+    ("MediaTek MT76xx","7916"): ["CVE-2024-20017"],
+    ("OpenWrt",        "23.0"): ["CVE-2024-20017"],
+    ("OpenWrt",        "22.0"): ["CVE-2024-20017"],
+    # libwebp (CVE-2023-4863)
+    ("libwebp", "1.3"):  ["CVE-2023-4863"],
+    ("libwebp", "1.3.1"):["CVE-2023-4863"],
+    ("libwebp", "1.3.0"):["CVE-2023-4863"],
+    ("libwebp", "1.2"):  ["CVE-2023-4863"],
+    ("libwebp", "1.1"):  ["CVE-2023-4863"],
+    ("libwebp", "1.0"):  ["CVE-2023-4863"],
+    ("libwebp", "0.6"):  ["CVE-2023-4863"],
+    ("libwebp", "0.5"):  ["CVE-2023-4863"],
+    # glibc GLIBC_TUNABLES LPE (CVE-2023-4911)
+    ("glibc", "2.38"):   ["CVE-2023-4911"],
+    ("glibc", "2.37"):   ["CVE-2023-4911"],
+    ("glibc", "2.36"):   ["CVE-2023-4911"],
+    ("glibc", "2.35"):   ["CVE-2023-4911"],
+    ("glibc", "2.34"):   ["CVE-2023-4911"],
+    # ZeroPath autonomous discoveries
+    ("RAGFlow",  "0.6"):  ["CVE-2024-43035"],   # IDOR
+    ("RAGFlow",  "0.7"):  ["CVE-2024-43035"],
+    ("LogAI",    "0.0"):  ["CVE-2024-9301"],    # Path Traversal
 }
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -185,6 +268,21 @@ _EXPLOIT_HINTS: dict[str, str] = {
     "memory_corruption": "메모리손상: ASAN 로그 분석 → 오프셋 계산 → PoC 익스플로잇 개발",
     "dos":               "DoS: 메모리 소진 페이로드 → 서비스 중단 가능성",
     "config_disclosure": "설정노출: 내부 경로/DB 연결 문자열/시크릿 키 추출",
+    # ── v3.5.20 추가 힌트 ────────────────────────────────────────────────────
+    "micollab_bypass":   (
+        "Mitel MiCollab Auth Bypass (CVE-2024-41713): "
+        "GET /npm-pwg/..;/npm-admin/ — Tomcat ..; path normalization. "
+        "from bingo.core.exploits.mitel_micollab import MitelMiCollabExploit; "
+        "MitelMiCollabExploit(target).run_full_chain()"
+    ),
+    "lpe_critical":      (
+        "🔴 LPE 확정: 로컬 권한 상승 가능. "
+        "CVE-2023-4911(glibc): GLIBC_TUNABLES 환경변수 오버플로우 → root. "
+        "from bingo.core.exploits.glibc_tunables import GlibcTunablesExploit; "
+        "GlibcTunablesExploit().detect()"
+    ),
+    "idor":              "IDOR: 오브젝트 ID 변조 → 타 사용자 데이터 접근. 순차 ID 열거 + 권한 교차 검증",
+    "pickle_rce":        "Pickle RCE: __reduce__ 메서드 오염 → os.system() 실행. 입력 신뢰 여부 확인",
 }
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -311,12 +409,22 @@ class ZeroDayHunter:
             "Apache Struts": "rce",
             "Spring Boot":   "rce",
             "Log4j":         "log4shell",
-            "GitLab":        "rce",
-            "Confluence":    "rce",
-            "Grafana":       "lfi",
-            "Oracle WebLogic": "rce",
-            "JBoss":         "rce",
-            "Jira":          "rce",
+            "GitLab":           "rce",
+            "Confluence":       "rce",
+            "Grafana":          "lfi",
+            "Oracle WebLogic":  "rce",
+            "JBoss":            "rce",
+            "Jira":             "rce",
+            # v3.5.20
+            "Mitel MiCollab":   "micollab_bypass",
+            "Mitel NuPoint":    "sql_injection",
+            "MediaTek wappd":   "memory_corruption",
+            "MediaTek MT76xx":  "memory_corruption",
+            "OpenWrt":          "memory_corruption",
+            "libwebp":          "memory_corruption",
+            "glibc":            "lpe_critical",
+            "RAGFlow":          "idor",
+            "LogAI":            "path_traversal",
         }
         return _map.get(software, "info_disclosure")
 

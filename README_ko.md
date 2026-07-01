@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.5.19-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.20-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -1264,6 +1264,50 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 ---
 
+## v3.5.20 신규 기능 — 0day Hunter v2: 5가지 실제 0day/N-day 익스플로잇 통합
+
+> **v3.5.20**은 0day Hunter에 연구 등급 취약점 5종 모듈을 추가하여 채팅 모드에서 자동으로 작동합니다.
+
+### 새로 통합된 취약점
+
+| CVE / ID | 대상 | 클래스 | PoC 모듈 |
+|---|---|---|---|
+| CVE-2024-41713 | Mitel MiCollab | 인증 우회 (`..;/` 경로 정규화) | `bingo.core.exploits.mitel_micollab` |
+| CVE-2024-35286 | Mitel MiCollab | 시간 기반 SQL 인젝션 | `bingo.core.exploits.mitel_micollab` |
+| 0day LFI | Mitel MiCollab `ReconcileWizard` | 인증 후 임의 파일 읽기 | `bingo.core.exploits.mitel_micollab` |
+| CVE-2024-20017 | MediaTek `wappd` / OpenWrt | UDP 스택 버퍼 오버플로우 → DoS/RCE | `bingo.core.exploits.mediatek_wappd` |
+| CVE-2023-4863 | libwebp (Chrome, Electron…) | Huffman 테이블 힙 오버플로우 (BLASTPASS) | `bingo.core.exploits.webp_cve2023_4863` |
+| CVE-2023-4911 | glibc ≤ 2.34 | `GLIBC_TUNABLES` LPE (Looney Tunables) | `bingo.core.exploits.glibc_tunables` |
+| CVE-2024-43035 | RAGFlow | IDOR | `zeroday.py` 힌트 |
+| CVE-2024-48946 | Monaco / Hulu 서비스 | Pickle RCE | `zeroday.py` 힌트 |
+| CVE-2024-9301 | LogAI | 경로 순회 | `zeroday.py` 힌트 |
+
+### 채팅 모드 동작 방식
+
+1. AI가 셸 명령을 생성하고 실행합니다.
+2. **Dir-1 탐지** — 실행 출력에서 모든 알려진 대상의 버전 문자열과 에러 패턴을 스캔합니다.
+3. **Dir-2 익스플로잇** — 일치하는 exploit 모듈 import 힌트가 콘솔에 출력되고, AI에게 PoC 생성 지시가 전달됩니다.
+4. **Dir-3 활용** — 로컬 CVE DB 조회 + 실시간 NVD API 조회; Shodan/Censys 힌트 주입.
+
+```python
+# Mitel MiCollab 전체 체인 수동 실행 예시
+from bingo.core.exploits.mitel_micollab import MitelMiCollabExploit
+x = MitelMiCollabExploit("https://micollab.target.com")
+print(x.run_full_chain())
+
+# MediaTek wappd 취약점 탐지 예시
+from bingo.core.exploits.mediatek_wappd import WappdExploit
+w = WappdExploit("192.168.1.1")
+print(w.detect())
+
+# glibc LPE (Looney Tunables) 탐지 예시
+from bingo.core.exploits.glibc_tunables import GlibcTunablesExploit
+g = GlibcTunablesExploit()
+print(g.detect())
+```
+
+---
+
 ## v3.5.19 신규 기능 — 0day Hunter: 자동 취약점 탐지 & 익스플로잇
 
 > **모든 침투 테스트 실행 출력이 자동으로 0day / N-day 후보 분석 대상이 됩니다.**
@@ -1769,6 +1813,7 @@ headers = {
 
 | 버전 | 요약 |
 |------|------|
+| v3.5.20 | **0day Hunter v2** — 연구 등급 0day/N-day exploit 모듈 5종: CVE-2024-41713 / CVE-2024-35286 / 0day-LFI (Mitel MiCollab), CVE-2024-20017 (MediaTek wappd UDP 오버플로우), CVE-2023-4863 (libwebp BLASTPASS 힙 오버플로우), CVE-2023-4911 (glibc Looney Tunables LPE), CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301 (ZeroPath IDOR/RCE/경로순회); `bingo/core/exploits/` PoC 모듈 4개 신규; 채팅 모드 exploit 모듈 힌트 자동 주입; 다국어 i18n 키 8개 신규 (KO/ZH/EN) |
 | v3.5.19 | **0day Hunter** — Dir-1 탐지(버전 핑거프린팅 35개+ 소프트웨어 패턴 + 33개 에러 패턴), Dir-2 익스플로잇(클래스별 PoC 페이로드 힌트 + AI 자동 코드 생성), Dir-3 활용(로컬 CVE DB 35개 (소프트웨어, 버전) 쌍 + NVD API 실시간 조회 + Shodan 폴백 힌트); 채팅 모드 모든 실행 출력에서 자동 작동; 신규 다국어 i18n 키 7개 (KO/ZH/EN); 신규 `bingo/core/zeroday.py` |
 | v3.5.18 | macOS VPN 배너 문구 수정 (자동 조회 시점 정확성) |
 | v3.5.17 | **macOS VPN DNS 스푸핑 자동 해결** — VPN 유지한 채 `dig @8.8.8.8` / `nslookup`으로 실제 IP 자동 조회; AI에 실제 IP 주입; DNS 조회 실패 시 Shodan/crt.sh 힌트 폴백; LLM이 VPN 끄라고 요청 금지 |
@@ -1835,7 +1880,7 @@ MIT © 2026 bingook
 
 *내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 역할 기반 테스팅 · 취약점 관리 · 타겟 메모리 · LLM 오케스트레이터 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.5.19-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.20-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.5.19-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.20-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -1317,6 +1317,50 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 ---
 
+## New in v3.5.20 — 0day Hunter: 5 Real-World 0day/N-day Exploits Integrated
+
+> **v3.5.20** extends 0day Hunter with five research-grade vulnerability modules that activate automatically in chat mode.
+
+### Newly integrated vulnerabilities
+
+| CVE / ID | Target | Class | PoC Module |
+|---|---|---|---|
+| CVE-2024-41713 | Mitel MiCollab | Auth Bypass (`..;/` path normalization) | `bingo.core.exploits.mitel_micollab` |
+| CVE-2024-35286 | Mitel MiCollab | Time-based SQL Injection | `bingo.core.exploits.mitel_micollab` |
+| 0day LFI | Mitel MiCollab `ReconcileWizard` | Arbitrary File Read (post-auth) | `bingo.core.exploits.mitel_micollab` |
+| CVE-2024-20017 | MediaTek `wappd` / OpenWrt | UDP Stack Buffer Overflow → DoS / RCE | `bingo.core.exploits.mediatek_wappd` |
+| CVE-2023-4863 | libwebp (Chrome, Electron…) | Huffman Table Heap Overflow (BLASTPASS) | `bingo.core.exploits.webp_cve2023_4863` |
+| CVE-2023-4911 | glibc ≤ 2.34 | `GLIBC_TUNABLES` LPE (Looney Tunables) | `bingo.core.exploits.glibc_tunables` |
+| CVE-2024-43035 | RAGFlow | IDOR | `zeroday.py` hint |
+| CVE-2024-48946 | Monaco / Hulu service | Pickle RCE | `zeroday.py` hint |
+| CVE-2024-9301 | LogAI | Path Traversal | `zeroday.py` hint |
+
+### How it works in chat mode
+
+1. AI generates and runs a shell command.
+2. **Dir-1 Detection** — output is scanned for version strings and error patterns of all known targets.
+3. **Dir-2 Exploitation** — matching exploit module import hint is printed to console; AI is given PoC generation instructions.
+4. **Dir-3 Utilization** — local CVE DB lookup + live NVD API query; Shodan/Censys hints injected.
+
+```python
+# Example: run Mitel MiCollab full chain manually
+from bingo.core.exploits.mitel_micollab import MitelMiCollabExploit
+x = MitelMiCollabExploit("https://micollab.target.com")
+print(x.run_full_chain())
+
+# Example: detect MediaTek wappd vulnerability
+from bingo.core.exploits.mediatek_wappd import WappdExploit
+w = WappdExploit("192.168.1.1")
+print(w.detect())
+
+# Example: detect glibc LPE (Looney Tunables)
+from bingo.core.exploits.glibc_tunables import GlibcTunablesExploit
+g = GlibcTunablesExploit()
+print(g.detect())
+```
+
+---
+
 ## New in v3.5.19 — 0day Hunter: Automatic Vulnerability Detection & Exploitation
 
 > **Every pentest execution output is now automatically analyzed for 0day / N-day candidates.**
@@ -1828,6 +1872,7 @@ No manual configuration needed — activates silently and retries.
 
 | Version | Summary |
 |---------|---------|
+| v3.5.20 | **0day Hunter v2** — 5 research-grade 0day/N-day exploit modules: CVE-2024-41713 / CVE-2024-35286 / 0day-LFI (Mitel MiCollab), CVE-2024-20017 (MediaTek wappd UDP overflow), CVE-2023-4863 (libwebp BLASTPASS heap overflow), CVE-2023-4911 (glibc Looney Tunables LPE), CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301 (ZeroPath IDOR/RCE/Traversal); 4 new `bingo/core/exploits/` PoC modules; auto exploit-module hint injection in chat mode; 8 new multilingual i18n keys (KO/ZH/EN) |
 | v3.5.19 | **0day Hunter** — Dir-1 Detection (version fingerprinting + 33 error patterns), Dir-2 Exploitation (per-class PoC payload hints + auto code generation), Dir-3 Utilization (local CVE DB for 35 software × known versions + live NVD API lookup, Shodan fallback hint); activates automatically in every chat execution output; 7 new multilingual i18n keys (KO/ZH/EN); new `bingo/core/zeroday.py` |
 | v3.5.18 | macOS VPN banner wording fix (auto-resolve timing accuracy) |
 | v3.5.17 | **macOS VPN DNS Spoof Auto-Fix** — auto-resolves real IPs via `dig @8.8.8.8` / `nslookup` while keeping VPN active; injects real IPs into AI context; falls back to Shodan/crt.sh hints if DNS resolution fails; LLM explicitly forbidden from asking user to disable VPN |
@@ -1942,7 +1987,7 @@ MIT © 2026 bingook
 
 *The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, role-based testing, vuln manager, target memory, and LLM Orchestrator.*
 
-[![Version](https://img.shields.io/badge/version-3.5.19-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.20-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

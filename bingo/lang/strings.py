@@ -837,9 +837,9 @@ _STRINGS.update({
                               "en": "⛔ Exit IP blocked — switch VPN server and retry"},
     # ── v3.5.17: macOS VPN DNS 스푸핑 — 실제 IP 자동 조회 (VPN 유지) ──
     # ★ "VPN 끄라"는 메시지 없음 — VPN 켜둔 채 대안 IP 조회 후 계속 진행
-    "vpn_dns_spoof_warn":       {"ko": "⚠️  macOS VPN DNS 스푸핑 감지 (198.18.x.x) — Google DNS로 실제 IP 자동 조회 중...",
-                                  "zh": "⚠️  检测到 macOS VPN DNS 欺骗 (198.18.x.x) — 正在通过 Google DNS 自动获取真实IP...",
-                                  "en": "⚠️  macOS VPN DNS spoof detected (198.18.x.x) — auto-resolving real IP via Google DNS..."},
+    "vpn_dns_spoof_warn":       {"ko": "⚠️  macOS VPN DNS 스푸핑 모드 (198.18.x.x) — 스캔 시 Google DNS로 실제 IP 자동 조회",
+                                  "zh": "⚠️  macOS VPN DNS 欺骗模式 (198.18.x.x) — 扫描时将自动通过 Google DNS 获取真实IP",
+                                  "en": "⚠️  macOS VPN DNS spoof mode (198.18.x.x) — real IP will be auto-resolved via Google DNS during scan"},
     "vpn_dns_spoof_exec":       {"ko": "🛑 [VPN DNS 스푸핑] 실행 결과에 198.18.x.x 가상 IP {count}개 감지 — 실제 IP 자동 조회 중",
                                   "zh": "🛑 [VPN DNS欺骗] 检测到 {count} 个 198.18.x.x 虚假IP — 正在自动获取真实IP",
                                   "en": "🛑 [VPN DNS Spoof] {count} virtual IPs detected — auto-resolving real IPs"},

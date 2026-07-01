@@ -759,6 +759,9 @@ _SLASH_DESC = {
     "/reset-phantom": {"ko": "🔄 PhantomGuard 카운터 초기화 + Liveness 재확인",
                        "zh": "🔄 重置幻影守卫计数器 + 重新检查工具Liveness",
                        "en": "🔄 Reset PhantomGuard counters + re-run liveness probe"},
+    "/apt":           {"ko": "🕵️ APT 모듈: phish|supply|lateral|c2 — 全面APT化",
+                       "zh": "🕵️ APT模块: phish|supply|lateral|c2 — 全面APT化",
+                       "en": "🕵️ APT module suite: phish|supply|lateral|c2 — full APT-ification"},
 }
 
 # ── 스킬 시스템 / WAF / 자동 분석 추가 문자열 ──────────────────────────────
@@ -5066,6 +5069,87 @@ _STRINGS.update({
         "ko": "📡 UDP 스택 오버플로우 탐지! MediaTek wappd — CVE-2024-20017",
         "zh": "📡 检测到 UDP 栈溢出! MediaTek wappd — CVE-2024-20017",
         "en": "📡 UDP stack overflow detected! MediaTek wappd — CVE-2024-20017",
+    },
+    # ── v3.5.21: APT 모듈 — 자동 탐지 힌트 + /apt 커맨드 ───────────────────────
+    "apt_lateral_hint": {
+        "ko": "🔀 내부망 탐지 — /apt lateral <IP> 로 횡방향 이동 명령 자동 생성",
+        "zh": "🔀 检测到内网环境 — 使用 /apt lateral <IP> 自动生成横向移动命令",
+        "en": "🔀 Internal network detected — use /apt lateral <IP> for lateral movement commands",
+    },
+    "apt_supply_hint": {
+        "ko": "⛓️ 공급망 파일 탐지 — /apt supply <path> 로 의존성 취약점 스캔",
+        "zh": "⛓️ 检测到供应链文件 — 使用 /apt supply <path> 扫描依赖漏洞",
+        "en": "⛓️ Supply chain file detected — use /apt supply <path> to scan dependency vulnerabilities",
+    },
+    "apt_phish_hint": {
+        "ko": "🎣 피싱 컨텍스트 감지 — /apt phish <email> 로 스피어피싱 이메일 생성",
+        "zh": "🎣 检测到钓鱼上下文 — 使用 /apt phish <email> 生成鱼叉式网络钓鱼邮件",
+        "en": "🎣 Phishing context detected — use /apt phish <email> to generate spear-phishing email",
+    },
+    "apt_c2_hint": {
+        "ko": "🕵️ C2 컨텍스트 감지 — /apt c2 <host> 로 은폐 C2 채널 생성",
+        "zh": "🕵️ 检测到C2上下文 — 使用 /apt c2 <host> 生成隐蔽C2信道",
+        "en": "🕵️ C2 context detected — use /apt c2 <host> to generate covert C2 channel",
+    },
+    "apt_help_title": {
+        "ko": "🕵️  APT 모듈 스위트 (v3.5.21) — 全面APT化",
+        "zh": "🕵️  APT 模块套件 (v3.5.21) — 全面APT化",
+        "en": "🕵️  APT Module Suite (v3.5.21) — Full APT-ification",
+    },
+    "apt_help_phish": {
+        "ko": "  /apt phish <email> [lure]       — AI 스피어피싱 이메일 생성",
+        "zh": "  /apt phish <email> [lure]       — AI鱼叉式钓鱼邮件生成",
+        "en": "  /apt phish <email> [lure]       — AI spear-phishing email generator",
+    },
+    "apt_help_supply": {
+        "ko": "  /apt supply <path>              — npm/pip/Actions 공급망 취약점 스캔",
+        "zh": "  /apt supply <path>              — npm/pip/Actions 供应链漏洞扫描",
+        "en": "  /apt supply <path>              — npm/pip/Actions supply chain vuln scan",
+    },
+    "apt_help_lateral": {
+        "ko": "  /apt lateral <ip> [user] [hash] — Impacket/CME 횡방향 이동 명령 생성",
+        "zh": "  /apt lateral <ip> [user] [hash] — Impacket/CME 横向移动命令生成",
+        "en": "  /apt lateral <ip> [user] [hash] — Impacket/CME lateral movement commands",
+    },
+    "apt_help_c2": {
+        "ko": "  /apt c2 <host> [dns|https|both]  — DNS터널/HTTPS 비콘 은폐 C2 생성",
+        "zh": "  /apt c2 <host> [dns|https|both]  — DNS隧道/HTTPS信标隐蔽C2生成",
+        "en": "  /apt c2 <host> [dns|https|both]  — DNS tunnel/HTTPS beacon covert C2",
+    },
+    "apt_phish_need_email": {
+        "ko": "사용법: /apt phish <대상-이메일> [lure 주제]",
+        "zh": "用法: /apt phish <目标邮箱> [诱饵主题]",
+        "en": "Usage: /apt phish <target-email> [lure-topic]",
+    },
+    "apt_lateral_need_ip": {
+        "ko": "사용법: /apt lateral <IP> [사용자명] [NTLM해시_또는_패스워드]",
+        "zh": "用法: /apt lateral <IP> [用户名] [NTLM哈希或密码]",
+        "en": "Usage: /apt lateral <IP> [username] [ntlm_hash_or_password]",
+    },
+    "apt_unknown_sub": {
+        "ko": "알 수 없는 APT 서브 명령. /apt 로 도움말 확인",
+        "zh": "未知APT子命令。输入 /apt 查看帮助",
+        "en": "Unknown APT subcommand. Use /apt for help",
+    },
+    "apt_phish_generated": {
+        "ko": "🎣 스피어피싱 이메일 생성 완료",
+        "zh": "🎣 鱼叉式网络钓鱼邮件生成完成",
+        "en": "🎣 Spear-phishing email generated",
+    },
+    "apt_supply_no_findings": {
+        "ko": "✅ 공급망 취약점 없음 — 스캔 완료",
+        "zh": "✅ 未发现供应链漏洞 — 扫描完成",
+        "en": "✅ No supply chain vulnerabilities found — scan complete",
+    },
+    "apt_lateral_commands_ready": {
+        "ko": "🔀 횡방향 이동 명령 생성 완료",
+        "zh": "🔀 横向移动命令生成完成",
+        "en": "🔀 Lateral movement commands ready",
+    },
+    "apt_c2_generated": {
+        "ko": "🕵️ 은폐 C2 채널 스크립트 생성 완료",
+        "zh": "🕵️ 隐蔽C2信道脚本生成完成",
+        "en": "🕵️ Covert C2 channel scripts generated",
     },
     # ── v3.5.11: Ctrl+C / 오케스트레이터 중단 관련 ──────────────────────────
     "orch_ctrlc_stopped": {

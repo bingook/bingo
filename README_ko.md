@@ -1873,10 +1873,46 @@ headers = {
 
 ---
 
+## v3.5.22 신규 기능 — Recon 모듈 스위트: Passive · Active · AssetDB · Nuclei
+
+> **v3.5.22**는 통합 `/recon` 슬래시 커맨드를 통해 정보 수집/자산 수집 엔진을 완전히 새롭게 구축했습니다. P0–P3 자동 공격면 우선순위 분류와 채팅 모드 자동 감지를 지원합니다.
+
+### 서브 커맨드
+
+| 커맨드 | 설명 |
+|--------|------|
+| `/recon passive <domain>` | Passive 수집: crt.sh 인증서 투명성, BGPView ASN/프리픽스 조회, Shodan 호스트 검색, FOFA 쿼리, Hunter.io 이메일 수집, Google/GitHub Dork 생성 |
+| `/recon active <target>` | Active 수집: 서브도메인 브루트포스(Python DNS + subfinder/amass 래퍼), HTTP 프로빙(urllib + httpx), 포트 스캔(socket + nmap/masscan), WAF/기술스택 핑거프린팅, JS 엔드포인트 마이닝 |
+| `/recon full <domain>` | Passive + Active 전체 파이프라인 → AssetDB → P0–P3 우선순위 분류 → JSON+TXT 리포트 저장 |
+| `/recon js <url>` | JS 파일에서 숨겨진 API 엔드포인트 및 시크릿 추출 |
+| `/recon nuclei <target>` | 발견된 Live 호스트에 Nuclei 템플릿 스캔 실행 |
+| `/recon dorks <domain>` | 타겟용 Google & GitHub Dork 자동 생성 |
+
+### 우선순위 분류
+
+| 레벨 | 기준 |
+|------|------|
+| **P0** | 관리자 패널, 로그인 페이지, DB 인터페이스, CI/CD, git 노출 |
+| **P1** | API, Jenkins, 스테이징, 클라우드 스토리지, 인증 엔드포인트 |
+| **P2** | 고위험 포트(22/21/3306/5432/6379/27017 등) |
+| **P3** | 기타 모든 Live 호스트 |
+
+### 환경변수 (선택 사항)
+
+```bash
+export SHODAN_KEY="shodan_api_key"
+export FOFA_EMAIL="your@email.com"
+export FOFA_KEY="fofa_api_key"
+export HUNTER_KEY="hunter_io_key"
+```
+
+---
+
 ## 변경 이력
 
 | 버전 | 요약 |
 |------|------|
+| v3.5.22 | **Recon 모듈 스위트** — 신규 `bingo/core/recon/` 패키지: passive 수집(crt.sh, BGPView, Shodan, FOFA, Hunter.io, Google/GitHub Dorks), active 수집(서브도메인 브루트포스 subfinder/amass 폴백, HTTP 프로빙 httpx/urllib 폴백, 포트 스캔 nmap/masscan/socket 폴백, WAF/기술스택 핑거프린팅, JS 엔드포인트+시크릿 마이닝), P0-P3 자동 우선순위 분류 AssetDB, Nuclei 연동, JSON+TXT 리포트 저장; `/recon` 슬래시 커맨드; 채팅 모드 5가지 recon 컨텍스트 자동 감지; 다국어 i18n 키 13개 신규 (KO/ZH/EN) |
 | v3.5.21 | **全面APT化** — APT 모듈 4종 신규 (`bingo/core/apt/`): AI 스피어피싱 생성기 (OSINT 프로파일링, HTML 루어 페이지, GoPhish 설정), 공급망 취약점 스캐너 (npm/pip/GitHub Actions, Dependency Confusion, Typosquatting, 악성 패키지 IOC), 내부망 횡방향 이동 (Impacket/CME/SSH/BloodHound/PTH/PTT 명령 생성), 은폐 C2 채널 (DNS 터널 base32/TXT + HTTPS Beacon AES-256-CBC + Jitter + Domain Fronting); `/apt` 슬래시 커맨드; 채팅 모드 4가지 컨텍스트 자동 감지; 다국어 i18n 키 17개 신규 (KO/ZH/EN) |
 | v3.5.20 | **0day Hunter v2** — 연구 등급 0day/N-day exploit 모듈 5종: CVE-2024-41713 / CVE-2024-35286 / 0day-LFI (Mitel MiCollab), CVE-2024-20017 (MediaTek wappd UDP 오버플로우), CVE-2023-4863 (libwebp BLASTPASS 힙 오버플로우), CVE-2023-4911 (glibc Looney Tunables LPE), CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301 (ZeroPath IDOR/RCE/경로순회); `bingo/core/exploits/` PoC 모듈 4개 신규; 채팅 모드 exploit 모듈 힌트 자동 주입; 다국어 i18n 키 8개 신규 (KO/ZH/EN) |
 | v3.5.19 | **0day Hunter** — Dir-1 탐지(버전 핑거프린팅 35개+ 소프트웨어 패턴 + 33개 에러 패턴), Dir-2 익스플로잇(클래스별 PoC 페이로드 힌트 + AI 자동 코드 생성), Dir-3 활용(로컬 CVE DB 35개 (소프트웨어, 버전) 쌍 + NVD API 실시간 조회 + Shodan 폴백 힌트); 채팅 모드 모든 실행 출력에서 자동 작동; 신규 다국어 i18n 키 7개 (KO/ZH/EN); 신규 `bingo/core/zeroday.py` |

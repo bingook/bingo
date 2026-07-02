@@ -3254,6 +3254,8 @@ class BingoTerminal:
             self._cmd_reset_phantom()
         elif name == "/apt":
             self._cmd_apt(arg)
+        elif name == "/recon":
+            self._cmd_recon(arg)
         else:
             self._warn(self.s["cmd_unknown"].format(name=name))
 
@@ -6718,6 +6720,78 @@ class BingoTerminal:
                         self.console.print(f"[bold magenta]{_c2_hint}[/bold magenta]")
                 except Exception:
                     pass  # APT 자동 탐지 오류는 실행 차단하지 않음
+
+            # ── v3.5.22: Recon 모듈 자동 탐지 ───────────────────────────────
+            # 채팅 모드 실행 결과에서 정보수집/자산수집 컨텍스트 자동 감지 → /recon 힌트 출력
+            if _combined_out:
+                try:
+                    import re as _rcre
+                    _rc_lower = _combined_out.lower()
+
+                    # 1) 도메인/서브도메인 컨텍스트 감지
+                    _dom_kw = [
+                        "subdomain", "subfinder", "amass", "crt.sh",
+                        "certificate transparency", "dns", "nslookup", "dig",
+                        "서브도메인", "域名", "子域",
+                    ]
+                    if sum(1 for kw in _dom_kw if kw in _rc_lower) >= 1:
+                        _rc_hint1 = self.s.get(
+                            "recon_subdomain_hint",
+                            "🔍 도메인 탐지 — /recon passive <domain> 으로 서브도메인/인증서 수집",
+                        )
+                        self.console.print(f"[bold cyan]{_rc_hint1}[/bold cyan]")
+
+                    # 2) IP/포트/네트워크 컨텍스트 감지
+                    _net_kw = [
+                        "nmap", "masscan", "port scan", "open port", "shodan",
+                        "80/tcp", "443/tcp", "22/tcp", "포트스캔", "端口扫描",
+                    ]
+                    if sum(1 for kw in _net_kw if kw in _rc_lower) >= 1:
+                        _rc_hint2 = self.s.get(
+                            "recon_port_hint",
+                            "🗺 포트/서비스 탐지 — /recon active <target> 으로 포트스캔 및 서비스 식별",
+                        )
+                        self.console.print(f"[bold green]{_rc_hint2}[/bold green]")
+
+                    # 3) 자산 수집 / ASN / FOFA / 이메일 컨텍스트 감지
+                    _asset_kw = [
+                        "asn", "bgpview", "fofa", "hunter.io", "email harvest",
+                        "asset", "attack surface", "자산", "资产", "攻击面",
+                    ]
+                    if sum(1 for kw in _asset_kw if kw in _rc_lower) >= 1:
+                        _rc_hint3 = self.s.get(
+                            "recon_asset_hint",
+                            "🗄 자산 탐지 — /recon full <domain> 으로 전체 자산 자동 수집 및 우선순위 분류",
+                        )
+                        self.console.print(f"[bold yellow]{_rc_hint3}[/bold yellow]")
+
+                    # 4) JS 엔드포인트 / API 컨텍스트 감지
+                    _js_kw = [
+                        "javascript", ".js", "api endpoint", "fetch(", "axios",
+                        "webpack", "bundle", "sourcemap", "endpoint", "api key",
+                        "apikey", "secret", "token",
+                    ]
+                    if sum(1 for kw in _js_kw if kw in _rc_lower) >= 2:
+                        _rc_hint4 = self.s.get(
+                            "recon_js_hint",
+                            "📜 JS/API 탐지 — /recon js <url> 로 JS 파일에서 숨겨진 엔드포인트/키 추출",
+                        )
+                        self.console.print(f"[bold magenta]{_rc_hint4}[/bold magenta]")
+
+                    # 5) Nuclei / 취약점 스캔 컨텍스트 감지
+                    _nuclei_kw = [
+                        "nuclei", "template", "cve-", "severity:", "critical",
+                        "vulnerability", "취약점", "漏洞",
+                    ]
+                    if sum(1 for kw in _nuclei_kw if kw in _rc_lower) >= 2:
+                        _rc_hint5 = self.s.get(
+                            "recon_nuclei_hint",
+                            "🧬 Nuclei 컨텍스트 감지 — /recon nuclei <target> 으로 자동 템플릿 스캔",
+                        )
+                        self.console.print(f"[bold red]{_rc_hint5}[/bold red]")
+
+                except Exception:
+                    pass  # Recon 자동 탐지 오류는 실행 차단하지 않음
 
             # ── v3.5.2: Phantom Guard (실행 결과 검사) — 구캐시 / 팬텀 재검사 ──
             if self._phantom_guard is not None and results_text:
@@ -10601,3 +10675,283 @@ class BingoTerminal:
         else:
             self._warn(self.s.get("apt_unknown_sub",
                 f"알 수 없는 APT 서브 명령: '{sub}'. /apt 로 도움말 확인"))
+
+    # ── v3.5.22: /recon — 정보수집/자산수집 통합 진입점 ─────────────────
+    def _cmd_recon(self, arg: str = "") -> None:
+        """/recon — 정보 수집 / 자산 수집 모듈 (Passive + Active + AssetDB).
+
+        사용법:
+          /recon                          — 도움말 출력
+          /recon passive <domain>         — Passive 정보 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)
+          /recon active  <target>         — Active 정보 수집 (서브도메인 브루트/포트스캔/HTTP 프로빙)
+          /recon full    <domain>         — Passive + Active 전체 수행 + 자산 DB 생성
+          /recon js      <url>            — JS 파일에서 API 엔드포인트/키 추출
+          /recon nuclei  <target>         — 발견된 자산에 Nuclei 템플릿 스캔 실행
+          /recon dorks   <domain>         — Google/GitHub Dork 자동 생성
+        """
+        import shlex, os as _os, json as _json, time as _time
+
+        try:
+            parts = shlex.split(arg.strip())
+        except ValueError:
+            parts = arg.strip().split()
+
+        _lang = getattr(self.config, "lang", "en")
+
+        if not parts:
+            help_lines = [
+                "━" * 64,
+                self.s.get("recon_help_title", "🔍  Recon Module Suite (v3.5.22)"),
+                "━" * 64,
+                self.s.get("recon_help_passive",
+                    "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA)"),
+                self.s.get("recon_help_active",
+                    "  /recon active  <target>   — Active 수집 (서브도메인/포트스캔/HTTP 프로빙)"),
+                self.s.get("recon_help_full",
+                    "  /recon full    <domain>   — 전체 수행 + P0-P3 자산 우선순위 분류"),
+                self.s.get("recon_help_js",
+                    "  /recon js      <url>      — JS 엔드포인트/시크릿 추출"),
+                self.s.get("recon_help_nuclei",
+                    "  /recon nuclei  <target>   — Nuclei 취약점 스캔"),
+                self.s.get("recon_help_dorks",
+                    "  /recon dorks   <domain>   — Google/GitHub Dork 생성"),
+                "━" * 64,
+                self.s.get("recon_help_env",
+                    "  환경변수(선택): SHODAN_KEY  FOFA_EMAIL  FOFA_KEY  HUNTER_KEY"),
+                "━" * 64,
+            ]
+            self.console.print("\n".join(help_lines))
+            return
+
+        sub = parts[0].lower()
+        target = parts[1] if len(parts) > 1 else ""
+
+        if not target and sub not in ("help",):
+            self._warn(f"사용법: /recon {sub} <domain/target>")
+            return
+
+        # ── /recon passive ──────────────────────────────────────────────
+        if sub == "passive":
+            try:
+                from ..core.recon.passive import run_passive
+                self.console.print(
+                    f"[bold cyan]🔍 Passive Recon 시작: {target}[/bold cyan]")
+                result = run_passive(
+                    domain=target,
+                    shodan_key=_os.environ.get("SHODAN_KEY", ""),
+                    fofa_email=_os.environ.get("FOFA_EMAIL", ""),
+                    fofa_key=_os.environ.get("FOFA_KEY", ""),
+                    hunter_key=_os.environ.get("HUNTER_KEY", ""),
+                )
+                self.console.print(f"\n[bold]📌 서브도메인 ({len(result.subdomains)}개):[/bold]")
+                for sd in sorted(result.subdomains)[:50]:
+                    self.console.print(f"  {sd}")
+                if len(result.subdomains) > 50:
+                    self.console.print(f"  ... 외 {len(result.subdomains)-50}개")
+
+                if result.emails:
+                    self.console.print(f"\n[bold]📧 이메일 ({len(result.emails)}개):[/bold]")
+                    for em in sorted(result.emails)[:20]:
+                        self.console.print(f"  {em}")
+
+                if result.shodan_results:
+                    self.console.print(f"\n[bold]🌐 Shodan 결과 ({len(result.shodan_results)}개):[/bold]")
+                    for sh in result.shodan_results[:10]:
+                        ip = sh.get("ip_str", sh.get("ip", "?"))
+                        ports = sh.get("ports", [])
+                        org   = sh.get("org", "")
+                        self.console.print(f"  {ip}  ports={ports}  org={org}")
+
+                if result.google_dorks:
+                    self.console.print("\n[bold]🔎 Google Dorks:[/bold]")
+                    for dk in result.google_dorks[:5]:
+                        self.console.print(f"  {dk}")
+
+                if result.github_dorks:
+                    self.console.print("\n[bold]🐙 GitHub Dorks:[/bold]")
+                    for dk in result.github_dorks[:5]:
+                        self.console.print(f"  {dk}")
+
+                self.console.print(
+                    f"\n[green]✅ Passive 수집 완료 — "
+                    f"서브도메인 {len(result.all_subdomains())} / "
+                    f"이메일 {len(result.emails)} / "
+                    f"Shodan {len(result.shodan_results)}[/green]")
+            except ImportError as e:
+                self._warn(f"Recon passive module import error: {e}")
+
+        # ── /recon active ───────────────────────────────────────────────
+        elif sub == "active":
+            try:
+                from ..core.recon.active import run_active
+                self.console.print(
+                    f"[bold cyan]🗺 Active Recon 시작: {target}[/bold cyan]")
+                extra_subs = list(parts[2:]) if len(parts) > 2 else []
+                result = run_active(domain=target, subdomains=extra_subs if extra_subs else None)
+
+                if result.live_hosts:
+                    self.console.print(
+                        f"\n[bold]🟢 Live Hosts ({len(result.live_hosts)}개):[/bold]")
+                    for h in result.live_hosts[:30]:
+                        tech = ", ".join(h.technologies) if h.technologies else "-"
+                        waf  = h.waf or "-"
+                        self.console.print(
+                            f"  [{h.status}] {h.url}  tech={tech}  waf={waf}")
+                    if len(result.live_hosts) > 30:
+                        self.console.print(f"  ... 외 {len(result.live_hosts)-30}개")
+
+                if result.port_results:
+                    total_ports = sum(len(p.open_ports) for p in result.port_results)
+                    self.console.print(
+                        f"\n[bold]🔓 Open Ports (총 {total_ports}개):[/bold]")
+                    for p in result.port_results[:20]:
+                        svc_str = ", ".join(
+                            f"{port}/{p.services.get(port, '?')}"
+                            for port in p.open_ports[:10]
+                        )
+                        self.console.print(f"  {p.host}: {svc_str}")
+
+                if result.js_endpoints:
+                    self.console.print(
+                        f"\n[bold]📜 JS Endpoints ({len(result.js_endpoints)}개):[/bold]")
+                    for ep in result.js_endpoints[:20]:
+                        self.console.print(f"  {ep}")
+
+                total_ports_cnt = sum(len(p.open_ports) for p in result.port_results)
+                self.console.print(
+                    f"\n[green]✅ Active 수집 완료 — "
+                    f"Live {len(result.live_hosts)} / "
+                    f"Ports {total_ports_cnt} / "
+                    f"JS Endpoints {len(result.js_endpoints)}[/green]")
+            except ImportError as e:
+                self._warn(f"Recon active module import error: {e}")
+
+        # ── /recon full ─────────────────────────────────────────────────
+        elif sub == "full":
+            try:
+                from ..core.recon.passive import run_passive
+                from ..core.recon.active import run_active
+                from ..core.recon.asset_db import AssetDB
+
+                self.console.print(
+                    f"[bold cyan]🚀 Full Recon 시작: {target}[/bold cyan]")
+
+                # Step 1: Passive
+                self.console.print("[dim]  Step 1/3  Passive 수집 중...[/dim]")
+                passive = run_passive(
+                    domain=target,
+                    shodan_key=_os.environ.get("SHODAN_KEY", ""),
+                    fofa_email=_os.environ.get("FOFA_EMAIL", ""),
+                    fofa_key=_os.environ.get("FOFA_KEY", ""),
+                    hunter_key=_os.environ.get("HUNTER_KEY", ""),
+                )
+
+                # Step 2: Active (passive 서브도메인 활용)
+                self.console.print(
+                    f"[dim]  Step 2/3  Active 수집 중 "
+                    f"(서브도메인 {len(passive.subdomains)}개)...[/dim]")
+                active = run_active(
+                    domain=target,
+                    subdomains=passive.all_subdomains() if passive.subdomains else None,
+                    ips=passive.ips if passive.ips else None,
+                )
+
+                # Step 3: AssetDB + 우선순위 분류
+                self.console.print("[dim]  Step 3/3  자산 DB 생성 및 우선순위 분류...[/dim]")
+                out_dir = _os.path.join(
+                    _os.path.expanduser("~"), ".bingo", "recon", target,
+                    str(int(_time.time()))
+                )
+                from pathlib import Path as _Path
+                db = AssetDB(target=target, save_dir=_Path(out_dir))
+                db.load(passive=passive, active=active)
+                summary = db.attack_surface_summary()
+                self.console.print(summary)
+
+                # 저장
+                saved_path = db.save()
+                self.console.print(f"\n[green]💾 저장 완료: {saved_path}[/green]")
+
+            except ImportError as e:
+                self._warn(f"Recon full module import error: {e}")
+
+        # ── /recon js ───────────────────────────────────────────────────
+        elif sub == "js":
+            try:
+                from ..core.recon.active import mine_js_endpoints
+                self.console.print(
+                    f"[bold cyan]📜 JS Mining 시작: {target}[/bold cyan]")
+                endpoints, secrets = mine_js_endpoints(target)
+
+                if endpoints:
+                    self.console.print(
+                        f"\n[bold]API Endpoints ({len(endpoints)}개):[/bold]")
+                    for ep in endpoints[:40]:
+                        self.console.print(f"  {ep}")
+                else:
+                    self.console.print("  (엔드포인트 없음)")
+
+                if secrets:
+                    self.console.print(
+                        f"\n[bold red]🔑 Potential Secrets ({len(secrets)}개):[/bold red]")
+                    for sec in secrets[:20]:
+                        self.console.print(f"  {sec}")
+
+            except ImportError as e:
+                self._warn(f"Recon js module import error: {e}")
+
+        # ── /recon nuclei ───────────────────────────────────────────────
+        elif sub == "nuclei":
+            try:
+                from ..core.recon.asset_db import AssetDB
+                from ..core.recon.passive import PassiveResult
+                from ..core.recon.active import ActiveResult, LiveHost
+                from pathlib import Path as _Path
+
+                fake_passive = PassiveResult(target=target)
+                fake_active  = ActiveResult(target=target)
+                url_target = target if target.startswith("http") else f"https://{target}"
+                fake_active.live_hosts = [LiveHost(url=url_target, status=200)]
+
+                db = AssetDB(target=target)
+                db.load(passive=fake_passive, active=fake_active)
+
+                severity = parts[2] if len(parts) > 2 else "critical,high,medium"
+                self.console.print(
+                    f"[bold cyan]🧬 Nuclei 스캔 시작: {target}[/bold cyan]")
+                findings_str = db.run_nuclei(severity=severity)
+
+                if findings_str.strip():
+                    self.console.print(f"\n[bold red]🧬 Nuclei 결과:[/bold red]")
+                    self.console.print(findings_str)
+                else:
+                    self.console.print(
+                        "[yellow]  Nuclei 스캔 결과 없음 (nuclei 미설치 또는 취약점 없음)[/yellow]")
+
+            except ImportError as e:
+                self._warn(f"Recon nuclei module import error: {e}")
+
+        # ── /recon dorks ────────────────────────────────────────────────
+        elif sub == "dorks":
+            try:
+                from ..core.recon.passive import generate_google_dorks, generate_github_dorks
+                google = generate_google_dorks(target)
+                github = generate_github_dorks(target)
+
+                self.console.print(f"\n[bold]🔎 Google Dorks ({target}):[/bold]")
+                for d in google:
+                    self.console.print(f"  {d}")
+
+                self.console.print(f"\n[bold]🐙 GitHub Dorks ({target}):[/bold]")
+                for d in github:
+                    self.console.print(f"  {d}")
+
+                # 클립보드에 복사 힌트
+                self.console.print(
+                    f"\n[dim]💡 복사: /recon dorks {target} | pbcopy (macOS)[/dim]")
+            except ImportError as e:
+                self._warn(f"Recon dorks module import error: {e}")
+
+        else:
+            self._warn(self.s.get("recon_unknown_sub",
+                f"알 수 없는 Recon 서브 명령: '{sub}'. /recon 으로 도움말 확인"))

@@ -762,6 +762,9 @@ _SLASH_DESC = {
     "/apt":           {"ko": "🕵️ APT 모듈: phish|supply|lateral|c2 — 全面APT化",
                        "zh": "🕵️ APT模块: phish|supply|lateral|c2 — 全面APT化",
                        "en": "🕵️ APT module suite: phish|supply|lateral|c2 — full APT-ification"},
+    "/recon":         {"ko": "🔍 정보수집/자산수집: passive|active|full|js|nuclei|dorks",
+                       "zh": "🔍 信息/资产收集: passive|active|full|js|nuclei|dorks",
+                       "en": "🔍 Recon/asset collection: passive|active|full|js|nuclei|dorks"},
 }
 
 # ── 스킬 시스템 / WAF / 자동 분석 추가 문자열 ──────────────────────────────
@@ -5161,6 +5164,78 @@ _STRINGS.update({
         "ko": "(입력 취소 — 다시 입력하거나 Ctrl+C 한 번 더 누르면 종료)",
         "zh": "(输入已取消 — 重新输入或再按一次 Ctrl+C 退出)",
         "en": "(Input cancelled — type again or press Ctrl+C once more to quit)",
+    },
+
+    # ── v3.5.22: Recon 모듈 — 자동 탐지 힌트 + /recon 커맨드 ─────────────────
+    "recon_subdomain_hint": {
+        "ko": "🔍 도메인 컨텍스트 탐지 — /recon passive <domain> 으로 서브도메인/인증서 수집",
+        "zh": "🔍 检测到域名上下文 — 使用 /recon passive <domain> 收集子域名/证书",
+        "en": "🔍 Domain context detected — use /recon passive <domain> for subdomain/cert collection",
+    },
+    "recon_port_hint": {
+        "ko": "🗺 포트/서비스 컨텍스트 탐지 — /recon active <target> 으로 포트스캔 및 서비스 식별",
+        "zh": "🗺 检测到端口/服务上下文 — 使用 /recon active <target> 进行端口扫描",
+        "en": "🗺 Port/service context detected — use /recon active <target> for port scan & service ID",
+    },
+    "recon_asset_hint": {
+        "ko": "🗄 자산 수집 컨텍스트 탐지 — /recon full <domain> 으로 전체 자산 자동 수집 + P0-P3 분류",
+        "zh": "🗄 检测到资产收集上下文 — 使用 /recon full <domain> 自动收集资产并P0-P3分类",
+        "en": "🗄 Asset collection context detected — use /recon full <domain> for full recon + prioritization",
+    },
+    "recon_js_hint": {
+        "ko": "📜 JS/API 컨텍스트 탐지 — /recon js <url> 로 JS 파일에서 숨겨진 엔드포인트/키 추출",
+        "zh": "📜 检测到JS/API上下文 — 使用 /recon js <url> 从JS文件提取隐藏端点/密钥",
+        "en": "📜 JS/API context detected — use /recon js <url> to extract hidden endpoints/keys from JS",
+    },
+    "recon_nuclei_hint": {
+        "ko": "🧬 Nuclei 컨텍스트 탐지 — /recon nuclei <target> 으로 자동 템플릿 취약점 스캔",
+        "zh": "🧬 检测到Nuclei上下文 — 使用 /recon nuclei <target> 自动模板漏洞扫描",
+        "en": "🧬 Nuclei context detected — use /recon nuclei <target> for auto template vulnerability scan",
+    },
+    "recon_help_title": {
+        "ko": "🔍  Recon 모듈 스위트 (v3.5.22) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.5.22) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.5.22) — Info Gathering / Asset Collection",
+    },
+    "recon_help_passive": {
+        "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
+        "zh": "  /recon passive <domain>   — 被动收集 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
+        "en": "  /recon passive <domain>   — Passive collection (crt.sh/BGPView/Shodan/FOFA/Dorks)",
+    },
+    "recon_help_active": {
+        "ko": "  /recon active  <target>   — Active 수집 (서브도메인 브루트/포트스캔/HTTP 프로빙)",
+        "zh": "  /recon active  <target>   — 主动收集 (子域名爆破/端口扫描/HTTP探测)",
+        "en": "  /recon active  <target>   — Active collection (subdomain brute/port scan/HTTP probe)",
+    },
+    "recon_help_full": {
+        "ko": "  /recon full    <domain>   — 전체 수행 + P0-P3 자산 우선순위 분류",
+        "zh": "  /recon full    <domain>   — 全量执行 + P0-P3资产优先级分类",
+        "en": "  /recon full    <domain>   — Full run + P0-P3 asset priority classification",
+    },
+    "recon_help_js": {
+        "ko": "  /recon js      <url>      — JS 파일에서 API 엔드포인트/시크릿 추출",
+        "zh": "  /recon js      <url>      — 从JS文件提取API端点/密钥",
+        "en": "  /recon js      <url>      — Extract API endpoints/secrets from JS files",
+    },
+    "recon_help_nuclei": {
+        "ko": "  /recon nuclei  <target>   — Nuclei 템플릿 취약점 스캔",
+        "zh": "  /recon nuclei  <target>   — Nuclei模板漏洞扫描",
+        "en": "  /recon nuclei  <target>   — Nuclei template vulnerability scan",
+    },
+    "recon_help_dorks": {
+        "ko": "  /recon dorks   <domain>   — Google/GitHub Dork 자동 생성",
+        "zh": "  /recon dorks   <domain>   — 自动生成Google/GitHub Dork",
+        "en": "  /recon dorks   <domain>   — Auto-generate Google/GitHub Dorks",
+    },
+    "recon_help_env": {
+        "ko": "  환경변수(선택): SHODAN_KEY  FOFA_EMAIL  FOFA_KEY  HUNTER_KEY",
+        "zh": "  环境变量(可选): SHODAN_KEY  FOFA_EMAIL  FOFA_KEY  HUNTER_KEY",
+        "en": "  Env vars (optional): SHODAN_KEY  FOFA_EMAIL  FOFA_KEY  HUNTER_KEY",
+    },
+    "recon_unknown_sub": {
+        "ko": "알 수 없는 Recon 서브 명령. /recon 으로 도움말 확인",
+        "zh": "未知Recon子命令。输入 /recon 查看帮助",
+        "en": "Unknown Recon subcommand. Use /recon for help",
     },
 })
 

@@ -1847,10 +1847,46 @@ headers = {
 
 ---
 
+## v3.5.22 新功能 — 侦察模块套件：被动 · 主动 · 资产库 · Nuclei
+
+> **v3.5.22** 通过统一的 `/recon` 斜杠命令，构建了完整的信息收集/资产收集引擎，支持P0-P3自动攻击面优先级分类与聊天模式自动检测。
+
+### 子命令
+
+| 命令 | 说明 |
+|------|------|
+| `/recon passive <domain>` | 被动收集：crt.sh 证书透明度、BGPView ASN/前缀查询、Shodan主机搜索、FOFA查询、Hunter.io邮件收集、Google/GitHub Dork生成 |
+| `/recon active <target>` | 主动收集：子域名爆破(Python DNS + subfinder/amass回退)、HTTP探测(urllib + httpx)、端口扫描(socket + nmap/masscan)、WAF/技术栈指纹识别、JS端点挖掘 |
+| `/recon full <domain>` | 被动+主动全流程 → 资产库 → P0-P3优先级分类 → 保存JSON+TXT报告 |
+| `/recon js <url>` | 从JS文件提取隐藏API端点及密钥 |
+| `/recon nuclei <target>` | 对发现的在线主机运行Nuclei模板扫描 |
+| `/recon dorks <domain>` | 自动生成Google & GitHub Dork |
+
+### 优先级分类
+
+| 级别 | 标准 |
+|------|------|
+| **P0** | 管理后台、登录页、数据库接口、CI/CD、git泄露 |
+| **P1** | API、Jenkins、测试环境、云存储、认证端点 |
+| **P2** | 高风险端口(22/21/3306/5432/6379/27017等) |
+| **P3** | 其他所有在线主机 |
+
+### 环境变量（可选）
+
+```bash
+export SHODAN_KEY="your_shodan_api_key"
+export FOFA_EMAIL="your@email.com"
+export FOFA_KEY="your_fofa_api_key"
+export HUNTER_KEY="your_hunter_io_key"
+```
+
+---
+
 ## 版本历史
 
 | 版本 | 摘要 |
 |------|------|
+| v3.5.22 | **侦察模块套件** — 新增 `bingo/core/recon/` 包：被动收集(crt.sh, BGPView, Shodan, FOFA, Hunter.io, Google/GitHub Dorks)、主动收集(子域名爆破subfinder/amass回退、HTTP探测httpx/urllib回退、端口扫描nmap/masscan/socket回退、WAF/技术栈指纹、JS端点+密钥挖掘)、P0-P3自动优先级分类资产库、Nuclei集成、JSON+TXT报告保存；`/recon`斜杠命令；聊天模式5类侦察上下文自动检测；新增13个多语言i18n键（KO/ZH/EN） |
 | v3.5.21 | **全面APT化** — 新增4个APT模块（`bingo/core/apt/`）：AI鱼叉钓鱼生成器（OSINT分析、HTML诱饵页面、GoPhish配置）、供应链漏洞扫描器（npm/pip/GitHub Actions、依赖混淆、仿冒包检测、恶意包IOC）、内网横向移动（Impacket/CME/SSH/BloodHound/PTH/PTT命令生成）、隐蔽C2信道（DNS隧道base32/TXT + HTTPS Beacon AES-256-CBC + Jitter + 域前置）；`/apt`斜杠命令；聊天模式4类上下文自动检测；新增17个多语言i18n键（KO/ZH/EN） |
 | v3.5.20 | **0day Hunter v2** — 研究级 0day/N-day exploit 模块5种：CVE-2024-41713 / CVE-2024-35286 / 0day-LFI（Mitel MiCollab）、CVE-2024-20017（MediaTek wappd UDP溢出）、CVE-2023-4863（libwebp BLASTPASS堆溢出）、CVE-2023-4911（glibc Looney Tunables LPE）、CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301（ZeroPath IDOR/RCE/路径穿越）；`bingo/core/exploits/` 新增4个PoC模块；聊天模式自动注入exploit模块提示；新增8个多语言i18n键（KO/ZH/EN） |
 | v3.5.19 | **0day Hunter** — Dir-1 检测（35+软件版本指纹 + 33种错误模式）、Dir-2 利用（按类别的PoC载荷提示 + AI自动代码生成）、Dir-3 利用情报（本地CVE数据库覆盖35对(软件,版本) + NVD API实时查询 + Shodan回退提示）；聊天模式所有执行输出自动分析；新增7个多语言i18n键（KO/ZH/EN）；新增 `bingo/core/zeroday.py` |

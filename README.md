@@ -1930,10 +1930,52 @@ No manual configuration needed — activates silently and retries.
 
 ---
 
+## New in v3.5.22 — Recon Module Suite: Passive · Active · AssetDB · Nuclei
+
+> **v3.5.22** introduces a comprehensive information-gathering and asset-collection engine under a unified `/recon` slash command, with automated P0–P3 attack-surface prioritization and chat-mode auto-detection.
+
+### Sub-commands
+
+| Command | Description |
+|---------|-------------|
+| `/recon passive <domain>` | Passive collection: crt.sh Certificate Transparency, BGPView ASN/prefix lookup, Shodan host search, FOFA query, Hunter.io email harvest, Google/GitHub Dork generation |
+| `/recon active <target>` | Active collection: subdomain brute-force (Python DNS + subfinder/amass wrappers), HTTP probing (urllib + httpx), port scan (socket + nmap/masscan), WAF/tech fingerprinting, JS endpoint mining |
+| `/recon full <domain>` | Passive + Active pipeline → AssetDB → P0–P3 priority classification → save JSON+TXT report |
+| `/recon js <url>` | Extract hidden API endpoints and secrets from JavaScript files |
+| `/recon nuclei <target>` | Run Nuclei template scan on discovered live hosts |
+| `/recon dorks <domain>` | Auto-generate Google & GitHub Dorks for the target |
+
+### Priority Classification
+
+| Level | Criteria |
+|-------|----------|
+| **P0** | Admin panels, login pages, database interfaces, CI/CD, git exposure |
+| **P1** | APIs, Jenkins, staging, cloud storage, authentication endpoints |
+| **P2** | High-risk ports (22/21/3306/5432/6379/27017 etc.) |
+| **P3** | All other live hosts |
+
+### Environment variables (optional)
+
+```bash
+export SHODAN_KEY="your_shodan_api_key"
+export FOFA_EMAIL="your@email.com"
+export FOFA_KEY="your_fofa_api_key"
+export HUNTER_KEY="your_hunter_io_key"
+```
+
+### New files (v3.5.22)
+- `bingo/core/recon/__init__.py` — Package entry point
+- `bingo/core/recon/passive.py` — Passive recon: crt.sh / BGPView / Shodan / FOFA / Hunter / Dorks
+- `bingo/core/recon/active.py` — Active recon: subdomain brute / HTTP probe / port scan / JS mining
+- `bingo/core/recon/asset_db.py` — Asset DB: P0-P3 classification, attack surface summary, Nuclei integration
+
+---
+
 ## Changelog
 
 | Version | Summary |
 |---------|---------|
+| v3.5.22 | **Recon Module Suite** — New `bingo/core/recon/` package: passive recon (crt.sh, BGPView, Shodan, FOFA, Hunter.io, Google/GitHub Dorks), active recon (subdomain brute-force with subfinder/amass fallback, HTTP probing with httpx/urllib fallback, port scan with nmap/masscan/socket fallback, WAF/tech fingerprinting, JS endpoint+secret mining), AssetDB with P0-P3 automated priority classification, Nuclei integration, JSON+TXT report saving; `/recon` slash command; chat-mode auto-detection for 5 recon contexts; 13 new multilingual i18n keys (KO/ZH/EN) |
 | v3.5.21 | **Full APT-ification** — 4 new APT modules (`bingo/core/apt/`): AI spear-phishing generator (OSINT profiling, HTML lure page, GoPhish config), supply chain vuln scanner (npm/pip/GitHub Actions, Dependency Confusion, Typosquatting, malicious-pkg IOC), internal-network lateral movement (Impacket/CME/SSH/BloodHound/PTH/PTT command gen), covert C2 channel (DNS-tunnel base32/TXT + HTTPS Beacon AES-256-CBC + Jitter + Domain Fronting); `/apt` slash command; chat-mode auto-detection for all 4 contexts; 17 new multilingual i18n keys (KO/ZH/EN) |
 | v3.5.20 | **0day Hunter v2** — 5 research-grade 0day/N-day exploit modules: CVE-2024-41713 / CVE-2024-35286 / 0day-LFI (Mitel MiCollab), CVE-2024-20017 (MediaTek wappd UDP overflow), CVE-2023-4863 (libwebp BLASTPASS heap overflow), CVE-2023-4911 (glibc Looney Tunables LPE), CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301 (ZeroPath IDOR/RCE/Traversal); 4 new `bingo/core/exploits/` PoC modules; auto exploit-module hint injection in chat mode; 8 new multilingual i18n keys (KO/ZH/EN) |
 | v3.5.19 | **0day Hunter** — Dir-1 Detection (version fingerprinting + 33 error patterns), Dir-2 Exploitation (per-class PoC payload hints + auto code generation), Dir-3 Utilization (local CVE DB for 35 software × known versions + live NVD API lookup, Shodan fallback hint); activates automatically in every chat execution output; 7 new multilingual i18n keys (KO/ZH/EN); new `bingo/core/zeroday.py` |

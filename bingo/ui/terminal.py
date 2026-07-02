@@ -2102,6 +2102,62 @@ class BingoTerminal:
             except Exception:
                 pass
 
+        # ── v3.6.0: KB 자동 주입 ──────────────────────────────────────
+        # 보안 키워드 감지 → KBLoader.search() → AI 컨텍스트에 관련 문서 자동 주입
+        # 수동 사용(/kb search, /cve)과 동일한 데이터를 채팅 중 자동으로 활용
+        _kb_auto_keywords = (
+            # Web 취약점
+            "sql", "sqli", "injection", "인젝션", "注入",
+            "xss", "cross-site", "크로스사이트",
+            "ssrf", "server-side request", "서버사이드 요청",
+            "lfi", "local file", "로컬 파일",
+            "rce", "remote code", "원격 코드", "远程代码",
+            "idor", "broken object", "오브젝트 참조",
+            "jwt", "json web token",
+            "xxe", "xml external", "xml 외부",
+            "upload", "파일 업로드", "文件上传",
+            "waf bypass", "waf 우회", "waf绕过",
+            "authentication bypass", "인증 우회", "认证绕过",
+            "path traversal", "경로 순회", "路径穿越",
+            "deserialization", "역직렬화", "反序列化",
+            "prototype pollution", "프로토타입 오염",
+            "ssti", "template injection", "템플릿 인젝션",
+            "csrf", "request forgery",
+            "open redirect", "오픈 리다이렉트",
+            # CVE 직접 언급
+            "cve-", "cve ",
+            # 일반 보안
+            "exploit", "취약점", "漏洞", "payload", "페이로드", "PoC", "poc",
+            "buffer overflow", "버퍼 오버플로", "缓冲区溢出",
+            "privilege escalation", "권한 상승", "权限提升",
+        )
+        if any(kw in text_lower for kw in _kb_auto_keywords):
+            try:
+                from ..knowledge.loader import KBLoader as _KBLoader
+                _kb = _KBLoader()
+                _kb_docs = _kb.search(text, top_k=4)
+                if _kb_docs:
+                    _lang = getattr(self.config, "lang", "en")
+                    _n = len(_kb_docs)
+                    # search()는 dict 반환: {"name": "Cat/title", "snippet": ..., "entry": KBEntry}
+                    _names = ", ".join(d["name"].split("/")[-1] for d in _kb_docs[:3])
+                    _kb_label = self.s.get(
+                        "kb_auto_loaded",
+                        f"📚 KB auto-loaded ({_n} docs: {_names})"
+                    ).format(n=_n, names=_names)
+                    self.console.print(f"[dim]{_kb_label}[/dim]")
+                    _kb_content = "\n\n---\n".join(
+                        f"# {d['name']}\n{d['entry'].content[:1200]}" for d in _kb_docs
+                    )
+                    wrapped_text = (
+                        "=== KB CONTEXT (auto-injected by bingo v3.6.0 — offline CVE/Exploit DB) ===\n"
+                        + _kb_content
+                        + "\n=== END KB CONTEXT ===\n\n"
+                        + wrapped_text
+                    )
+            except Exception:
+                pass
+
         # WAF 스캔 결과를 유저 메시지 앞에 직접 주입
         # → AI가 시스템 프롬프트 끝 컨텍스트보다 훨씬 명확하게 인식함
         if waf_context:
@@ -3242,6 +3298,8 @@ class BingoTerminal:
             self._cmd_tools_ext(arg)
         elif name == "/kb":
             self._cmd_kb(arg)
+        elif name == "/cve":
+            self._cmd_cve(arg)
         elif name == "/batch":
             self._cmd_batch(arg)
         elif name == "/chain":
@@ -4957,6 +5015,8 @@ class BingoTerminal:
             import re as _pre_re
 
             fixed = code
+            # fix 추적 리스트를 함수 최상단에서 초기화 (0-A 블록에서 먼저 사용되므로)
+            _applied_fix_names: list[str] = []
 
             # ── 0-Y. urllib.parse 미import 자동 주입 ──────────────────────────
             # AI가 urllib3만 import하고 urllib.parse.quote/urlencode/urlparse 등 사용 → NameError
@@ -5209,9 +5269,6 @@ class BingoTerminal:
                 _c_ins = _c_last_imp if _c_last_imp > 0 else 0
                 fixed = fixed[:_c_ins] + _guard_fn + fixed[_c_ins:]
                 fixed = "__SQLI_GUARD_INJECTED__\n" + fixed
-
-            # ── fix 추적 리스트 (어떤 수정이 적용됐는지 메시지에 표시) ────────
-            _applied_fix_names: list[str] = []
 
             # ── 0-E. "is not" / "is" 문자열 리터럴 비교 자동 수정 ──────────
             # AI가 `result is not "blocked"` 처럼 is/is not 으로 문자열 비교 → SyntaxWarning + 오동작
@@ -10140,7 +10197,8 @@ class BingoTerminal:
         if cmd == "list" or not arg.strip():
             docs = kb.list_docs()
             if not docs:
-                self._info("No KB documents found. Add .md files to bingo/knowledge/base/")
+                self._info(self.s.get("kb_no_docs",
+                    "No KB documents found. Add .md files to bingo/knowledge/base/"))
                 return
             t = _T(title="[bold cyan]Knowledge Base[/]", border_style=THEME["primary"])
             t.add_column("Name", style="cyan", width=25)
@@ -10151,29 +10209,105 @@ class BingoTerminal:
             self.console.print(t)
         elif cmd == "search":
             if not param:
-                self._warn("Usage: /kb search <keyword>")
+                self._warn(self.s.get("kb_usage", "Usage: /kb [list|search <kw>|show <name>|reload]"))
                 return
             results = kb.search(param)
             if not results:
-                self._info(f"No results for '{param}'")
+                self._info(self.s.get("kb_no_results", "No results for '{query}'").format(query=param))
                 return
             for r in results[:5]:
                 self.console.print(f"[{THEME['primary']}]📄 {r['name']}[/]")
                 self.console.print(f"  [dim]{r['snippet']}[/]\n")
         elif cmd == "show":
             if not param:
-                self._warn("Usage: /kb show <name>")
+                self._warn(self.s.get("kb_usage", "Usage: /kb [list|search <kw>|show <name>|reload]"))
                 return
             content = kb.get(param)
             if content:
                 self.console.print(content[:3000])
             else:
-                self._error(f"Document '{param}' not found.")
+                self._error(self.s.get("kb_doc_not_found", "Document '{name}' not found").format(name=param))
         elif cmd == "reload":
             kb.reload()
-            self._success("Knowledge base reloaded.")
+            self._success(self.s.get("kb_reloaded", "Knowledge base reloaded"))
         else:
-            self._warn("Usage: /kb [list|search <kw>|show <name>|reload]")
+            self._warn(self.s.get("kb_usage", "Usage: /kb [list|search <kw>|show <name>|reload]"))
+
+    # ── /cve ──────────────────────────────────────────────────────
+    def _cmd_cve(self, arg: str = "") -> None:
+        """/cve [sync|status|search <kw>|<CVE-ID>]  — CVE/Exploit KB"""
+        from ..knowledge.cve_sync import CVESyncer
+        from ..knowledge.loader import KBLoader
+        from rich.table import Table as _T
+
+        sub = arg.strip().split(None, 1)
+        cmd = sub[0].lower() if sub else "status"
+        param = sub[1].strip() if len(sub) > 1 else ""
+
+        syncer = CVESyncer()
+
+        if cmd in ("sync", "update"):
+            self._info(self.s.get("cve_sync_start", "🔄 CVE KB 동기화 시작..."))
+
+            def _cb(msg: str) -> None:
+                self.console.print(f"  [dim]{msg}[/]")
+
+            result = syncer.sync(progress_cb=_cb)
+            total = result.get("total", 0)
+            self._success(
+                self.s.get("cve_sync_done", "✅ CVE KB 동기화 완료 ({n}개 문서)").format(n=total)
+            )
+            cve_r  = result.get("cve", {})
+            expl_r = result.get("exploit", {})
+            if cve_r.get("ok"):
+                self.console.print(f"  [cyan]trickest/cve:[/] {cve_r.get('synced', 0)}개")
+            else:
+                self.console.print(f"  [red]trickest/cve:[/] {cve_r.get('error', 'failed')}")
+            if expl_r.get("ok"):
+                self.console.print(f"  [cyan]exploitarium:[/] {expl_r.get('synced', 0)}개")
+            else:
+                self.console.print(f"  [red]exploitarium:[/] {expl_r.get('error', 'failed')}")
+
+        elif cmd == "status":
+            st = syncer.status()
+            t = _T(title="[bold cyan]CVE KB Status[/]", border_style=THEME["primary"])
+            t.add_column("Source", style="cyan", width=20)
+            t.add_column("Docs", width=8)
+            t.add_column("Last Sync", width=12)
+            t.add_row("trickest/cve", str(st["cve_docs"]), st["cve_last"])
+            t.add_row("exploitarium", str(st["exploit_docs"]), st["exploit_last"])
+            self.console.print(t)
+            self.console.print(f"  [dim]KB 경로: {st['kb_root']}[/]")
+            if st["cve_docs"] == 0:
+                self.console.print(f"  [yellow]💡 /cve sync 실행 시 trickest/cve + exploitarium 동기화[/]")
+
+        elif cmd in ("search", "find"):
+            if not param:
+                self._warn(self.s.get("cve_search_empty", "Usage: /cve search <keyword|CVE-ID>"))
+                return
+            kb = KBLoader()
+            results = kb.search(param, top_k=8)
+            if not results:
+                self._info(self.s.get("cve_no_results",
+                    "No results for '{query}'. Run /cve sync first").format(query=param))
+                return
+            for r in results:
+                self.console.print(f"[{THEME['primary']}]📄 {r['name']}[/]")
+                self.console.print(f"  [dim]{r['snippet']}[/]\n")
+
+        elif __import__("re").match(r"^cve-\d{4}-\d+$", cmd, __import__("re").IGNORECASE):
+            # /cve CVE-2024-12345 형식
+            kb = KBLoader()
+            content = kb.get(cmd.upper())
+            if content:
+                self.console.print(content[:4000])
+            else:
+                self._info(self.s.get("cve_not_found",
+                    "{cve_id} not found. Run /cve sync and retry").format(cve_id=cmd.upper()))
+
+        else:
+            self._warn(self.s.get("cve_usage",
+                "Usage: /cve [sync|status|search <kw>|<CVE-ID>]"))
 
     # ── /batch ────────────────────────────────────────────────────
     def _cmd_batch(self, arg: str = "") -> None:

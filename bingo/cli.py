@@ -455,7 +455,7 @@ def _run_silent_mode(target: str, cfg: "BingoConfig", extra_args: list, s: dict)
         "summary": _fe.summary(),
         "total_findings": len(_fe.findings),
     }
-    print(json.dumps(result_obj, ensure_ascii=False, indent=2))
+    print(_json.dumps(result_obj, ensure_ascii=False, indent=2))
     sys.exit(1 if _fe.findings else 0)
 
 

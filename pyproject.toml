@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bingo-ai"
-version = "3.5.22"
-description = "AI-powered red team terminal — Zero-Hallucination · WAF bypass · XSS·Upload·SSRF·OAuth·GraphQL·Smuggling exploit chains · role-based testing · vuln manager · attack chain · HITL · LLM Orchestrator · multi-model · multi-language"
+version = "3.6.0"
+description = "AI-powered red team terminal — Zero-Hallucination · WAF bypass · XSS·Upload·SSRF·OAuth·GraphQL·Smuggling exploit chains · CVE/Exploit KB (trickest+exploitarium) · role-based testing · vuln manager · attack chain · HITL · LLM Orchestrator · multi-model · multi-language"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 license = { text = "MIT" }
-keywords = ["ai", "cli", "terminal", "llm", "pentest", "red-team", "hacker", "waf", "security"]
+keywords = ["ai", "cli", "terminal", "llm", "pentest", "red-team", "hacker", "waf", "security", "cve", "exploit", "knowledge-base"]
 authors = [{ name = "bingook", email = "bingook@users.noreply.github.com" }]
 classifiers = [
-    "Development Status :: 5 - Production/Stable",
+    "Development Status :: 5 - Production/Stable",  # 3.6.x stable
     "Environment :: Console",
     "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",

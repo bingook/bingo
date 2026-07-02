@@ -40,7 +40,11 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "note": "deepseek-v4-pro 권장 / deepseek-chat 은 2026-07-24 폐기 예정",
     },
     "claude": {
-        "label": "Anthropic Claude",
+        "label": _label(
+            ko="Anthropic Claude",
+            zh="Anthropic Claude",
+            en="Anthropic Claude",
+        ),
         "base_url": "https://api.anthropic.com/v1",
         "default_model": "claude-fable-5",
         "max_tokens": 16000,       # Claude 최대 출력 16K (안전 기본값)
@@ -62,7 +66,11 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "note": "claude-fable-5 최상위 / claude-sonnet-4-6 범용 권장",
     },
     "openai": {
-        "label": "OpenAI GPT",
+        "label": _label(
+            ko="OpenAI GPT",
+            zh="OpenAI GPT",
+            en="OpenAI GPT",
+        ),
         "base_url": "https://api.openai.com/v1",
         "default_model": "gpt-5.5",
         "max_tokens": 16384,       # GPT-4o/5 계열 최대 출력 16K
@@ -99,7 +107,11 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "note": "gpt-5.5 최신 플래그십 / gpt-4o 안정적 구버전",
     },
     "glm": {
-        "label": "Zhipu GLM (Z.ai)",
+        "label": _label(
+            ko="Zhipu GLM (Z.ai) ★ 해킹특화",
+            zh="智谱 GLM (Z.ai) ★ 安全专项",
+            en="Zhipu GLM (Z.ai) ★ Security-focused",
+        ),
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "default_model": "glm-5.1",
         "max_tokens": 8192,        # GLM 최대 출력 8K
@@ -131,7 +143,11 @@ BUILTIN_PROVIDERS: dict[str, dict] = {
         "note": "glm-5.1 플래그십 / glm-4.7-flash·glm-4.5-flash 무료",
     },
     "qwen": {
-        "label": "Alibaba Qwen (DashScope)",
+        "label": _label(
+            ko="Alibaba Qwen (DashScope) — 국내 접속 안정",
+            zh="阿里 通义千问 (DashScope) — 国内访问稳定",
+            en="Alibaba Qwen (DashScope) — stable in CN",
+        ),
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "default_model": "qwen3.7-max",
         "max_tokens": 8192,        # Qwen 최대 출력 8K

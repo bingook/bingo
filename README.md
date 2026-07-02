@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.6.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -512,6 +512,8 @@ Type `/` in the chat to open command menu (arrow keys to navigate).
 | Command | What it does |
 |---------|-------------|
 | `/scan <url>` | Full red team pipeline |
+| `/kb [list\|search <kw>\|show <name>\|reload]` | **[v3.6.0]** 115k+ offline CVE/Exploit knowledge base |
+| `/cve [sync\|status\|search <kw>\|CVE-ID]` | **[v3.6.0]** CVE PoC lookup · `/cve CVE-2024-xxxx` direct |
 | `/waf <url>` | WAF detection + bypass only |
 | `/crack [hash]` | Hash crack — online lookup → offline |
 | `/proxy [sub]` | **Proxy pool rotation** (new v3.2.18) |
@@ -1742,34 +1744,144 @@ enabled: true
 
 ---
 
-### 5. 📚 Local Knowledge Base (`/kb`)
+### 5. 📚 Local Knowledge Base (`/kb`) — v3.6.0
 
-Store your own attack techniques, payloads, and notes as Markdown files. bingo automatically injects relevant KB content into the AI context when the topic matches.
+bingo ships with a **115,529-file offline security knowledge base** embedded directly inside the package (`bingo/knowledge/base/`). No internet connection required — every CVE PoC, exploit technique, and payload is available the moment you run bingo.
+
+#### What's included (built-in, always available)
+
+| Category | Files | Source |
+|----------|-------|--------|
+| CVE/2018 | 9,062 | trickest/cve — full year |
+| CVE/2019 | 8,385 | trickest/cve — full year |
+| CVE/2020 | 10,760 | trickest/cve — full year |
+| CVE/2021 | 11,217 | trickest/cve — full year |
+| CVE/2022 | 13,281 | trickest/cve — full year |
+| CVE/2023 | 16,531 | trickest/cve — full year |
+| CVE/2024 | 24,381 | trickest/cve — full year |
+| CVE/2025 | 17,550 | trickest/cve — full year |
+| Exploitarium | ~40 | bikini/exploitarium (0day PoC + research) |
+| SQLi | 1 | Curated payload bank |
+| XSS | 1 | Curated payload bank |
+| SSRF | 1 | Curated metadata endpoints |
+| LFI | 1 | Curated path traversal payloads |
+| Auth | 1 | Curated bypass techniques |
+| JWT | 1 | Curated attack recipes |
+| XXE | 1 | Curated injection payloads |
+| Upload | 1 | Curated bypass techniques |
+| IDOR | 1 | Curated test methods |
+| WAF | 1 | Curated bypass techniques |
+| **Total** | **~115,529** | **~466 MB embedded** |
+
+> **Why embedded?** GitHub repos can go offline. By embedding everything directly in the package, bingo's KB is 100% self-contained and air-gap friendly.
+
+#### `/kb` Commands
 
 ```bash
-/kb list                              # Show all categories + file counts
-/kb search "sql injection bypass"    # Search KB
-/kb inject "graphql introspection"   # Manually inject into next query
+/kb                           # List all documents (with category counts)
+/kb list                      # Same — show KB index table
+/kb search "sql injection"    # Keyword search (bidirectional: 'sql' matches 'sqli')
+/kb search "CVE-2024-1234"    # Search by CVE ID
+/kb show SQLi/sqli-payloads   # Show full content of a document
+/kb reload                    # Rescan KB directory
 ```
 
-**Directory structure:**
+#### Knowledge Priority (Load Order)
+
+```
+1st:  bingo/knowledge/base/   ← always loaded (git-embedded, offline)
+2nd:  ~/.bingo/knowledge/     ← optional user files + /cve sync results
+```
+
+#### Auto-injection (Chat Mode — Automatic)
+
+Every time you send a message, bingo scans your query for **security keywords** and automatically injects matching KB documents into the AI context. You don't need to type any command — it works in the background.
+
+**Trigger keywords** (40+ patterns):
+
+| Category | Keywords detected |
+|----------|-------------------|
+| SQLi | `sql`, `sqli`, `injection`, `인젝션` |
+| XSS | `xss`, `cross-site`, `크로스사이트` |
+| SSRF | `ssrf`, `server-side request` |
+| LFI | `lfi`, `local file`, `path traversal` |
+| RCE | `rce`, `remote code`, `원격 코드` |
+| JWT | `jwt`, `json web token` |
+| Upload | `upload`, `파일 업로드` |
+| CVE | `cve-`, `cve ` (any CVE ID) |
+| General | `exploit`, `취약점`, `payload`, `poc`, `privilege escalation` |
+
+**In practice:**
+
+```
+You:   "sql injection 테스트 방법 알려줘"
+bingo: 📚 KB auto-loaded (3 docs matched: sqli-payloads, CVE-2023-..., high-impact-cves)
+       → AI answers using your 115k-file offline KB as context
+```
+
+Both automatic (chat mode) and manual (`/kb search`, `/cve`) paths use the **same local KB** — zero duplication, full flexibility.
+
+> **Tip:** If auto-injection shows 0 docs for your query, use `/kb search <keyword>` to inspect what's in the KB manually.
+
+#### Add Your Own Files
+
 ```
 ~/.bingo/knowledge/
 ├── SQLi/
-│   ├── blind-sqli.md          # Time-based + boolean payloads
-│   └── mssql-tricks.md        # MSSQL-specific techniques
+│   └── my-mssql-tricks.md   # Your custom MSSQL payloads
 ├── XSS/
-│   ├── stored-xss.md          # Payload bank
-│   └── csp-bypass.md          # CSP bypass techniques
-├── SSRF/
-│   └── cloud-metadata.md      # AWS/GCP/Azure metadata endpoints
-└── custom/
-    └── my-notes.md            # Your own findings and notes
+│   └── csp-bypass.md        # Your CSP bypass notes
+└── Notes/
+    └── target-xyz.md        # Target-specific findings
 ```
 
-Three built-in starter files are auto-created on first run (SQLi, XSS, SSRF).
+Any `.md` file dropped in `~/.bingo/knowledge/` is auto-loaded and searchable.
 
-**Auto-injection** — when you type a query containing `sql`, `xss`, or `ssrf` keywords, matching KB files are automatically prepended to the AI context — giving the AI your custom knowledge on top of its built-in expertise.
+---
+
+### 5b. 🛡️ CVE / Exploit Knowledge Base (`/cve`) — v3.6.0
+
+The `/cve` command provides direct access to the built-in CVE PoC database and optional GitHub sync for additional updates.
+
+#### `/cve` Commands
+
+```bash
+/cve status                     # Show KB statistics (docs per source, last sync)
+/cve search "log4j"             # Search CVE/PoC by keyword
+/cve search "remote code exec"  # Natural language search
+/cve CVE-2024-1234              # Look up a specific CVE by ID
+/cve CVE-2021-44228             # Look up Log4Shell PoC directly
+/cve sync                       # (Optional) Pull latest updates from GitHub
+```
+
+#### Example: CVE lookup
+
+```
+/cve CVE-2021-44228
+→ Displays the full trickest/cve PoC markdown:
+  - Affected versions, vendor advisory link
+  - PoC payload snippets
+  - Reference URLs
+```
+
+```
+/cve search "apache path traversal"
+→ Returns top matches across 115k+ CVE files:
+  📄 CVE/2021/CVE-2021-41773  Apache HTTP Server 2.4.49 path traversal
+  📄 CVE/2021/CVE-2021-42013  Apache HTTP Server 2.4.49/2.4.50 RCE
+  ...
+```
+
+#### Optional Sync (for future CVEs)
+
+The built-in KB covers 2018–2025. For CVEs published after the last package build:
+
+```bash
+/cve sync              # Syncs trickest/cve + bikini/exploitarium → ~/.bingo/knowledge/
+/cve status            # Verify sync is up to date
+```
+
+> Sync requires internet access and ~500MB disk space. The built-in KB works fully offline.
 
 ---
 
@@ -1887,6 +1999,7 @@ Adds an optional confirmation gate before dangerous operations. Critical for eng
 | `/board [set\|get\|list\|remove\|clear\|targets]` | Blackboard | Target facts store |
 | `/tools-ext [list\|run]` | Tools Ext | External CLI tool recipes |
 | `/kb [list\|search\|inject]` | Knowledge | Local markdown knowledge base |
+| `/cve [sync\|status\|search\|CVE-ID]` | CVE KB | **[v3.6.0]** CVE/Exploit sync from trickest+exploitarium |
 | `/batch [new\|add\|run\|status\|list\|cancel]` | Batch | Multi-target batch execution |
 | `/chain [add\|clear]` | Chain | Attack chain tracker |
 | `/hitl [on\|off\|allow\|deny\|list]` | HITL | Dangerous action gate |
@@ -1975,6 +2088,7 @@ export HUNTER_KEY="your_hunter_io_key"
 
 | Version | Summary |
 |---------|---------|
+| v3.6.0 | **Offline CVE/Exploit KB (115,529 files · 466 MB embedded)** — `trickest/cve` 2018–2025 + `bikini/exploitarium` committed directly into `bingo/knowledge/base/` (no internet required); **Chat auto-injection**: 40+ security keywords (`sql`, `xss`, `rce`, `cve-*`, `exploit`, etc.) trigger automatic `KBLoader.search()` → top-4 docs prepended to AI context with `📚 KB auto-loaded` notification; `/kb` command: list · search · show · reload; `/cve` command: status · search `<kw>` · `CVE-ID` direct lookup · optional `sync` for future CVEs; `KBLoader` bidirectional keyword matching; `cve_sync.py` optional GitHub syncer; 16 new i18n keys (KO/ZH/EN) including `kb_auto_loaded`, `kb_auto_hint`; multi-language provider labels for all 7 AI providers; `pyproject.toml` version bump to 3.6.0 |
 | v3.5.22 | **Recon Module Suite** — New `bingo/core/recon/` package: passive recon (crt.sh, BGPView, Shodan, FOFA, Hunter.io, Google/GitHub Dorks), active recon (subdomain brute-force with subfinder/amass fallback, HTTP probing with httpx/urllib fallback, port scan with nmap/masscan/socket fallback, WAF/tech fingerprinting, JS endpoint+secret mining), AssetDB with P0-P3 automated priority classification, Nuclei integration, JSON+TXT report saving; `/recon` slash command; chat-mode auto-detection for 5 recon contexts; 13 new multilingual i18n keys (KO/ZH/EN) |
 | v3.5.21 | **Full APT-ification** — 4 new APT modules (`bingo/core/apt/`): AI spear-phishing generator (OSINT profiling, HTML lure page, GoPhish config), supply chain vuln scanner (npm/pip/GitHub Actions, Dependency Confusion, Typosquatting, malicious-pkg IOC), internal-network lateral movement (Impacket/CME/SSH/BloodHound/PTH/PTT command gen), covert C2 channel (DNS-tunnel base32/TXT + HTTPS Beacon AES-256-CBC + Jitter + Domain Fronting); `/apt` slash command; chat-mode auto-detection for all 4 contexts; 17 new multilingual i18n keys (KO/ZH/EN) |
 | v3.5.20 | **0day Hunter v2** — 5 research-grade 0day/N-day exploit modules: CVE-2024-41713 / CVE-2024-35286 / 0day-LFI (Mitel MiCollab), CVE-2024-20017 (MediaTek wappd UDP overflow), CVE-2023-4863 (libwebp BLASTPASS heap overflow), CVE-2023-4911 (glibc Looney Tunables LPE), CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301 (ZeroPath IDOR/RCE/Traversal); 4 new `bingo/core/exploits/` PoC modules; auto exploit-module hint injection in chat mode; 8 new multilingual i18n keys (KO/ZH/EN) |
@@ -2092,7 +2206,7 @@ MIT © 2026 bingook
 
 *The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, role-based testing, vuln manager, target memory, and LLM Orchestrator.*
 
-[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.6.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

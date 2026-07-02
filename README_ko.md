@@ -6,7 +6,7 @@
 
 **AI 침투테스트 터미널 1위**
 
-[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.6.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -541,6 +541,8 @@ bingo scan https://target.com
 | 명령어 | 기능 |
 |--------|------|
 | `/scan <url>` | 전체 레드팀 파이프라인 |
+| `/kb [list\|search <키워드>\|show <이름>\|reload]` | **[v3.6.0]** 115k+ 오프라인 CVE/Exploit 지식베이스 |
+| `/cve [sync\|status\|search <키워드>\|CVE-ID]` | **[v3.6.0]** CVE PoC 조회 · `/cve CVE-2024-xxxx` 직접 검색 |
 | `/waf <url>` | WAF 탐지 + 우회만 |
 | `/crack [hash]` | 해시 크랙 — 온라인 조회 → 오프라인 |
 | `/proxy [서브]` | **프록시 풀 로테이션** (v3.2.18 신규) |
@@ -1686,34 +1688,135 @@ enabled: true
 
 ---
 
-### 5. 📚 로컬 지식 베이스 (`/kb`)
+### 5. 📚 로컬 지식 베이스 (`/kb`) — v3.6.0
 
-자신만의 공격 기법, 페이로드, 메모를 마크다운 파일로 저장합니다. 관련 주제가 감지되면 bingo가 해당 KB 내용을 AI 컨텍스트에 자동 주입합니다.
+bingo에는 **115,529개 파일(~466 MB)의 오프라인 보안 지식베이스**가 패키지 내부(`bingo/knowledge/base/`)에 직접 내장되어 있습니다. 인터넷 연결 없이 즉시 사용 가능합니다.
+
+#### 내장 지식 목록 (항상 사용 가능, 오프라인)
+
+| 카테고리 | 파일 수 | 출처 |
+|----------|---------|------|
+| CVE/2018 | 9,062 | trickest/cve 전체 연도 |
+| CVE/2019 | 8,385 | trickest/cve 전체 연도 |
+| CVE/2020 | 10,760 | trickest/cve 전체 연도 |
+| CVE/2021 | 11,217 | trickest/cve 전체 연도 |
+| CVE/2022 | 13,281 | trickest/cve 전체 연도 |
+| CVE/2023 | 16,531 | trickest/cve 전체 연도 |
+| CVE/2024 | 24,381 | trickest/cve 전체 연도 |
+| CVE/2025 | 17,550 | trickest/cve 전체 연도 |
+| Exploitarium | ~40 | bikini/exploitarium (0day PoC + 리서치) |
+| SQLi / XSS / SSRF / LFI / Auth / JWT / XXE / Upload / IDOR / WAF | 10 | 큐레이션 페이로드 은행 |
+| **합계** | **~115,529** | **~466 MB 내장** |
+
+> **왜 직접 내장하나요?** GitHub 저장소는 언제든 오프라인 상태가 될 수 있습니다. 패키지에 직접 임베딩하여 bingo의 KB는 100% 독립적이며 에어갭 환경에서도 동작합니다.
+
+#### `/kb` 명령어
 
 ```bash
-/kb list                              # 모든 카테고리 + 파일 수 보기
-/kb search "sql injection bypass"    # KB 검색
-/kb inject "graphql introspection"   # 수동으로 다음 쿼리에 주입
+/kb                           # 전체 문서 목록 (카테고리별 수 포함)
+/kb list                      # 동일 — KB 인덱스 테이블 출력
+/kb search "sql injection"    # 키워드 검색 (양방향: 'sql' → 'sqli' 자동 매칭)
+/kb search "CVE-2024-1234"    # CVE ID로 검색
+/kb show SQLi/sqli-payloads   # 문서 전체 내용 출력
+/kb reload                    # KB 디렉토리 재스캔
 ```
 
-**디렉토리 구조:**
+#### 지식 우선순위 (로드 순서)
+
+```
+1순위: bingo/knowledge/base/   ← 항상 로드됨 (git 내장, 오프라인)
+2순위: ~/.bingo/knowledge/     ← 사용자 파일 + /cve sync 결과 (선택 사항)
+```
+
+#### 자동 주입 (채팅 모드 — 자동)
+
+메시지를 입력할 때마다 bingo가 쿼리에서 **보안 키워드**를 감지하고, 매칭되는 KB 문서를 AI 컨텍스트에 자동으로 주입합니다. 별도 명령 입력 없이 백그라운드에서 동작합니다.
+
+**감지 키워드** (40가지 이상 패턴):
+
+| 카테고리 | 감지 키워드 |
+|--------|-----------|
+| SQLi | `sql`, `sqli`, `injection`, `인젝션` |
+| XSS | `xss`, `cross-site`, `크로스사이트` |
+| SSRF | `ssrf`, `server-side request` |
+| LFI | `lfi`, `local file`, `path traversal` |
+| RCE | `rce`, `remote code`, `원격 코드` |
+| JWT | `jwt`, `json web token` |
+| 업로드 | `upload`, `파일 업로드` |
+| CVE | `cve-`, `cve ` (모든 CVE ID) |
+| 일반 | `exploit`, `취약점`, `payload`, `poc`, `privilege escalation` |
+
+**실제 동작:**
+
+```
+입력:   "sql injection 테스트 방법 알려줘"
+bingo:  📚 KB 자동 로드됨 (3개 문서 매칭: sqli-payloads, CVE-2023-..., high-impact-cves)
+        → AI가 115,529개 파일의 오프라인 KB를 컨텍스트로 사용해 응답
+```
+
+자동 주입(채팅 모드)과 수동 명령(`/kb search`, `/cve`)은 **동일한 로컬 KB**를 사용합니다.
+
+> **팁:** 자동 주입에서 문서가 0개라면 `/kb search <키워드>`로 KB를 직접 검색해 보세요.
+
+#### 나만의 파일 추가
+
 ```
 ~/.bingo/knowledge/
 ├── SQLi/
-│   ├── blind-sqli.md          # Time-based + boolean 페이로드
-│   └── mssql-tricks.md        # MSSQL 전용 기법
+│   └── my-mssql-tricks.md   # 나만의 MSSQL 페이로드
 ├── XSS/
-│   ├── stored-xss.md          # 페이로드 뱅크
-│   └── csp-bypass.md          # CSP 우회 기법
-├── SSRF/
-│   └── cloud-metadata.md      # AWS/GCP/Azure 메타데이터 엔드포인트
-└── custom/
-    └── 내메모.md               # 나만의 발견 및 메모
+│   └── csp-bypass.md        # CSP 우회 메모
+└── Notes/
+    └── target-xyz.md        # 타겟별 발견 사항
 ```
 
-최초 실행 시 SQLi, XSS, SSRF 시작 파일 3개가 자동 생성됩니다.
+`~/.bingo/knowledge/`에 `.md` 파일을 넣으면 자동으로 로드되고 검색 가능합니다.
 
-**자동 주입** — `sql`, `xss`, `ssrf` 등 키워드가 포함된 쿼리 입력 시 매칭 KB 파일이 AI 컨텍스트에 자동 선행 삽입되어 커스텀 지식을 내장 전문성 위에 추가합니다.
+---
+
+### 5b. 🛡️ CVE / Exploit 지식베이스 (`/cve`) — v3.6.0
+
+`/cve` 명령어로 내장 CVE PoC 데이터베이스에 직접 접근하고, 선택적으로 GitHub에서 최신 업데이트를 가져올 수 있습니다.
+
+#### `/cve` 명령어
+
+```bash
+/cve status                     # KB 통계 (소스별 문서 수, 최근 동기화 시간)
+/cve search "log4j"             # CVE/PoC 키워드 검색
+/cve search "원격 코드 실행"    # 자연어 검색
+/cve CVE-2024-1234              # CVE ID로 직접 조회
+/cve CVE-2021-44228             # Log4Shell PoC 바로 조회
+/cve sync                       # (선택) GitHub에서 최신 업데이트 가져오기
+```
+
+#### 사용 예시
+
+```
+/cve CVE-2021-44228
+→ trickest/cve PoC 마크다운 전체 표시:
+  - 영향 버전, 벤더 어드바이저리 링크
+  - PoC 페이로드 스니펫
+  - 참조 URL 목록
+```
+
+```
+/cve search "apache path traversal"
+→ 115k+ CVE 파일에서 상위 매칭 결과:
+  📄 CVE/2021/CVE-2021-41773  Apache HTTP Server 2.4.49 경로 순회
+  📄 CVE/2021/CVE-2021-42013  Apache HTTP Server 2.4.49/2.4.50 RCE
+  ...
+```
+
+#### 선택적 동기화 (미래 CVE용)
+
+내장 KB는 2018–2025를 커버합니다. 패키지 빌드 이후 발표된 CVE를 위해:
+
+```bash
+/cve sync              # trickest/cve + bikini/exploitarium → ~/.bingo/knowledge/ 동기화
+/cve status            # 동기화 상태 확인
+```
+
+> 동기화는 인터넷 연결과 ~500MB 디스크 공간이 필요합니다. 내장 KB는 완전 오프라인 동작합니다.
 
 ---
 
@@ -1830,7 +1933,8 @@ enabled: true
 | `/vulns [add\|list\|update\|remove\|stats\|clear]` | 취약점 | 취약점 데이터베이스 |
 | `/board [set\|get\|list\|remove\|clear\|targets]` | 블랙보드 | 타겟 사실 저장소 |
 | `/tools-ext [list\|run]` | 도구 레시피 | 외부 CLI 도구 |
-| `/kb [list\|search\|inject]` | 지식 베이스 | 로컬 마크다운 KB |
+| `/kb [list\|search <키워드>\|show <이름>\|reload]` | 지식 베이스 | **[v3.6.0]** 115k+ 오프라인 CVE/Exploit KB |
+| `/cve [sync\|status\|search <키워드>\|CVE-ID]` | CVE KB | **[v3.6.0]** CVE PoC 직접 조회 + 선택적 동기화 |
 | `/batch [new\|add\|run\|status\|list\|cancel]` | 배치 | 다중 타겟 배치 실행 |
 | `/chain [add\|clear]` | 공격 체인 | 공격 체인 트래커 |
 | `/hitl [on\|off\|allow\|deny\|list]` | HITL | 위험 작업 확인 게이트 |
@@ -1912,6 +2016,7 @@ export HUNTER_KEY="hunter_io_key"
 
 | 버전 | 요약 |
 |------|------|
+| v3.6.0 | **오프라인 CVE/Exploit KB (115,529개 파일 · 466 MB 내장)** — `trickest/cve` 2018–2025 + `bikini/exploitarium` 전체를 `bingo/knowledge/base/`에 직접 커밋 (인터넷 불필요); **채팅 자동 주입**: 40개+ 보안 키워드(`sql`, `xss`, `rce`, `cve-*`, `exploit` 등) 감지 시 `KBLoader.search()` 자동 실행 → 상위 4개 문서를 AI 컨텍스트에 선행 삽입 + `📚 KB 자동 로드됨` 알림; `/kb` 명령어: list · search · show · reload; `/cve` 명령어: status · search · CVE-ID 직접 조회 · 선택적 `sync`; `KBLoader` 양방향 키워드 매칭; `cve_sync.py` 선택적 GitHub 싱크; i18n 키 16개 신규 추가 (`kb_auto_loaded`, `kb_auto_hint` 포함, KO/ZH/EN); 7개 AI Provider 전체 다국어 레이블; `pyproject.toml` 3.6.0 버전 업 |
 | v3.5.22 | **Recon 모듈 스위트** — 신규 `bingo/core/recon/` 패키지: passive 수집(crt.sh, BGPView, Shodan, FOFA, Hunter.io, Google/GitHub Dorks), active 수집(서브도메인 브루트포스 subfinder/amass 폴백, HTTP 프로빙 httpx/urllib 폴백, 포트 스캔 nmap/masscan/socket 폴백, WAF/기술스택 핑거프린팅, JS 엔드포인트+시크릿 마이닝), P0-P3 자동 우선순위 분류 AssetDB, Nuclei 연동, JSON+TXT 리포트 저장; `/recon` 슬래시 커맨드; 채팅 모드 5가지 recon 컨텍스트 자동 감지; 다국어 i18n 키 13개 신규 (KO/ZH/EN) |
 | v3.5.21 | **全面APT化** — APT 모듈 4종 신규 (`bingo/core/apt/`): AI 스피어피싱 생성기 (OSINT 프로파일링, HTML 루어 페이지, GoPhish 설정), 공급망 취약점 스캐너 (npm/pip/GitHub Actions, Dependency Confusion, Typosquatting, 악성 패키지 IOC), 내부망 횡방향 이동 (Impacket/CME/SSH/BloodHound/PTH/PTT 명령 생성), 은폐 C2 채널 (DNS 터널 base32/TXT + HTTPS Beacon AES-256-CBC + Jitter + Domain Fronting); `/apt` 슬래시 커맨드; 채팅 모드 4가지 컨텍스트 자동 감지; 다국어 i18n 키 17개 신규 (KO/ZH/EN) |
 | v3.5.20 | **0day Hunter v2** — 연구 등급 0day/N-day exploit 모듈 5종: CVE-2024-41713 / CVE-2024-35286 / 0day-LFI (Mitel MiCollab), CVE-2024-20017 (MediaTek wappd UDP 오버플로우), CVE-2023-4863 (libwebp BLASTPASS 힙 오버플로우), CVE-2023-4911 (glibc Looney Tunables LPE), CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301 (ZeroPath IDOR/RCE/경로순회); `bingo/core/exploits/` PoC 모듈 4개 신규; 채팅 모드 exploit 모듈 힌트 자동 주입; 다국어 i18n 키 8개 신규 (KO/ZH/EN) |
@@ -1981,7 +2086,7 @@ MIT © 2026 bingook
 
 *내장 엔진 · HTTP 스머글링 · 환각 방지 가드 · 역할 기반 테스팅 · 취약점 관리 · 타겟 메모리 · LLM 오케스트레이터 — 유일한 올인원 AI 침투 도구*
 
-[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.6.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

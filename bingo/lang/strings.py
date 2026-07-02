@@ -100,6 +100,8 @@ _STRINGS = {
 /tools install all       미설치 도구 전체 설치
 /model                   AI 모델 추가/변경
 /skill <키워드>          스킬 지식베이스 검색
+/kb                      로컬 지식베이스  /kb [list|search <kw>|show <name>|reload]
+/cve [sync|search|status] 🛡️ CVE/Exploit KB  /cve sync 로 trickest+exploitarium 동기화
 /history                 대화 기록 보기
 /export                  대화를 .md 파일로 저장
 /config                  현재 설정 보기
@@ -127,6 +129,8 @@ _STRINGS = {
 /tools install all       安装所有缺失工具
 /model                   添加/切换 AI 模型
 /skill <关键词>          搜索技能知识库
+/kb                      本地知识库  /kb [list|search <kw>|show <name>|reload]
+/cve [sync|search|status] 🛡️ CVE/Exploit知识库  /cve sync 同步trickest+exploitarium
 /history                 查看对话历史
 /export                  导出对话为 .md 文件
 /config                  查看当前配置
@@ -154,6 +158,8 @@ _STRINGS = {
 /tools install all       Install all missing tools
 /model                   Add or switch AI model
 /skill <keyword>         Search skill knowledge base
+/kb                      Local knowledge base  /kb [list|search <kw>|show <name>|reload]
+/cve [sync|search|status] 🛡️ CVE/Exploit KB  /cve sync to fetch trickest+exploitarium
 /history                 View chat history
 /export                  Export chat as .md file
 /config                  View current settings
@@ -743,6 +749,43 @@ _SLASH_DESC = {
     "/kb":          {"ko": "로컬 지식베이스  /kb [list|search <kw>|show <name>|reload]",
                      "zh": "本地知识库  /kb [list|search <kw>|show <name>|reload]",
                      "en": "Local knowledge base  /kb [list|search <kw>|show <name>|reload]"},
+    "/cve":         {"ko": "CVE/Exploit KB  /cve [sync|status|search <kw>|CVE-ID]",
+                     "zh": "CVE/Exploit知识库  /cve [sync|status|search <kw>|CVE-ID]",
+                     "en": "CVE/Exploit KB  /cve [sync|status|search <kw>|CVE-ID]"},
+    # ── CVE sync 상태 메시지 ─────────────────────────────────────────
+    "cve_sync_start": {"ko": "🔄 CVE KB 동기화 시작... (최초 실행 시 수 분 소요)",
+                       "zh": "🔄 CVE KB 同步中... (首次运行可能需要数分钟)",
+                       "en": "🔄 Syncing CVE KB... (first run may take a few minutes)"},
+    "cve_sync_done":  {"ko": "✅ CVE KB 동기화 완료 ({n}개 문서)",
+                       "zh": "✅ CVE KB 同步完成 ({n} 篇文档)",
+                       "en": "✅ CVE KB sync complete ({n} docs)"},
+    "cve_not_synced": {"ko": "💡 /cve sync 실행 후 사용 가능합니다",
+                       "zh": "💡 请先执行 /cve sync",
+                       "en": "💡 Run /cve sync first"},
+    "cve_search_empty":  {"ko": "사용법: /cve search <키워드|CVE-ID>",
+                          "zh": "用法: /cve search <关键词|CVE-ID>",
+                          "en": "Usage: /cve search <keyword|CVE-ID>"},
+    "cve_no_results":    {"ko": "'{query}' 결과 없음. /cve sync 먼저 실행하세요",
+                          "zh": "'{query}' 无结果。请先执行 /cve sync",
+                          "en": "No results for '{query}'. Run /cve sync first"},
+    "cve_not_found":     {"ko": "{cve_id} 없음. /cve sync 후 재시도하세요",
+                          "zh": "{cve_id} 未找到。请执行 /cve sync 后重试",
+                          "en": "{cve_id} not found. Run /cve sync and retry"},
+    "cve_usage":         {"ko": ("사용법: /cve [sync|status|search <키워드>|<CVE-ID>]\n"
+                                 "  /cve sync          — trickest/cve + exploitarium 동기화\n"
+                                 "  /cve status        — 동기화 상태 확인\n"
+                                 "  /cve search <kw>   — CVE/PoC 검색\n"
+                                 "  /cve CVE-2024-0001 — 특정 CVE 조회"),
+                          "zh": ("用法: /cve [sync|status|search <关键词>|<CVE-ID>]\n"
+                                 "  /cve sync          — 同步 trickest/cve + exploitarium\n"
+                                 "  /cve status        — 查看同步状态\n"
+                                 "  /cve search <kw>   — 搜索 CVE/PoC\n"
+                                 "  /cve CVE-2024-0001 — 查询特定CVE"),
+                          "en": ("Usage: /cve [sync|status|search <kw>|<CVE-ID>]\n"
+                                 "  /cve sync          — sync trickest/cve + exploitarium\n"
+                                 "  /cve status        — check sync status\n"
+                                 "  /cve search <kw>   — search CVE/PoC\n"
+                                 "  /cve CVE-2024-0001 — lookup specific CVE")},
     "/batch":       {"ko": "배치 멀티타겟  /batch [list|add <url>|run|status|clear]",
                      "zh": "批量多目标  /batch [list|add <url>|run|status|clear]",
                      "en": "Batch multi-target  /batch [list|add <url>|run|status|clear]"},
@@ -766,6 +809,43 @@ _SLASH_DESC = {
                        "zh": "🔍 信息/资产收集: passive|active|full|js|nuclei|dorks",
                        "en": "🔍 Recon/asset collection: passive|active|full|js|nuclei|dorks"},
 }
+
+# ── v3.6.0: CVE/KB 메시지 (_STRINGS 에 추가 — get_strings() 반환 대상) ──────
+_STRINGS.update({
+    "cve_sync_start":   {"ko": "🔄 CVE KB 동기화 시작... (최초 실행 시 수 분 소요)",
+                         "zh": "🔄 CVE KB 同步中... (首次运行可能需要数分钟)",
+                         "en": "🔄 Syncing CVE KB... (first run may take a few minutes)"},
+    "cve_sync_done":    {"ko": "✅ CVE KB 동기화 완료 ({n}개 문서)",
+                         "zh": "✅ CVE KB 同步完成 ({n} 篇文档)",
+                         "en": "✅ CVE KB sync complete ({n} docs)"},
+    "cve_not_synced":   {"ko": "💡 /cve sync 실행 후 사용 가능합니다",
+                         "zh": "💡 请先执行 /cve sync",
+                         "en": "💡 Run /cve sync first"},
+    "cve_search_empty": {"ko": "사용법: /cve search <키워드|CVE-ID>",
+                         "zh": "用法: /cve search <关键词|CVE-ID>",
+                         "en": "Usage: /cve search <keyword|CVE-ID>"},
+    "cve_no_results":   {"ko": "'{query}' 결과 없음. /cve sync 먼저 실행하세요",
+                         "zh": "'{query}' 无结果。请先执行 /cve sync",
+                         "en": "No results for '{query}'. Run /cve sync first"},
+    "cve_not_found":    {"ko": "{cve_id} 없음. /cve sync 후 재시도하세요",
+                         "zh": "{cve_id} 未找到。请执行 /cve sync 后重试",
+                         "en": "{cve_id} not found. Run /cve sync and retry"},
+    "cve_usage":        {"ko": ("사용법: /cve [sync|status|search <키워드>|<CVE-ID>]\n"
+                                "  /cve sync          — trickest/cve + exploitarium 동기화\n"
+                                "  /cve status        — 동기화 상태 확인\n"
+                                "  /cve search <kw>   — CVE/PoC 검색\n"
+                                "  /cve CVE-2024-0001 — 특정 CVE 조회"),
+                         "zh": ("用法: /cve [sync|status|search <关键词>|<CVE-ID>]\n"
+                                "  /cve sync          — 同步 trickest/cve + exploitarium\n"
+                                "  /cve status        — 查看同步状态\n"
+                                "  /cve search <kw>   — 搜索 CVE/PoC\n"
+                                "  /cve CVE-2024-0001 — 查询特定CVE"),
+                         "en": ("Usage: /cve [sync|status|search <kw>|<CVE-ID>]\n"
+                                "  /cve sync          — sync trickest/cve + exploitarium\n"
+                                "  /cve status        — check sync status\n"
+                                "  /cve search <kw>   — search CVE/PoC\n"
+                                "  /cve CVE-2024-0001 — lookup specific CVE")},
+})
 
 # ── 스킬 시스템 / WAF / 자동 분석 추가 문자열 ──────────────────────────────
 _STRINGS.update({
@@ -4650,6 +4730,43 @@ _STRINGS.update({
         "ko": "📚 관련 KB 없음: {query}",
         "zh": "📚 无相关知识库: {query}",
         "en": "📚 No matching KB for: {query}",
+    },
+    "kb_no_docs": {
+        "ko": "📚 KB 문서 없음. bingo/knowledge/base/ 에 .md 파일을 추가하세요",
+        "zh": "📚 暂无知识库文档。请将.md文件添加到 bingo/knowledge/base/",
+        "en": "📚 No KB documents found. Add .md files to bingo/knowledge/base/",
+    },
+    "kb_no_results": {
+        "ko": "📚 '{query}' 검색 결과 없음",
+        "zh": "📚 未找到 '{query}' 的相关结果",
+        "en": "📚 No results for '{query}'",
+    },
+    "kb_doc_not_found": {
+        "ko": "📚 문서 '{name}' 없음",
+        "zh": "📚 文档 '{name}' 未找到",
+        "en": "📚 Document '{name}' not found",
+    },
+    "kb_reloaded": {
+        "ko": "📚 지식 베이스 재로드 완료",
+        "zh": "📚 知识库已重新加载",
+        "en": "📚 Knowledge base reloaded",
+    },
+    "kb_usage": {
+        "ko": "사용법: /kb [list|search <키워드>|show <문서명>|reload]",
+        "zh": "用法: /kb [list|search <关键词>|show <文档名>|reload]",
+        "en": "Usage: /kb [list|search <kw>|show <name>|reload]",
+    },
+
+    # ── v3.6.0: KB 자동 주입 알림 ────────────────────────────────────
+    "kb_auto_loaded": {
+        "ko": "📚 KB 자동 로드됨 ({n}개 문서 매칭: {names})",
+        "zh": "📚 知识库自动加载 ({n} 个文档匹配: {names})",
+        "en": "📚 KB auto-loaded ({n} docs matched: {names})",
+    },
+    "kb_auto_hint": {
+        "ko": "💡 /kb search <키워드> 로 더 많은 관련 문서를 검색할 수 있습니다",
+        "zh": "💡 使用 /kb search <关键词> 可查找更多相关文档",
+        "en": "💡 Use /kb search <keyword> to find more related documents",
     },
 
     # ── v3.4.0: 공격 체인 ────────────────────────────────────────────

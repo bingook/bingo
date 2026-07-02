@@ -6,7 +6,7 @@
 
 **AI 渗透测试终端 — 实战排名第一**
 
-[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.6.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -541,6 +541,8 @@ bingo scan https://target.com
 | 命令 | 功能 |
 |------|------|
 | `/scan <url>` | 完整红队流水线 |
+| `/kb [list\|search <关键词>\|show <名称>\|reload]` | **[v3.6.0]** 115k+ 离线 CVE/漏洞利用知识库 |
+| `/cve [sync\|status\|search <关键词>\|CVE-ID]` | **[v3.6.0]** CVE PoC 查询 · `/cve CVE-2024-xxxx` 直接检索 |
 | `/waf <url>` | 仅 WAF 检测 + 绕过 |
 | `/crack [hash]` | 哈希破解 — 在线查询 → 离线爆破 |
 | `/proxy [子命令]` | **代理池轮换**（v3.2.18 新增）|
@@ -1660,34 +1662,135 @@ enabled: true
 
 ---
 
-### 5. 📚 本地知识库 (`/kb`)
+### 5. 📚 本地知识库 (`/kb`) — v3.6.0
 
-将您自己的攻击技巧、payload、笔记以 Markdown 文件保存。当检测到相关主题时，bingo 自动将对应 KB 内容注入 AI 上下文。
+bingo 内置了 **115,529 个文件（~466 MB）的离线安全知识库**，直接嵌入包内（`bingo/knowledge/base/`）。无需网络连接，启动即可使用。
+
+#### 内置知识清单（始终可用，完全离线）
+
+| 分类 | 文件数 | 来源 |
+|------|--------|------|
+| CVE/2018 | 9,062 | trickest/cve 全年 |
+| CVE/2019 | 8,385 | trickest/cve 全年 |
+| CVE/2020 | 10,760 | trickest/cve 全年 |
+| CVE/2021 | 11,217 | trickest/cve 全年 |
+| CVE/2022 | 13,281 | trickest/cve 全年 |
+| CVE/2023 | 16,531 | trickest/cve 全年 |
+| CVE/2024 | 24,381 | trickest/cve 全年 |
+| CVE/2025 | 17,550 | trickest/cve 全年 |
+| Exploitarium | ~40 | bikini/exploitarium（0day PoC + 研究） |
+| SQLi / XSS / SSRF / LFI / Auth / JWT / XXE / Upload / IDOR / WAF | 10 | 精选 payload 库 |
+| **合计** | **~115,529** | **~466 MB 内嵌** |
+
+> **为何直接内嵌？** GitHub 仓库随时可能下线。将数据直接打包进仓库，bingo 知识库 100% 自包含，支持断网/隔离网络环境。
+
+#### `/kb` 命令
 
 ```bash
-/kb list                              # 查看所有分类 + 文件数
-/kb search "sql injection bypass"    # 搜索 KB
-/kb inject "graphql introspection"   # 手动注入到下一个查询
+/kb                           # 列出全部文档（含分类统计）
+/kb list                      # 同上 — 显示 KB 索引表
+/kb search "sql injection"    # 关键词搜索（双向匹配：'sql' 可匹配 'sqli'）
+/kb search "CVE-2024-1234"    # 按 CVE ID 搜索
+/kb show SQLi/sqli-payloads   # 显示文档完整内容
+/kb reload                    # 重新扫描 KB 目录
 ```
 
-**目录结构：**
+#### 知识加载优先级
+
+```
+第1优先：bingo/knowledge/base/   ← 始终加载（git 内嵌，离线可用）
+第2优先：~/.bingo/knowledge/     ← 用户自定义文件 + /cve sync 结果（可选）
+```
+
+#### 自动注入（聊天模式 — 全自动）
+
+每次发送消息时，bingo 自动扫描**安全关键词**，将匹配的知识库文档注入 AI 上下文。无需输入任何命令，后台自动运行。
+
+**触发关键词**（40+ 种模式）：
+
+| 类别 | 检测关键词 |
+|------|-----------|
+| SQLi | `sql`、`sqli`、`injection`、`注入` |
+| XSS | `xss`、`cross-site` |
+| SSRF | `ssrf`、`server-side request` |
+| LFI | `lfi`、`local file`、`path traversal` |
+| RCE | `rce`、`remote code`、`远程代码` |
+| JWT | `jwt`、`json web token` |
+| 上传 | `upload`、`文件上传` |
+| CVE | `cve-`、`cve `（任何 CVE 编号） |
+| 通用 | `exploit`、`漏洞`、`payload`、`poc`、`权限提升` |
+
+**实际效果：**
+
+```
+输入：   "sql injection 测试方法"
+bingo：  📚 知识库自动加载 (3 个文档匹配: sqli-payloads, CVE-2023-..., high-impact-cves)
+         → AI 以 115,529 个文件的离线知识库为上下文作答
+```
+
+自动注入（聊天模式）与手动命令（`/kb search`、`/cve`）使用**同一份本地知识库**。
+
+> **提示：** 若自动注入显示 0 个文档，可使用 `/kb search <关键词>` 手动检索。
+
+#### 添加自定义文件
+
 ```
 ~/.bingo/knowledge/
 ├── SQLi/
-│   ├── blind-sqli.md          # 时间盲注 + 布尔注入 payload
-│   └── mssql-tricks.md        # MSSQL 专用技巧
+│   └── my-mssql-tricks.md   # 自定义 MSSQL payload
 ├── XSS/
-│   ├── stored-xss.md          # payload 库
-│   └── csp-bypass.md          # CSP 绕过技巧
-├── SSRF/
-│   └── cloud-metadata.md      # AWS/GCP/Azure 元数据端点
-└── custom/
-    └── 我的笔记.md             # 您自己的发现和笔记
+│   └── csp-bypass.md        # CSP 绕过笔记
+└── Notes/
+    └── target-xyz.md        # 目标专项发现记录
 ```
 
-首次运行时自动创建 SQLi、XSS、SSRF 3个入门文件。
+将 `.md` 文件放入 `~/.bingo/knowledge/` 后自动加载，立即可搜索。
 
-**自动注入** — 当查询包含 `sql`、`xss`、`ssrf` 等关键词时，匹配的 KB 文件自动预先插入 AI 上下文，在内置专业知识之上叠加您的自定义知识。
+---
+
+### 5b. 🛡️ CVE / Exploit 知识库 (`/cve`) — v3.6.0
+
+`/cve` 命令提供对内置 CVE PoC 数据库的直接访问，并支持从 GitHub 可选拉取最新更新。
+
+#### `/cve` 命令
+
+```bash
+/cve status                     # 显示 KB 统计信息（各来源文档数、最近同步时间）
+/cve search "log4j"             # 按关键词搜索 CVE/PoC
+/cve search "远程代码执行"      # 自然语言搜索
+/cve CVE-2024-1234              # 按 CVE ID 直接查询
+/cve CVE-2021-44228             # 直接查看 Log4Shell PoC
+/cve sync                       # （可选）从 GitHub 拉取最新更新
+```
+
+#### 使用示例
+
+```
+/cve CVE-2021-44228
+→ 显示 trickest/cve 完整 PoC Markdown：
+  - 受影响版本、厂商公告链接
+  - PoC payload 片段
+  - 参考 URL 列表
+```
+
+```
+/cve search "apache path traversal"
+→ 在 115k+ CVE 文件中返回最佳匹配：
+  📄 CVE/2021/CVE-2021-41773  Apache HTTP Server 2.4.49 路径穿越
+  📄 CVE/2021/CVE-2021-42013  Apache HTTP Server 2.4.49/2.4.50 RCE
+  ...
+```
+
+#### 可选同步（用于未来 CVE）
+
+内置 KB 覆盖 2018–2025 年。对于包构建后发布的 CVE：
+
+```bash
+/cve sync              # 同步 trickest/cve + bikini/exploitarium → ~/.bingo/knowledge/
+/cve status            # 验证同步状态
+```
+
+> 同步需要网络连接和约 500 MB 磁盘空间。内置 KB 完全离线运行。
 
 ---
 
@@ -1804,7 +1907,8 @@ enabled: true
 | `/vulns [add\|list\|update\|remove\|stats\|clear]` | 漏洞 | 漏洞数据库 |
 | `/board [set\|get\|list\|remove\|clear\|targets]` | 黑板 | 目标事实存储 |
 | `/tools-ext [list\|run]` | 工具配方 | 外部 CLI 工具 |
-| `/kb [list\|search\|inject]` | 知识库 | 本地 Markdown KB |
+| `/kb [list\|search <关键词>\|show <名称>\|reload]` | 知识库 | **[v3.6.0]** 115k+ 离线 CVE/Exploit KB |
+| `/cve [sync\|status\|search <关键词>\|CVE-ID]` | CVE 知识库 | **[v3.6.0]** CVE PoC 直接查询 + 可选同步 |
 | `/batch [new\|add\|run\|status\|list\|cancel]` | 批量 | 多目标批量执行 |
 | `/chain [add\|clear]` | 攻击链 | 攻击链追踪器 |
 | `/hitl [on\|off\|allow\|deny\|list]` | HITL | 危险操作确认门控 |
@@ -1886,6 +1990,7 @@ export HUNTER_KEY="your_hunter_io_key"
 
 | 版本 | 摘要 |
 |------|------|
+| v3.6.0 | **离线 CVE/漏洞利用知识库（115,529 文件 · 466 MB 内嵌）** — `trickest/cve` 2018–2025 + `bikini/exploitarium` 全部直接提交至 `bingo/knowledge/base/`（无需网络）；**聊天自动注入**：检测到 40+ 种安全关键词（`sql`、`xss`、`rce`、`cve-*`、`exploit` 等）时自动执行 `KBLoader.search()` → 前置注入 Top-4 文档至 AI 上下文 + `📚 知识库自动加载` 通知；`/kb` 命令：list · search · show · reload；`/cve` 命令：status · search · CVE-ID 直查 · 可选 `sync`；`KBLoader` 双向关键词匹配；`cve_sync.py` 可选 GitHub 同步；新增 16 个 i18n 键（含 `kb_auto_loaded`、`kb_auto_hint`，KO/ZH/EN）；7 个 AI Provider 全量多语言标签；`pyproject.toml` 升级至 3.6.0 |
 | v3.5.22 | **侦察模块套件** — 新增 `bingo/core/recon/` 包：被动收集(crt.sh, BGPView, Shodan, FOFA, Hunter.io, Google/GitHub Dorks)、主动收集(子域名爆破subfinder/amass回退、HTTP探测httpx/urllib回退、端口扫描nmap/masscan/socket回退、WAF/技术栈指纹、JS端点+密钥挖掘)、P0-P3自动优先级分类资产库、Nuclei集成、JSON+TXT报告保存；`/recon`斜杠命令；聊天模式5类侦察上下文自动检测；新增13个多语言i18n键（KO/ZH/EN） |
 | v3.5.21 | **全面APT化** — 新增4个APT模块（`bingo/core/apt/`）：AI鱼叉钓鱼生成器（OSINT分析、HTML诱饵页面、GoPhish配置）、供应链漏洞扫描器（npm/pip/GitHub Actions、依赖混淆、仿冒包检测、恶意包IOC）、内网横向移动（Impacket/CME/SSH/BloodHound/PTH/PTT命令生成）、隐蔽C2信道（DNS隧道base32/TXT + HTTPS Beacon AES-256-CBC + Jitter + 域前置）；`/apt`斜杠命令；聊天模式4类上下文自动检测；新增17个多语言i18n键（KO/ZH/EN） |
 | v3.5.20 | **0day Hunter v2** — 研究级 0day/N-day exploit 模块5种：CVE-2024-41713 / CVE-2024-35286 / 0day-LFI（Mitel MiCollab）、CVE-2024-20017（MediaTek wappd UDP溢出）、CVE-2023-4863（libwebp BLASTPASS堆溢出）、CVE-2023-4911（glibc Looney Tunables LPE）、CVE-2024-43035 / CVE-2024-48946 / CVE-2024-9301（ZeroPath IDOR/RCE/路径穿越）；`bingo/core/exploits/` 新增4个PoC模块；聊天模式自动注入exploit模块提示；新增8个多语言i18n键（KO/ZH/EN） |
@@ -1955,7 +2060,7 @@ MIT © 2026 bingook
 
 *内置引擎 · HTTP 走私 · 防幻觉守卫 · 基于角色测试 · 漏洞管理 · 目标记忆 · LLM编排器 — 唯一全能 AI 渗透终端*
 
-[![Version](https://img.shields.io/badge/version-3.5.21-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-3.6.0-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

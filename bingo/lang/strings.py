@@ -5310,9 +5310,9 @@ _STRINGS.update({
         "en": "🧬 Nuclei context detected — use /recon nuclei <target> for auto template vulnerability scan",
     },
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.6.4) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.6.4) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.6.4) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.6.5) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.6.5) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.6.5) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",

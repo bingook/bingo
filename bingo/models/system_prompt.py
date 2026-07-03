@@ -3447,7 +3447,7 @@ def rephrase_refused_request(original_request: str, provider: str = "deepseek") 
 # v3.2.8 — RULE 28/29/30 — SQLi 실패 시 즉시 피벗 + ASP.NET 특화 + Playwright
 # ═══════════════════════════════════════════════════════════════════════════
 
-_SQLI_PIVOT_AND_PLAYWRIGHT_RULES = """
+_SQLI_PIVOT_AND_PLAYWRIGHT_RULES = r"""
   ── 28. SQLi 완전 실패 시 즉시 PIVOT — 절대 TARGET_FAILED 선언 금지 ──
   [v3.2.8 MANDATORY]
 

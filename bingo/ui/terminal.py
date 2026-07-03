@@ -7679,6 +7679,11 @@ class BingoTerminal:
                 "<!doctype", "<!DOCTYPE",
                 "response body:", "Response Body:", "응답체:", "응답바디:",
                 "响应体:", "响应内容:", "返回体:", "请求体:",
+                # v3.6.6: 'Response (403): <!DOCTYPE html>' WAF 차단 응답 오탐 방지
+                # WAF가 AND/UNION/SLEEP 등 다수 페이로드를 403으로 차단 시
+                # "Response (403): <!DOCTYPE html>" 이 5회 이상 반복 → 무한루프 오탐 발생
+                # 실제 무한루프(SQL TOP 1 커서 없음)와 WAF 차단 패턴을 구분
+                "Response (", "response (",
                 # v3.2.17: HTTP 상태코드 + 크기 출력 패턴 (예: [GET] /path → 200/1234B)
                 "[get] ", "[post] ", "[put] ", "[delete] ", "[patch] ",
                 "[GET] ", "[POST] ", "[PUT] ", "[DELETE] ", "[PATCH] ",
@@ -7819,27 +7824,51 @@ class BingoTerminal:
                 _last_five = _table_lines[-5:]
                 if len(set(_last_five)) == 1:  # 마지막 5줄이 모두 동일한 의미있는 값
                     _dup_val = _last_five[0]
-                    _dup_msg = t("infinite_loop_warning", "⚠️  Infinite loop detected — '{name}' repeated {n}+ times.").replace("{name}", _dup_val).replace("{n}", "5")
-                    self.console.print(f"[bold red]{_dup_msg}[/]")
-                    _ip_block_hint += (
-                        f"\n[INFINITE_LOOP_DETECTED: same result '{_dup_val}' repeating]\n"
-                        "CRITICAL BUG IN YOUR SCRIPT: You are getting the same result in a loop!\n"
-                        "ROOT CAUSE: SELECT TOP 1 without pagination cursor always returns first row.\n"
-                        "MANDATORY FIX — Use cursor pagination:\n"
-                        "  seen = set()\n"
-                        "  last_hex = ''\n"
-                        "  while True:\n"
-                        "      if last_hex:\n"
-                        "          payload = f'AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55 AND name > {last_hex})'\n"
-                        "      else:\n"
-                        "          payload = 'AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55)'\n"
-                        "      result = extract(payload)\n"
-                        "      if not result or result in seen: break\n"
-                        "      seen.add(result)\n"
-                        "      last_hex = '0x' + result.encode().hex().upper()\n"
-                        "      print(result)\n"
-                        "STOP the current loop immediately and rewrite with this pattern.\n"
+                    _dup_val_lower = _dup_val.lower()
+                    # v3.6.6: WAF 차단 응답 오탐 방지
+                    # "Response (403): <!DOCTYPE html>" 같은 HTTP 에러 응답이
+                    # 여러 페이로드에서 동일하게 반복될 때 루프 오탐 방지
+                    # 실제 SQL 데이터 루프는 HTTP 에러 페이지가 아닌 DB 레코드값을 반복함
+                    _is_waf_response = (
+                        _dup_val_lower.startswith("response (")          # Response (403): ...
+                        or _dup_val_lower.startswith("status=4")          # status=403, status=404
+                        or _dup_val_lower.startswith("status=5")          # status=500, status=503
+                        or "<!doctype" in _dup_val_lower                  # HTML 에러 페이지
+                        or "<html" in _dup_val_lower                      # HTML 본문
+                        or "error 40" in _dup_val_lower                   # "Error 403 (Forbidden)"
+                        or "error 50" in _dup_val_lower                   # "Error 503 ..."
+                        or "forbidden" in _dup_val_lower                  # HTTP 403 Forbidden
+                        or "not found" in _dup_val_lower                  # HTTP 404 Not Found
                     )
+                    if _is_waf_response:
+                        # WAF 차단: 루프 오탐이므로 TOP 1 힌트 없이 스킵
+                        _waf_loop_fp_msg = t(
+                            "loop_fp_waf_block",
+                            "⚡ Loop false-positive skipped: repeated '{name}' is WAF block response — not SQL data loop."
+                        ).replace("{name}", _dup_val[:60])
+                        self.console.print(f"[dim]{_waf_loop_fp_msg}[/]")
+                    else:
+                        _dup_msg = t("infinite_loop_warning", "⚠️  Infinite loop detected — '{name}' repeated {n}+ times.").replace("{name}", _dup_val).replace("{n}", "5")
+                        self.console.print(f"[bold red]{_dup_msg}[/]")
+                        _ip_block_hint += (
+                            f"\n[INFINITE_LOOP_DETECTED: same result '{_dup_val}' repeating]\n"
+                            "CRITICAL BUG IN YOUR SCRIPT: You are getting the same result in a loop!\n"
+                            "ROOT CAUSE: SELECT TOP 1 without pagination cursor always returns first row.\n"
+                            "MANDATORY FIX — Use cursor pagination:\n"
+                            "  seen = set()\n"
+                            "  last_hex = ''\n"
+                            "  while True:\n"
+                            "      if last_hex:\n"
+                            "          payload = f'AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55 AND name > {last_hex})'\n"
+                            "      else:\n"
+                            "          payload = 'AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55)'\n"
+                            "      result = extract(payload)\n"
+                            "      if not result or result in seen: break\n"
+                            "      seen.add(result)\n"
+                            "      last_hex = '0x' + result.encode().hex().upper()\n"
+                            "      print(result)\n"
+                            "STOP the current loop immediately and rewrite with this pattern.\n"
+                        )
 
             if _detected_blocks:
                 _wait_secs = 15

@@ -1899,6 +1899,12 @@ _STRINGS.update({
                                   "zh": "⚠️  检测到无限循环 — '{name}' 重复出现 {n} 次以上。疑似使用TOP 1查询而无游标分页。",
                                   "en": "⚠️  Infinite loop detected — '{name}' repeated {n}+ times. Likely TOP 1 query without cursor pagination."},
 
+    # v3.6.6: WAF 차단 응답 루프 오탐 방지
+    # WAF가 여러 페이로드를 동일한 403 HTML로 차단할 때 무한루프로 오탐되던 문제 수정
+    "loop_fp_waf_block":        {"ko": "⚡ 루프 오탐 스킵: '{name}'은 WAF 차단 응답 — SQL 데이터 루프 아님.",
+                                  "zh": "⚡ 跳过循环误报: '{name}'是WAF拦截响应 — 不是SQL数据无限循环。",
+                                  "en": "⚡ Loop false-positive skipped: '{name}' is WAF block response — not SQL data loop."},
+
     # ── XSS 반사 중복 제거 / XSS Reflection Deduplication (v2.9.4) ─────
     "xss_reflect_dedup_fix":    {"ko": "필수 수정 — XSS 반사 위치를 중복 제거 없이 출력하고 있습니다.\nseen_ctx = set() 으로 고유 컨텍스트만 출력하세요.",
                                   "zh": "强制修复 — XSS反射位置输出没有去重。\n请使用 seen_ctx = set() 仅输出唯一上下文。",
@@ -5310,9 +5316,9 @@ _STRINGS.update({
         "en": "🧬 Nuclei context detected — use /recon nuclei <target> for auto template vulnerability scan",
     },
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.6.5) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.6.5) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.6.5) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.6.6) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.6.6) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.6.6) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",

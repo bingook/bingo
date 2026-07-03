@@ -5310,9 +5310,9 @@ _STRINGS.update({
         "en": "🧬 Nuclei context detected — use /recon nuclei <target> for auto template vulnerability scan",
     },
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.6.2) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.6.2) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.6.2) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.6.3) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.6.3) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.6.3) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
@@ -5375,17 +5375,59 @@ _STRINGS.update({
         "zh": "用法: /tools-ext [list|run <名称>|reload]",
         "en": "Usage: /tools-ext [list|run <name>|reload]",
     },
+    # v3.6.3 — 오탐 방지 규칙 관련 경고 메시지
+    "sqli_warn_error_fp": {
+        "ko": "⚠️ [오탐주의] 'error' 문자열 단독 = SQL 오류 아님. 실제 SQL 문법 오류 패턴 확인 필요.",
+        "zh": "⚠️ [误报警告] 单独 'error' 字符串 ≠ SQL 错误。需确认真实 SQL 语法错误模式。",
+        "en": "⚠️ [FP-WARN] Bare 'error' string ≠ SQL error. Verify actual SQL syntax error pattern.",
+    },
+    "sqli_warn_mysql_baseline": {
+        "ko": "⚠️ [오탐주의] 'mysql' 키워드가 베이스라인에도 존재 — 인젝션 신호로 사용 불가.",
+        "zh": "⚠️ [误报警告] 'mysql' 关键字在基线响应中已存在 — 不可用作注入信号。",
+        "en": "⚠️ [FP-WARN] 'mysql' keyword present in baseline — cannot use as injection signal.",
+    },
+    "sqli_warn_union_reflection": {
+        "ko": "⚠️ [오탐주의] UNION 응답 크기 선형 증가 = 반사(Reflection). sentinel 값으로 재검증 필요.",
+        "zh": "⚠️ [误报警告] UNION 响应大小线性增长 = 反射(Reflection)。需用 sentinel 值重新验证。",
+        "en": "⚠️ [FP-WARN] UNION response size grows linearly = payload reflection. Re-verify with sentinel.",
+    },
+    "sqli_warn_sleep_no_delay": {
+        "ko": "⚠️ [오탐주의] SLEEP 실제 지연 미확인 — WAF가 SLEEP 함수 차단 중일 수 있음.",
+        "zh": "⚠️ [误报警告] SLEEP 实际延迟未确认 — WAF 可能正在拦截 SLEEP 函数。",
+        "en": "⚠️ [FP-WARN] SLEEP delay not confirmed — WAF may be blocking SLEEP execution.",
+    },
+    "proxy_err_socks": {
+        "ko": "⚠️ [PROXY-ERROR] SOCKS 프록시 연결 실패 (Tor 미실행 또는 설정 오류). IP 차단 아님.",
+        "zh": "⚠️ [PROXY-ERROR] SOCKS 代理连接失败（Tor 未运行或配置错误），不是 IP 封锁。",
+        "en": "⚠️ [PROXY-ERROR] SOCKS proxy connection failed (Tor not running or misconfigured). Not an IP ban.",
+    },
+    "sqli_escalate_blocked": {
+        "ko": "⚠️ 신뢰 신호 부족 — 에스컬레이션 보류. 신뢰 가능한 SQLi 신호 2개 이상 필요.",
+        "zh": "⚠️ 可信信号不足 — 暂停升级。需要至少 2 个可信 SQLi 信号。",
+        "en": "⚠️ Insufficient reliable signals — escalation paused. Need 2+ confirmed SQLi signals.",
+    },
+    "credential_fp_login_form": {
+        "ko": "[-] 로그인 폼 존재 = 정상 기능. 실제 인증 우회 확인 없이 credential 취약점 생성 안 함.",
+        "zh": "[-] 登录表单存在 = 正常功能。未实际确认身份验证绕过，不生成 credential 漏洞。",
+        "en": "[-] Login form exists = normal feature. No credential finding without confirmed auth bypass.",
+    },
+    "idor_fp_public_access": {
+        "ko": "[-] 공개 게시물 순차 접근 = 정상 동작. 인가 경계 교차 확인 없이 IDOR 생성 안 함.",
+        "zh": "[-] 顺序访问公开帖子 = 正常行为。未确认授权边界越界，不生成 IDOR 漏洞。",
+        "en": "[-] Sequential access to public posts = normal behavior. No IDOR finding without auth boundary test.",
+    },
 })
 
 
-def get_slash_commands(lang: str = "en") -> list[tuple[str, str]]:
+def get_strings(lang: str = "en") -> dict:
+    """특정 언어의 모든 문자열 반환"""
+    if lang not in SUPPORTED_LANGS:
+        lang = "en"
+    return {k: v.get(lang, v.get("en", "")) for k, v in _STRINGS.items()}
+
+
+def get_slash_commands(lang: str = "en") -> list:
     """슬래시 자동완성 명령어 목록 (현재 언어 기준)"""
     if lang not in SUPPORTED_LANGS:
         lang = "en"
-    return [(cmd, desc[lang]) for cmd, desc in _SLASH_DESC.items()]
-
-
-def get_strings(lang: str = "en") -> dict:
-    if lang not in SUPPORTED_LANGS:
-        lang = "en"
-    return {k: v[lang] for k, v in _STRINGS.items()}
+    return [(cmd, desc.get(lang, desc.get("en", ""))) for cmd, desc in _SLASH_DESC.items()]

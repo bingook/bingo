@@ -2003,9 +2003,9 @@ _STRINGS.update({
                                   "en": ("⚡ [bold]Loop paused[/bold] — type a hint to keep going\n"
                                          "   (press Enter or Ctrl+C again → stop completely)")},
 
-    "stream_interrupted":       {"ko": "⏸ 스트리밍 중단됨 — 힌트를 입력하거나 Enter로 루프를 멈춥니다",
-                                  "zh": "⏸ 流式传输已中断 — 输入提示或按 Enter 停止循环",
-                                  "en": "⏸ Streaming interrupted — type a hint or press Enter to stop the loop"},
+    "stream_interrupted":       {"ko": "⏸ 응답 중단됨",
+                                  "zh": "⏸ 已中断",
+                                  "en": "⏸ Interrupted"},
 
     # ── v3.2.99: Ctrl+C 즉시 반응 관련 ─────────────────────────────────────
     "ctrl_c_killing_procs":     {"ko": "⚡ 실행 중인 스크립트 즉시 종료 중...",

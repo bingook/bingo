@@ -802,6 +802,10 @@ class BingoTerminal:
 
             # 일반 메시지 → AI 응답
             self._send_message(user_input.strip())
+            # ★ _send_message 완료 후에도 stop_flag가 남아있으면 클리어
+            # (Ctrl+C로 중단된 경우 다음 입력 프롬프트가 즉시 force-quit되는 문제 방지)
+            if self._agent_stop_flag.is_set():
+                self._agent_stop_flag.clear()
 
     def _get_input(self) -> str:
         model_cfg = self.config.get_active_model_config()
@@ -1927,6 +1931,10 @@ class BingoTerminal:
                 model.chat_stream(self._build_messages(""))
             )
             self._build_messages = _orig_build  # type: ignore[method-assign]
+            # ★ Ctrl+C 중단 감지 — 플래그가 남아있으면 두 번째 _stream_response 호출 방지
+            if self._agent_stop_flag.is_set():
+                self._agent_stop_flag.clear()
+                return
 
         if full_response:
             self.history.append(Message(role="assistant", content=full_response))
@@ -2189,10 +2197,20 @@ class BingoTerminal:
         self.history.append(Message(role="user", content=wrapped_text))
         self._append_to_session_log("user", text)
 
+        # ★ Ctrl+C 중단 감지 — 플래그가 남아있으면 스트리밍 호출 스킵
+        if self._agent_stop_flag.is_set():
+            self._agent_stop_flag.clear()
+            return
+
         # 시스템 프롬프트 + 스킬 컨텍스트 포함한 전체 메시지로 스트리밍
         full_response = self._stream_response(
             model.chat_stream(self._build_messages(skill_context))
         )
+
+        # ★ 스트리밍 후 Ctrl+C 중단 감지 — 거부 재시도 방지
+        if self._agent_stop_flag.is_set():
+            self._agent_stop_flag.clear()
+            return
 
         # 거부 감지 → 재구성 후 재시도 (이전 출력은 이미 표시됨 — 새 시도만 추가 출력)
         if full_response and detect_refusal(full_response):

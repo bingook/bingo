@@ -5310,9 +5310,9 @@ _STRINGS.update({
         "en": "🧬 Nuclei context detected — use /recon nuclei <target> for auto template vulnerability scan",
     },
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.6.3) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.6.3) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.6.3) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.6.4) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.6.4) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.6.4) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
@@ -5415,6 +5415,67 @@ _STRINGS.update({
         "ko": "[-] 공개 게시물 순차 접근 = 정상 동작. 인가 경계 교차 확인 없이 IDOR 생성 안 함.",
         "zh": "[-] 顺序访问公开帖子 = 正常行为。未确认授权边界越界，不生成 IDOR 漏洞。",
         "en": "[-] Sequential access to public posts = normal behavior. No IDOR finding without auth boundary test.",
+    },
+    # ── v3.6.4 Pentest-Lyan Integration Keys ──
+    "threat_model_12dim_header": {
+        "ko": "[위협모델] 12차원 위협 식별 프레임워크 적용 중",
+        "zh": "[威胁建模] 正在应用 12 维威胁识别框架",
+        "en": "[ThreatModel] Applying 12-dimension threat identification framework",
+    },
+    "threat_model_dim_irrelevant": {
+        "ko": "  · [{dim}] 해당 기능과 무관 — 건너뜀",
+        "zh": "  · [{dim}] 与当前功能无关 — 跳过",
+        "en": "  · [{dim}] Not relevant to this feature — skipped",
+    },
+    "threat_model_dim_candidate": {
+        "ko": "  · [{dim}] 잠재 위협 발견: {threat_name} — 이유: {reason}",
+        "zh": "  · [{dim}] 潜在威胁: {threat_name} — 原因: {reason}",
+        "en": "  · [{dim}] Potential threat: {threat_name} — reason: {reason}",
+    },
+    "coverage_note_required": {
+        "ko": "[커버리지 노트] 테스트 종료 전 3개 항목 필수 기록 — 입력면/행동면/미배제 공격면",
+        "zh": "[覆盖率笔记] 测试结束前必须记录 3 项 — 输入面/行为面/未排除攻击面",
+        "en": "[CoverageNote] Before closing test, record 3 items — input/behavior/unruled-out surface",
+    },
+    "coverage_unruled_out": {
+        "ko": "  ⚠️ 미배제 공격면: {surfaces}",
+        "zh": "  ⚠️ 未排除攻击面: {surfaces}",
+        "en": "  ⚠️ Unruled-out surface: {surfaces}",
+    },
+    "g3_evidence_missing": {
+        "ko": "[-] 증거 불충분 → [SUSPECTED ⚠️] 강등. 누락 항목: {missing}",
+        "zh": "[-] 证据不足 → 降级为 [SUSPECTED ⚠️]。缺少: {missing}",
+        "en": "[-] Insufficient evidence → demoted to [SUSPECTED ⚠️]. Missing: {missing}",
+    },
+    "g3_info_not_vuln": {
+        "ko": "[INFO] 설정 관찰 항목 — 취약점 번호 부여 안 함: {item}",
+        "zh": "[INFO] 配置观察项 — 不赋予漏洞编号: {item}",
+        "en": "[INFO] Config observation — no vuln ID assigned: {item}",
+    },
+    "cross_role_start": {
+        "ko": "[크로스롤] victim 자원 ID 수집 → attacker 세션으로 교차 접근 테스트 시작",
+        "zh": "[跨角色] 收集 victim 资源 ID → 使用 attacker 会话开始交叉访问测试",
+        "en": "[CrossRole] Collecting victim resource IDs → starting cross-access test with attacker session",
+    },
+    "cross_role_confirmed": {
+        "ko": "[크로스롤] CONFIRMED — attacker가 victim 자원({rid}) 접근 성공. 실제 데이터 확인됨.",
+        "zh": "[跨角色] 已确认 — attacker 成功访问 victim 资源 ({rid})。已验证实际数据。",
+        "en": "[CrossRole] CONFIRMED — attacker accessed victim resource ({rid}). Real data verified.",
+    },
+    "cross_role_not_vuln": {
+        "ko": "[크로스롤] 안전 — attacker 요청 403/401 또는 빈 응답. 권한 경계 정상.",
+        "zh": "[跨角色] 安全 — attacker 请求返回 403/401 或空响应。权限边界正常。",
+        "en": "[CrossRole] Safe — attacker request returned 403/401 or empty. Auth boundary enforced.",
+    },
+    "cross_role_skip_no_account": {
+        "ko": "[크로스롤] 계정 부족 — 크로스롤 검증 생략. 단일 계정으로 진행.",
+        "zh": "[跨角色] 账户不足 — 跳过跨角色验证。使用单账户继续。",
+        "en": "[CrossRole] Insufficient accounts — cross-role check skipped. Proceeding with single account.",
+    },
+    "victim_id_hardcode_blocked": {
+        "ko": "[-] victim ID 하드코딩 금지. 반드시 실제 계정에서 ID를 추출할 것.",
+        "zh": "[-] 禁止硬编码 victim ID。必须从真实账户中提取 ID。",
+        "en": "[-] Hardcoding victim IDs is forbidden. Must extract IDs from real accounts.",
     },
 })
 

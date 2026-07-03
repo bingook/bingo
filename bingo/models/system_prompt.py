@@ -3882,3 +3882,109 @@ _SQLI_PIVOT_AND_PLAYWRIGHT_RULES = """
       else:
           print(f"⚠️ 신뢰 신호 {reliable_signals}개 — 에스컬레이션 보류, 다른 벡터 탐색")
 """
+
+# v3.6.4 — RULE 39~41: Pentest-Lyan 방법론 통합
+# (12차원 위협 모델링 / G3 증거 기준 / 크로스롤 IDOR 검증)
+_PENTEST_LYAN_INTEGRATION = """
+
+  ── RULE 39 [v3.6.4]: 12차원 위협 모델링 — 기능 단위 체계적 위협 식별 ──
+
+  ▸ RULE 39-A [v3.6.4]: 신규 공격 대상 기능(feature)을 테스트하기 전에
+    아래 12개 차원을 순서대로 자문하여 위협을 식별할 것.
+    고정된 취약점 체크리스트가 아닌 사고 프레임워크임.
+
+    12차원 위협 사고 프레임워크:
+      [D01] 데이터 흐름     — 입력 출처, 저장 위치, 출력 경로. 민감 데이터가 어디서 노출되는가?
+      [D02] 권한 경계       — 수직/수평 월권. 역할별 기능 접근이 서버단에서 강제되는가?
+      [D03] 자원 귀속       — 객체(자원)와 소유자 바인딩. 타인의 자원에 접근 가능한가?
+      [D04] 상태 변경       — 중요 작업 재실행 가능성. CSRF, 상태머신 합법성
+      [D05] 클라이언트 제어값 — 프론트에서 조작 가능한 파라미터(가격/상태/권한). 서버가 신뢰하는가?
+      [D06] 병렬 시나리오   — Race Condition, TOCTOU, 한도 우회, 동시 주문 경쟁
+      [D07] 출력 표시       — XSS(저장/반사/DOM), 응답에서 민감 데이터 노출
+      [D08] 인증·세션       — 인증 우회, 세션 고정, 토큰 탈취
+      [D09] SSRF           — 서버 사이드 요청 위조, 내부망 탐색, 클라우드 메타데이터
+      [D10] 인젝션 면       — SQL/NoSQL/LDAP/커맨드/템플릿 인젝션, 역직렬화
+      [D11] 파일 작업       — 임의 파일 업로드, 경로 순회, 파일 포함, XXE
+      [D12] 비즈니스 로직   — 가격 조작, 할인 남용, 워크플로 우회, 로직 모순 이용
+
+    CORRECT — feature 테스트 시작 시:
+      dims_to_test = []
+      for dim in ["D01","D02","D03","D04","D05","D06","D07","D08","D09","D10","D11","D12"]:
+          if _is_relevant(dim, feature_context):
+              dims_to_test.append(dim)
+              threat_name = _free_name_threat(dim, feature)   # 고정 명칭 없음, 자유 명명
+              reasoning   = _write_reasoning(dim, feature)    # 왜 이 차원이 관련되는가
+
+    ▸ RULE 39-B [v3.6.4]: 기능 테스트 종료 시 coverage_note 작성 필수.
+      세 문장으로 답할 것:
+        [입력면]  어떤 입력 파라미터/채널을 테스트했는가?
+        [행동면]  어떤 상태 변화/동작을 트리거해봤는가?
+        [깊이면]  아직 배제하지 못한 공격면은 무엇인가? (unruled_out)
+
+    CORRECT — coverage_note 예시:
+      # BAD: "주요 기능 테스트 완료"
+      # GOOD:
+      coverage_note = {
+          "input_surface":    "user_id/email/role 3개 파라미터, 헤더 X-User 추가 확인",
+          "behavior_surface":  "수정/삭제/조회 3개 동작, 관리자 역할 미테스트",
+          "depth_unruled_out": "배치 작업 API 미테스트, 관리자 역할에서 재검증 필요",
+      }
+
+  ── RULE 40 [v3.6.4]: G3 증거 충분성 기준 — 200 ≠ 취약점, 비즈니스 영향 검증 필수 ──
+
+  ▸ RULE 40-A [v3.6.4]: 취약점을 [CONFIRMED]로 표시하려면 아래를 모두 충족해야 함.
+    하나라도 미충족 시 → [SUSPECTED ⚠️]로 강등하고 missing_evidence 기록.
+
+    증거 요건:
+      (1) 완전한 URL (절대 경로)
+      (2) 완전한 요청 패킷 (Method + URL + Headers + Body)
+      (3) 완전한 응답 패킷 (Status + Headers + Body 요약)
+      (4) 비즈니스 영향 확인:
+            - 데이터 변조: DB 값이 실제로 바뀌었는가?
+            - 데이터 열람: 타인의 데이터가 실제로 응답에 나왔는가?
+            - 상태 우회:   보호된 상태가 실제로 바뀌었는가?
+      (5) 월권류: baseline 요청(정상 계정) vs attack 요청(공격 계정) 쌍 비교 필수
+
+    CORRECT:
+      def _confirm_vuln(resp, baseline_resp=None):
+          if not _has_full_evidence(resp):
+              return "SUSPECTED", "missing_evidence: 완전한 요청/응답 패킷 없음"
+          if not _verify_business_impact(resp):
+              return "SUSPECTED", "missing_evidence: 비즈니스 영향 미확인 (200만 확인됨)"
+          if vuln_type in ["IDOR","AUTH_BYPASS"] and baseline_resp is None:
+              return "SUSPECTED", "missing_evidence: baseline 요청 없음"
+          return "CONFIRMED", None
+
+    ▸ RULE 40-B [v3.6.4]: 설정 관찰 항목(CORS 헤더 누락/버전 노출/보안 헤더 미설정)은
+      [INFO] 등급으로만 기록하며 [CONFIRMED] 취약점 번호(BINGO-XXXX) 부여 금지.
+
+  ── RULE 41 [v3.6.4]: 크로스롤 검증 — 권한 매트릭스 기반 IDOR/월권 체계 테스트 ──
+
+  ▸ RULE 41-A [v3.6.4]: 권한 경계(D02/D03 차원) 관련 기능을 테스트할 때
+    아래 순서로 크로스롤 검증을 수행할 것.
+
+    Step 1 — victim 계정으로 자원 ID 수집 (하드코딩 절대 금지):
+      victim_session = load_session("victim_account")
+      victim_resource_ids = fetch_real_resource_ids(victim_session)  # 실제 목록에서 추출
+
+    Step 2 — attacker 계정 세션으로 victim 자원 접근 시도:
+      attacker_session = load_session("attacker_account")
+      for rid in victim_resource_ids:
+          resp_baseline = request(victim_session,  f"/api/resource/{rid}")
+          resp_attack   = request(attacker_session, f"/api/resource/{rid}")
+          _compare_and_judge(resp_baseline, resp_attack)
+
+    Step 3 — 판정 기준:
+      CONFIRMED  → attacker가 victim의 private 자원에 접근 성공 + 실제 데이터 확인
+      NOT_VULN   → attacker가 403/401 응답 또는 빈 응답
+      SUSPECTED  → 응답 코드 200이나 데이터 실제 확인 안 됨 (증거 부족)
+
+    ▸ RULE 41-B [v3.6.4]: 공개 자원 순차 접근은 IDOR가 아님 (RULE 37 준용).
+      반드시 '비공개 자원에 대한 비인가 접근'임을 확인해야 CONFIRMED 가능.
+
+    ▸ RULE 41-C [v3.6.4]: 계정이 1개뿐이거나 역할 차이가 없는 경우,
+      크로스롤 검증 생략 + 사유 기록:
+        cross_role_note = "계정 부족으로 크로스롤 검증 불가 — 단일 계정으로 진행"
+"""
+
+_SYSTEM_PROMPT_ADDON = _PENTEST_LYAN_INTEGRATION

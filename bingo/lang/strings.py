@@ -5310,9 +5310,9 @@ _STRINGS.update({
         "en": "🧬 Nuclei context detected — use /recon nuclei <target> for auto template vulnerability scan",
     },
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.5.22) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.5.22) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.5.22) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.6.2) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.6.2) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.6.2) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
@@ -5353,6 +5353,27 @@ _STRINGS.update({
         "ko": "알 수 없는 Recon 서브 명령. /recon 으로 도움말 확인",
         "zh": "未知Recon子命令。输入 /recon 查看帮助",
         "en": "Unknown Recon subcommand. Use /recon for help",
+    },
+    # ── /tools-ext ──────────────────────────────────────────────────
+    "tools_ext_no_tools": {
+        "ko": "정의된 외부 도구 없음. bingo/tools_ext/builtin/ 에 YAML 파일을 추가하세요",
+        "zh": "未定义外部工具。请在 bingo/tools_ext/builtin/ 添加 YAML 文件",
+        "en": "No external tools defined. Add YAML files to bingo/tools_ext/builtin/",
+    },
+    "tools_ext_run_usage": {
+        "ko": "사용법: /tools-ext run <도구명> [인자...]",
+        "zh": "用法: /tools-ext run <工具名> [参数...]",
+        "en": "Usage: /tools-ext run <tool_name> [args...]",
+    },
+    "tools_ext_reloaded": {
+        "ko": "외부 도구 목록을 새로 불러왔습니다.",
+        "zh": "外部工具已重新加载。",
+        "en": "External tools reloaded.",
+    },
+    "tools_ext_usage": {
+        "ko": "사용법: /tools-ext [list|run <이름>|reload]",
+        "zh": "用法: /tools-ext [list|run <名称>|reload]",
+        "en": "Usage: /tools-ext [list|run <name>|reload]",
     },
 })
 

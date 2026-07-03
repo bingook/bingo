@@ -10178,7 +10178,7 @@ class BingoTerminal:
         if cmd == "list" or not arg.strip():
             tools = reg.list()
             if not tools:
-                self._info("No external tools defined. Add YAML files to bingo/tools_ext/builtin/")
+                self._info(self.s.get("tools_ext_no_tools"))
                 return
             t = _T(title="[bold cyan]External Tools[/]", border_style=THEME["primary"])
             t.add_column("Name", style="cyan", width=18)
@@ -10191,7 +10191,7 @@ class BingoTerminal:
             self.console.print(t)
         elif cmd == "run":
             if not param:
-                self._warn("Usage: /tools-ext run <tool_name> [args...]")
+                self._warn(self.s.get("tools_ext_run_usage"))
                 return
             parts = param.split(None, 1)
             name = parts[0]
@@ -10200,9 +10200,9 @@ class BingoTerminal:
             self.console.print(result)
         elif cmd == "reload":
             reg.__init__()
-            self._success("External tools reloaded.")
+            self._success(self.s.get("tools_ext_reloaded"))
         else:
-            self._warn("Usage: /tools-ext [list|run <name>|reload]")
+            self._warn(self.s.get("tools_ext_usage"))
 
     # ── /kb ───────────────────────────────────────────────────────
     def _cmd_kb(self, arg: str = "") -> None:

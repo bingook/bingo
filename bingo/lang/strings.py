@@ -5434,9 +5434,9 @@ _STRINGS.update({
                                    "en": "⚔️ bingo v3.6.9 Full Combat — RULE 49~53 loaded\n   NL-parser|target-classify|auto-chain|stealth|KR/CN specialist"},
 
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.7.0) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.7.0) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.7.0) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.8.0) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.8.0) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.8.0) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
@@ -5779,6 +5779,155 @@ _STRINGS.update({
               "RULE 62: Supply Chain Attacks (Dep Confusion·GH Actions·Docker)\n"
               "RULE 63: AI/LLM Target Attacks (Injection·RAG Poison·Extract·MCP)\n"
               "━━━ Full Expert Hacker Level Achieved ━━━",
+    },
+    # ── v3.8.0 최고급 엘리트 해커 (RULE 64~73) 다국어 키 ──
+    "elite_mode_active": {
+        "ko": "[+] 엘리트 해커 모드 활성화 (v3.8.0) — C2회피·커스텀임플란트·OPSEC소각·물리공격·다크웹OSINT·퍼징·고가치자산·EDR우회·자동보고서·포렌식역통합 가능",
+        "zh": "[+] 精英黑客模式已激活 (v3.8.0) — C2规避·自定义植入·OPSEC销毁·物理攻击·暗网OSINT·模糊测试·高价值资产·EDR绕过·自动报告·取证反整合 已启用",
+        "en": "[+] Elite Hacker Mode ACTIVE (v3.8.0) — C2 evasion·Custom implant·OPSEC burn·Physical·DarkWeb OSINT·Fuzzing·Asset hunt·EDR bypass·Auto report·Forensic audit enabled",
+    },
+    "elite_c2_front": {
+        "ko": "[RULE 64] Domain Fronting 설정 완료 — 프론트: {front} | 실제C2: {c2} | CDN 위장 트래픽 활성",
+        "zh": "[RULE 64] Domain Fronting 配置完成 — 前端: {front} | 实际C2: {c2} | CDN 伪装流量已激活",
+        "en": "[RULE 64] Domain Fronting set — Front: {front} | Actual C2: {c2} | CDN-disguised traffic active",
+    },
+    "elite_c2_tunnel": {
+        "ko": "[RULE 64] {protocol} 터널링 C2 수립 — 채널: {channel} | 핑 간격: {interval}ms",
+        "zh": "[RULE 64] {protocol} 隧道 C2 建立 — 通道: {channel} | Ping 间隔: {interval}ms",
+        "en": "[RULE 64] {protocol} tunnel C2 established — Channel: {channel} | Ping interval: {interval}ms",
+    },
+    "elite_implant_built": {
+        "ko": "[RULE 65] 커스텀 임플란트 빌드 완료 — 언어: {lang} | 해시: {hash} | VT 탐지: {detections}/72",
+        "zh": "[RULE 65] 自定义植入构建完成 — 语言: {lang} | 哈希: {hash} | VT 检测: {detections}/72",
+        "en": "[RULE 65] Custom implant built — Lang: {lang} | Hash: {hash} | VT detections: {detections}/72",
+    },
+    "elite_implant_polymorphic": {
+        "ko": "[RULE 65] 다형성 변형 #{iteration} — 새 해시: {new_hash} | 탐지 감소: {before}→{after}",
+        "zh": "[RULE 65] 多态变形 #{iteration} — 新哈希: {new_hash} | 检测减少: {before}→{after}",
+        "en": "[RULE 65] Polymorphic variant #{iteration} — New hash: {new_hash} | Detections: {before}→{after}",
+    },
+    "elite_opsec_burn": {
+        "ko": "[RULE 66] 인프라 자동 소각 완료 — {resource_count}개 리소스 삭제, DNS 레코드 제거, 로컬 흔적 7회 덮어쓰기",
+        "zh": "[RULE 66] 基础设施自动销毁完成 — 删除 {resource_count} 个资源，清除 DNS 记录，本地痕迹 7 次覆写",
+        "en": "[RULE 66] Infrastructure burned — {resource_count} resources deleted, DNS cleared, local traces 7x overwritten",
+    },
+    "elite_opsec_ip_chain": {
+        "ko": "[RULE 66] 익명 IP 체인 구성 완료 — Tor→VPN→VPS→타겟 (역추적 {hops}단계)",
+        "zh": "[RULE 66] 匿名 IP 链配置完成 — Tor→VPN→VPS→目标（反追踪 {hops} 层）",
+        "en": "[RULE 66] Anonymous IP chain ready — Tor→VPN→VPS→Target ({hops}-layer traceback)",
+    },
+    "elite_physical_badusb": {
+        "ko": "[RULE 67] BadUSB 페이로드 생성 완료 — OS: {os_type} | C2: {lhost}:{lport} | 실행 시간: ~{delay}초",
+        "zh": "[RULE 67] BadUSB 载荷生成完成 — OS: {os_type} | C2: {lhost}:{lport} | 执行时间: ~{delay}秒",
+        "en": "[RULE 67] BadUSB payload ready — OS: {os_type} | C2: {lhost}:{lport} | Exec delay: ~{delay}s",
+    },
+    "elite_physical_nfc": {
+        "ko": "[RULE 67] NFC 카드 클로닝 완료 — 카드 타입: {card_type} | UID: {uid} | 섹터 크랙: {sectors}/16",
+        "zh": "[RULE 67] NFC 卡克隆完成 — 卡类型: {card_type} | UID: {uid} | 扇区破解: {sectors}/16",
+        "en": "[RULE 67] NFC card cloned — Type: {card_type} | UID: {uid} | Sectors cracked: {sectors}/16",
+    },
+    "elite_osint_darkweb": {
+        "ko": "[RULE 68] 다크웹 OSINT 완료 — 탐색 사이트: {site_count}개 | 유출 데이터: {leak_count}건 | Tor 회로 순환: {rotations}회",
+        "zh": "[RULE 68] 暗网 OSINT 完成 — 搜索站点: {site_count} 个 | 泄露数据: {leak_count} 条 | Tor 线路轮换: {rotations} 次",
+        "en": "[RULE 68] DarkWeb OSINT done — {site_count} sites searched | {leak_count} leaks found | {rotations} Tor rotations",
+    },
+    "elite_osint_employee": {
+        "ko": "[RULE 68] 임직원 프로파일링 완료 — {count}명 수집 | 이메일 패턴: {pattern} | GitHub 유출: {github_leaks}건",
+        "zh": "[RULE 68] 员工画像完成 — 收集 {count} 人 | 邮箱模式: {pattern} | GitHub 泄露: {github_leaks} 条",
+        "en": "[RULE 68] Employee profiling done — {count} profiles | Email pattern: {pattern} | GitHub leaks: {github_leaks}",
+    },
+    "elite_fuzz_crash": {
+        "ko": "[RULE 69] 퍼저 크래시 발견! 유형: {crash_type} | 파일: {crash_file} | 실행 횟수: {execs}/초",
+        "zh": "[RULE 69] 模糊测试发现崩溃！类型: {crash_type} | 文件: {crash_file} | 执行速率: {execs}/秒",
+        "en": "[RULE 69] Fuzzer crash found! Type: {crash_type} | File: {crash_file} | Exec speed: {execs}/sec",
+    },
+    "elite_fuzz_0day": {
+        "ko": "[RULE 69] 잠재 0-Day 발견! CVE 미등록, 취약점: {vuln_type} | PoC 자동 생성 중...",
+        "zh": "[RULE 69] 发现潜在 0-Day！未注册 CVE，漏洞类型: {vuln_type} | 正在自动生成 PoC...",
+        "en": "[RULE 69] Potential 0-Day found! Unregistered CVE, type: {vuln_type} | Auto-generating PoC...",
+    },
+    "elite_asset_found": {
+        "ko": "[RULE 70] 고가치 자산 발견! 유형: {asset_type} | 경로: {path} | 우선순위: {priority}",
+        "zh": "[RULE 70] 发现高价值资产！类型: {asset_type} | 路径: {path} | 优先级: {priority}",
+        "en": "[RULE 70] High-value asset found! Type: {asset_type} | Path: {path} | Priority: {priority}",
+    },
+    "elite_db_dumped": {
+        "ko": "[RULE 70] DB 전체 덤프 완료 — 엔진: {db_type} | 크기: {size}MB | 압축 전송: {chunks}청크",
+        "zh": "[RULE 70] 数据库全量转储完成 — 引擎: {db_type} | 大小: {size}MB | 压缩传输: {chunks} 块",
+        "en": "[RULE 70] Full DB dump complete — Engine: {db_type} | Size: {size}MB | Chunked transfer: {chunks}",
+    },
+    "elite_edr_unhooked": {
+        "ko": "[RULE 71] EDR 언훅 완료 — NTDLL 클린 버전 로드, {hooks_removed}개 후킹 제거됨",
+        "zh": "[RULE 71] EDR 脱钩完成 — 加载干净 NTDLL，已移除 {hooks_removed} 个钩子",
+        "en": "[RULE 71] EDR unhooked — Clean NTDLL loaded, {hooks_removed} hooks removed",
+    },
+    "elite_edr_syscall": {
+        "ko": "[RULE 71] 직접 Syscall 활성화 (Hell's Gate) — NTDLL 우회, {syscalls}개 시스콜 직접 호출",
+        "zh": "[RULE 71] 直接系统调用已激活（Hell's Gate）— 绕过 NTDLL，直接调用 {syscalls} 个系统调用",
+        "en": "[RULE 71] Direct Syscall active (Hell's Gate) — NTDLL bypassed, {syscalls} syscalls direct",
+    },
+    "elite_edr_av_zero": {
+        "ko": "[RULE 71] AV 탐지 0개 달성! 반복 횟수: {iterations} | 최종 해시: {hash}",
+        "zh": "[RULE 71] AV 检测 0 个达成！迭代次数: {iterations} | 最终哈希: {hash}",
+        "en": "[RULE 71] AV detections zeroed! Iterations: {iterations} | Final hash: {hash}",
+    },
+    "elite_report_generated": {
+        "ko": "[RULE 72] 레드팀 보고서 자동 생성 완료 — 경로: {path} | 취약점: 치명 {critical}/고 {high}/중 {medium}",
+        "zh": "[RULE 72] 红队报告自动生成完成 — 路径: {path} | 漏洞: 严重 {critical}/高 {high}/中 {medium}",
+        "en": "[RULE 72] Red team report generated — Path: {path} | Vulns: Critical {critical}/High {high}/Med {medium}",
+    },
+    "elite_cvss4_score": {
+        "ko": "[RULE 72] CVSS v4.0 점수 산출 — 점수: {score} ({severity}) | 벡터: {vector}",
+        "zh": "[RULE 72] CVSS v4.0 分数计算 — 分数: {score} ({severity}) | 向量: {vector}",
+        "en": "[RULE 72] CVSS v4.0 scored — Score: {score} ({severity}) | Vector: {vector}",
+    },
+    "elite_forensic_detected": {
+        "ko": "[RULE 73] 탐지 위험! SIEM 쿼리 {query}에 내 흔적 감지 → 즉시 은닉 조치 실행",
+        "zh": "[RULE 73] 检测风险！SIEM 查询 {query} 发现我的痕迹 → 立即执行隐藏措施",
+        "en": "[RULE 73] Detection risk! SIEM query {query} found my traces → executing immediate concealment",
+    },
+    "elite_forensic_clean": {
+        "ko": "[RULE 73] OPSEC 자체 감사 완료 — {checks}개 검사, {fixed}개 수정, 잔여 위험: {risk_level}",
+        "zh": "[RULE 73] OPSEC 自我审计完成 — {checks} 项检查，{fixed} 项修复，剩余风险: {risk_level}",
+        "en": "[RULE 73] OPSEC self-audit done — {checks} checks, {fixed} fixed, residual risk: {risk_level}",
+    },
+    "elite_full_summary": {
+        "ko": "═══ 최고급 엘리트 해커 레벨 활성화 완료 (v3.8.0) ═══\n"
+              "RULE 64: 고급 C2 회피 (Domain Fronting·ICMP/SMB 터널링)\n"
+              "RULE 65: 커스텀 임플란트 자동 생성 (Rust/Go·다형성·AMSI/ETW 우회)\n"
+              "RULE 66: OPSEC 완전 제로화 (Terraform 소각·TOR 4단계·CDN 위장)\n"
+              "RULE 67: 물리적 공격 연계 (BadUSB·HID·NFC 클로닝)\n"
+              "RULE 68: 고급 OSINT 자동화 (다크웹Tor·LinkedIn·Shodan·GitHub유출)\n"
+              "RULE 69: 퍼징 자동화 (AFL++·웹 API 퍼저·크래시 자동 분류)\n"
+              "RULE 70: 포스트 익스플로잇 심화 (고가치 자산 자동 매핑·DB 전체덤프)\n"
+              "RULE 71: EDR 고급 우회 (NTDLL 언훅·직접 Syscall·VT 탐지0 루프)\n"
+              "RULE 72: 레드팀 보고서 자동화 (CVSS v4.0·HTML리포트·증거수집)\n"
+              "RULE 73: 포렌식 역통합 (SIEM 자가검증·MITRE 갭 분석·흔적 자동소거)\n"
+              "━━━ 완전 최고급 엘리트 해커 레벨 달성 ━━━",
+        "zh": "═══ 顶级精英黑客级别激活完成 (v3.8.0) ═══\n"
+              "RULE 64: 高级 C2 规避 (Domain Fronting·ICMP/SMB 隧道)\n"
+              "RULE 65: 自动生成自定义植入 (Rust/Go·多态·AMSI/ETW 绕过)\n"
+              "RULE 66: OPSEC 完全归零 (Terraform 销毁·TOR 4层·CDN 伪装)\n"
+              "RULE 67: 物理攻击联动 (BadUSB·HID·NFC 克隆)\n"
+              "RULE 68: 高级 OSINT 自动化 (暗网Tor·LinkedIn·Shodan·GitHub泄露)\n"
+              "RULE 69: 模糊测试自动化 (AFL++·Web API 模糊·崩溃自动分类)\n"
+              "RULE 70: 后渗透深化 (高价值资产自动映射·数据库全量转储)\n"
+              "RULE 71: EDR 高级绕过 (NTDLL脱钩·直接Syscall·VT检测0循环)\n"
+              "RULE 72: 红队报告自动化 (CVSS v4.0·HTML报告·证据收集)\n"
+              "RULE 73: 取证反整合 (SIEM自检·MITRE差距分析·自动消迹)\n"
+              "━━━ 全面顶级精英黑客级别达成 ━━━",
+        "en": "═══ Elite Hacker Level ACTIVATED (v3.8.0) ═══\n"
+              "RULE 64: Advanced C2 Evasion (Domain Fronting·ICMP/SMB Tunneling)\n"
+              "RULE 65: Custom Implant Auto-gen (Rust/Go·Polymorphic·AMSI/ETW bypass)\n"
+              "RULE 66: Full OPSEC Zero (Terraform burn·TOR 4-layer·CDN disguise)\n"
+              "RULE 67: Physical Attack Integration (BadUSB·HID·NFC Cloning)\n"
+              "RULE 68: Advanced OSINT Automation (DarkWeb·LinkedIn·Shodan·GitHub leaks)\n"
+              "RULE 69: Fuzzing Automation (AFL++·Web API Fuzzer·Crash Auto-triage)\n"
+              "RULE 70: Post-Exploit Deep (High-value asset mapping·Full DB dump)\n"
+              "RULE 71: Advanced EDR Bypass (NTDLL unhook·Direct Syscall·VT 0-detection loop)\n"
+              "RULE 72: Red Team Report Auto (CVSS v4.0·HTML report·Evidence collect)\n"
+              "RULE 73: Forensic Reverse Integration (SIEM self-audit·MITRE gap·Auto-cleanup)\n"
+              "━━━ Full Elite Hacker Level Achieved ━━━",
     },
 })
 

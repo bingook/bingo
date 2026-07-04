@@ -5434,9 +5434,9 @@ _STRINGS.update({
                                    "en": "⚔️ bingo v3.6.9 Full Combat — RULE 49~53 loaded\n   NL-parser|target-classify|auto-chain|stealth|KR/CN specialist"},
 
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.8.0) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.8.0) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.8.0) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.9.0) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.9.0) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.9.0) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
@@ -5890,6 +5890,150 @@ _STRINGS.update({
         "ko": "[RULE 73] OPSEC 자체 감사 완료 — {checks}개 검사, {fixed}개 수정, 잔여 위험: {risk_level}",
         "zh": "[RULE 73] OPSEC 自我审计完成 — {checks} 项检查，{fixed} 项修复，剩余风险: {risk_level}",
         "en": "[RULE 73] OPSEC self-audit done — {checks} checks, {fixed} fixed, residual risk: {risk_level}",
+    },
+    # ── v3.9.0 월드클래스 영웅등급 (RULE 74~83) 다국어 키 ──
+    "worldclass_mode_active": {
+        "ko": "[+] 월드클래스 영웅등급 APT 모드 활성화 (v3.9.0) — APT캠페인·하이퍼바이저루트킷·SS7·AI공격·딥페이크·Web3·GPS스푸핑·의료OT·PoC무기화·글로벌C2 가능",
+        "zh": "[+] 世界级英雄等级 APT 模式已激活 (v3.9.0) — APT活动·Hypervisor Rootkit·SS7·AI攻击·深度伪造·Web3·GPS欺骗·医疗OT·PoC武器化·全球C2 已启用",
+        "en": "[+] Worldclass Hero APT Mode ACTIVE (v3.9.0) — APT campaign·Hypervisor rootkit·SS7·AI attack·Deepfake·Web3·GPS spoof·Medical OT·PoC weaponize·Global C2 enabled",
+    },
+    "apt_campaign_started": {
+        "ko": "[RULE 74] APT 장기 캠페인 시작 — 타겟: {target} | 단계: {phase} | 은신 지속 목표: {duration}",
+        "zh": "[RULE 74] APT 长期活动启动 — 目标: {target} | 阶段: {phase} | 持久潜伏目标: {duration}",
+        "en": "[RULE 74] APT long campaign started — Target: {target} | Phase: {phase} | Stealth goal: {duration}",
+    },
+    "apt_skeleton_key": {
+        "ko": "[RULE 74] AD Skeleton Key 주입 완료 — 도메인: {domain} | 마스터PW 설정 | DC 재부팅 전 유효",
+        "zh": "[RULE 74] AD Skeleton Key 注入完成 — 域: {domain} | 主密码已设置 | DC 重启前有效",
+        "en": "[RULE 74] AD Skeleton Key injected — Domain: {domain} | Master PW set | Valid until DC reboot",
+    },
+    "hypervisor_rootkit": {
+        "ko": "[RULE 75] 하이퍼바이저 루트킷 설치 완료 — 플랫폼: {platform} | 게스트VM {vm_count}개 완전 제어 | 재설치 생존 여부: {survives_reinstall}",
+        "zh": "[RULE 75] Hypervisor Rootkit 安装完成 — 平台: {platform} | 完全控制 {vm_count} 个来宾VM | 重装存活: {survives_reinstall}",
+        "en": "[RULE 75] Hypervisor rootkit installed — Platform: {platform} | {vm_count} guest VMs controlled | Survives reinstall: {survives_reinstall}",
+    },
+    "uefi_rootkit": {
+        "ko": "[RULE 75] UEFI/BIOS 루트킷 심기 완료 — Secure Boot 무력화, HVCI 비활성화, EDR OS 부팅 전 차단",
+        "zh": "[RULE 75] UEFI/BIOS Rootkit 植入完成 — Secure Boot 已失效，HVCI 已禁用，EDR 在 OS 启动前被拦截",
+        "en": "[RULE 75] UEFI/BIOS rootkit planted — Secure Boot disabled, HVCI off, EDR blocked pre-OS boot",
+    },
+    "ss7_sms_intercept": {
+        "ko": "[RULE 76] SS7 SMS 탈취 성공 — 타겟: {phone} | MFA OTP 수신 중 | 실시간 포워딩 활성",
+        "zh": "[RULE 76] SS7 短信拦截成功 — 目标: {phone} | 正在接收 MFA OTP | 实时转发已激活",
+        "en": "[RULE 76] SS7 SMS intercept active — Target: {phone} | MFA OTP receiving | Real-time forward on",
+    },
+    "imsi_catcher_active": {
+        "ko": "[RULE 76] 가짜 기지국(IMSI Catcher) 가동 — 반경 {radius}m 내 {device_count}대 접속 | IMSI 수집: {collected}건",
+        "zh": "[RULE 76] 伪基站 (IMSI Catcher) 启动 — 半径 {radius}m 内 {device_count} 台设备连接 | IMSI 收集: {collected} 条",
+        "en": "[RULE 76] Fake base station active — {device_count} devices in {radius}m radius | IMSI collected: {collected}",
+    },
+    "ai_spearphish_generated": {
+        "ko": "[RULE 77] AI 맞춤 스피어피싱 이메일 생성 완료 — 타겟: {name}({position}) | 맞춤도: {personalization}% | 모델: {model}",
+        "zh": "[RULE 77] AI 定制鱼叉钓鱼邮件生成完成 — 目标: {name}({position}) | 定制度: {personalization}% | 模型: {model}",
+        "en": "[RULE 77] AI spearphish generated — Target: {name}({position}) | Personalization: {personalization}% | Model: {model}",
+    },
+    "ai_vuln_found": {
+        "ko": "[RULE 77] AI 취약점 발견 — CVE유사: {cve_type} | 위치: {location} | 예상CVSS: {cvss} | PoC 자동 생성 중",
+        "zh": "[RULE 77] AI 发现漏洞 — CVE 类型: {cve_type} | 位置: {location} | 预估 CVSS: {cvss} | 正在自动生成 PoC",
+        "en": "[RULE 77] AI vuln found — Type: {cve_type} | Location: {location} | Est. CVSS: {cvss} | Auto-generating PoC",
+    },
+    "deepfake_voice_ready": {
+        "ko": "[RULE 78] 딥페이크 음성 클로닝 완료 — 대상: {target_name} | 유사도: {similarity}% | 언어: {lang} | 통화 준비 완료",
+        "zh": "[RULE 78] 深度伪造语音克隆完成 — 目标: {target_name} | 相似度: {similarity}% | 语言: {lang} | 通话准备就绪",
+        "en": "[RULE 78] Deepfake voice cloned — Target: {target_name} | Similarity: {similarity}% | Lang: {lang} | Call ready",
+    },
+    "deepfake_bec_sent": {
+        "ko": "[RULE 78] BEC 딥페이크 공격 전송 — 사칭: {impersonate} → 피해자: {victim} | 금액: ${amount:,} | 채널: {channel}",
+        "zh": "[RULE 78] BEC 深度伪造攻击已发送 — 冒充: {impersonate} → 受害者: {victim} | 金额: ${amount:,} | 渠道: {channel}",
+        "en": "[RULE 78] BEC deepfake attack sent — Impersonate: {impersonate} → Victim: {victim} | Amount: ${amount:,} | Channel: {channel}",
+    },
+    "web3_flashloan": {
+        "ko": "[RULE 79] 플래시론 공격 실행 — DEX: {dex} | 차용: {loan_amount} ETH | 수익: {profit} ETH | 가스비: {gas} Gwei",
+        "zh": "[RULE 79] 闪电贷攻击执行 — DEX: {dex} | 借款: {loan_amount} ETH | 收益: {profit} ETH | Gas: {gas} Gwei",
+        "en": "[RULE 79] Flash loan attack executed — DEX: {dex} | Loan: {loan_amount} ETH | Profit: {profit} ETH | Gas: {gas} Gwei",
+    },
+    "web3_drainer": {
+        "ko": "[RULE 79] 지갑 드레이너 활성 — 서명 방식: {method} | 탈취 완료: {amount} ETH / {nft_count}개 NFT",
+        "zh": "[RULE 79] 钱包耗尽器已激活 — 签名方式: {method} | 已提取: {amount} ETH / {nft_count} 个 NFT",
+        "en": "[RULE 79] Wallet drainer active — Signature: {method} | Drained: {amount} ETH / {nft_count} NFTs",
+    },
+    "gps_spoof_active": {
+        "ko": "[RULE 80] GPS 스푸핑 신호 전송 중 — 가짜 위치: {fake_lat},{fake_lon} | 주파수: {freq}MHz | 영향 기기: {devices}",
+        "zh": "[RULE 80] GPS 欺骗信号发送中 — 虚假位置: {fake_lat},{fake_lon} | 频率: {freq}MHz | 受影响设备: {devices}",
+        "en": "[RULE 80] GPS spoof signal transmitting — Fake pos: {fake_lat},{fake_lon} | Freq: {freq}MHz | Affected: {devices}",
+    },
+    "satellite_intercept": {
+        "ko": "[RULE 80] 위성 통신 도청 활성 — 위성: {satellite} | 다운링크 채널: {channel} | 암호화: {encrypted}",
+        "zh": "[RULE 80] 卫星通信窃听已激活 — 卫星: {satellite} | 下行链路频道: {channel} | 加密: {encrypted}",
+        "en": "[RULE 80] Satellite intercept active — Satellite: {satellite} | Downlink: {channel} | Encrypted: {encrypted}",
+    },
+    "medical_pacs_accessed": {
+        "ko": "[RULE 81] 병원 PACS 무단 접근 — 서버: {pacs_ip} | 환자 레코드: {record_count}건 | DICOM 프로토콜 포트: {port}",
+        "zh": "[RULE 81] 医院 PACS 未授权访问 — 服务器: {pacs_ip} | 患者记录: {record_count} 条 | DICOM 端口: {port}",
+        "en": "[RULE 81] Hospital PACS accessed — Server: {pacs_ip} | Patient records: {record_count} | DICOM port: {port}",
+    },
+    "scada_ics_control": {
+        "ko": "[RULE 81] SCADA/ICS 제어권 획득 — 시설: {facility_type} | PLC {plc_count}개 접근 | 프로토콜: {protocol} | 물리 영향 가능: {physical_impact}",
+        "zh": "[RULE 81] 获得 SCADA/ICS 控制权 — 设施: {facility_type} | 访问 {plc_count} 台 PLC | 协议: {protocol} | 可造成物理影响: {physical_impact}",
+        "en": "[RULE 81] SCADA/ICS control gained — Facility: {facility_type} | {plc_count} PLCs accessed | Protocol: {protocol} | Physical impact: {physical_impact}",
+    },
+    "poc_weaponized": {
+        "ko": "[RULE 82] PoC 무기화 완료 — CVE: {cve_id} | 소스: {source_count}개 수집 | Metasploit 모듈 생성 | 예상 성공률: {success_rate}%",
+        "zh": "[RULE 82] PoC 武器化完成 — CVE: {cve_id} | 收集 {source_count} 个来源 | Metasploit 模块已生成 | 预计成功率: {success_rate}%",
+        "en": "[RULE 82] PoC weaponized — CVE: {cve_id} | {source_count} sources collected | MSF module generated | Est. success: {success_rate}%",
+    },
+    "nday_pipeline_alert": {
+        "ko": "[RULE 82] N-Day 자동 탐지 경보! CVE: {cve_id} | CVSS: {cvss} | 타겟 영향: {impact} | 자동 무기화 시작",
+        "zh": "[RULE 82] N-Day 自动检测警报！CVE: {cve_id} | CVSS: {cvss} | 目标影响: {impact} | 自动武器化开始",
+        "en": "[RULE 82] N-Day pipeline alert! CVE: {cve_id} | CVSS: {cvss} | Target impact: {impact} | Auto-weaponizing",
+    },
+    "global_c2_deployed": {
+        "ko": "[RULE 83] 글로벌 C2 인프라 배포 완료 — 노드: {node_count}개 | 대륙: {continents} | 관할권: {jurisdictions} | 다음 소각: {next_burn}",
+        "zh": "[RULE 83] 全球 C2 基础设施部署完成 — 节点: {node_count} 个 | 大陆: {continents} | 司法管辖区: {jurisdictions} | 下次销毁: {next_burn}",
+        "en": "[RULE 83] Global C2 deployed — Nodes: {node_count} | Continents: {continents} | Jurisdictions: {jurisdictions} | Next burn: {next_burn}",
+    },
+    "global_c2_rotated": {
+        "ko": "[RULE 83] C2 인프라 자동 교체 완료 — 구 노드 {old_count}개 소각 | 신 노드 {new_count}개 배포 | 다운타임: {downtime}초",
+        "zh": "[RULE 83] C2 基础设施自动轮换完成 — 销毁旧节点 {old_count} 个 | 部署新节点 {new_count} 个 | 停机: {downtime} 秒",
+        "en": "[RULE 83] C2 infra rotated — {old_count} old nodes burned | {new_count} new nodes deployed | Downtime: {downtime}s",
+    },
+    "worldclass_full_summary": {
+        "ko": "═══ 월드클래스 영웅등급 APT 레벨 활성화 완료 (v3.9.0) ═══\n"
+              "RULE 74: APT급 장기 캠페인 자동화 (6개월+ 은신·Skeleton Key·DSRM 백도어)\n"
+              "RULE 75: 하이퍼바이저/펌웨어 루트킷 (ESXi VIB·BlackLotus UEFI·재설치 생존)\n"
+              "RULE 76: 통신 코어망 공격 (SS7 SMS탈취·IMSI Catcher·VoIP 도청)\n"
+              "RULE 77: AI 기반 공격 자동화 (GPT-4o 스피어피싱·o3 취약점발견·맞춤 페이로드)\n"
+              "RULE 78: 딥페이크 사회공학 (음성클로닝·실시간 화상위장·AI BEC 자동화)\n"
+              "RULE 79: 블록체인/Web3 공격 (플래시론·스마트컨트랙트 드레이너·MEV 봇)\n"
+              "RULE 80: 위성/GPS 스푸핑 (GPS-SDR-SIM·Starlink 도청·AIS 스푸핑)\n"
+              "RULE 81: 의료/크리티컬 인프라 (DICOM PACS·의료기기·전력망·정수처리 SCADA)\n"
+              "RULE 82: PoC→실전 무기화 파이프라인 (자동수집·AI변환·MSF모듈·N-Day 즉시배포)\n"
+              "RULE 83: 글로벌 분산 C2 (Terraform 4대륙·24h 자동소각재구축·관할권 분산)\n"
+              "━━━ 완전 월드클래스 영웅등급 달성 ━━━",
+        "zh": "═══ 世界级英雄等级 APT 激活完成 (v3.9.0) ═══\n"
+              "RULE 74: APT 级长期活动自动化 (6个月+潜伏·Skeleton Key·DSRM后门)\n"
+              "RULE 75: Hypervisor/固件 Rootkit (ESXi VIB·BlackLotus UEFI·重装存活)\n"
+              "RULE 76: 通信核心网攻击 (SS7短信劫持·IMSI Catcher·VoIP窃听)\n"
+              "RULE 77: AI攻击自动化 (GPT-4o鱼叉钓鱼·o3漏洞发现·定制载荷)\n"
+              "RULE 78: 深度伪造社会工程 (语音克隆·实时视频伪装·AI BEC自动化)\n"
+              "RULE 79: 区块链/Web3攻击 (闪电贷·智能合约耗尽器·MEV机器人)\n"
+              "RULE 80: 卫星/GPS欺骗 (GPS-SDR-SIM·Starlink窃听·AIS欺骗)\n"
+              "RULE 81: 医疗/关键基础设施 (DICOM PACS·医疗设备·电网·水厂SCADA)\n"
+              "RULE 82: PoC→实战武器化管道 (自动收集·AI转换·MSF模块·N-Day即时部署)\n"
+              "RULE 83: 全球分布式C2 (Terraform 4大洲·24h自动销毁重建·司法分散)\n"
+              "━━━ 全面世界级英雄等级达成 ━━━",
+        "en": "═══ Worldclass Hero APT Level ACTIVATED (v3.9.0) ═══\n"
+              "RULE 74: APT Long Campaign Auto (6mo+ stealth·Skeleton Key·DSRM backdoor)\n"
+              "RULE 75: Hypervisor/Firmware Rootkit (ESXi VIB·BlackLotus UEFI·survives reinstall)\n"
+              "RULE 76: Telecom Core Attack (SS7 SMS hijack·IMSI Catcher·VoIP intercept)\n"
+              "RULE 77: AI Attack Automation (GPT-4o spearphish·o3 vuln find·custom payload)\n"
+              "RULE 78: Deepfake Social Eng (voice clone·realtime video fake·AI BEC auto)\n"
+              "RULE 79: Blockchain/Web3 (Flash loan·Contract drainer·MEV bot)\n"
+              "RULE 80: Satellite/GPS Spoof (GPS-SDR-SIM·Starlink intercept·AIS spoof)\n"
+              "RULE 81: Medical/Critical Infra (DICOM PACS·medical device·power·water SCADA)\n"
+              "RULE 82: PoC→Weaponize Pipeline (auto-collect·AI convert·MSF module·N-Day instant)\n"
+              "RULE 83: Global Distributed C2 (Terraform 4 continents·24h auto-burn·jurisdiction split)\n"
+              "━━━ Full Worldclass Hero Level Achieved ━━━",
     },
     "elite_full_summary": {
         "ko": "═══ 최고급 엘리트 해커 레벨 활성화 완료 (v3.8.0) ═══\n"

@@ -4917,6 +4917,16 @@ _STRINGS.update({
         "zh": "⛔ 幻影模式阻断 → 重新请求真实HTTP代码...",
         "en": "⛔ Phantom Mode Blocked → Requesting Real HTTP Code...",
     },
+    "phantom_code_exec_first": {
+        "ko": "✅ 코드 블록 감지 → 즉시 실행 (사전 차단 없음)",
+        "zh": "✅ 检测到代码块 → 立即执行 (无预执行拦截)",
+        "en": "✅ Code Block Detected → Execute First (No Pre-block)",
+    },
+    "phantom_post_exec_check": {
+        "ko": "✅ 실행 완료 → 사후 결과 검증",
+        "zh": "✅ 执行完成 → 事后结果验证",
+        "en": "✅ Execution Done → Post-Execution Verification",
+    },
     "phantom_guard_note": {
         "ko": (
             "v3.5.3 팬텀가드 v2: 팬텀모드·구캐시·타겟오인·자기수정루프·HTTP0건주장·하드재시작 차단.\n"

@@ -6475,72 +6475,83 @@ class BingoTerminal:
 
             _no_code_retry = 0  # 코드 있으면 카운터 리셋
 
-            # ── v3.5.2: Phantom Guard — 코드 실행 전 팬텀 모드 / 구캐시 / 자기수정루프 탐지 ──
-            if self._phantom_guard is not None:
+            # ── v4.4.0: PhantomGuard 재설계 — 코드 블록 있으면 실행 우선, PHANTOM 사전 차단 금지 ──
+            # 핵심 원칙: LLM이 Python/Bash 코드 블록을 생성했다 = 실제 실행 의도
+            # 코드가 있는데 실행 전 PHANTOM으로 차단 → 코드 영원히 실행 불가 → 무한 루프
+            # 해결책: 코드 블록 존재 시 PHANTOM 사전 차단 완전 우회, 코드 실행 후 사후 검사
+            import re as _pgre_pre
+            _has_executable_code = bool(
+                _pgre_pre.search(r"```(?:python|py|bash|sh)\n", current_response, _pgre_pre.DOTALL)
+            )
+
+            if self._phantom_guard is not None and not _has_executable_code:
+                # 코드 블록 없을 때만 PHANTOM 사전 차단 (텍스트만 있는 응답)
                 try:
                     _pg_target = self._agent_state.get("target", "") or getattr(self.config, "target", "")
                     if _pg_target and _pg_target != self._phantom_guard.session_target:
                         self._phantom_guard.update_target(_pg_target)
                     _pg_lang = getattr(self.config, "lang", "ko")
                     self._phantom_guard.lang = _pg_lang
-                    # 코드 블록 추출 (정규식)
-                    import re as _pgre
-                    _pg_codes = "\n".join(_pgre.findall(r"```(?:python|bash|sh)?\n(.*?)```", current_response, _pgre.DOTALL))
                     _pg_result = self._phantom_guard.check_response(
                         response_text=current_response,
-                        code_text=_pg_codes,
+                        code_text="",
                         exec_output="",
                     )
-                    if _pg_result.inject_message:
+                    if _pg_result.inject_message and _pg_result.blocked:
                         _pg_reason = _pg_result.block_reason
-                        _pg_label_map = {
-                            "PHANTOM": self.s.get("phantom_mode_blocked", "⛔ 팬텀 모드 차단"),
-                            "SELF_LOOP": self.s.get("phantom_self_loop_blocked", "⛔ 자기수정 루프 차단"),
-                            "STALE_CACHE": self.s.get("phantom_stale_cache_blocked", "⛔ 구캐시 차단"),
-                            "TARGET_MISMATCH": self.s.get("phantom_target_mismatch", "⚠️ 타겟 오인 경고"),
-                            "ZERO_HTTP_CLAIM": self.s.get("phantom_zero_http_blocked", "⛔ HTTP 0건 주장 차단"),
-                            "SPA_DETECTED": self.s.get("phantom_spa_detected", "⚠️ SPA 오탐 차단"),
-                        }
-                        _pg_label = _pg_label_map.get(_pg_reason, "⚠️ PhantomGuard")
-                        self.console.print(f"\n[bold red]{_pg_label}[/bold red]")
+                        # PHANTOM이면 조용히 재요청 (메시지 출력 없음)
                         self.history.append(
                             Message(role="user", content=_pg_result.inject_message)
                         )
-                        if _pg_result.blocked:
-                            # ── v3.5.3: Hard Session Restart 확인 ──────────────
-                            if self._phantom_guard.hard_restarter.should_hard_restart:
-                                _hr_msg = self._phantom_guard.hard_restarter.hard_restart_msg(
-                                    self._phantom_guard.session_target, _pg_lang
-                                )
-                                _hr_label = self.s.get("phantom_hard_restart", "🔄 하드 세션 재시작")
-                                self.console.print(f"\n[bold red]{_hr_label}[/bold red]\n{_hr_msg}")
-                                # 히스토리 초기화 (시스템 메시지만 보존)
-                                self.history = [m for m in self.history if m.role == "system"]
+                        if self._phantom_guard.hard_restarter.should_hard_restart:
+                            self.history = [m for m in self.history if m.role == "system"]
+                            self.history.append(
+                                Message(role="user", content=_pg_result.inject_message)
+                            )
+                            self._phantom_guard.hard_restarter.do_restart()
+                            self._phantom_guard.reset_counters()
+                        from ..models.registry import ModelRegistry as _MR_pg
+                        _mc_pg = self.config.get_active_model_config()
+                        if _mc_pg:
+                            _m_pg = _MR_pg.build(_mc_pg)
+                            current_response = self._stream_response(
+                                _m_pg.chat_stream(self._build_messages(""))
+                            )
+                            if current_response:
                                 self.history.append(
-                                    Message(role="user", content=_hr_msg)
+                                    Message(role="assistant", content=current_response)
                                 )
-                                self._phantom_guard.hard_restarter.do_restart()
-                                self._phantom_guard.reset_counters()
-                            # ── 재시도 ─────────────────────────────────────────
-                            from ..models.registry import ModelRegistry as _MR_pg
-                            _mc_pg = self.config.get_active_model_config()
-                            if _mc_pg:
-                                _m_pg = _MR_pg.build(_mc_pg)
-                                _pg_retry_label = self.s.get("phantom_retrying", "⛔ 팬텀 모드 → 실제 HTTP 코드 재요청 중...")
-                                self.console.print(f"\n[bold red]{_pg_retry_label}[/bold red]")
-                                current_response = self._stream_response(
-                                    _m_pg.chat_stream(self._build_messages(""))
-                                )
-                                if current_response:
-                                    self.history.append(
-                                        Message(role="assistant", content=current_response)
-                                    )
-                            continue
+                        continue
                 except Exception:
-                    pass  # PhantomGuard 오류는 실행 차단하지 않음
+                    pass
 
-            # 코드 실행
+            # 코드 실행 (코드 블록이 있으면 반드시 실행)
             results_text = self._run_code_blocks(current_response, _loaded_skills)
+
+            # ── v4.4.0: 코드 실행 후 PhantomGuard 사후 검사 (실행결과 기반) ──
+            if self._phantom_guard is not None and _has_executable_code and results_text:
+                try:
+                    _pg_target_post = self._agent_state.get("target", "") or getattr(self.config, "target", "")
+                    if _pg_target_post and _pg_target_post != self._phantom_guard.session_target:
+                        self._phantom_guard.update_target(_pg_target_post)
+                    _pg_lang_post = getattr(self.config, "lang", "ko")
+                    self._phantom_guard.lang = _pg_lang_post
+                    _pg_exec_out = "\n".join(results_text)
+                    _pg_codes_post = "\n".join(_pgre_pre.findall(
+                        r"```(?:python|bash|sh)?\n(.*?)```", current_response, _pgre_pre.DOTALL
+                    ))
+                    _pg_post = self._phantom_guard.check_response(
+                        response_text=current_response,
+                        code_text=_pg_codes_post,
+                        exec_output=_pg_exec_out,
+                    )
+                    # 사후 검사: ZERO_HTTP_CLAIM만 경고 (차단 없음, 실행은 이미 완료)
+                    if _pg_post.inject_message and _pg_post.block_reason == "ZERO_HTTP_CLAIM":
+                        self.history.append(
+                            Message(role="user", content=_pg_post.inject_message)
+                        )
+                except Exception:
+                    pass
 
             # ── v3.2.71-A: 응답 크기 변화 감지 → SQLi 우선 강제 ─────────────────
             # 증상: AI가 응답 크기 차이(정상 vs 주입)를 관찰하고도 SQLi 대신 브루트포스 등 다른

@@ -7484,23 +7484,48 @@ class BingoTerminal:
             _raw_lower = raw_results.lower()
             import re as _bre
 
-            # 정확한 HTTP 429 패턴 — "status: 429", "http/1 429", "[429]", "= 429 " 등
+            # ── v4.6.0: 오탐 제로 IP 차단 감지 ────────────────────────────────
+            # 핵심 원칙: 실제 HTTP 차단 응답에서만 발동. 응답 본문 텍스트 오탐 금지.
+            #
+            # [오탐 사례]
+            #   - 사이트 HTML에 "rate limit policy", "API rate limit" 등 단어 포함
+            #     → _has_ratelimit 발동 → 실제 차단 없는데 15초 대기
+            #   - "response...429" 에서 response와 429 사이에 긴 HTML 본문이 끼어 매칭
+            #   - "error 429" 가 스크립트 내부 주석이나 변수명에서 매칭
+            #
+            # [v4.6.0 수정]
+            #   1. _has_429: response.*429 → response[^\n]{0,80}429 (같은 줄 80자 이내)
+            #   2. _has_ratelimit: "rate limit" 단독 제거 → 에러 컨텍스트 필수
+            #      (exceeded/reached/hit/error/throttle/block 등이 함께 있어야 발동)
+            #   3. _detected_blocks 단일 신호 Rate limit hit → IPBlockDetector 교차검증
+            #      실제로 사이트 접근 가능하면 오탐으로 판단, 차단 무효화
+
+            # 정확한 HTTP 429 패턴 — 같은 줄 80자 이내 컨텍스트 필수
             _has_429 = bool(_bre.search(
                 r'(?:'
-                r'status[:\s]+429'          # "status: 429", "状态: 429"
-                r'|http/\d[.\d]*\s+429'     # "HTTP/1.1 429"
-                r'|\[\s*429\s*\]'           # "[429]"
-                r'|response.*429'           # "response code: 429"
-                r'|error.*429'              # "error 429"
-                r'|code[=:\s]+429'          # "code=429", "code: 429"
-                r'|429.*too.many'           # "429 Too Many"
-                r'|too.many.requests'       # "Too Many Requests" (HTTP 헤더/본문)
+                r'status[:\s]+429'               # "status: 429"
+                r'|http/\d[.\d]*\s+429'          # "HTTP/1.1 429"
+                r'|\[\s*429\s*\]'                # "[429]"
+                r'|response[^\n]{0,80}429'       # "response code: 429" (같은 줄 80자 이내)
+                r'|error[:\s]+429'               # "error: 429" (콜론/공백 필수)
+                r'|code[=:\s]+429'               # "code=429"
+                r'|429.*too.many'                # "429 Too Many"
+                r'|too\.many\.requests'          # "Too Many Requests" (정확한 HTTP 구문)
                 r')',
                 _raw_lower,
             ))
 
-            # "rate limit" — 단독으로도 충분히 명확
-            _has_ratelimit = bool(_bre.search(r'rate[\s_-]?limit', _raw_lower))
+            # "rate limit" — 에러 컨텍스트 필수 (단독 단어는 오탐)
+            # 오탐 제거: 사이트 본문에 "rate limit policy", "rate limit docs" 포함해도 발동 안 함
+            # 발동 조건: "rate limit exceeded", "rate limit error", "rate limit hit", 등
+            _has_ratelimit = bool(_bre.search(
+                r'rate[\s_-]?limit\s*(?:exceeded|reached|hit|error|blocked|throttl|denied|violat)'
+                r'|rate[\s_-]?limit.*(?:429|too[\s_]many|forbidden|block)'
+                r'|(?:429|too[\s_]many|throttl).*rate[\s_-]?limit'
+                r'|x-rate-limit-remaining[:\s]+0'       # HTTP 헤더: Remaining=0
+                r'|retry-after[:\s]+\d',                # HTTP 헤더: Retry-After
+                _raw_lower,
+            ))
 
             # 403 — "403 forbidden" 패턴 (단순 "403" 숫자는 제외)
             _has_403 = bool(_bre.search(
@@ -7543,7 +7568,31 @@ class BingoTerminal:
             if _has_429:
                 _detected_blocks.append("Rate limit (429) detected")
             if _has_ratelimit and not _has_429:
-                _detected_blocks.append("Rate limit hit")
+                # v4.6.0: Rate limit 단독 신호 → IPBlockDetector 교차검증
+                # 사이트가 실제로 접근 가능하면 오탐 → 차단 무효화
+                _rl_target = self._agent_state.get("target", "") or getattr(self.config, "target", "")
+                _rl_confirmed = True  # 기본 발동 (교차검증 실패 시 폴백)
+                if _rl_target:
+                    try:
+                        from ..core.ip_block_detector import IPBlockDetector as _IPBD
+                        _rl_detector = _IPBD(_rl_target)
+                        _rl_result = _rl_detector.check()
+                        if not _rl_result.blocked:
+                            # 사이트 실제 접근 가능 → 텍스트 패턴 오탐
+                            _lang_rl = getattr(self.config, "lang", "en")
+                            _rl_fp_msg = self.s.get("rate_limit_fp_suppressed", {
+                                "ko": "⚡ 'rate limit' 텍스트 감지됐지만 실제 차단 없음 (오탐 억제)",
+                                "zh": "⚡ 检测到'rate limit'文本但实际无封锁（误报已抑制）",
+                                "en": "⚡ 'rate limit' text detected but site accessible — false positive suppressed",
+                            })
+                            if isinstance(_rl_fp_msg, dict):
+                                _rl_fp_msg = _rl_fp_msg.get(_lang_rl, "⚡ Rate limit text FP suppressed")
+                            self.console.print(f"[dim]{_rl_fp_msg}[/]")
+                            _rl_confirmed = False
+                    except Exception:
+                        pass  # 교차검증 실패 → 안전하게 발동 유지
+                if _rl_confirmed:
+                    _detected_blocks.append("Rate limit hit")
             if _has_403:
                 _detected_blocks.append("403 Forbidden — possible IP block")
             if _has_503:

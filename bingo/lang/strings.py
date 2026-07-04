@@ -4235,6 +4235,17 @@ _STRINGS.update({
         "zh": "⏳ 执行前判定抑制 — 等待代码执行结果再判断",
         "en": "⏳ Pre-exec tag suppressed — judgment after actual code execution",
     },
+    # v4.6.0: Rate limit 오탐 억제 메시지
+    "rate_limit_fp_suppressed": {
+        "ko": "⚡ 'rate limit' 텍스트 감지됐지만 실제 차단 없음 (오탐 억제됨)",
+        "zh": "⚡ 检测到'rate limit'文本但实际无封锁（误报已抑制）",
+        "en": "⚡ 'rate limit' text detected but site is accessible — false positive suppressed",
+    },
+    "ip_block_fp_cross_verified": {
+        "ko": "✅ IP 차단 교차검증 완료 — 실제 차단 확인됨",
+        "zh": "✅ IP封锁交叉验证完成 — 实际封锁已确认",
+        "en": "✅ IP block cross-verified — confirmed real block",
+    },
     "mvvs_suspected": {
         "ko": "⚠️  [SUSPECTED] — 단일 신호 감지, 검증 필요",
         "zh": "⚠️  [SUSPECTED] — 单一信号检测，需要验证",

@@ -4246,6 +4246,57 @@ _STRINGS.update({
         "zh": "✅ IP封锁交叉验证完成 — 实际封锁已确认",
         "en": "✅ IP block cross-verified — confirmed real block",
     },
+    # ── v4.7.0: AST 정적 분석 무한루프 선제 차단 메시지 ─────────────────
+    "ast_infinite_loop_blocked": {
+        "ko": "🚫 [AST 분석] 무한루프 패턴 감지 — 실행 차단됨. LLM에 재작성 요청 중...",
+        "zh": "🚫 [AST分析] 检测到无限循环模式 — 已阻止执行，正在要求LLM重写...",
+        "en": "🚫 [AST Analysis] Infinite loop pattern detected — execution blocked. Requesting LLM rewrite...",
+    },
+    "ast_guard_loaded": {
+        "ko": "🛡️  AST 무한루프 가드 활성화 (code_guard v4.7.0)",
+        "zh": "🛡️  AST无限循环守卫已激活 (code_guard v4.7.0)",
+        "en": "🛡️  AST infinite loop guard active (code_guard v4.7.0)",
+    },
+    "ast_guard_fallback": {
+        "ko": "⚠️  AST 가드 로드 실패 — Regex 폴백 사용 중",
+        "zh": "⚠️  AST守卫加载失败 — 使用正则表达式回退",
+        "en": "⚠️  AST guard load failed — falling back to regex detection",
+    },
+    "script_timeout_rewrite_hint": {
+        "ko": (
+            "[SCRIPT_TIMEOUT] 스크립트가 타임아웃으로 종료되었습니다.\n"
+            "원인: 무한루프 또는 과도하게 큰 이터레이션.\n"
+            "수정 규칙:\n"
+            "  1) while True 루프에는 반드시 break 조건 추가\n"
+            "  2) for 루프는 range(N)에서 N ≤ 1000 으로 제한\n"
+            "  3) 페이지네이션: cursor 기반 + seen=set() 로 중복 방지\n"
+            "  4) itertools.cycle/count 사용 금지\n"
+            "  5) 재귀 함수는 반드시 if n<=0: return 형태 base case 필요\n"
+            "코드를 재작성하세요."
+        ),
+        "zh": (
+            "[SCRIPT_TIMEOUT] 脚本因超时而终止。\n"
+            "原因：无限循环或迭代次数过多。\n"
+            "修复规则：\n"
+            "  1) while True循环必须添加break条件\n"
+            "  2) for循环range(N)中N必须≤1000\n"
+            "  3) 分页：使用游标+seen=set()防止重复\n"
+            "  4) 禁止使用itertools.cycle/count\n"
+            "  5) 递归函数必须有if n<=0: return形式的基本情况\n"
+            "请重写代码。"
+        ),
+        "en": (
+            "[SCRIPT_TIMEOUT] Script terminated due to timeout.\n"
+            "Cause: infinite loop or excessive iteration count.\n"
+            "Fix rules:\n"
+            "  1) Add break condition to every while True loop\n"
+            "  2) Keep range(N) with N ≤ 1000 in for loops\n"
+            "  3) Pagination: use cursor + seen=set() to avoid repeats\n"
+            "  4) Do not use itertools.cycle/count\n"
+            "  5) Recursive functions MUST have base case: if n<=0: return\n"
+            "Rewrite the code."
+        ),
+    },
     "mvvs_suspected": {
         "ko": "⚠️  [SUSPECTED] — 단일 신호 감지, 검증 필요",
         "zh": "⚠️  [SUSPECTED] — 单一信号检测，需要验证",

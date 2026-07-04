@@ -5053,6 +5053,19 @@ class BingoTerminal:
             # fix 추적 리스트를 함수 최상단에서 초기화 (0-A 블록에서 먼저 사용되므로)
             _applied_fix_names: list[str] = []
 
+            # ── v4.7.0 AST 정적 분석 — 무한루프 선제 차단 (최우선, Regex보다 정확) ────
+            # code_guard.check() → None(안전) | "INFINITE_LOOP_RISK: ..." (위험)
+            # Regex 0-A/0-B 보다 앞서 실행: false positive/negative 최소화.
+            try:
+                from ..core.code_guard import check as _cg_check
+                _cg_reason = _cg_check(code)
+                if _cg_reason:
+                    return (f"__BLOCKED__:{_cg_reason}", [])
+            except ImportError:
+                pass  # code_guard 로드 실패 시 기존 Regex 방식으로 폴백
+            except Exception:
+                pass  # AST 분석 오류 → 안전하게 통과 (실행 차단 안 함)
+
             # ── 0-Y. urllib.parse 미import 자동 주입 ──────────────────────────
             # AI가 urllib3만 import하고 urllib.parse.quote/urlencode/urlparse 등 사용 → NameError
             _urllib_parse_uses = bool(_pre_re.search(

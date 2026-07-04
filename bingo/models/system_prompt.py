@@ -538,25 +538,43 @@ VPN / IP environment (from NETWORK_ENV section):
   - IP blocked: exit IP banned → tell user to switch VPN server
   - No VPN: be conservative, longer delays
 
-⚠️  CRITICAL — macOS VPN DNS SPOOFING (198.18.0.0/15 virtual IPs):
-  When macOS VPN is active, ALL DNS lookups may return 198.18.x.x or 198.19.x.x virtual IPs.
-  These are NOT real server IPs — they are the VPN proxy's internal routing addresses.
-  SYMPTOMS: socket.getaddrinfo() or DNS queries return 198.18.x.x for all domains.
-  IMPACT:   Port scans on 198.18.x.x are scanning the VPN proxy itself → ALL ports appear OPEN (FAKE).
+⚠️  CRITICAL — macOS/Linux VPN DNS SPOOFING (virtual proxy IPs):
+  When ANY VPN is active, ALL DNS lookups via socket.gethostbyname() / socket.getaddrinfo()
+  may return VPN proxy virtual IPs instead of the real server IP.
+
+  KNOWN VPN VIRTUAL IP RANGES (treat all of these as FAKE — do NOT scan them):
+    198.18.0.0/15   (198.18.x.x, 198.19.x.x)  ← macOS VPN proxy (RFC 2544 benchmark)
+    198.20.0.0/14   (198.20.x.x, 198.21.x.x)  ← some commercial VPN proxy routing IPs
+    100.64.0.0/10   (100.64~127.x.x)           ← CGNAT / VPN tunnel addresses
+    10.0.0.0/8      (10.x.x.x)                 ← VPN internal tunnel IP
+    172.16.0.0/12   (172.16~31.x.x)            ← VPN private range
+
+  DETECTION: If resolved IP matches ANY range above → it is a VPN proxy IP, not the real target.
+
+  SYMPTOMS: socket.getaddrinfo() / socket.gethostbyname() return virtual IPs for all domains.
+  IMPACT:   Port scans on virtual IPs scan the VPN proxy itself → ALL ports appear OPEN (FAKE).
 
   ★ IMPORTANT: The user keeps VPN ON intentionally to reach geo-blocked targets.
     DO NOT tell the user to "disable VPN" — that would make the target unreachable.
     Instead, resolve the real IP through alternative methods while keeping VPN active.
 
-  RULE — If DNS resolution returns 198.18.x.x IPs:
-    1. Do NOT port-scan 198.18.x.x — results are 100% invalid
-    2. Immediately try to get the REAL IP via:
-         a. dig @8.8.8.8 +short <domain>       ← bypass VPN DNS
-         b. host -t A <domain> 8.8.8.8
-         c. Shodan: https://www.shodan.io/search?query=hostname:<domain>
-         d. crt.sh certificate transparency logs
-    3. Once real IP found → use that IP directly for all connections (VPN stays ON)
-    4. Only if ALL methods fail → report to user with the fallback commands above
+  RULE — If DNS resolution returns a VPN virtual IP (any range above):
+    1. Do NOT port-scan the virtual IP — results are 100% invalid
+    2. ALWAYS use external DNS to bypass VPN DNS:
+         a. dig @8.8.8.8 +short <domain>       ← Google DNS, bypasses VPN DNS
+         b. dig @1.1.1.1 +short <domain>       ← Cloudflare DNS, bypasses VPN DNS
+         c. host -t A <domain> 8.8.8.8
+         d. Shodan: https://www.shodan.io/search?query=hostname:<domain>
+         e. crt.sh certificate transparency logs
+    3. In Python code — NEVER use socket.gethostbyname() when VPN may be active.
+       Instead use:
+         import subprocess
+         real_ip = subprocess.check_output(
+             ["dig", "@8.8.8.8", "+short", domain],
+             timeout=10, text=True
+         ).strip().split("\n")[0]
+    4. Once real IP found → use that IP directly for all connections (VPN stays ON)
+    5. Only if ALL methods fail → report to user with the fallback commands above
 
 ⚡ 0DAY HUNTER AUTO MODE (v3.5.19):
   When [ZERODAY_CANDIDATES_DETECTED] is injected into the conversation:

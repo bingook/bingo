@@ -108,10 +108,31 @@ class Recon:
 
     # ── IP 조회 ──────────────────────────────────────────────────
     def resolve_ip(self) -> str | None:
+        """
+        VPN 우회 DNS 조회 — dig @8.8.8.8 사용.
+        v3.6.7: socket.gethostbyname() 제거, VPN 켠 상태에서도 실제 IP 반환.
+        """
         try:
+            import subprocess, re as _re
+            for ns in ("8.8.8.8", "1.1.1.1"):
+                try:
+                    out = subprocess.check_output(
+                        ["dig", f"@{ns}", "+short", "+time=5", "+tries=2", self.domain],
+                        timeout=10, text=True, stderr=subprocess.DEVNULL,
+                    ).strip()
+                    ips = [ln for ln in out.splitlines()
+                           if _re.match(r"^\d+\.\d+\.\d+\.\d+$", ln)]
+                    if ips:
+                        ip = ips[0]
+                        self.findings["ip"] = ip
+                        print(f"[RECON] IP: {ip}")
+                        return ip
+                except Exception:
+                    continue
+            # dig 없는 환경 폴백
             ip = socket.gethostbyname(self.domain)
             self.findings["ip"] = ip
-            print(f"[RECON] IP: {ip}")
+            print(f"[RECON] IP: {ip} (⚠️ OS DNS fallback — VPN may distort)")
             return ip
         except Exception as e:
             print(f"[RECON] IP resolve failed: {e}")
@@ -225,7 +246,20 @@ class Recon:
         found = []
 
         def check(sub: str) -> str | None:
+            # v3.6.7: dig @8.8.8.8 로 VPN DNS 우회
+            import subprocess, re as _re
             fqdn = f"{sub}.{self.domain}"
+            for ns in ("8.8.8.8", "1.1.1.1"):
+                try:
+                    out = subprocess.check_output(
+                        ["dig", f"@{ns}", "+short", "+time=3", "+tries=1", fqdn],
+                        timeout=6, text=True, stderr=subprocess.DEVNULL,
+                    ).strip()
+                    if any(_re.match(r"^\d+\.\d+\.\d+\.\d+$", ln) for ln in out.splitlines()):
+                        return fqdn
+                except Exception:
+                    continue
+            # dig 없는 환경 폴백
             try:
                 socket.gethostbyname(fqdn)
                 return fqdn

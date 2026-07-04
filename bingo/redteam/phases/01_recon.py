@@ -68,9 +68,27 @@ def run(target: str, session: RedTeamSession, on_progress=None) -> list[dict]:
     session.metadata["api_paths_count"] = len(api_paths)
 
     # ── Step 3: DNS / IP 정보 ───────────────────────────────────────────
-    log("  [3/8] DNS 조회...")
+    log("  [3/8] DNS 조회 (VPN 우회 — dig @8.8.8.8)...")
     try:
-        ip = socket.gethostbyname(domain)
+        import subprocess as _sp, re as _re
+        ip = None
+        for _ns in ("8.8.8.8", "1.1.1.1"):
+            try:
+                _out = _sp.check_output(
+                    ["dig", f"@{_ns}", "+short", "+time=5", "+tries=2", domain],
+                    timeout=10, text=True, stderr=_sp.DEVNULL,
+                ).strip()
+                _ips = [ln for ln in _out.splitlines()
+                        if _re.match(r"^\d+\.\d+\.\d+\.\d+$", ln)]
+                if _ips:
+                    ip = _ips[0]
+                    break
+            except Exception:
+                continue
+        if ip is None:
+            # v3.6.7: dig 없는 환경 폴백 (VPN 왜곡 가능성 경고)
+            ip = socket.gethostbyname(domain)
+            log(f"  → ⚠️ OS DNS fallback: {ip} (VPN may distort)")
         findings.append({
             "type": "dns",
             "severity": "info",

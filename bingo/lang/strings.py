@@ -1905,6 +1905,21 @@ _STRINGS.update({
                                   "zh": "⚡ 跳过循环误报: '{name}'是WAF拦截响应 — 不是SQL数据无限循环。",
                                   "en": "⚡ Loop false-positive skipped: '{name}' is WAF block response — not SQL data loop."},
 
+    # v3.6.7: VPN DNS 우회 관련 다국어 키
+    # socket.gethostbyname() → dig @8.8.8.8 교체로 VPN 켠 상태에서도 실제 IP 반환
+    "dns_vpn_virtual_ip":       {"ko": "⚠️ VPN 가상IP 감지: {ip} ← {host} — 실제 서버 IP 아님. 외부 DNS로 재조회 중...",
+                                  "zh": "⚠️ 检测到VPN虚拟IP: {ip} ← {host} — 非真实服务器IP，正在通过外部DNS重新查询...",
+                                  "en": "⚠️ VPN virtual IP detected: {ip} ← {host} — not real server IP. Re-querying via external DNS..."},
+    "dns_vpn_bypass_ok":        {"ko": "✅ 실제 IP 확인 (외부 DNS): {ip} ← {host}",
+                                  "zh": "✅ 真实IP已确认（外部DNS）: {ip} ← {host}",
+                                  "en": "✅ Real IP confirmed (external DNS): {ip} ← {host}"},
+    "dns_vpn_bypass_fail":      {"ko": "❌ VPN 우회 DNS 조회 실패. 수동 확인: dig @8.8.8.8 +short {host}",
+                                  "zh": "❌ VPN绕过DNS查询失败。请手动确认: dig @8.8.8.8 +short {host}",
+                                  "en": "❌ VPN-bypass DNS query failed. Check manually: dig @8.8.8.8 +short {host}"},
+    "dns_os_fallback":          {"ko": "⚠️ OS DNS 폴백: {ip} — VPN 켠 상태에서 왜곡될 수 있음",
+                                  "zh": "⚠️ OS DNS备用: {ip} — VPN开启时可能失真",
+                                  "en": "⚠️ OS DNS fallback: {ip} — may be distorted when VPN is active"},
+
     # ── XSS 반사 중복 제거 / XSS Reflection Deduplication (v2.9.4) ─────
     "xss_reflect_dedup_fix":    {"ko": "필수 수정 — XSS 반사 위치를 중복 제거 없이 출력하고 있습니다.\nseen_ctx = set() 으로 고유 컨텍스트만 출력하세요.",
                                   "zh": "强制修复 — XSS反射位置输出没有去重。\n请使用 seen_ctx = set() 仅输出唯一上下文。",
@@ -5316,9 +5331,9 @@ _STRINGS.update({
         "en": "🧬 Nuclei context detected — use /recon nuclei <target> for auto template vulnerability scan",
     },
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.6.6) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.6.6) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.6.6) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.6.7) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.6.7) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.6.7) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",

@@ -249,15 +249,58 @@ def hunter_emails(domain: str, api_key: str, limit: int = 15) -> list[dict]:
         return []
 
 
+# ── VPN 가상 IP 범위 ─────────────────────────────────────────────────────────
+# VPN이 켜진 상태에서 socket.getaddrinfo() 등이 반환하는 프록시 라우팅 IP 대역
+# 이 대역 IP는 실제 서버 IP가 아님 → 포트스캔/연결 모두 무의미
+_VPN_VIRTUAL_PREFIXES = (
+    "198.18.", "198.19.",           # macOS VPN 프록시 (RFC 2544)
+    "198.20.", "198.21.",           # 일부 상용 VPN 프록시 라우팅 IP
+    "100.",                         # CGNAT / VPN 터널 (100.64~127.x.x)
+    "10.",                          # VPN 내부 터널
+)
+
+
+def _is_vpn_virtual_ip(ip: str) -> bool:
+    """VPN 가상 IP 여부 확인 — True 이면 실제 서버 IP 아님"""
+    return any(ip.startswith(pfx) for pfx in _VPN_VIRTUAL_PREFIXES)
+
+
+def _dns_resolve_external(hostname: str, timeout: int = 10) -> list[str]:
+    """
+    외부 DNS(8.8.8.8 → 1.1.1.1)로 직접 조회하여 VPN DNS 우회.
+    v3.6.7: socket.getaddrinfo() 대신 dig @8.8.8.8 사용 — VPN 켠 상태에서도 실제 IP 반환.
+    """
+    import subprocess
+    for ns in ("8.8.8.8", "1.1.1.1"):
+        try:
+            out = subprocess.check_output(
+                ["dig", f"@{ns}", "+short", "+time=5", "+tries=2", hostname],
+                timeout=timeout, text=True, stderr=subprocess.DEVNULL,
+            ).strip()
+            ips = [ln for ln in out.splitlines() if ln and not ln.startswith(";")]
+            # IPv4 필터
+            real_ips = [ip for ip in ips if re.match(r"^\d+\.\d+\.\d+\.\d+$", ip)]
+            if real_ips:
+                return real_ips
+        except Exception:
+            continue
+    # dig 없는 환경 폴백 — OS DNS 사용 후 VPN 가상 IP 경고
+    try:
+        results = socket.getaddrinfo(hostname, None)
+        ips = list({r[4][0] for r in results})
+        for ip in ips:
+            if _is_vpn_virtual_ip(ip):
+                print(f"[DNS⚠️] VPN 가상IP 감지 {ip} ← {hostname} (dig 없음, 실제IP 아님)")
+        return ips
+    except Exception:
+        return []
+
+
 # ── 6. DNS 해석 ───────────────────────────────────────────────────────────────
 
 def dns_resolve(hostname: str) -> list[str]:
-    """hostname → IP 목록"""
-    try:
-        results = socket.getaddrinfo(hostname, None)
-        return list({r[4][0] for r in results})
-    except Exception:
-        return []
+    """hostname → IP 목록 (VPN 우회: 외부 DNS 직접 조회)"""
+    return _dns_resolve_external(hostname)
 
 
 def bulk_dns_resolve(subdomains: list[str], max_workers: int = 50) -> dict[str, list[str]]:

@@ -664,7 +664,15 @@ class PhantomGuardResult:
 
 class PhantomGuard:
     """
-    통합 팬텀 모드 게이트 v2.0.0.
+    통합 팬텀 모드 게이트 v3.0.0  (Zero Hallucination v5 통합).
+
+    기존 8종 탐지 + ZeroHal v5 5-Layer 파이프라인:
+      ① Phantom mode           ② Stale cache
+      ③ Target mismatch        ④ Self-correction loop
+      ⑤ Tool liveness          ⑥ Zero-HTTP claim
+      ⑦ Hard session restart   ⑧ SPA false positive
+      ⑨ ZeroHal: Unanchored claim  ⑩ ZeroHal: Numeric hallucination
+      ⑪ ZeroHal: Excess inference  ⑫ ZeroHal: Context poison
 
     사용법 (terminal.py 응답 루프):
         _pg = PhantomGuard(session_target=target, lang="ko")
@@ -707,6 +715,8 @@ class PhantomGuard:
         self.liveness_result: Optional[LivenessResult] = None
         # v3.5.8: 직전 실행에 실제 HTTP 증거 있었음 → 다음 pre-exec phantom 오탐 억제
         self._last_exec_had_real_http: bool = False
+        # Zero Hallucination v5 [v3.0.0]
+        self._zero_hal: Optional[object] = None  # 지연 로드 (순환 임포트 방지)
 
     # ── 세션 시작 시 도구 liveness probe ─────────────────────────
 
@@ -734,6 +744,16 @@ class PhantomGuard:
         self.session_target = new_target
         self._target.session_target = new_target
         self._target.allowed_domains.add(TargetMismatchGuard._extract_domain(new_target))
+        # ZeroHal v5 타겟 동기화
+        zh = self._get_zero_hal()
+        if zh is not None:
+            zh.update_target(new_target)
+
+    def register_exec_output(self, exec_output: str) -> None:
+        """실행 결과를 ZeroHal FactRegistry에 사전 등록 (오탐 최소화)."""
+        zh = self._get_zero_hal()
+        if zh is not None:
+            zh.register_exec(exec_output)
 
     def add_allowed_domain(self, url_or_domain: str) -> None:
         self._target.add_allowed(url_or_domain)
@@ -878,9 +898,54 @@ class PhantomGuard:
                     ),
                 )
 
+        # ── 7. Zero Hallucination v5 파이프라인 [NEW v3.0.0] ─────────────
+        try:
+            zh = self._get_zero_hal()
+            if zh is not None:
+                zh_result = zh.process(response_text, exec_output)
+                if zh_result.blocked:
+                    self.hard_restarter.record_block()
+                    return PhantomGuardResult(
+                        blocked=True,
+                        block_reason=f"ZERO_HAL_{zh_result.block_reason}",
+                        inject_message=(
+                            f"[ZERO_HAL_BLOCKED — {zh_result.block_reason}]\n"
+                            f"{zh_result.inject_message}"
+                        ),
+                    )
+                elif zh_result.warned and zh_result.inject_message:
+                    # 차단은 아니지만 경고 주입 (소프트 교정)
+                    return PhantomGuardResult(
+                        blocked=False,
+                        block_reason=f"ZERO_HAL_WARN_{zh_result.block_reason}",
+                        inject_message=zh_result.inject_message,
+                    )
+        except Exception:
+            pass  # ZeroHal 오류는 메인 흐름을 막지 않음
+
         # 정상 — hard restarter 성공 기록
         self.hard_restarter.record_success()
         return PhantomGuardResult(blocked=False)
+
+    def _get_zero_hal(self):
+        """ZeroHalEngine 지연 로드 (순환 임포트 방지)."""
+        if self._zero_hal is None:
+            try:
+                from bingo.core.zero_hal_v5 import ZeroHalEngine
+                self._zero_hal = ZeroHalEngine(
+                    session_target=self.session_target,
+                    lang=self.lang,
+                )
+            except ImportError:
+                return None
+        return self._zero_hal
+
+    def get_zero_hal_stats(self) -> str:
+        """ZeroHal v5 통계 배너 반환."""
+        zh = self._get_zero_hal()
+        if zh is not None:
+            return zh.stats_banner(self.lang)
+        return "[ZeroHal v5: 비활성]"
 
     # ── 편의 헬퍼 ─────────────────────────────────────────────────
 

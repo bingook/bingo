@@ -385,6 +385,17 @@ Respond ONLY in JSON."""
         except Exception:
             pass
 
+        # ── v4.1.0: ZeroHal Engine 초기화 알림 ────────────────────────────
+        _zh_engine = None
+        try:
+            from ..core.zero_hal_v5 import reset_zero_hal
+            _zh_engine = reset_zero_hal(session_target=self._target, lang=self._lang)
+            _print(
+                f"[dim]{_s.get('zerohal_active', '🛡️ [ZERO-HAL v5] 9-Layer Zero Hallucination ACTIVE')}[/dim]"
+            )
+        except Exception:
+            pass
+
         _print(
             f"\n[bold cyan]{_s.get('orch_ui_started', '🤖 [ORCHESTRATOR] Started')}[/bold cyan]\n"
             f"  target : {self._target}\n"
@@ -465,14 +476,36 @@ Respond ONLY in JSON."""
                     command = _target_prefix + command
                 _cmd_disp = f"{command[:120]}..." if len(command) > 120 else command
                 _print(f"[cyan]{_s.get('orch_ui_executing', '▶ Executing: {cmd}').format(cmd=_cmd_disp)}[/cyan]")
+                _exec_result = ""
                 try:
                     send_fn(command)
                 except Exception as e:
                     self._error = str(e)
                     _print(f"[red]{_s.get('orch_ui_exec_error', '❌ Execution error: {err}').format(err=e)}[/red]")
+
+                # ── v4.1.0: ZeroHal FactRegistry에 실행 결과 사전 등록 ────────
+                # decision 자체를 exec_output 대용으로 등록 (action/reason에 숫자 포함 시)
+                if _zh_engine is not None:
+                    _zh_engine.register_exec(raw_decision)
+
                 # ★ v3.5.15: send_fn 완료 후 정지 요청 확인 → 즉시 루프 탈출
                 if self._stop_evt.is_set():
                     break
+
+            # ── v4.1.0: decision LLM 응답에 ZeroHal 검증 적용 ────────────────
+            if _zh_engine is not None and raw_decision:
+                try:
+                    _zh_result = _zh_engine.process(raw_decision, exec_output=action)
+                    if _zh_result.blocked:
+                        _print(
+                            f"[red]{_s.get('zerohal_blocked', '⛔ [ZERO-HAL] Blocked: {reason}').format(reason=_zh_result.block_reason)}[/red]"
+                        )
+                    elif _zh_result.warned and _zh_result.inject_message:
+                        _print(
+                            f"[yellow][ZERO-HAL WARN] {_zh_result.inject_message[:120]}[/yellow]"
+                        )
+                except Exception:
+                    pass
 
             # 9. 목표 달성 확인
             if goal_done:

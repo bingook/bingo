@@ -6160,12 +6160,101 @@ _STRINGS.update({
     },
 })
 
-# ── v4.0.0 버전 문자열 업데이트 ─────────────────────────────────────────
+# ── v4.1.0 Zero Hallucination v5 다국어 키 ──────────────────────────────
+_STRINGS.update({
+    "zerohal_active": {
+        "ko": "🛡️ [ZERO-HAL v5] 9단계 제로 환각 방어 — 활성화 (FactRegistry + ClaimAnchor + NumericGuard + InferenceMeter + ContextPoison)",
+        "zh": "🛡️ [ZERO-HAL v5] 9层零幻觉防护 — 已激活 (事实注册 + 声明锚定 + 数字守卫 + 推断计量 + 上下文防毒)",
+        "en": "🛡️ [ZERO-HAL v5] 9-Layer Zero Hallucination ACTIVE (FactRegistry + ClaimAnchor + NumericGuard + InferenceMeter + ContextPoison)",
+    },
+    "zerohal_blocked": {
+        "ko": "⛔ [ZERO-HAL] 환각 차단: {reason}",
+        "zh": "⛔ [ZERO-HAL] 幻觉拦截: {reason}",
+        "en": "⛔ [ZERO-HAL] Hallucination blocked: {reason}",
+    },
+    "zerohal_warn": {
+        "ko": "⚠️ [ZERO-HAL] 경고: {reason}",
+        "zh": "⚠️ [ZERO-HAL] 警告: {reason}",
+        "en": "⚠️ [ZERO-HAL] Warning: {reason}",
+    },
+    "zerohal_facts_registered": {
+        "ko": "📌 [FactRegistry] {count}개 사실 등록 완료 (IP/포트/헤더/버전/경로)",
+        "zh": "📌 [事实注册] 已注册 {count} 条事实 (IP/端口/Header/版本/路径)",
+        "en": "📌 [FactRegistry] {count} facts registered (IP/port/header/version/path)",
+    },
+    "zerohal_claim_blocked": {
+        "ko": "⛔ [클레임앵커] 증거 없는 취약점 주장 차단 — 실행 후 재시도하세요",
+        "zh": "⛔ [声明锚定] 无证据漏洞声明被拦截 — 请执行后重试",
+        "en": "⛔ [ClaimAnchor] Unanchored vulnerability claim blocked — execute and retry",
+    },
+    "zerohal_numeric_blocked": {
+        "ko": "⛔ [숫자환각] 등록되지 않은 숫자 사용 차단 — 실제 실행 결과의 숫자만 허용",
+        "zh": "⛔ [数字幻觉] 使用未注册数字被拦截 — 仅允许真实执行结果中的数字",
+        "en": "⛔ [NumericHal] Unregistered numeric value blocked — only real execution values allowed",
+    },
+    "zerohal_inference_warn": {
+        "ko": "⚠️ [추론계량] 추론 비율 {pct}% — 실행 결과로 검증 권장",
+        "zh": "⚠️ [推断计量] 推断比例 {pct}% — 建议用执行结果验证",
+        "en": "⚠️ [InferenceMeter] Inference ratio {pct}% — recommend verifying with execution results",
+    },
+    "zerohal_inference_blocked": {
+        "ko": "⛔ [추론계량] 과다 추론 차단 ({pct}%) — 즉시 HTTP 요청 실행",
+        "zh": "⛔ [推断计量] 过度推断拦截 ({pct}%) — 立即执行HTTP请求",
+        "en": "⛔ [InferenceMeter] Excessive inference blocked ({pct}%) — execute HTTP request now",
+    },
+    "zerohal_context_poison": {
+        "ko": "⚠️ [컨텍스트오염] 이전 세션 데이터 유출 감지 — 현재 타겟: {target}",
+        "zh": "⚠️ [上下文污染] 检测到历史会话数据泄露 — 当前目标: {target}",
+        "en": "⚠️ [ContextPoison] Previous session data leak detected — current target: {target}",
+    },
+    "zerohal_stats": {
+        "ko": "📊 [ZERO-HAL 통계] 처리={processed} | 차단={blocked} | 등록사실={facts}",
+        "zh": "📊 [ZERO-HAL 统计] 处理={processed} | 拦截={blocked} | 注册事实={facts}",
+        "en": "📊 [ZERO-HAL Stats] processed={processed} | blocked={blocked} | facts={facts}",
+    },
+    "zerohal_full_summary": {
+        "ko": (
+            "═══ BINGO v4.1.0 Zero Hallucination v5 — 9단계 방어 완전체 ═══\n"
+            "기존 4단계: ①팬텀 ②구캐시 ③타겟오인 ④루프탈출\n"
+            "신규 5레이어:\n"
+            "  RULE 88: FactRegistry     — 숫자/IP/버전/헤더 증거 앵커\n"
+            "  RULE 89: ClaimAnchor      — 취약점 주장 = 실행 증거 필수\n"
+            "  RULE 90: NumericGuard     — LLM 생성 숫자 환각 차단\n"
+            "  RULE 91: InferenceMeter   — 추론 35% 상한 / 60% 차단\n"
+            "  RULE 92: ContextPoison    — 크로스 세션 오염 방지\n"
+            "━━━ 환각률 0% 목표 — 월드컵급 정확도 ━━━"
+        ),
+        "zh": (
+            "═══ BINGO v4.1.0 零幻觉 v5 — 9层完整防护 ═══\n"
+            "原4层: ①幻影 ②旧缓存 ③目标误认 ④循环逃脱\n"
+            "新5层:\n"
+            "  RULE 88: 事实注册    — 数字/IP/版本/Header证据锚定\n"
+            "  RULE 89: 声明锚定    — 漏洞声明必须有执行证据\n"
+            "  RULE 90: 数字守卫    — 拦截LLM生成数字幻觉\n"
+            "  RULE 91: 推断计量    — 35%上限/60%拦截\n"
+            "  RULE 92: 上下文防毒  — 防止跨会话信息污染\n"
+            "━━━ 幻觉率0%目标 — 世界杯级精准度 ━━━"
+        ),
+        "en": (
+            "═══ BINGO v4.1.0 Zero Hallucination v5 — 9-Layer Complete Defense ═══\n"
+            "Existing 4 layers: ①Phantom ②StaleCache ③TargetMismatch ④LoopBreak\n"
+            "New 5 layers:\n"
+            "  RULE 88: FactRegistry   — numeric/IP/version/header evidence anchor\n"
+            "  RULE 89: ClaimAnchor    — vulnerability claims require execution evidence\n"
+            "  RULE 90: NumericGuard   — block LLM-generated numeric hallucinations\n"
+            "  RULE 91: InferenceMeter — 35% cap / 60% block\n"
+            "  RULE 92: ContextPoison  — prevent cross-session contamination\n"
+            "━━━ Goal: 0% hallucination rate — World Cup level accuracy ━━━"
+        ),
+    },
+})
+
+# ── v4.1.0 버전 문자열 업데이트 ─────────────────────────────────────────
 _STRINGS.update({
     "recon_help_title": {
-        "ko": "🔍  정찰 모듈 모음 (v4.0.0) — 정보 수집 / 자산 수집",
-        "zh": "🔍  侦察模块套件 (v4.0.0) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v4.0.0) — Info Gathering / Asset Collection",
+        "ko": "🔍  정찰 모듈 모음 (v4.1.0) — 정보 수집 / 자산 수집",
+        "zh": "🔍  侦察模块套件 (v4.1.0) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v4.1.0) — Info Gathering / Asset Collection",
     },
 })
 

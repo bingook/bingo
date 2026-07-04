@@ -6562,6 +6562,43 @@ _STRINGS.update({
             "  New targets must be set explicitly via '/target <URL>'."
         ),
     },
+    # ── v4.9.1: 텍스트 레벨 환각 스캐너 (Gap 1 수정) ─────────────────
+    "text_hallucination_detected": {
+        "ko": (
+            "⛔ [TEXT_HALLUCINATION v4.9.1] 코드 실행 없이 텍스트로 결과 서술 감지\n"
+            "  ```python 코드 블록을 작성하고 실제 print() 출력만 보고하세요."
+        ),
+        "zh": (
+            "⛔ [TEXT_HALLUCINATION v4.9.1] 检测到未执行代码即通过文字描述结果\n"
+            "  请编写 ```python 代码块，只报告实际 print() 输出."
+        ),
+        "en": (
+            "⛔ [TEXT_HALLUCINATION v4.9.1] Claimed result in text without code execution detected\n"
+            "  Write a ```python code block and only report actual print() output."
+        ),
+        "ja": (
+            "⛔ [TEXT_HALLUCINATION v4.9.1] コード実行なしでテキストに結果を記述することを検出\n"
+            "  ```python コードブロックを書いて、実際の print() 出力のみを報告してください."
+        ),
+        "ru": (
+            "⛔ [TEXT_HALLUCINATION v4.9.1] Обнаружено описание результатов без выполнения кода\n"
+            "  Напишите блок ```python и сообщайте только реальный вывод print()."
+        ),
+        "ar": (
+            "⛔ [TEXT_HALLUCINATION v4.9.1] تم اكتشاف وصف النتائج في النص بدون تنفيذ كود\n"
+            "  اكتب كتلة ```python وأبلغ فقط عن مخرجات print() الفعلية."
+        ),
+        "es": (
+            "⛔ [TEXT_HALLUCINATION v4.9.1] Resultado reclamado en texto sin ejecución de código\n"
+            "  Escriba un bloque ```python y reporte solo la salida real de print()."
+        ),
+    },
+    # ── v4.9.1: Pattern 6 확장 (Gap 4 수정) ──────────────────────────
+    "pattern6_expanded_block": {
+        "ko": "⛔ [PATTERN6_EXT v4.9.1] 코드 블록 내 미실행 결과 서술 (확장 패턴) 감지 — 실행 차단",
+        "zh": "⛔ [PATTERN6_EXT v4.9.1] 检测到代码块内描述未执行结果 (扩展模式) — 已阻止执行",
+        "en": "⛔ [PATTERN6_EXT v4.9.1] Claimed result inside code block (extended pattern) detected — blocked",
+    },
 })
 
 

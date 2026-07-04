@@ -5082,20 +5082,27 @@ class BingoTerminal:
                         "Use the ACTUAL response: r = requests.get(url); print(r.text)"
                     )
 
-            # ── v4.8.0 패턴 6: 텍스트 서술에서 미실행 결과 위조 감지 ──────────
+            # ── v4.9.0 패턴 6: 텍스트 서술에서 미실행 결과 위조 감지 (확장) ──────
             # 기록.md L1192: "EXTRACTVALUE 返回了 ~z~5.4~z~" 식의 환각
-            # LLM이 print()로 출력하지 않고 코드 블록 내 주석/문자열로 '결과를 서술'하는 패턴
+            # v4.9.0: Gap 4 수정 — 표현 변형 추가로 탐지 커버리지 향상
             _CLAIMED_RESULT_RE = _hall_re.compile(
                 r"(?:"
-                # 중국어/일본어 결과 서술 패턴
+                # ── 중국어 결과 서술 패턴 ──────────────────────────────────────
                 r"(?:返回了|返回结果|返回的结果|查询结果为|执行结果)\s*[：:]\s*.{3,80}"
-                r"|(?:结果[是为]|得到的结果|获取到了)\s*.{3,80}"
-                r"|(?:数据库名?|表名|用户名)[：:\s为是].{3,60}"
-                # 영어 결과 서술 패턴
+                r"|(?:结果[是为]|得到的结果|获取到了|我们得到了|拿到了)\s*.{3,80}"
+                r"|(?:数据库名?|表名|用户名|版本号?)[：:\s为是显=].{2,60}"
+                r"|(?:显示(?:为|了|出)|表明|说明|发现)\s*.{3,60}(?:数据库|版本|用户|表名|DB)"
+                r"|(?:DB|数据库|版本)\s*(?:为|是|=|:)\s*['\"]?.{2,60}"
+                # ── 영어 결과 서술 패턴 ──────────────────────────────────────
                 r"|(?:returned?|got back|response was|result[:\s]+)['\"]?.{3,80}"
                 r"|(?:confirmed|verified|extracted)\s+(?:that\s+)?(?:the\s+)?(?:db|database|table|user)[:\s].{3,60}"
-                # 한국어 결과 서술 패턴
-                r"|(?:반환됨|결과는|추출됨|확인됨|가져옴)[：:\s].{3,60}"
+                r"|(?:the\s+)?(?:db|database|version|username|table)\s+(?:is|was|=)\s*['\"]?.{2,60}"
+                r"|(?:shows?|reveals?|indicates?)\s+(?:that\s+)?(?:the\s+)?(?:db|version|user|table).{3,60}"
+                r"|(?:we\s+(?:found|got|confirmed|extracted|have))\s+(?:the\s+)?(?:db|version|user|table).{3,60}"
+                # ── 한국어 결과 서술 패턴 ──────────────────────────────────────
+                r"|(?:반환됨|결과는|추출됨|확인됨|가져옴|발견됨)[：:\s].{2,60}"
+                r"|(?:DB명?|버전|사용자명?|테이블명?)\s*(?:은|는|이|가|=|:)\s*.{2,50}(?:임|였|이다|입니다|으로\s*확인)"
+                r"|(?:나왔|검출됨|추출\s*성공|확인\s*완료)[：:\s].{2,60}"
                 r")",
                 _hall_re.IGNORECASE,
             )
@@ -6676,6 +6683,67 @@ class BingoTerminal:
 
             # 코드 실행 (코드 블록이 있으면 반드시 실행)
             results_text = self._run_code_blocks(current_response, _loaded_skills)
+
+            # ── v4.9.0: 텍스트 레벨 환각 스캐너 ────────────────────────────────
+            # Gap 1 수정: 코드 블록 밖 텍스트에서 미실행 결과 서술 탐지
+            # 상황: LLM이 ```python 코드 없이 텍스트로 "DB명이 X로 확인됨" 같은 환각을 서술
+            # 탐지: 코드 블록 제거 → 순수 텍스트에서 결과 주장 패턴 검사
+            # 조건: 실행 결과가 없고(results_text 비어 있음) + 텍스트에 결과 서술 존재 → 주입
+            try:
+                import re as _thal_re
+                # 코드 블록 제거해 순수 텍스트만 추출
+                _text_only = _thal_re.sub(r'```[\s\S]*?```', '', current_response).strip()
+                if _text_only and not results_text:
+                    _TEXT_HAL_RE = _thal_re.compile(
+                        r"(?:"
+                        # 중국어
+                        r"(?:返回了|返回结果|查询结果为|执行结果|我们得到了)[：:\s].{3,60}"
+                        r"|(?:结果[是为]|得到了|获取到了|发现了)\s*.{3,60}"
+                        r"|(?:数据库名?|表名|用户名|版本号?)\s*(?:为|是|=|:)\s*.{2,40}"
+                        r"|(?:DB|数据库|版本)\s*[=:是为]\s*['\"]?.{2,40}"
+                        # 영어
+                        r"|(?:the\s+)?(?:db|database|version|username|table)\s+(?:is|was|=)\s*['\"]?.{2,40}"
+                        r"|(?:shows?|reveals?|indicates?|confirmed|extracted)\s+(?:the\s+)?(?:db|version|user|table).{3,50}"
+                        r"|(?:we\s+(?:found|got|confirmed|extracted))\s+(?:the\s+)?(?:db|version|user).{3,50}"
+                        # 한국어
+                        r"|(?:반환됨|추출됨|확인됨|발견됨|검출됨)\s*[：:\s].{2,50}"
+                        r"|(?:DB|버전|사용자|테이블)\s*(?:은|는|이|가)?\s*.{2,40}(?:임|였|이다|입니다|으로\s*확인)"
+                        r"|✅\s*\[?(?:VERIFIED|확인)\]?\s*.{2,60}"
+                        r")",
+                        _thal_re.IGNORECASE,
+                    )
+                    _th_m = _TEXT_HAL_RE.search(_text_only)
+                    if _th_m:
+                        _lang_th = getattr(self.config, "lang", "en")
+                        _th_snippet = _th_m.group(0)[:80].strip()
+                        _th_feedback = {
+                            "ko": (
+                                f"[TEXT_HALLUCINATION_DETECTED v4.9.0]\n"
+                                f"코드 실행 없이 텍스트로 결과를 서술했습니다: '{_th_snippet}'\n"
+                                f"이것은 실제 실행 결과가 아닙니다. 반드시 ```python 블록으로 "
+                                f"코드를 작성하고 실제 requests.get/post 실행 후 print() 출력만 보고하세요."
+                            ),
+                            "zh": (
+                                f"[TEXT_HALLUCINATION_DETECTED v4.9.0]\n"
+                                f"在未执行代码的情况下，通过文字描述了结果: '{_th_snippet}'\n"
+                                f"这不是真实的执行结果。必须用 ```python 代码块实际运行 "
+                                f"requests.get/post，只报告 print() 的实际输出。"
+                            ),
+                            "en": (
+                                f"[TEXT_HALLUCINATION_DETECTED v4.9.0]\n"
+                                f"You described results in text without executing code: '{_th_snippet}'\n"
+                                f"This is not real execution output. You MUST write a ```python code block, "
+                                f"run actual requests.get/post, and only report real print() output."
+                            ),
+                        }.get(_lang_th, (
+                            f"[TEXT_HALLUCINATION_DETECTED v4.9.0] "
+                            f"Claimed result without code: '{_th_snippet}' — "
+                            f"Write a ```python code block with real HTTP calls."
+                        ))
+                        self.console.print(f"[bold red]⛔ {_th_feedback}[/bold red]")
+                        self.history.append(Message(role="user", content=_th_feedback))
+            except Exception:
+                pass  # 스캐너 오류는 무시 — 실행 차단하지 않음
 
             # ── v4.4.0: 코드 실행 후 PhantomGuard 사후 검사 (실행결과 기반) ──
             if self._phantom_guard is not None and _has_executable_code and results_text:

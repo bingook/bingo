@@ -2000,7 +2000,49 @@ class BingoTerminal:
         _target_changed = False
         if _urls:
             new_target = _urls[0].rstrip("/?,")
-            if self._agent_state.get("target") != new_target:
+            _existing_target = self._agent_state.get("target", "")
+
+            # ── v4.8.0: TARGET_LOCK — 기존 타겟 유지 강제 ─────────────────
+            # 기록.md L1079: LLM이 hanurschool.nurihaus.com으로 무단 타겟 변경
+            # 원인: LLM 응답에서 추출된 URL이 타겟으로 설정됨
+            # 수정: 이미 타겟이 설정된 상태에서 다른 도메인으로의 변경은 차단
+            if _existing_target and new_target != _existing_target:
+                # 동일 도메인 내 경로 변경은 허용 (프로토콜+도메인만 비교)
+                import urllib.parse as _up
+                _ex_parsed = _up.urlparse(_existing_target)
+                _new_parsed = _up.urlparse(new_target)
+                _ex_domain = f"{_ex_parsed.scheme}://{_ex_parsed.netloc}".lower()
+                _new_domain = f"{_new_parsed.scheme}://{_new_parsed.netloc}".lower()
+                if _ex_domain != _new_domain and _new_domain not in ("://", "//"):
+                    # 다른 도메인 → TARGET_LOCK 발동 → 사용자에게 확인 요청
+                    _lang = getattr(self.config, "lang", "en")
+                    _lock_warn = {
+                        "ko": (
+                            f"⛔ [TARGET_LOCK v4.8.0] 타겟 무단 변경 차단!\n"
+                            f"  현재 타겟: {_existing_target}\n"
+                            f"  변경 시도: {new_target}\n"
+                            f"  새 타겟으로 변경하려면 명시적으로 '/target {new_target}' 입력."
+                        ),
+                        "zh": (
+                            f"⛔ [TARGET_LOCK v4.8.0] 阻止未授权目标变更!\n"
+                            f"  当前目标: {_existing_target}\n"
+                            f"  尝试变更为: {new_target}\n"
+                            f"  如需切换目标，请明确输入 '/target {new_target}'."
+                        ),
+                        "en": (
+                            f"⛔ [TARGET_LOCK v4.8.0] Unauthorized target change blocked!\n"
+                            f"  Current target: {_existing_target}\n"
+                            f"  Attempted change: {new_target}\n"
+                            f"  To switch target, explicitly type '/target {new_target}'."
+                        ),
+                    }.get(_lang, f"⛔ [TARGET_LOCK] Blocked target change from {_existing_target} to {new_target}")
+                    self.console.print(f"[bold red]{_lock_warn}[/bold red]")
+                    # 타겟 변경 차단 — _urls를 비워서 이후 처리 스킵
+                    _urls = []
+                    new_target = _existing_target
+            # ──────────────────────────────────────────────────────────────
+
+            if _urls and self._agent_state.get("target") != new_target:
                 _target_changed = True
                 self._reset_agent_state()
                 self._agent_state["target"] = new_target
@@ -5040,6 +5082,40 @@ class BingoTerminal:
                         "Use the ACTUAL response: r = requests.get(url); print(r.text)"
                     )
 
+            # ── v4.8.0 패턴 6: 텍스트 서술에서 미실행 결과 위조 감지 ──────────
+            # 기록.md L1192: "EXTRACTVALUE 返回了 ~z~5.4~z~" 식의 환각
+            # LLM이 print()로 출력하지 않고 코드 블록 내 주석/문자열로 '결과를 서술'하는 패턴
+            _CLAIMED_RESULT_RE = _hall_re.compile(
+                r"(?:"
+                # 중국어/일본어 결과 서술 패턴
+                r"(?:返回了|返回结果|返回的结果|查询结果为|执行结果)\s*[：:]\s*.{3,80}"
+                r"|(?:结果[是为]|得到的结果|获取到了)\s*.{3,80}"
+                r"|(?:数据库名?|表名|用户名)[：:\s为是].{3,60}"
+                # 영어 결과 서술 패턴
+                r"|(?:returned?|got back|response was|result[:\s]+)['\"]?.{3,80}"
+                r"|(?:confirmed|verified|extracted)\s+(?:that\s+)?(?:the\s+)?(?:db|database|table|user)[:\s].{3,60}"
+                # 한국어 결과 서술 패턴
+                r"|(?:반환됨|결과는|추출됨|확인됨|가져옴)[：:\s].{3,60}"
+                r")",
+                _hall_re.IGNORECASE,
+            )
+            # 위 패턴이 주석(#)이나 print()가 아닌 코드 영역에서 문자열 리터럴로 등장하면 환각
+            for _m in _CLAIMED_RESULT_RE.finditer(s):
+                _start = _m.start()
+                # 해당 위치가 주석 행인지 확인
+                _line_start = s.rfind('\n', 0, _start) + 1
+                _line_text = s[_line_start:_start].lstrip()
+                # 주석이 아니고, print()도 아니고, 실제 네트워크 호출이 없으면 → 환각
+                if (not _line_text.startswith('#')
+                        and 'print(' not in s[max(0,_start-40):_start]
+                        and not _has_network):
+                    return (
+                        "CLAIMED_RESULT_WITHOUT_EXEC: Code describes result "
+                        f"({_m.group(0)[:80]!r}) as text/comment without running real HTTP "
+                        "request. ALL results MUST come from actual print() output of "
+                        "requests.get/post execution. Remove the fabricated result."
+                    )
+
             return None
 
         # ── 코드 사전 검증 헬퍼 (SyntaxError / NameError 예방) ──────────
@@ -5630,14 +5706,22 @@ class BingoTerminal:
             )
             if fixed != _before_0d:
                 _applied_fix_names.append("fix_time_sleep_uniform")
-            # random.uniform을 썼지만 import random 누락된 경우 자동 주입
-            if "random.uniform" in fixed and not _pre_re.search(r'\bimport\s+random\b', fixed):
+            # v4.8.0: random 모듈 사용 함수 전체 커버 — import random 자동 주입
+            # 이전: random.uniform만 검사 → random.choice/randint 등 누락 → NameError 발생
+            _RANDOM_USAGE_RE = _pre_re.compile(
+                r'\brandom\.(?:uniform|choice|choices|randint|random|shuffle|sample'
+                r'|seed|gauss|triangular|betavariate|expovariate|gammavariate'
+                r'|lognormvariate|normalvariate|vonmisesvariate|paretovariate'
+                r'|weibullvariate|getrandbits|randbytes)\s*\('
+            )
+            if _RANDOM_USAGE_RE.search(fixed) and not _pre_re.search(r'\bimport\s+random\b', fixed):
                 _first_import_m = _pre_re.search(r'^(?:import |from )', fixed, _pre_re.MULTILINE)
                 if _first_import_m:
                     _fip2 = _first_import_m.start()
                     fixed = fixed[:_fip2] + "import random\n" + fixed[_fip2:]
                 else:
                     fixed = "import random\n" + fixed
+                _applied_fix_names.append("inject_import_random")
 
             # ── 5. SyntaxError 체크 + 자동 수정 시도 ────────────────────────
             try:
@@ -7419,6 +7503,9 @@ class BingoTerminal:
             # /retry 를 위해 마지막 실행 결과 보존
             self._last_exec_result = raw_results
 
+            # ── v4.8.0: 실행 결과 후처리 — 빈값 [VERIFIED] + SLEEP 판정 오류 감지 ──
+            raw_results = self._postcheck_exec_output(raw_results)
+
             # ── v3.2.96: 실시간 발견 자동 저장 + XSS Playwright 자동 검증 ──
             self._auto_analyze_findings(raw_results, current_response)
             if len(raw_results) > 3000:
@@ -8358,6 +8445,76 @@ class BingoTerminal:
                     self.history.append(Message(role="assistant", content=followup_response))
 
             current_response = followup_response
+
+    # ── v4.8.0: 실행 결과 후처리 — 빈값 VERIFIED + SLEEP 판정 오류 교정 ─────────
+    def _postcheck_exec_output(self, output: str) -> str:
+        """코드 실행 결과(print 출력)에서 두 가지 오탐을 감지하고 경고 주입.
+
+        f3: [VERIFIED] 빈값 — ✅ [VERIFIED] DB名: <빈문자열> 형태 감지 → 경고로 교체
+        f5: SLEEP 판정 반전 — elapsed < threshold인데 ✅로 표시된 경우 → ❌로 교정
+        """
+        import re as _pc_re
+        lines = output.splitlines()
+        corrected = []
+        _warned = False
+
+        for line in lines:
+            # ── f3: [VERIFIED] 빈값 오탐 감지 ────────────────────────────────
+            # 패턴: ✅ [VERIFIED] 어떤라벨: (빈값 또는 공백만)
+            _verified_empty = _pc_re.match(
+                r'^.*?\[VERIFIED\]\s*[^\s:：]+\s*[：:]\s*$',
+                line.rstrip()
+            )
+            if _verified_empty:
+                corrected.append(
+                    line + "  ← ⚠️ [BINGO v4.8.0] VERIFIED_EMPTY_BLOCKED: "
+                    "추출값이 비어 있음 — [VERIFIED] 태그 무효. 실제 값이 있을 때만 사용."
+                )
+                _warned = True
+                continue
+
+            # ── f5: SLEEP 판정 반전 버그 감지 ────────────────────────────────
+            # 패턴: [SLEEP(N)] 耗时: X.XXs | 阈值: Y.Ys | ✅ 확인...
+            # elapsed < threshold 인데 ✅로 표시된 경우 → ❌로 교정
+            _sleep_match = _pc_re.search(
+                r'\[?SLEEP\s*\((\d+)\)\]?\s*.*?(?:耗时|elapsed|지연)[：:\s]*(\d+\.?\d*)\s*s'
+                r'.*?(?:阈值|threshold|임계값)[：:\s]*(\d+\.?\d*)\s*s',
+                line, _pc_re.IGNORECASE
+            )
+            if _sleep_match:
+                try:
+                    _n = int(_sleep_match.group(1))
+                    _elapsed = float(_sleep_match.group(2))
+                    _reported_thresh = float(_sleep_match.group(3))
+                    _correct_thresh = _n * 0.8   # 단일 기준: 80%
+                    _should_pass = _elapsed >= _correct_thresh
+                    _reported_pass = '✅' in line
+
+                    if _reported_pass and not _should_pass:
+                        # 판정 반전 버그: ✅인데 실제로는 실패
+                        corrected.append(
+                            line.replace('✅', '❌')
+                            + f"  ← ⚠️ [BINGO v4.8.0] SLEEP_JUDGMENT_CORRECTED: "
+                            f"elapsed({_elapsed}s) < threshold({_correct_thresh}s=SLEEP({_n})×0.8) "
+                            f"→ ❌ NOT VALID (was incorrectly ✅)"
+                        )
+                        _warned = True
+                        continue
+                except (ValueError, IndexError):
+                    pass
+
+            corrected.append(line)
+
+        result = '\n'.join(corrected)
+        if _warned and hasattr(self, 'console'):
+            _lang = getattr(self.config, "lang", "en")
+            _warn_msg = {
+                "ko": "⚠️ [v4.8.0] 실행 결과 오탐 감지 — 위 경고 메시지 확인",
+                "zh": "⚠️ [v4.8.0] 检测到执行结果误报 — 请查看上方警告",
+                "en": "⚠️ [v4.8.0] Exec output anomaly detected — see warnings above",
+            }.get(_lang, "⚠️ [v4.8.0] Exec output anomaly detected — see warnings above")
+            self.console.print(f"[bold yellow]{_warn_msg}[/bold yellow]")
+        return result
 
     # ── v3.2.96: 실시간 발견 감지 + XSS Playwright 자동 검증 ──────────────────
     def _auto_analyze_findings(self, exec_output: str, code_snippet: str = "") -> None:

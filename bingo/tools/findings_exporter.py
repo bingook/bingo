@@ -114,8 +114,19 @@ _CRED_PATTERNS = [
     re.compile(r'(?:password|passwd|pwd)\s*[=:]\s*[\'"]?([^\s\'"]{4,})', re.I),
     re.compile(r'(?:admin|root|sa)\s*[/|:]\s*([^\s]{4,})', re.I),
     re.compile(r'\$2[aby]\$\d+\$[./A-Za-z0-9]{53}'),          # bcrypt
-    re.compile(r'[0-9a-f]{32,}'),                               # MD5/SHA hash (긴 것만)
+    # v4.8.0: MD5/SHA 해시 — 독립적으로 등장한 경우만 매칭 (URL인코딩/SQL 인젝션 출력 오탐 방지)
+    # 이전: r'[0-9a-f]{32,}' → URL 인코딩(%XX), SQL EXTRACTVALUE 출력에서 오탐 발생
+    # 수정: 앞뒤에 non-hex 경계 요구 + 최소 32자 완전 hex 문자열만 허용
+    re.compile(r'(?<![%a-zA-Z0-9/])[0-9a-f]{32,64}(?![0-9a-f])', re.I),  # MD5/SHA hash
 ]
+
+# v4.8.0: SQLi 컨텍스트 키워드 — 코드에 이것이 있으면 credential보다 sqli 우선
+_SQLI_CONTEXT_KEYWORDS = re.compile(
+    r'extractvalue|updatexml|information_schema|group_concat|sleep\s*\('
+    r'|waitfor\s+delay|union\s+select|blind\s+sqli|time.?based|boolean.?based'
+    r'|time_based|sqli|sql.?inject',
+    re.I
+)
 
 _AUTH_BYPASS_PATTERNS = [
     re.compile(r'(관리자|admin)\s*(패널|panel|dashboard|로그인|login)\s*(성공|접근|완료|OK)', re.I),
@@ -125,19 +136,42 @@ _AUTH_BYPASS_PATTERNS = [
 ]
 
 
-def _detect_vuln_type(output: str) -> tuple[str, str] | None:
+def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | None:
     """출력 텍스트에서 취약점 유형과 심각도 탐지. 없으면 None.
     우선순위: RCE > LFI > AUTH_BYPASS > CREDENTIAL > SSRF > XSS > SQLi
-    (LFI는 CREDENTIAL보다 먼저 검사 — /etc/passwd 정확 분류)"""
-    checks = [
-        (FINDING_RCE,         SEVERITY_CRITICAL, _RCE_PATTERNS),
-        (FINDING_LFI,         SEVERITY_CRITICAL, _LFI_PATTERNS),
-        (FINDING_AUTH_BYPASS, SEVERITY_CRITICAL, _AUTH_BYPASS_PATTERNS),
-        (FINDING_CREDENTIAL,  SEVERITY_CRITICAL, _CRED_PATTERNS),
-        (FINDING_SSRF,        SEVERITY_HIGH,     _SSRF_PATTERNS),
-        (FINDING_XSS,         SEVERITY_HIGH,     _XSS_PATTERNS),
-        (FINDING_SQLI,        SEVERITY_HIGH,     _SQLI_PATTERNS),
-    ]
+
+    v4.8.0 수정: SQLi 컨텍스트(code_snippet에 EXTRACTVALUE/SLEEP 등) 포함 시
+    CREDENTIAL보다 SQLi를 우선 분류 — 오분류 방지.
+    """
+    # v4.8.0: SQLi 컨텍스트 사전 검사 — code_snippet 또는 output에 SQLi 키워드가 있으면
+    # credential 검사를 SQLi 이후로 순서 변경하여 오분류 방지
+    _sqli_context = (
+        _SQLI_CONTEXT_KEYWORDS.search(code_snippet)
+        or _SQLI_CONTEXT_KEYWORDS.search(output)
+    )
+
+    if _sqli_context:
+        # SQLi 컨텍스트 확인됨 → SQLi 패턴 먼저, credential은 SQLi 없을 때만
+        checks = [
+            (FINDING_RCE,         SEVERITY_CRITICAL, _RCE_PATTERNS),
+            (FINDING_LFI,         SEVERITY_CRITICAL, _LFI_PATTERNS),
+            (FINDING_AUTH_BYPASS, SEVERITY_CRITICAL, _AUTH_BYPASS_PATTERNS),
+            (FINDING_SQLI,        SEVERITY_HIGH,     _SQLI_PATTERNS),   # SQLi 우선
+            (FINDING_CREDENTIAL,  SEVERITY_CRITICAL, _CRED_PATTERNS),   # credential 후순위
+            (FINDING_SSRF,        SEVERITY_HIGH,     _SSRF_PATTERNS),
+            (FINDING_XSS,         SEVERITY_HIGH,     _XSS_PATTERNS),
+        ]
+    else:
+        checks = [
+            (FINDING_RCE,         SEVERITY_CRITICAL, _RCE_PATTERNS),
+            (FINDING_LFI,         SEVERITY_CRITICAL, _LFI_PATTERNS),
+            (FINDING_AUTH_BYPASS, SEVERITY_CRITICAL, _AUTH_BYPASS_PATTERNS),
+            (FINDING_CREDENTIAL,  SEVERITY_CRITICAL, _CRED_PATTERNS),
+            (FINDING_SSRF,        SEVERITY_HIGH,     _SSRF_PATTERNS),
+            (FINDING_XSS,         SEVERITY_HIGH,     _XSS_PATTERNS),
+            (FINDING_SQLI,        SEVERITY_HIGH,     _SQLI_PATTERNS),
+        ]
+
     for vtype, sev, patterns in checks:
         for pat in patterns:
             if pat.search(output):
@@ -216,7 +250,8 @@ class FindingsExporter:
         if not output or len(output.strip()) < 10:
             return None
 
-        detected = _detect_vuln_type(output)
+        # v4.8.0: code_snippet 전달 — SQLi 컨텍스트 기반 우선순위 조정
+        detected = _detect_vuln_type(output, code_snippet=code_snippet)
         if not detected:
             return None
 

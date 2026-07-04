@@ -6480,6 +6480,42 @@ _STRINGS.update({
             "  RULE 98: Report format required — [exec result]→[observation]→[security conclusion]"
         ),
     },
+    # ── v4.8.0: TARGET_LOCK 메시지 ──────────────────────────────────
+    "target_lock_blocked": {
+        "ko": "⛔ [TARGET_LOCK v4.8.0] 타겟 무단 변경 차단 — 새 타겟은 '/target <URL>'로 명시적 지정 필요",
+        "zh": "⛔ [TARGET_LOCK v4.8.0] 阻止未授权目标变更 — 需通过 '/target <URL>' 明确指定新目标",
+        "en": "⛔ [TARGET_LOCK v4.8.0] Unauthorized target change blocked — use '/target <URL>' to switch explicitly",
+    },
+    # ── v4.8.0: [VERIFIED] 빈값 경고 ───────────────────────────────
+    "verified_empty_blocked": {
+        "ko": "⚠️ [v4.8.0] VERIFIED_EMPTY: 추출값이 비어 있음 — [VERIFIED] 태그는 실제 값이 있을 때만 사용",
+        "zh": "⚠️ [v4.8.0] VERIFIED_EMPTY: 提取值为空 — [VERIFIED]标签只能在有实际值时使用",
+        "en": "⚠️ [v4.8.0] VERIFIED_EMPTY: Extracted value is empty — [VERIFIED] tag only valid with non-empty value",
+    },
+    # ── v4.8.0: SLEEP 판정 교정 경고 ────────────────────────────────
+    "sleep_judgment_corrected": {
+        "ko": "⚠️ [v4.8.0] SLEEP_JUDGMENT_CORRECTED: elapsed < threshold(N*0.8) — ❌로 판정 교정됨",
+        "zh": "⚠️ [v4.8.0] SLEEP_JUDGMENT_CORRECTED: elapsed < threshold(N*0.8) — 判定已更正为 ❌",
+        "en": "⚠️ [v4.8.0] SLEEP_JUDGMENT_CORRECTED: elapsed < threshold(N*0.8) — verdict corrected to ❌",
+    },
+    # ── v4.8.0: random 모듈 자동 주입 ───────────────────────────────
+    "inject_import_random": {
+        "ko": "🔧 [v4.8.0] 'import random' 자동 주입 — random 모듈 사용 감지됨",
+        "zh": "🔧 [v4.8.0] 自动注入 'import random' — 检测到 random 模块使用",
+        "en": "🔧 [v4.8.0] Auto-injected 'import random' — random module usage detected",
+    },
+    # ── v4.8.0: 환각 감지 (텍스트 결과 위조) ────────────────────────
+    "hallucination_claimed_result": {
+        "ko": "⛔ [HALLUCINATION v4.8.0] 미실행 결과 위조 감지 — 실제 코드 실행 후 print() 출력만 보고",
+        "zh": "⛔ [HALLUCINATION v4.8.0] 检测到伪造未执行结果 — 只能报告实际代码执行的print()输出",
+        "en": "⛔ [HALLUCINATION v4.8.0] Fabricated result without execution detected — only report actual print() output",
+    },
+    # ── v4.8.0: SQLi 컨텍스트 타입 교정 ────────────────────────────
+    "sqli_context_type_corrected": {
+        "ko": "🔧 [v4.8.0] SQLi 컨텍스트 감지 — credential 대신 sqli로 취약점 유형 교정",
+        "zh": "🔧 [v4.8.0] 检测到SQLi上下文 — 漏洞类型从credential修正为sqli",
+        "en": "🔧 [v4.8.0] SQLi context detected — vuln type corrected from credential to sqli",
+    },
 })
 
 

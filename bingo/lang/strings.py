@@ -4209,14 +4209,31 @@ _STRINGS.update({
         "en": "🔍 MVVS — Auto-triggering secondary verification...",
     },
     "mvvs_confirmed": {
-        "ko": "✅ [CONFIRMED] — 2차 검증 통과, 취약점 확인됨",
-        "zh": "✅ [CONFIRMED] — 二次验证通过，漏洞确认",
-        "en": "✅ [CONFIRMED] — Secondary verification passed",
+        "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
+        "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
+        "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
     },
     "mvvs_false_positive": {
-        "ko": "❌ [FALSE POSITIVE] — 2차 검증 실패, 오탐으로 처리",
-        "zh": "❌ [FALSE POSITIVE] — 二次验证失败，判定为误报",
-        "en": "❌ [FALSE POSITIVE] — Secondary verification failed, marked as false positive",
+        "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
+        "zh": "❌ [FALSE POSITIVE] — 基于执行结果，误报确认",
+        "en": "❌ [FALSE POSITIVE] — Confirmed false positive from execution output",
+    },
+    # v4.5.0: 실행 후 followup_response에서 감지된 CONFIRMED/FALSE POSITIVE
+    "mvvs_confirmed_exec": {
+        "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
+        "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
+        "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
+    },
+    "mvvs_false_positive_exec": {
+        "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
+        "zh": "❌ [FALSE POSITIVE] — 基于执行结果，误报确认",
+        "en": "❌ [FALSE POSITIVE] — Confirmed false positive from execution output",
+    },
+    # v4.5.0: 실행 전 LLM 예측에 의한 사전 판정 억제 로그
+    "mvvs_tag_suppressed_pre_exec": {
+        "ko": "⏳ 실행 전 판정 억제 — 코드 실행 후 실제 결과로 판단",
+        "zh": "⏳ 执行前判定抑制 — 等待代码执行结果再判断",
+        "en": "⏳ Pre-exec tag suppressed — judgment after actual code execution",
     },
     "mvvs_suspected": {
         "ko": "⚠️  [SUSPECTED] — 단일 신호 감지, 검증 필요",

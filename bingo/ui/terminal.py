@@ -2851,10 +2851,13 @@ class BingoTerminal:
             "- Write Python code using a DIFFERENT technique from what you just used\n"
             "- Do NOT repeat the same payload — use a different attack vector\n"
             "- Include print() statements showing actual server response\n"
-            "- After verification code runs: tag finding as [CONFIRMED ✅] or [FALSE POSITIVE ❌]\n"
-            "- If [CONFIRMED]: THEN proceed with full exploitation\n"
-            "- If [FALSE POSITIVE]: note why and move to next vector\n\n"
-            "Write verification code NOW:"
+            "- CRITICAL: DO NOT tag [CONFIRMED ✅] or [FALSE POSITIVE ❌] in THIS response\n"
+            "- CRITICAL: Write the verification code ONLY — do NOT pre-judge the result\n"
+            "- After the code RUNS and you SEE the actual output: THEN tag in your NEXT message\n"
+            "- [CONFIRMED ✅] = only after you see actual proof in execution output\n"
+            "- [FALSE POSITIVE ❌] = only after you see the code ran and no evidence found\n"
+            "- Predicting [FALSE POSITIVE] before code runs = HALLUCINATION — FORBIDDEN\n\n"
+            "Write verification code NOW (tagging comes AFTER execution):"
         )
         self.history.append(Message(role="user", content=mvvs_prompt))
 
@@ -2863,26 +2866,40 @@ class BingoTerminal:
         verify_response = self._stream_response(model.chat_stream(self._build_messages("")))
         if verify_response:
             self.history.append(Message(role="assistant", content=verify_response))
-            # [CONFIRMED] 태그 감지 → 콘솔 강조 표시
-            import re as _re
-            if _re.search(r'\[CONFIRMED\s*✅?\]', verify_response):
-                _conf_msg = self.s.get("mvvs_confirmed", {
-                    "ko": "✅ [CONFIRMED] — 2차 검증 통과, 취약점 확인됨",
-                    "zh": "✅ [CONFIRMED] — 二次验证通过，漏洞确认",
-                    "en": "✅ [CONFIRMED] — Secondary verification passed",
-                })
-                if isinstance(_conf_msg, dict):
-                    _conf_msg = _conf_msg.get(_lang, "✅ Confirmed.")
-                self.console.print(f"\n[bold green]{_conf_msg}[/bold green]")
-            elif _re.search(r'\[FALSE\s*POSITIVE\s*❌?\]', verify_response):
-                _fp_msg = self.s.get("mvvs_false_positive", {
-                    "ko": "❌ [FALSE POSITIVE] — 2차 검증 실패, 오탐 처리",
-                    "zh": "❌ [FALSE POSITIVE] — 二次验证失败，误报处理",
-                    "en": "❌ [FALSE POSITIVE] — Secondary verification failed",
-                })
-                if isinstance(_fp_msg, dict):
-                    _fp_msg = _fp_msg.get(_lang, "❌ False positive.")
-                self.console.print(f"\n[bold red]{_fp_msg}[/bold red]")
+
+            # ── v4.5.0: MVVS CONFIRMED/FALSE POSITIVE 판단 규칙 ─────────────────
+            # 핵심 원칙: 실제 실행결과(코드 출력)에 근거한 판단만 허용
+            # LLM이 코드 실행 전 텍스트에 [FALSE POSITIVE]를 예측으로 적어두는 경우 → 오탐!
+            # 코드 블록이 있는 응답 = 아직 실행 안 됨 → CONFIRMED/FALSE POSITIVE 판정 금지
+            # 코드 블록이 없는 응답 = 이미 실행된 결과를 분석한 것 → 판정 허용
+            import re as _re_mvvs
+            _mvvs_has_code = bool(
+                _re_mvvs.search(r"```(?:python|py|bash|sh)\n", verify_response, _re_mvvs.DOTALL)
+            )
+
+            if not _mvvs_has_code:
+                # 코드 없음 = LLM이 기존 결과를 분석해서 최종 판단 → 태그 신뢰
+                if _re_mvvs.search(r'\[CONFIRMED\s*✅?\]', verify_response):
+                    _conf_msg = self.s.get("mvvs_confirmed", {
+                        "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
+                        "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
+                        "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
+                    })
+                    if isinstance(_conf_msg, dict):
+                        _conf_msg = _conf_msg.get(_lang, "✅ Confirmed.")
+                    self.console.print(f"\n[bold green]{_conf_msg}[/bold green]")
+                elif _re_mvvs.search(r'\[FALSE\s*POSITIVE\s*❌?\]', verify_response):
+                    _fp_msg = self.s.get("mvvs_false_positive", {
+                        "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
+                        "zh": "❌ [FALSE POSITIVE] — 基于执行结果，误报确认",
+                        "en": "❌ [FALSE POSITIVE] — Confirmed false positive from execution",
+                    })
+                    if isinstance(_fp_msg, dict):
+                        _fp_msg = _fp_msg.get(_lang, "❌ False positive.")
+                    self.console.print(f"\n[bold red]{_fp_msg}[/bold red]")
+            # 코드 블록 있음 = 실행 전 LLM 예측 → CONFIRMED/FALSE POSITIVE 표시 억제
+            # (실행 후 다음 LLM 분석 turn에서 실제 결과로 판단)
+
             return verify_response
         else:
             self.history.pop()
@@ -8114,6 +8131,29 @@ class BingoTerminal:
             self.history.append(Message(role="assistant", content=followup_response))
             self._append_to_session_log("assistant", followup_response)
             self._notify_hashes_found(followup_response)
+
+            # ── v4.5.0: 실행 후 LLM 분석에서 CONFIRMED/FALSE POSITIVE 감지 ────────
+            # 여기서 나타나는 태그는 실제 코드 실행 결과를 보고 LLM이 판단한 것 → 신뢰
+            import re as _re_fp_post
+            _followup_lang = getattr(self.config, "lang", "en")
+            if _re_fp_post.search(r'\[CONFIRMED\s*✅?\]', followup_response):
+                _conf_post = self.s.get("mvvs_confirmed_exec", {
+                    "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
+                    "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
+                    "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
+                })
+                if isinstance(_conf_post, dict):
+                    _conf_post = _conf_post.get(_followup_lang, "✅ Confirmed.")
+                self.console.print(f"\n[bold green]{_conf_post}[/bold green]")
+            elif _re_fp_post.search(r'\[FALSE\s*POSITIVE\s*❌?\]', followup_response):
+                _fp_post = self.s.get("mvvs_false_positive_exec", {
+                    "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
+                    "zh": "❌ [FALSE POSITIVE] — 基于执行结果，误报确认",
+                    "en": "❌ [FALSE POSITIVE] — Confirmed false positive from execution",
+                })
+                if isinstance(_fp_post, dict):
+                    _fp_post = _fp_post.get(_followup_lang, "❌ False positive.")
+                self.console.print(f"\n[bold red]{_fp_post}[/bold red]")
 
             # 작업 완료
             if "TASK_COMPLETE" in followup_response or "MISSION_COMPLETE" in followup_response:

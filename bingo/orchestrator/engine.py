@@ -1,5 +1,5 @@
 """
-bingo/orchestrator/engine.py — LLM 오케스트레이터 엔진  (v4.0.0)
+bingo/orchestrator/engine.py — LLM 오케스트레이터 엔진  (v4.2.0)
 
 【설계 철학】
   고정 6단계 파이프라인 대신, LLM이 매 스텝마다
@@ -396,6 +396,18 @@ Respond ONLY in JSON."""
         except Exception:
             pass
 
+        # ── v4.2.0: AutoProxy Rotator 초기화 ─────────────────────────────
+        _proxy_rotator = None
+        try:
+            from ..core.proxy_rotator import get_rotator as _get_rotator
+            _proxy_rotator = _get_rotator(self._target, prefill=True)
+            _proxy_rotator.start()
+            _print(
+                f"[dim]{_s.get('proxy_active', '🔄 [AUTO-PROXY] IP Block Detector + Free Proxy Pool ACTIVE')}[/dim]"
+            )
+        except Exception:
+            pass
+
         _print(
             f"\n[bold cyan]{_s.get('orch_ui_started', '🤖 [ORCHESTRATOR] Started')}[/bold cyan]\n"
             f"  target : {self._target}\n"
@@ -462,6 +474,25 @@ Respond ONLY in JSON."""
             )
             self._log.append(orch_step)
 
+            # ── v4.2.0: 명령 실행 전 IP 차단 감지 → 자동 프록시 교체 ────────
+            if _proxy_rotator is not None and not self._stop_evt.is_set():
+                try:
+                    _rotate_res = _proxy_rotator.auto_rotate_if_blocked()
+                    if _rotate_res.rotated:
+                        _br = _rotate_res.block_result
+                        if _rotate_res.new_proxy:
+                            _print(
+                                f"[bold yellow]"
+                                f"{_s.get('proxy_rotated', '🔄 [AUTO-PROXY] IP blocked! Rotated → {url}').format(url=_rotate_res.new_proxy.url)}"
+                                f"[/bold yellow]"
+                            )
+                        else:
+                            _print(
+                                f"[red]{_s.get('proxy_exhausted', '⚠ [AUTO-PROXY] All proxies exhausted — continuing direct')}[/red]"
+                            )
+                except Exception:
+                    pass
+
             # 8. 실제 명령 실행
             if command and not self._stop_evt.is_set():
                 # ── 타겟 URL 하드 주입 guardrail ──────────────────────────────
@@ -523,6 +554,18 @@ Respond ONLY in JSON."""
             _print(
                 f"\n[bold yellow]{_s.get('orch_ui_completed', '⏹ [ORCHESTRATOR] Completed (steps: {step}/{total})').format(step=self._step, total=self._max_steps)}[/bold yellow]"
             )
+
+        # ── v4.2.0: 세션 종료 시 프록시 환경변수 정리 ──────────────────────
+        if _proxy_rotator is not None:
+            try:
+                _stat = _proxy_rotator.status()
+                _print(
+                    f"[dim]{_s.get('proxy_session_end', '🔄 [AUTO-PROXY] Session ended | rotations={n} pool={p}').format(n=_stat['rotation_count'], p=_stat['pool_size'])}[/dim]"
+                )
+                _proxy_rotator.clear_env()
+                _proxy_rotator.stop()
+            except Exception:
+                pass
 
         self._running = False
 

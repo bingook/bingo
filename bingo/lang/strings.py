@@ -6258,6 +6258,76 @@ _STRINGS.update({
     },
 })
 
+# ── v4.2.0 Auto-Proxy Rotation ───────────────────────────────────────────────
+_STRINGS.update({
+    # 오케스트레이터 초기화 메시지
+    "proxy_active": {
+        "ko": "🔄 [AUTO-PROXY] IP 차단 감지기 + 무료 프록시 풀 활성화",
+        "zh": "🔄 [AUTO-PROXY] IP封锁检测器 + 免费代理池已启动",
+        "en": "🔄 [AUTO-PROXY] IP Block Detector + Free Proxy Pool ACTIVE",
+    },
+    # 프록시 교체 성공
+    "proxy_rotated": {
+        "ko": "🔄 [AUTO-PROXY] IP 차단 감지! 프록시 교체 → {url}",
+        "zh": "🔄 [AUTO-PROXY] 检测到IP封锁！切换代理 → {url}",
+        "en": "🔄 [AUTO-PROXY] IP blocked! Rotated → {url}",
+    },
+    # 프록시 풀 고갈
+    "proxy_exhausted": {
+        "ko": "⚠ [AUTO-PROXY] 프록시 풀 소진 — 직접 연결로 계속",
+        "zh": "⚠ [AUTO-PROXY] 代理池耗尽 — 直连继续",
+        "en": "⚠ [AUTO-PROXY] All proxies exhausted — continuing direct",
+    },
+    # 세션 종료 프록시 요약
+    "proxy_session_end": {
+        "ko": "🔄 [AUTO-PROXY] 세션 종료 | 교체={n}회 풀잔여={p}개",
+        "zh": "🔄 [AUTO-PROXY] 会话结束 | 轮换={n}次 池剩余={p}个",
+        "en": "🔄 [AUTO-PROXY] Session ended | rotations={n} pool={p}",
+    },
+    # IP 차단 감지 상세 (로그용)
+    "proxy_block_detected": {
+        "ko": "🚨 IP 차단 확정 | 신호={signals} 신뢰도={conf:.0%} | {detail}",
+        "zh": "🚨 IP封锁确认 | 信号={signals} 置信度={conf:.0%} | {detail}",
+        "en": "🚨 IP block confirmed | signals={signals} conf={conf:.0%} | {detail}",
+    },
+    # 프록시 수집 시작
+    "proxy_hunt_start": {
+        "ko": "🕵️ [PROXY HUNTER] 무료 프록시 수집 중...",
+        "zh": "🕵️ [PROXY HUNTER] 正在收集免费代理...",
+        "en": "🕵️ [PROXY HUNTER] Collecting free proxies...",
+    },
+    # 프록시 수집 완료
+    "proxy_hunt_done": {
+        "ko": "✅ [PROXY HUNTER] 검증 완료: {n}개 사용 가능 (3단계 통과)",
+        "zh": "✅ [PROXY HUNTER] 验证完成: {n}个可用（通过3阶段）",
+        "en": "✅ [PROXY HUNTER] Validated: {n} proxies ready (3-stage pass)",
+    },
+    # 프록시 검증 실패
+    "proxy_validate_fail": {
+        "ko": "❌ [PROXY] {host}:{port} 검증 실패 (stage={stage})",
+        "zh": "❌ [PROXY] {host}:{port} 验证失败（阶段={stage}）",
+        "en": "❌ [PROXY] {host}:{port} validation failed (stage={stage})",
+    },
+    # 블랙리스트 등록
+    "proxy_blacklisted": {
+        "ko": "🚫 [PROXY] {host}:{port} 블랙리스트 등록 (실패={n}회)",
+        "zh": "🚫 [PROXY] {host}:{port} 已列入黑名单（失败={n}次）",
+        "en": "🚫 [PROXY] {host}:{port} blacklisted (fail={n})",
+    },
+    # 재수집 트리거
+    "proxy_refill_trigger": {
+        "ko": "♻️ [PROXY POOL] 풀 부족 ({n}개) → 백그라운드 재수집 시작",
+        "zh": "♻️ [PROXY POOL] 代理不足({n}个) → 后台重新收集",
+        "en": "♻️ [PROXY POOL] Pool low ({n}) → background refill started",
+    },
+    # 도움말: proxy 상태
+    "proxy_help_status": {
+        "ko": "🔄 AUTO-PROXY 상태: 현재={cur} | 풀={pool} | 교체={rot}회 | 블랙리스트={bl}",
+        "zh": "🔄 AUTO-PROXY 状态: 当前={cur} | 池={pool} | 轮换={rot}次 | 黑名单={bl}",
+        "en": "🔄 AUTO-PROXY Status: current={cur} | pool={pool} | rotations={rot} | blacklist={bl}",
+    },
+})
+
 
 def get_strings(lang: str = "en") -> dict:
     """특정 언어의 모든 문자열 반환"""

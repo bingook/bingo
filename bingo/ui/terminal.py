@@ -2002,10 +2002,10 @@ class BingoTerminal:
             new_target = _urls[0].rstrip("/?,")
             _existing_target = self._agent_state.get("target", "")
 
-            # ── v4.8.0: TARGET_LOCK — 기존 타겟 유지 강제 ─────────────────
+            # ── v4.9.0: TARGET_LOCK (2차 방어선) ───────────────────────────
+            # 1차 방어: _detect_hallucination 패턴 7 — LLM 코드 내 타 도메인 URL 차단(근본 수정)
+            # 2차 방어: 여기서 텍스트에서 추출한 URL이 다른 도메인이면 차단
             # 기록.md L1079: LLM이 hanurschool.nurihaus.com으로 무단 타겟 변경
-            # 원인: LLM 응답에서 추출된 URL이 타겟으로 설정됨
-            # 수정: 이미 타겟이 설정된 상태에서 다른 도메인으로의 변경은 차단
             if _existing_target and new_target != _existing_target:
                 # 동일 도메인 내 경로 변경은 허용 (프로토콜+도메인만 비교)
                 import urllib.parse as _up
@@ -5115,6 +5115,41 @@ class BingoTerminal:
                         "request. ALL results MUST come from actual print() output of "
                         "requests.get/post execution. Remove the fabricated result."
                     )
+
+            # ── v4.9.0 패턴 7: 타겟 외 도메인 URL 실행 원천 차단 ─────────────
+            # 기록.md L1079: LLM이 hanurschool.nurihaus.com 코드를 생성해 실행 → 무단 타겟 변경
+            # 근본 원인: LLM 코드 내에 현재 타겟과 다른 도메인 URL이 포함되어 실제 실행됨
+            # 근본 해결: 실행 전 코드 내 URL 도메인을 현재 타겟 도메인과 비교 → 불일치 시 실행 자체를 차단
+            import urllib.parse as _up
+            _active_target = (
+                getattr(self, "_agent_state", {}).get("target")
+                or getattr(self, "_current_target", None)
+            )
+            if _active_target and _has_network:
+                # 타겟 도메인 정규화 (프로토콜 없으면 https:// 보완)
+                _t_str = _active_target if "://" in _active_target else f"https://{_active_target}"
+                _t_parsed = _up.urlparse(_t_str)
+                # www. 제거 후 소문자로 비교
+                _t_domain = _t_parsed.netloc.lower().removeprefix("www.")
+
+                # 코드 내 모든 http(s):// URL 추출
+                _urls_in_code = _hall_re.findall(r'https?://[^\s\'"<>,;)\\]+', s)
+                for _cu in _urls_in_code:
+                    _cu_parsed = _up.urlparse(_cu)
+                    _cu_domain = _cu_parsed.netloc.lower().removeprefix("www.")
+                    if not _cu_domain:
+                        continue
+                    # 도메인 불일치 → 실행 차단
+                    if _cu_domain != _t_domain:
+                        return (
+                            f"TARGET_DOMAIN_MISMATCH: Code contains URL '{_cu}' "
+                            f"targeting domain '{_cu_domain}', but the ACTIVE TARGET is "
+                            f"'{_active_target}' (domain: '{_t_domain}'). "
+                            f"You MUST only test the current target domain. "
+                            f"Replace '{_cu_domain}' with '{_t_domain}' in your code. "
+                            f"If you need to switch targets, the user must explicitly "
+                            f"provide the new target — you cannot change it autonomously."
+                        )
 
             return None
 

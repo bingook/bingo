@@ -6516,6 +6516,52 @@ _STRINGS.update({
         "zh": "🔧 [v4.8.0] 检测到SQLi上下文 — 漏洞类型从credential修正为sqli",
         "en": "🔧 [v4.8.0] SQLi context detected — vuln type corrected from credential to sqli",
     },
+    # ── v4.9.0: 코드 내 타 도메인 URL 차단 (근본 수정) ──────────────
+    "target_domain_mismatch": {
+        "ko": (
+            "⛔ [TARGET_DOMAIN_MISMATCH v4.9.0] 코드 내 타겟 외 도메인 감지 — 실행 차단\n"
+            "  현재 타겟 도메인만 코드에 사용 가능. 타겟 변경은 '/target <URL>'로만."
+        ),
+        "zh": (
+            "⛔ [TARGET_DOMAIN_MISMATCH v4.9.0] 检测到代码中包含非目标域名 — 已阻止执行\n"
+            "  代码中只能使用当前目标域名. 切换目标请使用 '/target <URL>'."
+        ),
+        "en": (
+            "⛔ [TARGET_DOMAIN_MISMATCH v4.9.0] Non-target domain detected in code — execution blocked\n"
+            "  Only the current target domain may be used in code. Use '/target <URL>' to switch."
+        ),
+        "ja": (
+            "⛔ [TARGET_DOMAIN_MISMATCH v4.9.0] コード内に対象外ドメインを検出 — 実行ブロック\n"
+            "  コードは現在のターゲットドメインのみ使用可. 変更は '/target <URL>' で."
+        ),
+        "ru": (
+            "⛔ [TARGET_DOMAIN_MISMATCH v4.9.0] В коде обнаружен сторонний домен — выполнение заблокировано\n"
+            "  В коде разрешён только текущий целевой домен. Смена цели через '/target <URL>'."
+        ),
+        "ar": (
+            "⛔ [TARGET_DOMAIN_MISMATCH v4.9.0] تم اكتشاف نطاق خارج الهدف في الكود — تم حظر التنفيذ\n"
+            "  يُسمح فقط باستخدام نطاق الهدف الحالي. لتغيير الهدف استخدم '/target <URL>'."
+        ),
+        "es": (
+            "⛔ [TARGET_DOMAIN_MISMATCH v4.9.0] Dominio no objetivo detectado en código — ejecución bloqueada\n"
+            "  Solo se permite el dominio objetivo actual en el código. Use '/target <URL>' para cambiar."
+        ),
+    },
+    # ── v4.9.0: TARGET_LOCK 업데이트 (2차 방어선) ───────────────────
+    "target_lock_blocked_v490": {
+        "ko": (
+            "⛔ [TARGET_LOCK v4.9.0] 텍스트 내 타 도메인 URL 감지 — 2차 방어 차단\n"
+            "  새 타겟은 '/target <URL>'로만 명시적 지정 가능."
+        ),
+        "zh": (
+            "⛔ [TARGET_LOCK v4.9.0] 检测到文本中包含非目标域名URL — 二级防御拦截\n"
+            "  新目标只能通过 '/target <URL>' 明确指定."
+        ),
+        "en": (
+            "⛔ [TARGET_LOCK v4.9.0] Non-target domain URL in text — secondary defense blocked\n"
+            "  New targets must be set explicitly via '/target <URL>'."
+        ),
+    },
 })
 
 

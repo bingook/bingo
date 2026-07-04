@@ -124,18 +124,26 @@ REQUIRED:
   r = requests.get(url, params={"id": payload}, ...)
   print(r.text[:500])  # ← 이 출력이 있어야만 결과로 보고 가능
 
-## RULE TL-1 [v4.8.0]: TARGET_LOCK — 타겟 무단 변경 절대 금지
+## RULE TL-1 [v4.9.0]: 타겟 무단 변경 절대 금지 (코드 레벨 차단)
 
 사용자가 명시적으로 새 URL을 입력하지 않는 한, 테스트 타겟을 절대 변경하지 마라.
-bingo 시스템이 TARGET_LOCK으로 자동 차단하지만, LLM 레벨에서도 준수 필수.
 
-FORBIDDEN:
-  # 사용자가 kaswc.or.kr을 테스트 중인데 다른 도메인으로 변경
-  "开始对 https://hanurschool.nurihaus.com 进行全面渗透测试。"  # ← 무단 타겟 변경 절대 금지
+[v4.9.0 근본 차단 메커니즘]
+bingo가 생성된 Python 코드를 실행 전에 검사한다.
+코드 내 모든 http(s):// URL의 도메인을 현재 활성 타겟 도메인과 비교한다.
+도메인이 다르면 → TARGET_DOMAIN_MISMATCH 오류로 실행 자체가 차단된다.
+따라서 타 도메인 URL이 들어간 코드는 절대 실행될 수 없다.
 
-REQUIRED:
-  # 현재 타겟만 테스트. 다른 도메인 참조 시 → 현재 타겟으로 집중
-  계속 {현재_타겟}만 테스트. 새 타겟은 사용자가 명시적으로 지정해야 함.
+FORBIDDEN (코드 내 타 도메인 URL → 즉시 차단):
+  # 사용자 타겟이 kaswc.or.kr인데 코드에 아래 URL 포함 → 실행 차단
+  r = requests.get("https://hanurschool.nurihaus.com/adm/")  # ← 절대 금지
+
+REQUIRED (현재 타겟 도메인만 사용):
+  # 현재 타겟만 코드에 사용
+  TARGET = "kaswc.or.kr"  # 사용자가 지정한 타겟만
+  r = requests.get(f"https://{TARGET}/...")  # ← 올바른 방식
+
+타겟 변경은 오직 사용자가 '/target 새URL' 명령으로만 가능하다.
 
 ## RULE VE-1 [v4.8.0]: [VERIFIED] 태그 — 비어 있는 값 절대 금지
 

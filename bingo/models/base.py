@@ -7,6 +7,16 @@ import httpx
 # ── Prompt Cache Optimizer ────────────────────────────────────────────────────
 from .prompt_cache import PromptCacheManager, get_stats as _pc_get_stats
 
+# ── Intelligence Amplifier (v4.0.0) ─────────────────────────────────────────
+# 어떤 모델이든 월드컵 최고급 성능으로: CoT + 자기수정 + RAG + 작업분해
+def _try_get_amplifier():
+    """Import amplifier lazily to avoid circular imports."""
+    try:
+        from ..core.amplifier import get_amplifier
+        return get_amplifier()
+    except Exception:
+        return None
+
 
 @dataclass
 class Message:
@@ -75,17 +85,43 @@ class BaseModel:
 
     def __init__(self, config: ModelConfig):
         self.config = config
+        # v4.0.0: Amplifier 활성화 여부 플래그 (오케스트레이터는 별도 제어)
+        self._amplifier_enabled: bool = True
 
-    def chat_stream(self, messages: list[Message]) -> Iterator[StreamChunk]:
+    def chat_stream(
+        self,
+        messages: list[Message],
+        _amp_target: str = "",
+        _amp_blackboard: str = "",
+        _amp_chain: str = "",
+        _amp_skip: bool = False,
+    ) -> Iterator[StreamChunk]:
         """서버-센트 이벤트 스트리밍 — 자동 재시도 3회, 컨텍스트 압축 포함"""
         import time as _time
 
         MAX_RETRIES = 3
 
+        # ── v4.0.0: Intelligence Amplifier 전처리 ───────────────────────────
+        # _amp_skip=True 이면 앰플리파이어 우회 (오케스트레이터 내부 결정 LLM 등)
+        _amp_messages = list(messages)
+        if self._amplifier_enabled and not _amp_skip:
+            amp = _try_get_amplifier()
+            if amp is not None:
+                try:
+                    _amp_messages = amp.pre_process(
+                        [m if isinstance(m, dict) else {"role": m.role, "content": m.content}
+                         for m in messages],
+                        target=_amp_target,
+                        blackboard_ctx=_amp_blackboard,
+                        chain_ctx=_amp_chain,
+                    )
+                except Exception:
+                    _amp_messages = list(messages)
+
         # ── messages 정규화: dict 혼재 시에도 .role / .content 접근 가능하도록 ──
         # _general_build() 등이 dict 리스트를 반환할 수 있으므로 Message 로 통일
         current_messages: list[Message] = []
-        for _m in messages:
+        for _m in _amp_messages:
             if isinstance(_m, dict):
                 current_messages.append(
                     Message(role=_m.get("role", "user"), content=_m.get("content", ""))

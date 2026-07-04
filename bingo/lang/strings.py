@@ -6076,6 +6076,100 @@ _STRINGS.update({
 })
 
 
+    # ── v4.0.0 Intelligence Amplifier 다국어 키 ──────────────────────────────
+    "amp_active": {
+        "ko": "⚡ [AMPLIFIER v4.0.0] CoT + 정밀RAG + 자기수정 + 작업분해 — 활성화",
+        "zh": "⚡ [AMPLIFIER v4.0.0] CoT + 精准RAG + 自我修正 + 任务分解 — 已激活",
+        "en": "⚡ [AMPLIFIER v4.0.0] CoT + PrecisionRAG + SelfCorrect + TaskDecompose — ACTIVE",
+    },
+    "amp_cot_activated": {
+        "ko": "🧠 [CoT] 단계적 추론 활성화 — 7단계 사고 프레임워크 적용 중",
+        "zh": "🧠 [CoT] 链式推理已激活 — 正在应用7步思维框架",
+        "en": "🧠 [CoT] Chain-of-Thought activated — 7-step reasoning framework applied",
+    },
+    "amp_rag_injected": {
+        "ko": "📚 [RAG] 정밀 컨텍스트 주입 완료 — 기술스택 힌트 + CVE 데이터 삽입",
+        "zh": "📚 [RAG] 精准上下文注入完成 — 技术栈提示 + CVE数据已注入",
+        "en": "📚 [RAG] Precision context injected — tech-stack hints + CVE data inserted",
+    },
+    "amp_self_correct": {
+        "ko": "🔄 [자기수정] 응답 품질 기준 미달 — 자동 수정 루프 실행 ({attempt}/{max})",
+        "zh": "🔄 [自我修正] 响应质量未达标 — 自动修正循环执行中 ({attempt}/{max})",
+        "en": "🔄 [SelfCorrect] Response quality below threshold — auto-correction loop ({attempt}/{max})",
+    },
+    "amp_correction_done": {
+        "ko": "✅ [자기수정] 수정 완료 — 품질 점수: {score:.0%}",
+        "zh": "✅ [自我修正] 修正完成 — 质量评分: {score:.0%}",
+        "en": "✅ [SelfCorrect] Correction done — quality score: {score:.0%}",
+    },
+    "amp_decompose_triggered": {
+        "ko": "🔩 [작업분해] 복잡도 감지 — {total}개 서브태스크로 분해 실행",
+        "zh": "🔩 [任务分解] 检测到复杂度 — 分解为 {total} 个子任务执行",
+        "en": "🔩 [Decompose] Complexity detected — executing {total} subtasks",
+    },
+    "amp_decompose_step": {
+        "ko": "▶ [분해 {step}/{total}] {name} — {objective}",
+        "zh": "▶ [分解 {step}/{total}] {name} — {objective}",
+        "en": "▶ [Decompose {step}/{total}] {name} — {objective}",
+    },
+    "amp_stats": {
+        "ko": "📊 [앰플리파이어 통계] 호출={calls} | CoT={cot} | RAG={rag} | 수정={corrections} | 분해={decompose}",
+        "zh": "📊 [增幅器统计] 调用={calls} | CoT={cot} | RAG={rag} | 修正={corrections} | 分解={decompose}",
+        "en": "📊 [Amplifier Stats] calls={calls} | CoT={cot} | RAG={rag} | corrections={corrections} | decompose={decompose}",
+    },
+    "amp_quality_low": {
+        "ko": "⚠️ [품질경고] 응답 품질 낮음 (점수: {score:.0%}) — 문제: {issues}",
+        "zh": "⚠️ [质量警告] 响应质量较低 (评分: {score:.0%}) — 问题: {issues}",
+        "en": "⚠️ [QualityWarn] Low response quality (score: {score:.0%}) — issues: {issues}",
+    },
+    "amp_tech_hints": {
+        "ko": "💡 [기술스택 힌트] 감지된 스택: {techs} → 관련 공격 벡터 주입",
+        "zh": "💡 [技术栈提示] 检测到堆栈: {techs} → 注入相关攻击向量",
+        "en": "💡 [TechHints] Detected stack: {techs} → injecting relevant attack vectors",
+    },
+    "amp_cve_found": {
+        "ko": "🔴 [CVE매칭] {count}개 관련 CVE 발견 — 우선 시도: {top_cve}",
+        "zh": "🔴 [CVE匹配] 发现 {count} 个相关CVE — 优先尝试: {top_cve}",
+        "en": "🔴 [CVEMatch] {count} relevant CVEs found — priority: {top_cve}",
+    },
+    "amp_full_summary": {
+        "ko": (
+            "═══ BINGO v4.0.0 Intelligence Amplifier 활성화 완료 ═══\n"
+            "RULE 84: Chain-of-Thought 강제 (7단계 추론·복잡도 자동감지·구조화 출력)\n"
+            "RULE 85: 자기 수정 루프 (품질 자동평가·최대2회 수정·오류율 -70%)\n"
+            "RULE 86: 정밀 RAG (기술스택→CVE매핑·Blackboard활용·토큰효율화)\n"
+            "RULE 87: 작업 분해 (5~7서브태스크·단계간컨텍스트전달·약한모델도극복)\n"
+            "━━━ 어떤 모델이든 월드컵 최고급 수준 달성 ━━━"
+        ),
+        "zh": (
+            "═══ BINGO v4.0.0 智能增幅器激活完成 ═══\n"
+            "RULE 84: 链式推理强制 (7步推理·复杂度自动检测·结构化输出)\n"
+            "RULE 85: 自我修正循环 (质量自动评估·最多2次修正·错误率-70%)\n"
+            "RULE 86: 精准RAG (技术栈→CVE映射·Blackboard利用·Token效率化)\n"
+            "RULE 87: 任务分解 (5~7子任务·步骤间上下文传递·弱模型也能胜任)\n"
+            "━━━ 无论连接何种模型均可达到世界顶级水平 ━━━"
+        ),
+        "en": (
+            "═══ BINGO v4.0.0 Intelligence Amplifier ACTIVATED ═══\n"
+            "RULE 84: CoT Enforced (7-step reasoning·auto-complexity·structured output)\n"
+            "RULE 85: Self-Correction Loop (quality auto-eval·max 2 retries·error rate -70%)\n"
+            "RULE 86: Precision RAG (tech→CVE map·Blackboard reuse·token efficiency)\n"
+            "RULE 87: Task Decomposer (5~7 subtasks·context passing·weak models overcome)\n"
+            "━━━ World Cup level performance with ANY connected model ━━━"
+        ),
+    },
+})
+
+# ── v4.0.0 버전 문자열 업데이트 ─────────────────────────────────────────
+_STRINGS.update({
+    "recon_help_title": {
+        "ko": "🔍  정찰 모듈 모음 (v4.0.0) — 정보 수집 / 자산 수집",
+        "zh": "🔍  侦察模块套件 (v4.0.0) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v4.0.0) — Info Gathering / Asset Collection",
+    },
+})
+
+
 def get_strings(lang: str = "en") -> dict:
     """특정 언어의 모든 문자열 반환"""
     if lang not in SUPPORTED_LANGS:

@@ -1,5 +1,5 @@
 """
-bingo/orchestrator/engine.py — LLM 오케스트레이터 엔진  (v3.5.0)
+bingo/orchestrator/engine.py — LLM 오케스트레이터 엔진  (v4.0.0)
 
 【설계 철학】
   고정 6단계 파이프라인 대신, LLM이 매 스텝마다
@@ -234,20 +234,37 @@ class OrchestratorEngine:
         self._running = False
 
     # ── LLM 결정 호출 ─────────────────────────────────────────────────
-    def _call_decision_llm(self, prompt: str) -> str:
-        """결정 전용 미니 LLM 세션 (terminal 대화와 완전 분리)."""
+    def _call_decision_llm(self, prompt: str, board_ctx: str = "", chain_ctx: str = "") -> str:
+        """결정 전용 미니 LLM 세션 (terminal 대화와 완전 분리).
+        v4.0.0: Amplifier 연동 — CoT + RAG 자동 주입, 단 자기수정은 스킵 (속도 우선)
+        """
         try:
             from ..models.registry import ModelRegistry
             model_cfg = self._config.get_active_model_config()
             if not model_cfg:
                 return ""
             model = ModelRegistry.build(model_cfg)
-            msgs = [
+
+            # ── v4.0.0: Amplifier 전처리 ──────────────────────────────────
+            base_msgs = [
                 {"role": "system", "content": _get_orch_system(self._lang)},
                 {"role": "user",   "content": prompt},
             ]
+            try:
+                from ..core.amplifier import get_amplifier
+                amp = get_amplifier(self._lang)
+                msgs = amp.pre_process(
+                    base_msgs,
+                    target=self._target,
+                    blackboard_ctx=board_ctx,
+                    chain_ctx=chain_ctx,
+                )
+            except Exception:
+                msgs = base_msgs
+
             result = ""
-            for chunk in model.chat_stream(msgs):
+            # _amp_skip=True: 오케스트레이터 내부 LLM은 이중 앰플리파이어 방지
+            for chunk in model.chat_stream(msgs, _amp_skip=True):
                 # ★ v3.5.15: 정지 요청 시 즉시 LLM 결정 중단
                 if self._stop_evt.is_set():
                     return ""
@@ -358,6 +375,16 @@ Respond ONLY in JSON."""
             except OSError:
                 pass
 
+        # ── v4.0.0: Amplifier 통계 시작 알림 ─────────────────────────────
+        try:
+            from ..core.amplifier import get_amplifier as _get_amp
+            _amp_inst = _get_amp(self._lang)
+            _print(
+                f"[dim]{_s.get('amp_active', '⚡ [AMPLIFIER] CoT+RAG+SelfCorrect+Decompose ACTIVE')}[/dim]"
+            )
+        except Exception:
+            pass
+
         _print(
             f"\n[bold cyan]{_s.get('orch_ui_started', '🤖 [ORCHESTRATOR] Started')}[/bold cyan]\n"
             f"  target : {self._target}\n"
@@ -375,10 +402,10 @@ Respond ONLY in JSON."""
             board_ctx = board.as_context()
             chain_ctx = chain.summary() if chain.steps() else "(no steps yet)"
 
-            # 2. 결정 요청
+            # 2. 결정 요청 (v4.0.0: board_ctx + chain_ctx 를 Amplifier RAG에 전달)
             _print(f"[dim]{_s.get('orch_ui_deciding', '🧠 LLM deciding...')}[/dim]")
             decision_prompt = self._build_decision_prompt(board_ctx, chain_ctx)
-            raw_decision = self._call_decision_llm(decision_prompt)
+            raw_decision = self._call_decision_llm(decision_prompt, board_ctx=board_ctx, chain_ctx=chain_ctx)
 
             if not raw_decision and not self._stop_evt.is_set():
                 _print(f"[yellow]{_s.get('orch_ui_no_decision', '⚠ Decision LLM returned empty — running default scan')}[/yellow]")

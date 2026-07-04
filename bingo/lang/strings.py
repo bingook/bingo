@@ -5434,9 +5434,9 @@ _STRINGS.update({
                                    "en": "⚔️ bingo v3.6.9 Full Combat — RULE 49~53 loaded\n   NL-parser|target-classify|auto-chain|stealth|KR/CN specialist"},
 
     "recon_help_title": {
-        "ko": "🔍  Recon 모듈 스위트 (v3.6.9) — 정보수집 / 자산수집",
-        "zh": "🔍  侦察模块套件 (v3.6.9) — 信息收集 / 资产收集",
-        "en": "🔍  Recon Module Suite (v3.6.9) — Info Gathering / Asset Collection",
+        "ko": "🔍  Recon 모듈 스위트 (v3.7.0) — 정보수집 / 자산수집",
+        "zh": "🔍  侦察模块套件 (v3.7.0) — 信息收集 / 资产收集",
+        "en": "🔍  Recon Module Suite (v3.7.0) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
         "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
@@ -5600,6 +5600,185 @@ _STRINGS.update({
         "ko": "[-] victim ID 하드코딩 금지. 반드시 실제 계정에서 ID를 추출할 것.",
         "zh": "[-] 禁止硬编码 victim ID。必须从真实账户中提取 ID。",
         "en": "[-] Hardcoding victim IDs is forbidden. Must extract IDs from real accounts.",
+    },
+    # ── v3.7.0 전문가 해커 레벨 (RULE 54~63) 다국어 키 ──
+    "expert_mode_active": {
+        "ko": "[+] 전문가 해커 모드 활성화 (v3.7.0) — C2·AD·바이너리·0day·피싱·클라우드·IoT·안티포렌식·공급망·AI공격 가능",
+        "zh": "[+] 专家黑客模式已激活 (v3.7.0) — C2·AD·二进制·0day·钓鱼·云·IoT·反取证·供应链·AI攻击 已启用",
+        "en": "[+] Expert Hacker Mode ACTIVE (v3.7.0) — C2·AD·Binary·0day·Phishing·Cloud·IoT·AntiForensics·SupplyChain·AI attacks enabled",
+    },
+    "expert_c2_beacon_gen": {
+        "ko": "[RULE 54] C2 비콘 생성 중 — 플랫폼: {platform} | 리스너: {listener}",
+        "zh": "[RULE 54] 正在生成 C2 信标 — 平台: {platform} | 监听器: {listener}",
+        "en": "[RULE 54] Generating C2 beacon — Platform: {platform} | Listener: {listener}",
+    },
+    "expert_c2_session": {
+        "ko": "[RULE 54] C2 세션 획득! 호스트: {host} | 권한: {priv} | 지속화 방법: {persist}",
+        "zh": "[RULE 54] C2 会话已获取！主机: {host} | 权限: {priv} | 持久化方式: {persist}",
+        "en": "[RULE 54] C2 session obtained! Host: {host} | Privilege: {priv} | Persistence: {persist}",
+    },
+    "expert_c2_fileless": {
+        "ko": "[RULE 54] 파일리스 임플란트 배포 — 메모리 내 실행, 디스크 흔적 없음",
+        "zh": "[RULE 54] 部署无文件植入 — 内存执行，无磁盘痕迹",
+        "en": "[RULE 54] Fileless implant deployed — in-memory execution, no disk artifacts",
+    },
+    "expert_ad_bloodhound": {
+        "ko": "[RULE 55] BloodHound 경로 분석 완료 — DC까지 {hops}홉, 최단 경로: {path}",
+        "zh": "[RULE 55] BloodHound 路径分析完成 — 距 DC {hops} 跳，最短路径: {path}",
+        "en": "[RULE 55] BloodHound path analysis done — {hops} hops to DC, shortest: {path}",
+    },
+    "expert_ad_kerberos": {
+        "ko": "[RULE 55] Kerberos 공격 — 방법: {method} | 크랙된 계정: {account} | 해시: {hash}",
+        "zh": "[RULE 55] Kerberos 攻击 — 方式: {method} | 已破解账户: {account} | 哈希: {hash}",
+        "en": "[RULE 55] Kerberos attack — Method: {method} | Cracked account: {account} | Hash: {hash}",
+    },
+    "expert_ad_dcsync": {
+        "ko": "[RULE 55] DCSync 완료 — NTDS.dit 전체 덤프, KRBTGT 해시 획득, Golden Ticket 준비 완료",
+        "zh": "[RULE 55] DCSync 完成 — NTDS.dit 全量转储，获取 KRBTGT 哈希，Golden Ticket 就绪",
+        "en": "[RULE 55] DCSync complete — Full NTDS.dit dump, KRBTGT hash obtained, Golden Ticket ready",
+    },
+    "expert_binary_exploit": {
+        "ko": "[RULE 56] 바이너리 익스플로잇 — 오프셋: {offset} | 보호: {protections} | 페이로드: {payload_type}",
+        "zh": "[RULE 56] 二进制漏洞利用 — 偏移: {offset} | 保护: {protections} | 载荷: {payload_type}",
+        "en": "[RULE 56] Binary exploit — Offset: {offset} | Protections: {protections} | Payload: {payload_type}",
+    },
+    "expert_binary_shell": {
+        "ko": "[RULE 56] 쉘 획득! PID: {pid} | UID: {uid} | 커널: {kernel}",
+        "zh": "[RULE 56] 获得 Shell！PID: {pid} | UID: {uid} | 内核: {kernel}",
+        "en": "[RULE 56] Shell obtained! PID: {pid} | UID: {uid} | Kernel: {kernel}",
+    },
+    "expert_0day_found": {
+        "ko": "[RULE 57] 0-Day/N-Day 발견 — CVE: {cve} | CVSS: {score} | KEV: {in_kev} | PoC: {poc_url}",
+        "zh": "[RULE 57] 发现 0-Day/N-Day — CVE: {cve} | CVSS: {score} | KEV: {in_kev} | PoC: {poc_url}",
+        "en": "[RULE 57] 0-Day/N-Day found — CVE: {cve} | CVSS: {score} | KEV: {in_kev} | PoC: {poc_url}",
+    },
+    "expert_0day_patch_diff": {
+        "ko": "[RULE 57] 패치 분석 완료 — 변경 함수: {funcs}개, 잠재 취약점 경로: {paths}개",
+        "zh": "[RULE 57] 补丁分析完成 — 变更函数: {funcs} 个，潜在漏洞路径: {paths} 个",
+        "en": "[RULE 57] Patch diff done — {funcs} changed functions, {paths} potential vuln paths",
+    },
+    "expert_phish_campaign": {
+        "ko": "[RULE 58] 피싱 캠페인 시작 — 타겟: {count}명 | 방법: {method} | 추적 URL: {url}",
+        "zh": "[RULE 58] 钓鱼活动已启动 — 目标: {count} 人 | 方式: {method} | 跟踪 URL: {url}",
+        "en": "[RULE 58] Phishing campaign started — Targets: {count} | Method: {method} | Tracking URL: {url}",
+    },
+    "expert_phish_mfa_bypass": {
+        "ko": "[RULE 58] evilginx3 AiTM 성공 — MFA 우회 완료, 세션 쿠키 탈취: {cookie_count}개",
+        "zh": "[RULE 58] evilginx3 AiTM 成功 — MFA 绕过完成，已截取会话 Cookie: {cookie_count} 个",
+        "en": "[RULE 58] evilginx3 AiTM success — MFA bypassed, session cookies stolen: {cookie_count}",
+    },
+    "expert_cloud_aws_privesc": {
+        "ko": "[RULE 59] AWS 권한 상승 완료 — 경로: {path} | 최종 권한: {final_priv} | 백도어: 생성됨",
+        "zh": "[RULE 59] AWS 权限提升完成 — 路径: {path} | 最终权限: {final_priv} | 后门: 已创建",
+        "en": "[RULE 59] AWS privilege escalation done — Path: {path} | Final: {final_priv} | Backdoor: created",
+    },
+    "expert_cloud_k8s_etcd": {
+        "ko": "[RULE 59] K8s etcd 접근 성공 — 시크릿 {count}개 추출, ServiceAccount 토큰 획득",
+        "zh": "[RULE 59] K8s etcd 访问成功 — 提取 {count} 个 Secret，获取 ServiceAccount 令牌",
+        "en": "[RULE 59] K8s etcd accessed — {count} secrets extracted, ServiceAccount tokens obtained",
+    },
+    "expert_cloud_azure_prt": {
+        "ko": "[RULE 59] Azure AD PRT 탈취 — 테넌트: {tenant} | MFA 없이 M365 전체 접근 가능",
+        "zh": "[RULE 59] Azure AD PRT 已窃取 — 租户: {tenant} | 无需 MFA 可访问所有 M365 服务",
+        "en": "[RULE 59] Azure AD PRT stolen — Tenant: {tenant} | Full M365 access without MFA",
+    },
+    "expert_iot_firmware": {
+        "ko": "[RULE 60] 펌웨어 분석 완료 — 발견: 하드코딩 크리덴셜 {cred_count}개, 백도어 {bd_count}개",
+        "zh": "[RULE 60] 固件分析完成 — 发现: 硬编码凭据 {cred_count} 个，后门 {bd_count} 个",
+        "en": "[RULE 60] Firmware analyzed — Found: {cred_count} hardcoded creds, {bd_count} backdoors",
+    },
+    "expert_iot_modbus": {
+        "ko": "[RULE 60] Modbus/DNP3 장치 발견 — Unit ID {unit_id} | 레지스터 {reg_count}개 읽기 성공",
+        "zh": "[RULE 60] 发现 Modbus/DNP3 设备 — Unit ID {unit_id} | 成功读取 {reg_count} 个寄存器",
+        "en": "[RULE 60] Modbus/DNP3 device found — Unit ID {unit_id} | {reg_count} registers read",
+    },
+    "expert_antiforensic_ts": {
+        "ko": "[RULE 61] 타임스탬프 조작 완료 — {file_count}개 파일이 {ref_file} 기준으로 위장됨",
+        "zh": "[RULE 61] 时间戳篡改完成 — {file_count} 个文件已伪装为 {ref_file} 的时间",
+        "en": "[RULE 61] Timestomping done — {file_count} files disguised as {ref_file}",
+    },
+    "expert_antiforensic_log": {
+        "ko": "[RULE 61] 이벤트 로그 선택 삭제 — ID {event_ids} | {count}개 항목 제거됨",
+        "zh": "[RULE 61] 选择性删除事件日志 — ID {event_ids} | 已删除 {count} 条记录",
+        "en": "[RULE 61] Event log selectively cleared — IDs {event_ids} | {count} entries removed",
+    },
+    "expert_antiforensic_shred": {
+        "ko": "[RULE 61] 증거 완전 삭제 — {file_count}개 파일 3회 덮어쓰기 후 삭제, 복구 불가",
+        "zh": "[RULE 61] 证据彻底删除 — {file_count} 个文件 3 次覆写后删除，无法恢复",
+        "en": "[RULE 61] Evidence shredded — {file_count} files overwritten 3x, unrecoverable",
+    },
+    "expert_supply_dep_confusion": {
+        "ko": "[RULE 62] 의존성 혼동 공격 — 내부 패키지 {pkg_count}개 발견, {registry}에 섀도우 패키지 등록 준비",
+        "zh": "[RULE 62] 依赖混淆攻击 — 发现内部包 {pkg_count} 个，准备在 {registry} 注册影子包",
+        "en": "[RULE 62] Dependency confusion — {pkg_count} internal packages found, shadow packages ready for {registry}",
+    },
+    "expert_supply_gh_inject": {
+        "ko": "[RULE 62] GitHub Actions 인젝션 — 워크플로우 {workflow} 취약, GITHUB_TOKEN 탈취 가능",
+        "zh": "[RULE 62] GitHub Actions 注入 — 工作流 {workflow} 存在漏洞，可窃取 GITHUB_TOKEN",
+        "en": "[RULE 62] GitHub Actions injection — Workflow {workflow} vulnerable, GITHUB_TOKEN extractable",
+    },
+    "expert_supply_docker": {
+        "ko": "[RULE 62] Docker 이미지 백도어 삽입 — 이미지: {image} | 백도어 레이어 숨김 완료",
+        "zh": "[RULE 62] Docker 镜像后门植入 — 镜像: {image} | 后门层已隐藏",
+        "en": "[RULE 62] Docker image backdoored — Image: {image} | Hidden backdoor layer injected",
+    },
+    "expert_llm_prompt_inject": {
+        "ko": "[RULE 63] 프롬프트 인젝션 성공 — 모델: {model} | 우회 방법: {method} | 탈취 데이터: {data_type}",
+        "zh": "[RULE 63] 提示注入成功 — 模型: {model} | 绕过方式: {method} | 窃取数据: {data_type}",
+        "en": "[RULE 63] Prompt injection success — Model: {model} | Bypass: {method} | Stolen: {data_type}",
+    },
+    "expert_llm_rag_poison": {
+        "ko": "[RULE 63] RAG 시스템 오염 — 악성 청크 {chunk_count}개 삽입, 관련 쿼리 시 자동 실행",
+        "zh": "[RULE 63] RAG 系统已污染 — 插入恶意块 {chunk_count} 个，相关查询时自动执行",
+        "en": "[RULE 63] RAG system poisoned — {chunk_count} malicious chunks injected, auto-triggered on queries",
+    },
+    "expert_llm_extract": {
+        "ko": "[RULE 63] LLM 모델 추출 중 — 쿼리: {query_count}개 | 복제 정확도: {accuracy}%",
+        "zh": "[RULE 63] 正在提取 LLM 模型 — 查询: {query_count} 个 | 复制准确度: {accuracy}%",
+        "en": "[RULE 63] LLM model extraction — Queries: {query_count} | Clone accuracy: {accuracy}%",
+    },
+    "expert_llm_mcp_inject": {
+        "ko": "[RULE 63] MCP 에이전트 체인 인젝션 — 에이전트 {agent}가 악성 페이지 방문 → 명령 전파됨",
+        "zh": "[RULE 63] MCP 代理链注入 — 代理 {agent} 访问恶意页面 → 命令已传播",
+        "en": "[RULE 63] MCP agent chain injection — Agent {agent} visited malicious page → command propagated",
+    },
+    "expert_full_summary": {
+        "ko": "═══ 전문가 해커 레벨 활성화 완료 (v3.7.0) ═══\n"
+              "RULE 54: C2 프레임워크 연동 (Sliver/Havoc/DNS)\n"
+              "RULE 55: 고급 AD 공격 체인 (BloodHound→DCSync→Golden Ticket)\n"
+              "RULE 56: 바이너리 익스플로잇 (ROP·Heap·Kernel)\n"
+              "RULE 57: 0-Day/N-Day 리서치 파이프라인 (KEV·NVD·EDB·PoC)\n"
+              "RULE 58: 피싱 자동화 (OSINT→AiTM MFA우회→GoPhish)\n"
+              "RULE 59: 클라우드 심층 공격 (Pacu·etcd·Azure PRT·GCP SA)\n"
+              "RULE 60: IoT/하드웨어 공격 (펌웨어·Modbus·WiFi)\n"
+              "RULE 61: 고급 안티포렌식 (Timestomping·로그삭제·shred)\n"
+              "RULE 62: 공급망 공격 (Dep Confusion·GH Actions·Docker)\n"
+              "RULE 63: AI/LLM 타겟 공격 (인젝션·RAG오염·추출·MCP)\n"
+              "━━━ 완전 전문가 해커 레벨 달성 ━━━",
+        "zh": "═══ 专家黑客级别激活完成 (v3.7.0) ═══\n"
+              "RULE 54: C2 框架联动 (Sliver/Havoc/DNS)\n"
+              "RULE 55: 高级 AD 攻击链 (BloodHound→DCSync→Golden Ticket)\n"
+              "RULE 56: 二进制漏洞利用 (ROP·堆·内核)\n"
+              "RULE 57: 0-Day/N-Day 研究管道 (KEV·NVD·EDB·PoC)\n"
+              "RULE 58: 钓鱼自动化 (OSINT→AiTM MFA绕过→GoPhish)\n"
+              "RULE 59: 云深度攻击 (Pacu·etcd·Azure PRT·GCP SA)\n"
+              "RULE 60: IoT/硬件攻击 (固件·Modbus·WiFi)\n"
+              "RULE 61: 高级反取证 (时间戳篡改·日志删除·碎片化)\n"
+              "RULE 62: 供应链攻击 (依赖混淆·GH Actions·Docker)\n"
+              "RULE 63: AI/LLM 目标攻击 (注入·RAG投毒·提取·MCP)\n"
+              "━━━ 全面专家黑客级别达成 ━━━",
+        "en": "═══ Expert Hacker Level ACTIVATED (v3.7.0) ═══\n"
+              "RULE 54: C2 Framework (Sliver/Havoc/DNS Beaconing)\n"
+              "RULE 55: Advanced AD Attack Chain (BloodHound→DCSync→Golden Ticket)\n"
+              "RULE 56: Binary Exploitation (ROP·Heap·Kernel)\n"
+              "RULE 57: 0-Day/N-Day Research Pipeline (KEV·NVD·EDB·PoC)\n"
+              "RULE 58: Phishing Automation (OSINT→AiTM MFA Bypass→GoPhish)\n"
+              "RULE 59: Deep Cloud Attacks (Pacu·etcd·Azure PRT·GCP SA)\n"
+              "RULE 60: IoT/Hardware Attacks (Firmware·Modbus·WiFi)\n"
+              "RULE 61: Advanced Anti-Forensics (Timestomping·Log Delete·Shred)\n"
+              "RULE 62: Supply Chain Attacks (Dep Confusion·GH Actions·Docker)\n"
+              "RULE 63: AI/LLM Target Attacks (Injection·RAG Poison·Extract·MCP)\n"
+              "━━━ Full Expert Hacker Level Achieved ━━━",
     },
 })
 

@@ -6266,8 +6266,8 @@ _STRINGS.update({
         "zh": "🔄 [AUTO-PROXY] IP封锁检测器 + 免费代理池已启动",
         "en": "🔄 [AUTO-PROXY] IP Block Detector + Free Proxy Pool ACTIVE",
     },
-    # 프록시 교체 성공
-    "proxy_rotated": {
+    # 프록시 자동 교체 성공 (오케스트레이터용 — 수동 /proxy rotate 키와 구분)
+    "proxy_auto_rotated": {
         "ko": "🔄 [AUTO-PROXY] IP 차단 감지! 프록시 교체 → {url}",
         "zh": "🔄 [AUTO-PROXY] 检测到IP封锁！切换代理 → {url}",
         "en": "🔄 [AUTO-PROXY] IP blocked! Rotated → {url}",

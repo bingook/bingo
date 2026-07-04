@@ -28,6 +28,7 @@ import os
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass
 from typing import Deque, List, Optional, Set, Tuple
 
 from .ip_block_detector import IPBlockDetector, BlockDetectResult, make_detector
@@ -231,8 +232,6 @@ class ProxyRotator:
 
 
 # ── RotateResult ─────────────────────────────────────────────────────────────
-from dataclasses import dataclass
-
 @dataclass
 class RotateResult:
     rotated:      bool

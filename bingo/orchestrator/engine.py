@@ -483,7 +483,7 @@ Respond ONLY in JSON."""
                         if _rotate_res.new_proxy:
                             _print(
                                 f"[bold yellow]"
-                                f"{_s.get('proxy_rotated', '🔄 [AUTO-PROXY] IP blocked! Rotated → {url}').format(url=_rotate_res.new_proxy.url)}"
+                                f"{_s.get('proxy_auto_rotated', '🔄 [AUTO-PROXY] IP blocked! Rotated → {url}').format(url=_rotate_res.new_proxy.url)}"
                                 f"[/bold yellow]"
                             )
                         else:

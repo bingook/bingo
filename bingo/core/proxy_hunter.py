@@ -25,16 +25,11 @@ bingo/core/proxy_hunter.py — 무료 프록시 자동 수집 + 3단계 검증 (
 """
 from __future__ import annotations
 
-import csv
-import io
-import json
 import logging
-import queue
 import re
 import socket
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -148,8 +143,12 @@ def _fetch_proxyscrape() -> List[ProxyInfo]:
                     if len(parts) == 2:
                         ip, port_str = parts
                         if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip):
+                            try:
+                                port_int = int(port_str)
+                            except ValueError:
+                                continue
                             proxies.append(ProxyInfo(
-                                host=ip, port=int(port_str), protocol=proto,
+                                host=ip, port=port_int, protocol=proto,
                                 latency=99.0, anonymous=True, validated=False, score=1.0,
                             ))
         except Exception as e:
@@ -177,8 +176,12 @@ def _fetch_github_proxy_list() -> List[ProxyInfo]:
                     if len(parts) == 2:
                         ip, port_str = parts
                         if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", ip):
+                            try:
+                                port_int = int(port_str)
+                            except ValueError:
+                                continue
                             proxies.append(ProxyInfo(
-                                host=ip, port=int(port_str), protocol=proto,
+                                host=ip, port=port_int, protocol=proto,
                                 latency=99.0, anonymous=True, validated=False, score=1.0,
                             ))
         except Exception as e:
@@ -200,7 +203,6 @@ def _validate_proxy(proxy: ProxyInfo, my_ip: Optional[str], target: Optional[str
 
     # ── Stage 2: HTTP 익명성 확인 ─────────────────────────────────────────
     # SOCKS5 는 urllib 기본 지원 안 됨 → HTTP 전용 검증
-    proto_scheme = proxy.protocol if proxy.protocol != "socks5" else "http"
     proxy_handler = urllib.request.ProxyHandler({
         "http":  f"http://{proxy.host}:{proxy.port}",
         "https": f"http://{proxy.host}:{proxy.port}",

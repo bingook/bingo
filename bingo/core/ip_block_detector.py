@@ -27,7 +27,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 # ── 차단 판정 임계값 ─────────────────────────────────────────────────────────
 _MIN_SIGNALS     = 3     # 5개 중 3개 이상 → 차단 확정
@@ -37,7 +37,7 @@ _PROBE_PATHS     = [     # 멀티-경로 검증용 무해 경로 목록
     "/favicon.ico",
     "/sitemap.xml",
 ]
-_BLOCK_CODES     = {403, 429, 503, 429, 999, 530}  # Cloudflare 530 포함
+_BLOCK_CODES     = {403, 429, 503, 999, 530}  # Cloudflare 530 포함
 _WAF_HEADERS     = {                                # WAF 노출 헤더 패턴
     "cf-ray", "x-sucuri-id", "x-fw-hash", "x-akamai-session-info",
     "x-cache-status",
@@ -59,7 +59,7 @@ class _Snapshot:
     latency:  float  # seconds
 
 
-def _snapshot(url: str, timeout: float = 8.0, proxies: Optional[Dict] = None) -> Optional[_Snapshot]:
+def _snapshot(url: str, timeout: float = 8.0) -> Optional[_Snapshot]:
     """타겟 URL에 GET 요청 후 스냅샷 반환. 실패 시 None."""
     t0 = time.monotonic()
     try:
@@ -202,9 +202,7 @@ class IPBlockDetector:
         if snap is not None:
             return False  # HTTP 응답 있음 → TCP OK
         host, port = _extract_host_port(self._target)
-        # HTTPS 포트 시도
-        https_port = 443 if "https://" in self._target else 80
-        tcp_ok = _tcp_ok(host, https_port)
+        tcp_ok = _tcp_ok(host, port)
         # TCP 연결됐지만 HTTP 응답 없음 = WAF가 HTTP 레벨 차단
         return tcp_ok  # TCP OK + HTTP None = 차단
 
@@ -235,7 +233,7 @@ class IPBlockDetector:
         # 타겟 메인 경로 스냅샷
         snap = _snapshot(self._target)
 
-        signals: Dict[str, bool] = {}
+        signals: dict = {}
         signals["S1_http_code"]   = self._signal_s1_http_code(snap)
         signals["S3_baseline"]    = self._signal_s3_baseline_deviation(snap)
         signals["S4_tcp_layer"]   = self._signal_s4_tcp(snap)

@@ -1,5 +1,5 @@
 """
-bingo/orchestrator/engine.py — LLM 오케스트레이터 엔진  (v4.2.0)
+bingo/orchestrator/engine.py — LLM 오케스트레이터 엔진  (v4.3.0)
 
 【설계 철학】
   고정 6단계 파이프라인 대신, LLM이 매 스텝마다
@@ -408,6 +408,17 @@ Respond ONLY in JSON."""
         except Exception:
             pass
 
+        # ── v4.3.0: ExecutionAnchor 초기화 ────────────────────────────────
+        _exec_anchor = None
+        try:
+            from ..core.execution_anchor import ExecutionAnchorEngine as _EAE
+            _exec_anchor = _EAE(session_target=self._target, lang=self._lang)
+            _print(
+                f"[dim]{_s.get('anchor_active', '⚓ [EXEC-ANCHOR] 실행결과 앵커링 엔진 v1.0 ACTIVE')}[/dim]"
+            )
+        except Exception:
+            pass
+
         _print(
             f"\n[bold cyan]{_s.get('orch_ui_started', '🤖 [ORCHESTRATOR] Started')}[/bold cyan]\n"
             f"  target : {self._target}\n"
@@ -507,7 +518,7 @@ Respond ONLY in JSON."""
                     command = _target_prefix + command
                 _cmd_disp = f"{command[:120]}..." if len(command) > 120 else command
                 _print(f"[cyan]{_s.get('orch_ui_executing', '▶ Executing: {cmd}').format(cmd=_cmd_disp)}[/cyan]")
-                _exec_result = ""
+                _exec_result = str(raw_decision) if raw_decision else ""
                 try:
                     send_fn(command)
                 except Exception as e:
@@ -535,6 +546,24 @@ Respond ONLY in JSON."""
                         _print(
                             f"[yellow][ZERO-HAL WARN] {_zh_result.inject_message[:120]}[/yellow]"
                         )
+                except Exception:
+                    pass
+
+            # ── v4.3.0: ExecutionAnchor — 추측 언어 + 기술 주장 하드 차단 ─────
+            if _exec_anchor is not None and raw_decision:
+                try:
+                    _anchor_result = _exec_anchor.check(
+                        response_text=raw_decision,
+                        exec_output=_exec_result if command else "",
+                    )
+                    if _anchor_result.blocked:
+                        _print(
+                            f"[bold red]{_s.get('anchor_blocked', '⛔ [EXEC-ANCHOR] 0-환각 위반 차단: {reason}').format(reason=_anchor_result.block_reason)}[/bold red]"
+                        )
+                        if _anchor_result.inject_message:
+                            _print(
+                                f"[dim]{_anchor_result.inject_message[:200]}[/dim]"
+                            )
                 except Exception:
                     pass
 

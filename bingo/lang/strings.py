@@ -6326,6 +6326,71 @@ _STRINGS.update({
         "zh": "🔄 AUTO-PROXY 状态: 当前={cur} | 池={pool} | 轮换={rot}次 | 黑名单={bl}",
         "en": "🔄 AUTO-PROXY Status: current={cur} | pool={pool} | rotations={rot} | blacklist={bl}",
     },
+
+    # ── v4.3.0 ExecutionAnchor 다국어 키 ───────────────────────────────────
+    # 앵커 엔진 활성화 알림
+    "anchor_active": {
+        "ko": "⚓ [EXEC-ANCHOR] 실행결과 앵커링 엔진 v1.0 ACTIVE (0-환각 보장)",
+        "zh": "⚓ [EXEC-ANCHOR] 执行结果锚定引擎 v1.0 已激活（零幻觉保障）",
+        "en": "⚓ [EXEC-ANCHOR] Execution Result Anchoring Engine v1.0 ACTIVE (zero-hallucination)",
+    },
+    # 추측 언어 + 기술 주장 차단
+    "anchor_blocked": {
+        "ko": "⛔ [EXEC-ANCHOR] 0-환각 위반 차단: {reason}",
+        "zh": "⛔ [EXEC-ANCHOR] 零幻觉规则违规拦截: {reason}",
+        "en": "⛔ [EXEC-ANCHOR] Zero-hallucination violation blocked: {reason}",
+    },
+    # 추측 언어 + 기술 주장 (SPECULATION_CLAIM)
+    "anchor_speculation_claim": {
+        "ko": "⛔ [추측+주장 차단] 추측 언어와 기술 보안 주장이 동시 감지됨 — 직접 실행 후 결과만 보고하십시오",
+        "zh": "⛔ [推测+声明拦截] 同时检测到推测语言和技术安全声明 — 请先执行后仅报告实际结果",
+        "en": "⛔ [SPECULATION+CLAIM BLOCKED] Speculation language + technical security claim detected — execute first, report only actual results",
+    },
+    # 실행 증거 없는 기술 주장 (UNEXECUTED_CLAIM)
+    "anchor_unexecuted_claim": {
+        "ko": "⛔ [미실행 주장 차단] 실행 결과 없이 기술 보안 주장 감지 — 먼저 실행하고 결과로 말하십시오",
+        "zh": "⛔ [未执行声明拦截] 无执行证据的技术安全声明 — 请先执行并仅依据结果陈述",
+        "en": "⛔ [UNEXECUTED CLAIM BLOCKED] Technical security claim without execution evidence — execute first and report only results",
+    },
+    # 앵커 통계
+    "anchor_stats": {
+        "ko": "⚓ [EXEC-ANCHOR 통계] 검사={total} | 추측차단={spec} | 미실행차단={unex} | 총차단={blk}",
+        "zh": "⚓ [EXEC-ANCHOR 统计] 检查={total} | 推测拦截={spec} | 未执行拦截={unex} | 总拦截={blk}",
+        "en": "⚓ [EXEC-ANCHOR Stats] Checked={total} | SpecBlocks={spec} | UnexBlocks={unex} | TotalBlocks={blk}",
+    },
+    # 앵커 경고 (차단은 아니지만 주의)
+    "anchor_warn_speculation": {
+        "ko": "⚠️ [EXEC-ANCHOR 경고] 응답에 추측 언어 감지 — 기술 주장은 반드시 실행 결과 기반으로",
+        "zh": "⚠️ [EXEC-ANCHOR 警告] 响应中检测到推测语言 — 技术声明必须基于实际执行结果",
+        "en": "⚠️ [EXEC-ANCHOR WARN] Speculation language detected — technical claims must be based on execution results",
+    },
+    # 채팅 모드 앵커 위반
+    "anchor_chat_violation": {
+        "ko": "⛔ [채팅 앵커 위반] 채팅 모드에서도 실행 없이 기술 보안 주장 금지 — 실행 코드를 제시하거나 직접 실행하십시오",
+        "zh": "⛔ [聊天锚定违规] 即使在聊天模式下也禁止无执行的技术安全声明 — 请提供执行代码或直接执行",
+        "en": "⛔ [CHAT ANCHOR VIOLATION] Even in chat mode, technical security claims without execution are forbidden — provide executable code or execute directly",
+    },
+    # RULE 96-98 설명 (도움말)
+    "anchor_help_rules": {
+        "ko": (
+            "⚓ [EXEC-ANCHOR v1.0 — 0환각 3대 규칙]\n"
+            "  RULE 96: 추측 언어(아마도/것 같다/probably) + 기술 주장 = 즉시 차단\n"
+            "  RULE 97: 실행 출력 없이 기술 주장(SQLi/XSS/취약점) = 즉시 차단\n"
+            "  RULE 98: 보고 형식 의무 — [실행결과]→[관측값]→[보안결론]"
+        ),
+        "zh": (
+            "⚓ [EXEC-ANCHOR v1.0 — 零幻觉三大规则]\n"
+            "  规则96: 推测语言(可能/也许/probably)+技术声明 = 立即拦截\n"
+            "  规则97: 无执行输出的技术声明(SQLi/XSS/漏洞) = 立即拦截\n"
+            "  规则98: 报告格式义务 — [执行结果]→[观察值]→[安全结论]"
+        ),
+        "en": (
+            "⚓ [EXEC-ANCHOR v1.0 — Zero-Hallucination 3 Rules]\n"
+            "  RULE 96: Speculation language (probably/might/seems) + tech claim = immediate block\n"
+            "  RULE 97: Technical claim (SQLi/XSS/vuln) without exec output = immediate block\n"
+            "  RULE 98: Report format required — [exec result]→[observation]→[security conclusion]"
+        ),
+    },
 })
 
 

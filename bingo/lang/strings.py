@@ -6075,8 +6075,8 @@ _STRINGS.update({
     },
 })
 
-
-    # ── v4.0.0 Intelligence Amplifier 다국어 키 ──────────────────────────────
+# ── v4.0.0 Intelligence Amplifier 다국어 키 ──────────────────────────────
+_STRINGS.update({
     "amp_active": {
         "ko": "⚡ [AMPLIFIER v4.0.0] CoT + 정밀RAG + 자기수정 + 작업분해 — 활성화",
         "zh": "⚡ [AMPLIFIER v4.0.0] CoT + 精准RAG + 自我修正 + 任务分解 — 已激活",

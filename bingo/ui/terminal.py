@@ -5193,11 +5193,22 @@ class BingoTerminal:
                 _has_net_cmd = any(cmd in s for cmd in
                     ["curl ", "wget ", "nmap ", "ffuf ", "httpx ", "nuclei "])
                 if not _has_net_cmd:
-                    return (
-                        "BASH_NO_CURL: bash block has no network command (curl/wget/nmap). "
-                        "You MUST use: curl -s -m 10 -k 'https://REAL_TARGET/path' | "
-                        "/usr/bin/python3 -c \"import sys; d=sys.stdin.buffer.read(); print(d[:1500])\""
+                    # v5.1.1 FIX: 이전 curl로 저장한 /tmp/ 파일을 python3 -c 로 파싱하는 블록은
+                    # 환각이 아님. curl 없어도 허용.
+                    # 예: python3 -c "import re; t=open('/tmp/xxx.html').read(); ..."
+                    _is_local_parse = (
+                        "python3 -c" in s and
+                        ("/tmp/" in s or "open(" in s) and
+                        "requests" not in s and
+                        "urllib" not in s and
+                        "httpx" not in s
                     )
+                    if not _is_local_parse:
+                        return (
+                            "BASH_NO_CURL: bash block has no network command (curl/wget/nmap). "
+                            "You MUST use: curl -s -m 10 -k 'https://REAL_TARGET/path' | "
+                            "/usr/bin/python3 -c \"import sys; d=sys.stdin.buffer.read(); print(d[:1500])\""
+                        )
                 # bash 패턴 B2: placeholder URL
                 if _hall_re.search(r'(?:TARGET_URL|YOUR_URL|PLACEHOLDER|example\.com|TARGET_HOST)', s, _hall_re.IGNORECASE):
                     return (

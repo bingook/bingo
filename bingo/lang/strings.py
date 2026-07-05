@@ -7163,6 +7163,11 @@ _STRINGS.update({
         "zh": "[v5.2.3] 修复TOOL_CALL嵌套JSON解析bug — 用括号计数器替代非贪婪正则",
         "en": "[v5.2.3] TOOL_CALL nested JSON parse fix — replaced non-greedy regex with brace counter",
     },
+    "fix_dir_fuzz_flags": {
+        "ko": "[v5.2.4] dir_fuzz 수정 — ffuf 잘못된 -sf 플래그 제거 + macOS 워드리스트 자동 탐색 + 내장 미니 리스트",
+        "zh": "[v5.2.4] 修复dir_fuzz — 移除无效-sf标志 + macOS词表自动查找 + 内置迷你词表",
+        "en": "[v5.2.4] dir_fuzz fix — remove invalid -sf flag, auto-detect macOS wordlists, built-in mini wordlist",
+    },
 })
 
 

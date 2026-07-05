@@ -7063,6 +7063,64 @@ _STRINGS.update({
         "zh": "[v5.1.4] 时间盲注计时模板: START=$(date +%s%N) → curl → END=$(date +%s%N) → ELAPSED=$((END-START)/1000000)ms",
         "en": "[v5.1.4] Time-based SQLi timing: START=$(date +%s%N) → curl → END=$(date +%s%N) → ELAPSED=$((END-START)/1000000)ms",
     },
+    # ─────────────────────────────────────────────────────────────────
+    # v5.2.0 — TOOL_CALL 아키텍처 (환각 완전 차단)
+    # ─────────────────────────────────────────────────────────────────
+    "toolcall_arch_enabled": {
+        "ko": "[v5.2.0] TOOL_CALL 아키텍처 활성화 — LLM이 직접 Python 함수 호출 → bash 환각 완전 차단",
+        "zh": "[v5.2.0] TOOL_CALL 架构已启用 — LLM 直接调用 Python 函数 → 彻底消除 bash 幻觉",
+        "en": "[v5.2.0] TOOL_CALL architecture enabled — LLM calls Python functions directly → bash hallucination fully eliminated",
+    },
+    "toolcall_executing": {
+        "ko": "🔧 TOOL_CALL 실행 중",
+        "zh": "🔧 TOOL_CALL 执行中",
+        "en": "🔧 Executing TOOL_CALL",
+    },
+    "toolcall_success": {
+        "ko": "✅ TOOL_CALL 성공",
+        "zh": "✅ TOOL_CALL 成功",
+        "en": "✅ TOOL_CALL succeeded",
+    },
+    "toolcall_failed": {
+        "ko": "⚠ TOOL_CALL 실패",
+        "zh": "⚠ TOOL_CALL 失败",
+        "en": "⚠ TOOL_CALL failed",
+    },
+    "toolcall_json_error": {
+        "ko": "⛔ TOOL_CALL JSON 파싱 오류 — 형식: TOOL_CALL:{\"name\":\"함수명\",\"args\":{}}",
+        "zh": "⛔ TOOL_CALL JSON 解析错误 — 格式: TOOL_CALL:{\"name\":\"函数名\",\"args\":{}}",
+        "en": "⛔ TOOL_CALL JSON parse error — format: TOOL_CALL:{\"name\":\"func\",\"args\":{}}",
+    },
+    "toolcall_not_found": {
+        "ko": "⛔ TOOL_CALL 알 수 없는 함수 — TOOL_REGISTRY 에 없는 이름",
+        "zh": "⛔ TOOL_CALL 未知函数 — 不在 TOOL_REGISTRY 中",
+        "en": "⛔ TOOL_CALL unknown function — not in TOOL_REGISTRY",
+    },
+    "toolcall_pentest_tools_missing": {
+        "ko": "⛔ pentest_tools 모듈 로드 실패 — tools_ext/pentest_tools.py 확인 필요",
+        "zh": "⛔ pentest_tools 模块加载失败 — 请检查 tools_ext/pentest_tools.py",
+        "en": "⛔ pentest_tools module load failed — check tools_ext/pentest_tools.py",
+    },
+    "toolcall_result_preview": {
+        "ko": "TOOL_RESULT 미리보기 (상위 30줄)",
+        "zh": "TOOL_RESULT 预览（前30行）",
+        "en": "TOOL_RESULT preview (top 30 lines)",
+    },
+    "toolcall_no_bash_needed": {
+        "ko": "✅ TOOL_CALL 처리 완료 — bash 블록 실행 불필요",
+        "zh": "✅ TOOL_CALL 处理完成 — 无需执行 bash 块",
+        "en": "✅ TOOL_CALL processed — no bash block execution needed",
+    },
+    "toolcall_schema_injected": {
+        "ko": "[v5.2.0] TOOL_CALL 스키마 시스템 프롬프트에 동적 주입 완료",
+        "zh": "[v5.2.0] TOOL_CALL 架构已动态注入系统提示词",
+        "en": "[v5.2.0] TOOL_CALL schema dynamically injected into system prompt",
+    },
+    "toolcall_combined_method": {
+        "ko": "[v5.2.0] 통합 방식: LLM이 TOOL_CALL로 Python 함수 호출 → 함수 내부에서 bash/외부도구 실행 → 결과 반환",
+        "zh": "[v5.2.0] 组合方式: LLM 通过 TOOL_CALL 调用 Python 函数 → 函数内部执行 bash/外部工具 → 返回结果",
+        "en": "[v5.2.0] Combined method: LLM calls Python fn via TOOL_CALL → fn runs bash/external tools internally → returns result",
+    },
 })
 
 

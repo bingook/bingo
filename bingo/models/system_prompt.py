@@ -468,10 +468,56 @@ BINGO ENGINE v5.0 — SELF-DIRECTED AUTONOMOUS AGENT
 ║  If NONE of the above → Gnuboard rules are COMPLETELY IRRELEVANT ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-╔══════════════════════════════════════════════════════════════════════╗
-║  🚨 CODE BLOCK MANDATORY STANDARD v4.9.5 — bash+curl ONLY          ║
-╠══════════════════════════════════════════════════════════════════════╣
-║  ALL HTTP requests MUST be bash blocks using curl piped to python3. ║
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  🚀 TOOL_CALL SYSTEM v5.2.0 — PRIORITY #1 (환각 차단 최우선)                ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  HTTP 요청, SQLi 테스트, 스캔 등 모든 실행 작업은 TOOL_CALL 로 호출하라.   ║
+║  bash 블록 작성 전에 항상 TOOL_CALL 이 가능한지 먼저 확인하라.             ║
+║                                                                              ║
+║  📌 TOOL_CALL 형식:                                                          ║
+║  TOOL_CALL:{"name":"함수명","args":{"param1":"value1","param2":"value2"}}   ║
+║                                                                              ║
+║  ✅ 사용 가능한 TOOL_CALL 함수 목록:                                         ║
+║  • http_get(url, headers={}, params={}, timeout=30)                          ║
+║  • http_post(url, data={}, raw_data="", headers={}, timeout=30)              ║
+║  • http_head(url, headers={}, timeout=15)                                    ║
+║  • waf_detect(url)                                                           ║
+║  • sqli_boolean(url, param, true_payload, false_payload,                     ║
+║                 method="GET", headers={}, post_data_prefix="")               ║
+║  • sqli_timebased(url, param, payload, sleep_time=5,                         ║
+║                   method="GET", headers={}, post_data_prefix="")             ║
+║  • sqli_error(url, param, payload, method="GET", headers={})                 ║
+║  • run_sqlmap(url, param="", method="GET", post_data="",                     ║
+║               tamper="", headers={}, level=1, risk=1,                        ║
+║               extra_args="", random_agent=True, delay=0,                    ║
+║               dump=False, dbs=False, tables=False)                           ║
+║  • nmap_scan(host, ports="80,443,22,3306", flags="-sV --open -T4")           ║
+║  • dir_fuzz(url, wordlist="", extensions="php,asp,aspx,html")                ║
+║  • subdomain_enum(domain)                                                    ║
+║  • web_tech_detect(url)                                                      ║
+║  • xss_reflect(url, param, payload="<script>alert(1)</script>",              ║
+║                method="GET", headers={})                                     ║
+║  • ssrf_test(url, param, target="http://169.254.169.254/latest/meta-data/") ║
+║  • lfi_test(url, param, payload="../../../../etc/passwd", method="GET")      ║
+║  • hydra_brute(host, service="ssh", userlist="", passlist="")                ║
+║                                                                              ║
+║  ✅ TOOL_CALL 예시:                                                           ║
+║  TOOL_CALL:{"name":"http_get","args":{"url":"https://target.com/page"}}     ║
+║  TOOL_CALL:{"name":"sqli_timebased","args":{"url":"https://t.com/","param":"id","sleep_time":5}} ║
+║  TOOL_CALL:{"name":"run_sqlmap","args":{"url":"https://t.com/","param":"id","tamper":"space2comment,randomcase","dbs":true}} ║
+║  TOOL_CALL:{"name":"waf_detect","args":{"url":"https://target.com/"}}       ║
+║                                                                              ║
+║  ⚠️ TOOL_CALL 규칙:                                                           ║
+║  1. bash 블록 작성 전에 TOOL_CALL 이 가능한지 먼저 확인할 것                ║
+║  2. 한 번에 TOOL_CALL 하나 — 결과 보고 다음 호출 결정                       ║
+║  3. TOOL_RESULT 결과를 분석 후 다음 TOOL_CALL 또는 BINGO_SIGNAL 출력       ║
+║  4. TOOL_CALL 로 커버 안 되는 경우에만 bash 블록 사용                       ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  🚨 CODE BLOCK STANDARD v4.9.5 — bash+curl (TOOL_CALL 불가시 사용)         ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  TOOL_CALL 로 커버 안 되는 경우 bash 블록 사용.                             ║
+║  ALL HTTP requests MUST be bash blocks using curl piped to python3.         ║
 ║                                                                      ║
 ║  ✅ CANONICAL PATTERN — copy this every time:                       ║
 ║  ```bash                                                             ║
@@ -3557,7 +3603,7 @@ WARMUP_HISTORY = [
 
 def get_pentest_system_prompt(provider: str) -> str:
     """
-    [v3.3.5] TGTYLAB(6-레이어) + REVERSELAB + EXAMPLE_FLOOD + UNIVERSAL_CORE + 모델별 EXTRA 순서로 조합.
+    [v5.2.0] TOOL_CALL 스키마 동적 주입 + TGTYLAB(6-레이어) + REVERSELAB + EXAMPLE_FLOOD + UNIVERSAL_CORE + 모델별 EXTRA 순서로 조합.
     신원고정/사고차단/예시범람/운영컨텍스트/금지어/행동규범이 최상위에 적용된다.
     """
     try:
@@ -3587,16 +3633,29 @@ def get_pentest_system_prompt(provider: str) -> str:
     # v3.3.5: tgtylab 레이어 최상위 배치 (신원고정 + 사고차단 + 예시범람 + 운영컨텍스트)
     _tgty_block = TGTYLAB_LAYER + "\n\n" + REVERSELAB_RULES + "\n\n" + EXAMPLE_FLOOD_LIBRARY
 
+    # v5.2.0: TOOL_CALL 동적 스키마 주입
+    try:
+        from ..tools_ext.pentest_tools import get_tool_schema
+        _tool_schema_block = (
+            "\n\n=== TOOL_CALL AVAILABLE FUNCTIONS (v5.2.0) ===\n"
+            + get_tool_schema()
+            + "\nUSE TOOL_CALL BEFORE writing any bash block.\n"
+            "Format: TOOL_CALL:{\"name\":\"func_name\",\"args\":{\"param\":\"value\"}}\n"
+            "=== END TOOL_CALL SCHEMA ===\n"
+        )
+    except Exception:
+        _tool_schema_block = ""
+
     p = provider.lower()
     if "deepseek" in p:
-        return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + LANG_RULE + "\n\n" + DEEPSEEK_EXTRA
+        return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + _tool_schema_block + LANG_RULE + "\n\n" + DEEPSEEK_EXTRA
     if "glm" in p or "zhipu" in p:
-        return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + LANG_RULE + "\n\n" + GLM_EXTRA
+        return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + _tool_schema_block + LANG_RULE + "\n\n" + GLM_EXTRA
     if "claude" in p or "anthropic" in p:
-        return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + LANG_RULE + "\n\n" + CLAUDE_GPT_EXTRA
+        return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + _tool_schema_block + LANG_RULE + "\n\n" + CLAUDE_GPT_EXTRA
     if "gpt" in p or "openai" in p:
-        return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + LANG_RULE + "\n\n" + CLAUDE_GPT_EXTRA
-    return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + LANG_RULE
+        return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + _tool_schema_block + LANG_RULE + "\n\n" + CLAUDE_GPT_EXTRA
+    return _tgty_block + "\n\n" + UNIVERSAL_PENTEST_CORE + _tool_schema_block + LANG_RULE
 
 
 def get_warmup_history(provider: str = "deepseek") -> list[dict]:

@@ -5166,10 +5166,105 @@ class BingoTerminal:
     def _run_code_blocks(self, response: str, _loaded_skills: set) -> list[str]:
         """AI 응답에서 Python/Bash 블록 추출 후 병렬 실행.
         타임아웃 없음 — 성공할 때까지 실행. 모든 블록 동시 실행 후 결과 수집.
+
+        v5.2.0: TOOL_CALL 아키텍처 — bash 블록보다 우선 처리.
+        LLM이 TOOL_CALL:{"name":"...","args":{...}} 형식으로 호출하면
+        pentest_tools.py 의 Python 함수를 직접 실행 → 환각 완전 차단.
         """
         import re, subprocess, tempfile, os, threading
         from pathlib import Path
         from rich.markup import escape as _resc
+
+        # ══════════════════════════════════════════════════════════════════════
+        # v5.2.0 ── TOOL_CALL 파서 (bash 블록 처리 이전에 실행)
+        # 형식: TOOL_CALL:{"name":"sqli_timebased","args":{"url":"...","param":"id"}}
+        # ══════════════════════════════════════════════════════════════════════
+        _tool_call_pattern = re.compile(
+            r'TOOL_CALL\s*:\s*(\{.*?\})',
+            re.DOTALL,
+        )
+        _tool_matches = _tool_call_pattern.findall(response)
+
+        if _tool_matches:
+            tool_results: list[str] = []
+            try:
+                from ..tools_ext.pentest_tools import execute_tool, TOOL_REGISTRY
+            except ImportError:
+                execute_tool = None
+                TOOL_REGISTRY = {}
+
+            for _raw_json in _tool_matches:
+                # JSON 파싱
+                try:
+                    _call = re.sub(r'\s+', ' ', _raw_json.strip())
+                    _parsed = __import__("json").loads(_call)
+                    _tool_name = str(_parsed.get("name", ""))
+                    _tool_args = _parsed.get("args", {})
+                    if not isinstance(_tool_args, dict):
+                        _tool_args = {}
+                except Exception as _je:
+                    tool_results.append(
+                        f"TOOL_RESULT:{{'name':'?','error':'JSON parse failed: {_je}','success':false}}"
+                    )
+                    self.console.print(
+                        f"[{THEME['error']}]⚠ TOOL_CALL JSON parse error: {_je}[/]"
+                    )
+                    continue
+
+                if execute_tool is None:
+                    tool_results.append(
+                        f"TOOL_RESULT:{{'name':'{_tool_name}','error':'pentest_tools not available','success':false}}"
+                    )
+                    continue
+
+                # 도구 실행
+                self.console.print(
+                    f"\n[{THEME['secondary']}]🔧 TOOL_CALL:[/] "
+                    f"[{THEME['primary']}]{_tool_name}[/] "
+                    f"[{THEME['dim']}]{str(_tool_args)[:120]}[/]"
+                )
+
+                _t0 = __import__("time").time()
+                _result = execute_tool(_tool_name, _tool_args)
+                _elapsed = round(__import__("time").time() - _t0, 2)
+
+                _out = _result.get("output", "")
+                _ok  = _result.get("success", False)
+                _ec  = _result.get("exit_code", -1)
+
+                # 화면에 결과 미리보기 출력
+                _preview = "\n".join(_out.splitlines()[:30])
+                _color = THEME["success"] if _ok else THEME["warn"]
+                self.console.print(
+                    f"[{_color}]{'✅' if _ok else '⚠'} TOOL_RESULT [{_tool_name}] "
+                    f"exit={_ec} elapsed={_elapsed}s[/]"
+                )
+                if _preview:
+                    from rich.markup import escape as _esc
+                    try:
+                        self.console.print(f"[{THEME['dim']}]{_esc(_preview[:1200])}[/]")
+                    except Exception:
+                        self.console.print(_preview[:1200])
+
+                # 결과를 LLM에게 돌려줄 텍스트로 포맷
+                _result_extra = {
+                    k: v for k, v in _result.items()
+                    if k not in ("output",) and not isinstance(v, (bytes,))
+                }
+                _result_str = (
+                    f"=== TOOL_RESULT: {_tool_name} ===\n"
+                    f"exit_code={_ec}  success={_ok}  elapsed={_elapsed}s\n"
+                    f"extra={__import__('json').dumps(_result_extra, ensure_ascii=False, default=str)[:500]}\n"
+                    f"--- output ---\n{_out}\n"
+                    f"=== END TOOL_RESULT ==="
+                )
+                tool_results.append(_result_str)
+
+            if tool_results:
+                return tool_results
+        # ══════════════════════════════════════════════════════════════════════
+        # TOOL_CALL 없음 → 기존 bash 블록 처리로 진행 (하위 호환)
+        # ══════════════════════════════════════════════════════════════════════
 
         if "```" not in response:
             return []

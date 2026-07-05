@@ -888,6 +888,9 @@ class BingoTerminal:
                     return hint.strip() if hint.strip() else None
                 except (EOFError, KeyboardInterrupt):
                     return None
+                except RuntimeError:
+                    # v5.1.2: asyncio.run() in running loop — fallback으로 진행
+                    pass
                 finally:
                     _sys.stdin = _orig_stdin
             except Exception:
@@ -907,6 +910,12 @@ class BingoTerminal:
                         pass
 
         # Fallback: /dev/tty 없거나 termios 없는 환경 (Windows native 등)
+        # v5.1.2: RuntimeError(asyncio.run in running loop) 방어 추가.
+        #   Python 3.12 + prompt_toolkit: bash 병렬 스레드 완료 직후 메인 스레드에서
+        #   asyncio 이벤트 루프가 여전히 "running" 상태로 감지되는 경우가 있음.
+        #   prompt_toolkit PromptSession.prompt()는 내부적으로 asyncio.run()을 호출하므로
+        #   이 상태에서 RuntimeError가 발생 → 기존에 EOFError/KeyboardInterrupt만 잡아
+        #   크래시됐던 버그를 input() fallback으로 완전 방어.
         try:
             hint = self._session.prompt(
                 HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
@@ -915,6 +924,17 @@ class BingoTerminal:
             return hint.strip() if hint.strip() else None
         except (EOFError, KeyboardInterrupt):
             return None
+        except RuntimeError:
+            # asyncio.run() cannot be called from a running event loop
+            # → input() 로 최종 fallback
+            try:
+                import sys as _sys2
+                _sys2.stdout.write("💬 hint ❯ ")
+                _sys2.stdout.flush()
+                _h = input()
+                return _h.strip() if _h.strip() else None
+            except (EOFError, KeyboardInterrupt, Exception):
+                return None
         finally:
             # ★ v3.3.3: 원래 SIGINT 핸들러 복원 + stop_flag 클리어
             _signal.signal(_signal.SIGINT, _orig_sigint)

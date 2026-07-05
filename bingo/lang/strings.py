@@ -6944,6 +6944,12 @@ _STRINGS.update({
         "zh": "✅ 回归测试 v5.1.1 — FP-ZERO v1.2 通过（含新增案例）",
         "en": "✅ Regression v5.1.1 — FP-ZERO v1.2 all passed (new cases included)",
     },
+    # v5.1.2: Ctrl+C hint prompt asyncio crash 방어
+    "hint_asyncio_fallback": {
+        "ko": "⚠ 프롬프트 입력 오류 — 기본 입력 모드로 전환",
+        "zh": "⚠ 提示输入错误 — 切换到基本输入模式",
+        "en": "⚠ Prompt input error — switching to basic input mode",
+    },
 })
 
 

@@ -6981,6 +6981,22 @@ _STRINGS.update({
         "zh": "⛔ [v5.1.3] BASH_PLACEHOLDER_URL: 检测到 curl/wget URL 中使用 'example.com' → 需要替换为真实目标 URL",
         "en": "⛔ [v5.1.3] BASH_PLACEHOLDER_URL: 'example.com' used as actual curl/wget target URL → replace with real target URL",
     },
+    # v5.1.4 — 시스템 프롬프트 bash 타이밍 템플릿 추가 (RULE SL-2)
+    "rule_sl2_timing_added": {
+        "ko": "[v5.1.4] RULE SL-2 추가: 타임기반 SQLi는 bash date+curl 타이밍 사용 (urllib 금지)",
+        "zh": "[v5.1.4] 新增 RULE SL-2: 时间盲注使用 bash date+curl 计时，禁止 urllib",
+        "en": "[v5.1.4] Added RULE SL-2: time-based SQLi MUST use bash date+curl timing, urllib forbidden",
+    },
+    "bash_urllib_in_bash_blocked": {
+        "ko": "⛔ [v5.1.4] BASH_NO_CURL: bash 내 urllib.request 사용 감지 → curl로 교체 필요",
+        "zh": "⛔ [v5.1.4] BASH_NO_CURL: 检测到 bash 中使用 urllib.request → 需替换为 curl",
+        "en": "⛔ [v5.1.4] BASH_NO_CURL: urllib.request inside bash detected → replace with curl",
+    },
+    "timing_template_guidance": {
+        "ko": "[v5.1.4] 타임기반 SQLi 타이밍: START=$(date +%s%N) → curl → END=$(date +%s%N) → ELAPSED=$((END-START)/1000000)ms",
+        "zh": "[v5.1.4] 时间盲注计时模板: START=$(date +%s%N) → curl → END=$(date +%s%N) → ELAPSED=$((END-START)/1000000)ms",
+        "en": "[v5.1.4] Time-based SQLi timing: START=$(date +%s%N) → curl → END=$(date +%s%N) → ELAPSED=$((END-START)/1000000)ms",
+    },
 })
 
 

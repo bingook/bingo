@@ -590,3 +590,165 @@ def test_exporter_true_positive_detected(text, expected_vuln):
         f"   기대: {expected_vuln}\n"
         f"   실제: {result[0]}"
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# v5.1.3 — bash 환각 감지(_detect_hallucination) 오탐 회귀 테스트
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_bash_hal_detector():
+    """terminal.py 내부의 _detect_hallucination 함수를 직접 추출해 반환."""
+    import re as _re
+    import types
+
+    def _detect_hallucination(raw_code: str, _block_type: str = "bash"):
+        """v5.1.3 수정 버전의 bash 환각 감지 로직 (inline 복제)."""
+        s = raw_code.strip()
+        _hall_re = _re
+
+        if _block_type == "bash":
+            _s_nc = '\n'.join(
+                l for l in s.splitlines()
+                if not l.strip().startswith('#')
+            )
+            # B0
+            if _hall_re.search(r'python3?\s*<<\s*[\'"]?\w+[\'"]?', _s_nc):
+                return "BASH_HEREDOC_PYTHON"
+            # B0b
+            if "import requests" in _s_nc:
+                return "BASH_CONTAINS_REQUESTS"
+            # B1
+            _has_net_cmd = any(cmd in s for cmd in
+                ["curl ", "wget ", "nmap ", "ffuf ", "httpx ", "nuclei "])
+            if not _has_net_cmd:
+                _is_local_op = (
+                    "/tmp/" in s and
+                    "requests" not in s and
+                    "urllib" not in s and
+                    "httpx" not in s
+                )
+                if not _is_local_op:
+                    return "BASH_NO_CURL"
+            # B2
+            if _hall_re.search(r'(?:TARGET_URL|YOUR_URL|PLACEHOLDER|TARGET_HOST)', _s_nc, _hall_re.IGNORECASE):
+                return "BASH_PLACEHOLDER_URL"
+            if _hall_re.search(r'(?:curl|wget)\s+[^\n]*\bexample\.com\b', _s_nc, _hall_re.IGNORECASE):
+                return "BASH_PLACEHOLDER_URL"
+            return None
+        return None
+
+    return _detect_hallucination
+
+
+# ── v5.1.3 오탐 케이스(정상이어야 하는 것) ──────────────────────────────────
+BASH_HAL_FP_CASES = [
+    # B0 오탐 수정: 주석에 heredoc 언급
+    pytest.param(
+        "# python3 << 'PYEOF' 는 금지 — curl | python3 -c 방식만 허용\n"
+        "curl -sk 'https://target.com/' | python3 -c \"import sys; print(sys.stdin.read()[:500])\"",
+        id="b0-heredoc-in-comment-only",
+    ),
+    # B0b 오탐 수정: 주석에 import requests 언급
+    pytest.param(
+        "# import requests 는 금지 — curl 을 사용해야 함\n"
+        "curl -sk 'https://target.com/login' | python3 -c \"import sys; print(sys.stdin.read())\"",
+        id="b0b-import-requests-in-comment",
+    ),
+    # B1 오탐 수정: cat /tmp/ 후처리
+    pytest.param(
+        "cat /tmp/sqli_result.txt",
+        id="b1-cat-tmp-postprocess",
+    ),
+    # B1 오탐 수정: grep /tmp/ 후처리
+    pytest.param(
+        "grep -oP 'DB: [^\\n]+' /tmp/output.txt",
+        id="b1-grep-tmp-postprocess",
+    ),
+    # B1 오탐 수정: jq /tmp/ 후처리
+    pytest.param(
+        "jq '.items[] | .id' /tmp/api_response.json",
+        id="b1-jq-tmp-postprocess",
+    ),
+    # B1 오탐 수정: python3 -c + /tmp/ (기존 v5.1.1 케이스 유지)
+    pytest.param(
+        "python3 -c \"import re; t=open('/tmp/xxx.html').read(); print(re.findall(r'<title>(.+)</title>', t))\"",
+        id="b1-python3-c-open-tmp",
+    ),
+    # B2 오탐 수정: 주석에 example.com 언급 + 실제 URL 정상
+    pytest.param(
+        "# example.com 은 placeholder — 실제 대상 URL 사용\n"
+        "curl -sk 'https://vulnerable-site.com/sqli?id=1' | python3 -c \"import sys; print(sys.stdin.read())\"",
+        id="b2-example-com-in-comment",
+    ),
+    # B2 오탐 수정: 주석에 TARGET_URL 언급
+    pytest.param(
+        "# TARGET_URL 에 실제 대상 URL 입력\n"
+        "curl -sk 'https://real-target.com/' | python3 -c \"import sys; print(sys.stdin.read())\"",
+        id="b2-target-url-in-comment",
+    ),
+]
+
+# ── v5.1.3 진양성 케이스(반드시 차단해야 하는 것) ─────────────────────────
+BASH_HAL_TP_CASES = [
+    # B0 진양성: 실제 heredoc Python
+    pytest.param(
+        "python3 << 'PYEOF'\nimport requests\nr = requests.get('https://t.com')\nPYEOF",
+        "BASH_HEREDOC_PYTHON",
+        id="b0-real-heredoc-python",
+    ),
+    # B0b 진양성: 실제 import requests
+    pytest.param(
+        "import requests\nr = requests.get('https://t.com')\nprint(r.text)",
+        "BASH_CONTAINS_REQUESTS",
+        id="b0b-real-import-requests",
+    ),
+    # B1 진양성: curl 없고 /tmp/ 도 없는 echo 블록
+    pytest.param(
+        "echo 'SQL injection found at /login'",
+        "BASH_NO_CURL",
+        id="b1-echo-only-no-curl",
+    ),
+    # B2 진양성: curl URL에 TARGET_URL
+    pytest.param(
+        "curl -sk 'TARGET_URL/sqli?id=1'",
+        "BASH_PLACEHOLDER_URL",
+        id="b2-target-url-in-curl",
+    ),
+    # B2 진양성: curl URL에 example.com 직접 사용
+    pytest.param(
+        "curl -sk 'https://example.com/admin'",
+        "BASH_PLACEHOLDER_URL",
+        id="b2-example-com-in-curl-url",
+    ),
+]
+
+
+@pytest.mark.parametrize("script", BASH_HAL_FP_CASES)
+def test_bash_hal_no_false_positive(script):
+    """v5.1.3: 정상 bash 블록이 환각으로 오탐되지 않아야 함."""
+    det = _get_bash_hal_detector()
+    result = det(script, _block_type="bash")
+    assert result is None, (
+        f"\n🚨 BASH_HALLUCINATION FALSE POSITIVE!\n"
+        f"   스크립트: {repr(script[:120])}\n"
+        f"   잘못 차단됨: {result}\n"
+        f"   → bingo/ui/terminal.py _detect_hallucination bash 패턴 수정 필요"
+    )
+
+
+@pytest.mark.parametrize("script,expected_code", BASH_HAL_TP_CASES)
+def test_bash_hal_true_positive_blocked(script, expected_code):
+    """v5.1.3: 실제 환각 bash 블록은 반드시 차단되어야 함."""
+    det = _get_bash_hal_detector()
+    result = det(script, _block_type="bash")
+    assert result is not None, (
+        f"\n❌ BASH_HALLUCINATION TRUE POSITIVE MISSED!\n"
+        f"   기대 코드: {expected_code}\n"
+        f"   스크립트: {repr(script[:120])}\n"
+        f"   → 환각 탐지가 약해짐 — 패턴 확인 필요"
+    )
+    assert result.startswith(expected_code), (
+        f"\n❌ BASH_HALLUCINATION WRONG CODE!\n"
+        f"   기대: {expected_code}\n"
+        f"   실제: {result}"
+    )

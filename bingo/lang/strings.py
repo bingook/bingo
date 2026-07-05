@@ -6950,6 +6950,37 @@ _STRINGS.update({
         "zh": "⚠ 提示输入错误 — 切换到基本输入模式",
         "en": "⚠ Prompt input error — switching to basic input mode",
     },
+    # v5.1.3: bash 환각 감지 오탐 수정 — 주석 행 제외 / /tmp/ 후처리 확장 / example.com curl 한정
+    "bash_fp_fix_v513": {
+        "ko": (
+            "v5.1.3 bash 환각 감지 오탐 3건 수정:\n"
+            "  • B0/B0b/B2: 주석(#) 행에 등장한 패턴 오탐 제거\n"
+            "  • B1: cat/grep/jq 등 /tmp/ 후처리 블록 오탐 제거\n"
+            "  • B2(example.com): curl/wget URL에 직접 쓰인 경우만 오탐으로 처리"
+        ),
+        "zh": (
+            "v5.1.3 修复 bash 幻觉检测误判 3 处:\n"
+            "  • B0/B0b/B2: 注释(#)行中出现的模式不再误报\n"
+            "  • B1: cat/grep/jq 等 /tmp/ 后处理块不再误报\n"
+            "  • B2(example.com): 仅当 curl/wget URL 直接使用时才标记"
+        ),
+        "en": (
+            "v5.1.3 fixed 3 bash hallucination false positives:\n"
+            "  • B0/B0b/B2: patterns in comment (#) lines no longer trigger\n"
+            "  • B1: /tmp/ post-processing blocks (cat/grep/jq) are now allowed\n"
+            "  • B2(example.com): only flagged when used directly in curl/wget URL"
+        ),
+    },
+    "bash_no_curl_local_op_allowed": {
+        "ko": "✅ /tmp/ 후처리 블록 — curl 없이 허용 (이전 curl 결과 처리)",
+        "zh": "✅ /tmp/ 后处理块 — 无需 curl 即可通过（处理之前 curl 的结果）",
+        "en": "✅ /tmp/ post-processing block — allowed without curl (processing prior curl output)",
+    },
+    "bash_example_com_in_curl_blocked": {
+        "ko": "⛔ [v5.1.3] BASH_PLACEHOLDER_URL: curl/wget URL에 'example.com' 사용 감지 → 실제 대상 URL로 교체 필요",
+        "zh": "⛔ [v5.1.3] BASH_PLACEHOLDER_URL: 检测到 curl/wget URL 中使用 'example.com' → 需要替换为真实目标 URL",
+        "en": "⛔ [v5.1.3] BASH_PLACEHOLDER_URL: 'example.com' used as actual curl/wget target URL → replace with real target URL",
+    },
 })
 
 

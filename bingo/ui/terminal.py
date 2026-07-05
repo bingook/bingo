@@ -5195,16 +5195,26 @@ class BingoTerminal:
 
             # ── v4.9.5: bash 블록 전용 환각 감지 ─────────────────────────────
             if _block_type == "bash":
+                # v5.1.3: B0/B0b/B2 오탐 방지 — 주석(#) 행을 제거한 사본으로 패턴 검사
+                # 이유: LLM이 설명 목적으로 "# python3 << 'PYEOF' 는 금지" 같은 주석을 남기면
+                #       실제 코드가 정상임에도 오탐 발생 → 주석 행은 환각 검사 대상 제외
+                _s_nc = '\n'.join(
+                    l for l in s.splitlines()
+                    if not l.strip().startswith('#')
+                )
+
                 # bash 패턴 B0: heredoc Python 감지 (가장 먼저 체크)
                 # "python3 << 'PYEOF'" 또는 "/usr/bin/python3 << 'EOF'" 등
-                if _hall_re.search(r'python3?\s*<<\s*[\'"]?\w+[\'"]?', s):
+                # v5.1.3: _s_nc 사용 → 주석 행 "# python3 << 'EOF'" 오탐 제외
+                if _hall_re.search(r'python3?\s*<<\s*[\'"]?\w+[\'"]?', _s_nc):
                     return (
                         "BASH_HEREDOC_PYTHON: Python heredoc inside bash is FORBIDDEN. "
                         "<<'PYEOF' / <<'EOF' wrapping 'import requests' is the same as a Python block. "
                         "ONLY pipe is allowed: curl ... | /usr/bin/python3 -c \"import sys; ...\""
                     )
                 # bash 패턴 B0b: bash 안에 import requests 있으면 무조건 차단
-                if "import requests" in s:
+                # v5.1.3: _s_nc 사용 → "# import requests 금지" 주석 오탐 제외
+                if "import requests" in _s_nc:
                     return (
                         "BASH_CONTAINS_REQUESTS: 'import requests' inside bash block is FORBIDDEN. "
                         "Do NOT use Python requests library. Use: curl ... | /usr/bin/python3 -c \"import sys; ...\""
@@ -5213,27 +5223,38 @@ class BingoTerminal:
                 _has_net_cmd = any(cmd in s for cmd in
                     ["curl ", "wget ", "nmap ", "ffuf ", "httpx ", "nuclei "])
                 if not _has_net_cmd:
-                    # v5.1.1 FIX: 이전 curl로 저장한 /tmp/ 파일을 python3 -c 로 파싱하는 블록은
-                    # 환각이 아님. curl 없어도 허용.
-                    # 예: python3 -c "import re; t=open('/tmp/xxx.html').read(); ..."
-                    _is_local_parse = (
-                        "python3 -c" in s and
-                        ("/tmp/" in s or "open(" in s) and
+                    # v5.1.1 FIX: 이전 curl로 저장한 /tmp/ 파일을 python3 -c 로 파싱 → 허용
+                    # v5.1.3 확장: /tmp/ 를 참조하는 모든 후처리 블록 허용
+                    #   (cat /tmp/..., grep /tmp/..., jq /tmp/... 등도 정상 후처리 명령)
+                    #   네트워크 라이브러리 없이 /tmp/ 를 참조하면 이전 curl 결과 처리로 간주
+                    _is_local_op = (
+                        "/tmp/" in s and
                         "requests" not in s and
                         "urllib" not in s and
                         "httpx" not in s
                     )
-                    if not _is_local_parse:
+                    if not _is_local_op:
                         return (
                             "BASH_NO_CURL: bash block has no network command (curl/wget/nmap). "
                             "You MUST use: curl -s -m 10 -k 'https://REAL_TARGET/path' | "
                             "/usr/bin/python3 -c \"import sys; d=sys.stdin.buffer.read(); print(d[:1500])\""
                         )
                 # bash 패턴 B2: placeholder URL
-                if _hall_re.search(r'(?:TARGET_URL|YOUR_URL|PLACEHOLDER|example\.com|TARGET_HOST)', s, _hall_re.IGNORECASE):
+                # v5.1.3: _s_nc 사용 → 주석 내 예시 URL 오탐 제외
+                #   TARGET_URL/YOUR_URL/PLACEHOLDER/TARGET_HOST → 주석 제외 후 검사
+                if _hall_re.search(r'(?:TARGET_URL|YOUR_URL|PLACEHOLDER|TARGET_HOST)', _s_nc, _hall_re.IGNORECASE):
                     return (
                         "BASH_PLACEHOLDER_URL: bash block contains placeholder URL. "
                         "Replace with actual target URL."
+                    )
+                # example.com 은 주석/설명에 등장 가능 → curl/wget 실제 URL에 있을 때만 오탐
+                if _hall_re.search(
+                    r'(?:curl|wget)\s+[^\n]*\bexample\.com\b',
+                    _s_nc, _hall_re.IGNORECASE,
+                ):
+                    return (
+                        "BASH_PLACEHOLDER_URL: bash block uses 'example.com' as the actual target URL. "
+                        "Replace with the real target URL."
                     )
                 return None  # bash 블록은 위 검사만 통과하면 OK
 

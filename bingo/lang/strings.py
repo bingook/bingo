@@ -6853,6 +6853,22 @@ _STRINGS.update({
         "zh": "⛔ [RULE 103] 脚本日志'command output:' — 非RCE。需要实际OS命令结果(uid=/hostname=)。",
         "en": "⛔ [RULE 103] Script log 'command output:' is not RCE. Require actual OS command result (uid=/hostname=).",
     },
+    # FP-ZERO 회귀 테스트 스위트 관련 메시지 (v5.0.6)
+    "fp_regression_pass": {
+        "ko": "✅ FP-ZERO 회귀 테스트 전체 통과 — 오발 없음 확인",
+        "zh": "✅ FP-ZERO 回归测试全部通过 — 已确认无误判",
+        "en": "✅ FP-ZERO regression suite passed — zero false positives confirmed",
+    },
+    "fp_regression_fail": {
+        "ko": "🚨 FP-ZERO 회귀 테스트 실패 — 릴리즈 전 오발 수정 필수",
+        "zh": "🚨 FP-ZERO 回归测试失败 — 发布前必须修复误判",
+        "en": "🚨 FP-ZERO regression suite FAILED — must fix false positives before release",
+    },
+    "fp_new_pattern_warning": {
+        "ko": "⚠️  MVVS 패턴 추가 시 tests/test_mvvs_false_positive.py에 FP/TP 케이스 반드시 추가",
+        "zh": "⚠️  添加MVVS模式时必须在tests/test_mvvs_false_positive.py中添加FP/TP用例",
+        "en": "⚠️  When adding MVVS patterns, always add FP/TP cases to tests/test_mvvs_false_positive.py",
+    },
 })
 
 

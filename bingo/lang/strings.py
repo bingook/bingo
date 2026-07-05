@@ -1889,6 +1889,20 @@ _STRINGS.update({
                                   "zh": "v5.1.6: 修复watchdog仅kill bash但子curl保持stdout导致线程无限等待的bug(proc.kill→os.killpg)",
                                   "en": "v5.1.6: Fixed watchdog killing only bash while child curl kept stdout open causing thread to hang forever (proc.kill→os.killpg)"},
 
+    # ── v5.1.7: 스크립트 전처리 — curl 타임아웃 + while 카운터 자동 주입 ──
+    "script_sanitizer_curl_injected":  {
+        "ko": "🔧 [스크립트 전처리] curl -m 30 --connect-timeout 10 자동 주입됨 — 스크립트 자체가 30초 내 종료 보장",
+        "zh": "🔧 [脚本预处理] 自动注入 curl -m 30 --connect-timeout 10 — 脚本本身保证30秒内退出",
+        "en": "🔧 [Script pre-process] Auto-injected curl -m 30 --connect-timeout 10 — script self-terminates within 30s"},
+    "script_sanitizer_while_injected": {
+        "ko": "🔧 [스크립트 전처리] while true 루프에 _BINGO_CNT 카운터(최대 200회) 자동 삽입 — 무한 루프 방지",
+        "zh": "🔧 [脚本预处理] 在while true循环中自动插入_BINGO_CNT计数器(最多200次) — 防止无限循环",
+        "en": "🔧 [Script pre-process] Auto-inserted _BINGO_CNT counter (max 200) in while-true loop — prevents infinite loop"},
+    "script_sanitizer_root_cause":     {
+        "ko": "v5.1.7: 근본 해결 — 실행 전 스크립트 자체에 타임아웃 주입 (watchdog은 진짜 마지막 방어선으로 격하)",
+        "zh": "v5.1.7: 根本解决方案 — 执行前直接向脚本注入超时(watchdog降级为真正的最后防线)",
+        "en": "v5.1.7: Root cause fix — inject timeout into script before execution (watchdog is now a true last resort)"},
+
     # ── VBScript 에러 / VBScript Error Detection (v2.3.21+) ──────────
     "vbscript_not_sqli_title":  {"ko": "⚠️  VBScript 에러 감지 — 이 파라미터들은 SQL 인젝션이 아닙니다",
                                   "zh": "⚠️  检测到VBScript错误 — 这些参数不是SQL注入点",

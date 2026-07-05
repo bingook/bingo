@@ -6357,6 +6357,66 @@ class BingoTerminal:
                 )
             return [_hall_feedback]
 
+        # ── v5.1.7: 스크립트 전처리 — curl 타임아웃 자동 주입 ─────────────────────────
+        def _sanitize_script(src: str) -> str:
+            """bash 스크립트 실행 BEFORE 전처리:
+            1. 모든 `curl` 에 -m 30 --connect-timeout 10 자동 주입 (이미 있으면 건드리지 않음)
+            2. `while true` 루프에 _BINGO_CNT 카운터 삽입 (무한 루프 방지)
+
+            목적: 스크립트 자체가 자기 제한 시간 내 종료 → watchdog은 진짜 마지막 방어선.
+            """
+            import re as _re
+
+            lines_out: list[str] = []
+            _in_while_true = False
+
+            for _ln in src.split("\n"):
+                _stripped = _ln.rstrip()
+
+                # ── (1) curl 타임아웃 주입 ──────────────────────────
+                # 주석 줄 / echo 줄은 건드리지 않음
+                _is_comment = _stripped.lstrip().startswith("#")
+                _is_echo    = bool(_re.match(r'^\s*echo\b', _stripped))
+                if not _is_comment and not _is_echo and _re.search(r'\bcurl\b', _stripped):
+                    # -m / --max-time 없는 경우만 주입
+                    if "-m " not in _stripped and "--max-time" not in _stripped:
+                        _stripped = _re.sub(
+                            r'\bcurl\b',
+                            "curl -m 30 --connect-timeout 10",
+                            _stripped,
+                            count=1,
+                        )
+
+                # ── (2) while true 루프에 카운터 삽입 ──────────────
+                # `while true; do` 또는 `while true` 단독 줄 감지
+                _wt_match = _re.match(
+                    r'^(\s*)while\s+true\s*(?:;\s*do|$)', _stripped
+                )
+                if _wt_match and not _is_comment:
+                    _indent = _wt_match.group(1)
+                    # 카운터 초기화 줄을 while 앞에 삽입
+                    lines_out.append(f"{_indent}_BINGO_CNT=0")
+                    # while 줄 자체 유지 (세미콜론 형식으로 통일)
+                    _stripped = _re.sub(
+                        r'\bwhile\s+true\s*(?:;\s*do)?',
+                        "while true; do",
+                        _stripped,
+                        count=1,
+                    )
+                    lines_out.append(_stripped)
+                    # do 다음 줄에 카운터 증가+브레이크 삽입
+                    _ci = _indent + "  "
+                    lines_out.append(
+                        f"{_ci}_BINGO_CNT=$((_BINGO_CNT+1)); "
+                        f"[ \"$_BINGO_CNT\" -gt 200 ] && "
+                        f"{{ echo '[BINGO] loop safety limit reached'; break; }}"
+                    )
+                    continue
+
+                lines_out.append(_stripped)
+
+            return "\n".join(lines_out)
+
         # v3.2.91/94: 정상 코드 실행 경로 → 연속 카운터 리셋
         self._loop_block_consecutive = 0
         self._ilr_consecutive = 0   # v3.2.94: ILR 카운터도 리셋
@@ -6406,6 +6466,8 @@ class BingoTerminal:
                 )
                 _hallucination_msgs.append(_bash_hall)
                 continue
+            # ── v5.1.7: 스크립트 전처리 (curl 타임아웃 + while 카운터 자동 주입) ──
+            script = _sanitize_script(script)
             # ── multi-line .sh 파일로 저장 ──
             _sh_path = tmp_dir / f"agent_bash_{len(tasks)}.sh"
             _sh_path.write_text(script, encoding="utf-8")

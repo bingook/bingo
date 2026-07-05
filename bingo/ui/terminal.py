@@ -8699,6 +8699,22 @@ class BingoTerminal:
                 _warned = True
                 continue
 
+            # ── v4.9.4: Oracle 실패 감지 — 반복 문자 추출 ───────────────────────
+            # 패턴: ✅ USER(): 'aaaaaaaaaa' 또는 DATABASE(): 'bbbbbbbbbb'
+            # oracle 무효 시 동일 문자가 계속 'hit'으로 판정돼 반복됨
+            _oracle_fail = _pc_re.search(
+                r'[\'"]([a-zA-Z])\1{9,}[\'"]',   # 동일 문자 10개 이상 반복
+                line
+            )
+            if _oracle_fail:
+                corrected.append(
+                    line + "  ← ⚠️ [BINGO v4.9.4] ORACLE_FAILURE_DETECTED: "
+                    "추출값 동일 문자 반복 → Oracle 무효로 인한 오탐. "
+                    "이 추출 결과 신뢰 불가 — 즉시 중단하고 다른 기법으로 전환 필요."
+                )
+                _warned = True
+                continue
+
             # ── f5: SLEEP 판정 반전 버그 감지 ────────────────────────────────
             # 패턴: [SLEEP(N)] 耗时: X.XXs | 阈值: Y.Ys | ✅ 확인...
             # elapsed < threshold 인데 ✅로 표시된 경우 → ❌로 교정

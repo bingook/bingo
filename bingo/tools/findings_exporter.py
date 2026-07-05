@@ -95,12 +95,32 @@ _SSRF_PATTERNS = [
 ]
 
 _LFI_PATTERNS = [
-    re.compile(r'root:[^:]+:[^:]+:[^:]+:[^:]+:/\w'),           # /etc/passwd
+    re.compile(r'root:[^:]+:[^:]+:[^:]+:[^:]+:/\w'),           # /etc/passwd actual content
     re.compile(r'\[global\].*?\[database\]', re.I | re.DOTALL),
-    re.compile(r'(DB_HOST|DB_PASSWORD|DB_USER|SECRET_KEY|APP_KEY)\s*=', re.I),
-    re.compile(r'<?php\s', re.I),
-    re.compile(r'(mysql|pdo|database).*?password', re.I),
+    # env file — key=value pair required (not just a mention)
+    re.compile(r'(DB_HOST|DB_PASSWORD|DB_USER|SECRET_KEY|APP_KEY)\s*=\s*\S', re.I),
+    # v4.9.4: PHP source code — require actual code token, not just <?php mention
+    # <?php mention alone is too broad (matches PHP error pages, docs, source comments)
+    re.compile(r'<\?php\s+(?:function|class|namespace|echo|require|include|\$[a-zA-Z_])', re.I),
+    # mysql/apache config file — key=value required, not just "database ... password" text
+    re.compile(r'(?:^|\n)\s*password\s*=\s*\S{3,}', re.I),
 ]
+
+# v4.9.4: LFI 오탐 방지 패턴
+# php://filter 요청이 홈페이지로 리다이렉트된 경우 구별
+_LFI_REDIRECT_HTML = re.compile(
+    r'<(?:html|head|meta|body|title|div|span|script)[^>]*>',
+    re.I
+)
+_PHP_FILTER_IN_OUTPUT = re.compile(
+    r'php://filter/(?:convert\.base64-encode|read=[^/\s]+)/resource=',
+    re.I
+)
+# 실제 LFI 성공 시 나타나는 base64 인코딩 파일 내용 (100자 이상 연속 base64)
+_BASE64_FILE_BLOCK = re.compile(
+    r'(?:^|[\s\'"\n])([A-Za-z0-9+/]{100,}={0,2})(?:\s|\'|"|$)',
+    re.M
+)
 
 _RCE_PATTERNS = [
     re.compile(r'\buid=\d+\([^)]+\)\s+gid=\d+', re.I),        # id 명령어
@@ -128,6 +148,19 @@ _SQLI_CONTEXT_KEYWORDS = re.compile(
     re.I
 )
 
+# v4.9.4: Oracle 실패 오탐 억제 패턴
+# 추출된 값이 동일 문자의 반복이면 oracle이 실패한 것 (aaa..., bbb... 등)
+_ORACLE_FAILURE_REPEATED = re.compile(
+    r'[\'"]([a-zA-Z])\1{9,}[\'"]',   # 10개 이상 동일 문자: 'aaaaaaaaaa' 또는 'bbbbbbbbbb'
+)
+# oracle 무효 경고가 명시된 경우
+_ORACLE_FAILURE_WARNING = re.compile(
+    r'oracle\s*(?:可能)?(?:无效|invalid|unstable|不稳定|失效)'
+    r'|⚠️\s*oracle'
+    r'|oracle\s*might\s*be\s*invalid',
+    re.I
+)
+
 _AUTH_BYPASS_PATTERNS = [
     re.compile(r'(관리자|admin)\s*(패널|panel|dashboard|로그인|login)\s*(성공|접근|완료|OK)', re.I),
     re.compile(r'HTTP/\d.*?200.*?admin', re.I),
@@ -142,9 +175,30 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
 
     v4.8.0 수정: SQLi 컨텍스트(code_snippet에 EXTRACTVALUE/SLEEP 등) 포함 시
     CREDENTIAL보다 SQLi를 우선 분류 — 오분류 방지.
+
+    v4.9.4 수정:
+    - LFI 오탐 방지: php://filter 요청인데 HTML 응답(homepage redirect)이면 LFI 아님
+    - Oracle 실패 억제: 추출값이 'aaa...' 반복 문자이면 credential/sqli 오탐 억제
     """
-    # v4.8.0: SQLi 컨텍스트 사전 검사 — code_snippet 또는 output에 SQLi 키워드가 있으면
-    # credential 검사를 SQLi 이후로 순서 변경하여 오분류 방지
+    # ── v4.9.4: Oracle 실패 조기 감지 ─────────────────────────────────────────
+    # 추출된 값이 동일 문자 10개 이상 반복(aaa...) → oracle 실패로 인한 오탐 → 즉시 None
+    if _ORACLE_FAILURE_REPEATED.search(output):
+        return None
+
+    # ── v4.9.4: LFI php://filter 오탐 방지 ────────────────────────────────────
+    # php://filter 요청이 감지됐는데 응답에 실제 base64 파일 내용 없고 HTML 페이지면
+    # → 서버가 홈페이지/에러페이지로 리다이렉트한 것 → LFI 아님
+    _skip_lfi = False
+    if _PHP_FILTER_IN_OUTPUT.search(output) or _PHP_FILTER_IN_OUTPUT.search(code_snippet):
+        # php://filter 테스트가 있음 → 실제 base64 파일 내용 있는지 확인
+        _has_b64_content = bool(_BASE64_FILE_BLOCK.search(output))
+        _has_html_redirect = bool(_LFI_REDIRECT_HTML.search(output))
+        if _has_html_redirect and not _has_b64_content:
+            # HTML 페이지가 응답 + base64 없음 → 리다이렉트 오탐 → LFI 검사 건너뜀
+            _skip_lfi = True
+
+    # ── v4.8.0: SQLi 컨텍스트 사전 검사 ──────────────────────────────────────
+    # code_snippet 또는 output에 SQLi 키워드가 있으면 credential 검사를 SQLi 이후로
     _sqli_context = (
         _SQLI_CONTEXT_KEYWORDS.search(code_snippet)
         or _SQLI_CONTEXT_KEYWORDS.search(output)
@@ -173,6 +227,9 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
         ]
 
     for vtype, sev, patterns in checks:
+        # v4.9.4: LFI 오탐 방지 — php://filter+HTML redirect 조합이면 LFI 검사 건너뜀
+        if vtype == FINDING_LFI and _skip_lfi:
+            continue
         for pat in patterns:
             if pat.search(output):
                 return (vtype, sev)

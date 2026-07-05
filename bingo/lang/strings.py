@@ -6674,6 +6674,70 @@ _STRINGS.update({
             "WAF يحظر الحمولة وليس IP (تم تأكيد التحقق متعدد المسارات)"
         ),
     },
+
+    # ── v4.9.4: LFI 오탐 방지 (php://filter redirect 구별) ──────────────────
+    "lfi_redirect_fp_blocked": {
+        "ko": (
+            "⛔ [v4.9.4] LFI 오탐 차단: php://filter 응답이 HTML 페이지 → "
+            "홈페이지 리다이렉트 (실제 파일 내용 없음, base64 블록 미감지)"
+        ),
+        "zh": (
+            "⛔ [v4.9.4] LFI误报拦截: php://filter响应为HTML页面 → "
+            "主页重定向（无实际文件内容，未检测到base64块）"
+        ),
+        "en": (
+            "⛔ [v4.9.4] LFI false positive blocked: php://filter response is HTML page → "
+            "homepage redirect (no actual file content, no base64 block detected)"
+        ),
+        "ja": (
+            "⛔ [v4.9.4] LFI誤検知ブロック: php://filterレスポンスはHTMLページ → "
+            "ホームページリダイレクト（実ファイル内容なし、base64ブロック未検出）"
+        ),
+        "es": (
+            "⛔ [v4.9.4] Falso positivo LFI bloqueado: respuesta php://filter es página HTML → "
+            "redirección a página principal (sin contenido real de archivo, sin bloque base64)"
+        ),
+        "ru": (
+            "⛔ [v4.9.4] Ложное срабатывание LFI заблокировано: ответ php://filter — HTML страница → "
+            "перенаправление на главную (нет реального содержимого файла, нет base64 блока)"
+        ),
+        "ar": (
+            "⛔ [v4.9.4] إيقاف الإيجابي الكاذب LFI: استجابة php://filter هي صفحة HTML → "
+            "إعادة توجيه إلى الصفحة الرئيسية (لا محتوى ملف حقيقي، لا كتلة base64)"
+        ),
+    },
+
+    # ── v4.9.4: Oracle 실패 감지 (반복 문자 추출) ────────────────────────────
+    "oracle_failure_detected": {
+        "ko": (
+            "⛔ [v4.9.4] ORACLE_FAILURE: 추출값 동일 문자 반복 감지 → Oracle 무효 오탐. "
+            "이 추출 결과는 신뢰할 수 없음 — BINGO 찾기 억제됨"
+        ),
+        "zh": (
+            "⛔ [v4.9.4] ORACLE_FAILURE: 检测到重复字符提取 → Oracle无效误报. "
+            "此提取结果不可信 — BINGO发现已抑制"
+        ),
+        "en": (
+            "⛔ [v4.9.4] ORACLE_FAILURE: repeated same-char extraction detected → invalid oracle false positive. "
+            "Extraction result unreliable — BINGO finding suppressed"
+        ),
+        "ja": (
+            "⛔ [v4.9.4] ORACLE_FAILURE: 同一文字の繰り返し抽出を検出 → Oracleが無効な誤検知. "
+            "この抽出結果は信頼できない — BINGO検出を抑制"
+        ),
+        "es": (
+            "⛔ [v4.9.4] ORACLE_FAILURE: extracción de caracteres repetidos detectada → oráculo inválido falso positivo. "
+            "Resultado de extracción no confiable — hallazgo BINGO suprimido"
+        ),
+        "ru": (
+            "⛔ [v4.9.4] ORACLE_FAILURE: обнаружено повторное извлечение одинаковых символов → недействительный оракул. "
+            "Результат извлечения ненадёжен — обнаружение BINGO подавлено"
+        ),
+        "ar": (
+            "⛔ [v4.9.4] ORACLE_FAILURE: تم اكتشاف استخراج متكرر لنفس الأحرف → إيجابي كاذب لـ Oracle غير صالح. "
+            "نتيجة الاستخراج غير موثوقة — تم قمع اكتشاف BINGO"
+        ),
+    },
 })
 
 

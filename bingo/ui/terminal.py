@@ -2641,40 +2641,58 @@ class BingoTerminal:
     # 고객 피드백: "bingo가 취약점을 한 번만 확인하고 끝냄, 幻觉率(환각률)이 높음"
     # 해결: 코드 실행 결과에서 취약점 신호 감지 → 자동으로 다른 기법으로 2차 검증 강제
 
+    # ── MVVS 신호 패턴 — FP-ZERO v1.1 (v5.0.5) ─────────────────────────────────
+    # 오발(False Positive) 선제 제거 원칙:
+    #   [1] 단독 키워드 금지 → 반드시 취약점 컨텍스트 조합 필요
+    #   [2] 정상 스크립트 출력("Command output:", "shell:") 충돌 패턴 제거
+    #   [3] 일반 HTML/텍스트에서 흔히 나오는 단어 단독 사용 금지 ("internal", "root:", "syntax error")
     _MVVS_SIGNALS: "dict[str, list[tuple[str, str]]]" = {
         # (regex_pattern, description)
         "sqli": [
-            (r"sql\s*(?:syntax|error|inject)|syntax error|ORA-\d{4,}|mysql_fetch|pg_query",    "SQL error message"),
+            # FIX[1] "syntax error" 단독 → Python/JS traceback 오발 방지.
+            #        반드시 SQL 컨텍스트 필요: "sql syntax error" 또는 DB 전용 에러코드.
+            (r"sql\s*(?:syntax|error|inject)|ORA-\d{4,}|mysql_fetch|pg_query",                  "SQL error message"),
             (r"80040e14|80040e07|80040e01|ODBC.*SQL|OLE DB.*SQL",                                 "OLEDB/ODBC SQL error"),
             (r"(?:WAITFOR|pg_sleep|SLEEP)\s*\([^)]+\).*?(?:\d{2,}\.?\d*\s*sec|took\s*\d+s)",    "Time-based SQLi delay"),
             (r"size.*?(\d{4,}).*?vs.*?(\d{4,})|length.*differ|response.*differ",                 "Response size difference"),
             # v5.0.4 fix: 1=1 패턴이 출력 텍스트 "boardNo_AND1=1: 200 458" 등에 오발 방지.
-            # 실제 Boolean 차이 = 1=1 vs 1=2 응답 SIZE가 다를 때만. 같은 크기면 WAF 차단이므로 금지.
             (r"1=1.*?(?:size|byte|len|length|differ|!=|<>).*?1=2|boolean.{0,30}differ|true.*false.*differ", "Boolean-based difference"),
         ],
         "xss": [
             (r"<script[^>]*>\s*alert",                                                            "XSS script-alert reflected"),
             (r"onerror\s*=\s*(?:alert|eval|document|window|fetch|location)",                     "XSS event handler reflected"),
             (r"onload\s*=\s*(?:alert|eval|document|window|fetch|location)",                      "XSS onload reflected"),
-            # v5.0.4 fix: `javascript:` 단독은 오발. href="javascript:history.back()" 같은 일반 HTML 제외.
-            # 실제 XSS: javascript:alert / javascript:eval / javascript:document.cookie 등 위험 함수만.
+            # v5.0.4 fix: javascript: 단독 오발 방지. 위험 함수(alert/eval/document)만 허용.
             (r"javascript\s*:\s*(?:alert|eval|document\.|window\.|location\.href|fetch\s*\(|XMLHttp)", "XSS javascript: pseudo-protocol"),
-            (r"xss.*(?:confirm|alert|prompt)\s*\(",                                               "XSS execution confirmed"),
-            (r"payload.*reflect|reflect.*payload",                                                "Reflected payload"),
+            # FIX[2] "xss.*confirm" → bingo 자체 로그 "✅ XSS confirmed" 등에서 오발.
+            #        실제 실행 증거: alert()/confirm()/prompt() 리터럴이 HTTP 응답에 반사된 경우만.
+            (r"<(?:script|img|svg|body)[^>]*>.*?(?:alert|confirm|prompt)\s*\(\s*['\"]?[^)]{0,40}['\"]?\s*\)", "XSS execution — reflected payload"),
+            # FIX[3] "payload.*reflect" → 스크립트 로그("payload reflected: 200") 오발 방지.
+            #        curl 응답 본문 안에 주입 페이로드 문자열(<script>, onerror=)이 그대로 있을 때만.
+            (r"(?:<script|onerror|onload|onfocus|onmouseover)\b.{0,200}(?:<script|onerror|onload)", "Reflected HTML injection marker"),
         ],
         "idor": [
             (r"(?:user|member|account|customer)_?(?:id|no|seq)\s*[=:]\s*\d+.{0,100}(?:name|email|phone|address)", "IDOR — other user data"),
-            (r"(?:unauthorized|forbidden|403).{0,50}(?:bypass|200|success|ok\b)",                "Authorization bypass"),
+            # FIX[4] "403 ... 200" 패턴 → 같은 출력에 403(다른 요청) + 200(정상 요청)이 있으면 오발.
+            #        "bypass" 또는 "우회" 단어가 동시에 있을 때만 인정.
+            (r"(?:unauthorized|forbidden|403)\s.{0,80}(?:bypass|우회|bypassed|circumvent).{0,80}(?:200|success|ok\b)", "Authorization bypass confirmed"),
             (r"(?:admin|관리자|root).{0,40}(?:access|panel|dashboard).{0,40}(?:200|success|ok\b)", "Admin access"),
         ],
         "rce": [
-            (r"uid=\d+\(|root:|/etc/(?:passwd|shadow)|/bin/(?:sh|bash)",                         "RCE — system file output"),
-            (r"(?:cmd|command|shell).{0,30}(?:output|result|executed)",                           "Command execution output"),
+            # FIX[5] "root:" 단독 → DB 계정명("root:password"), 컨테이너 정보 등 오발.
+            #        /etc/passwd 형식(root:x:0:0)이거나 uid=\d+\( 형식일 때만 RCE 신호.
+            (r"uid=\d+\([^)]+\)|root:\w*:\d+:\d+|/etc/(?:passwd|shadow)",                       "RCE — system identity output"),
+            (r"/bin/(?:sh|bash)\s*[-#\$]|/bin/sh.*executed|shell.*\$\s*(?:id|whoami|uname)",     "RCE — shell prompt / output"),
+            # FIX[6] "command output" 단독 → 스크립트 자체 로그 오발 방지.
+            #        실제 OS 명령 실행 결과임을 나타내는 추가 증거(id/whoami/hostname 출력) 필요.
+            (r"(?:whoami|id\s*:?\s*root|hostname)\s*[=:]\s*\w+|os\.(?:popen|system)\s*\(\s*['\"]",  "RCE — command output with proof"),
             (r"Windows\s+NT.{0,20}(?:Microsoft|System32)|whoami.*?[a-zA-Z]+\\[a-zA-Z]+",         "RCE — Windows output"),
         ],
         "ssrf": [
             (r"169\.254\.169\.254|metadata\.google\.internal|100\.100\.100\.200",                "Cloud metadata access"),
-            (r"(?:internal|private|10\.|172\.1[6-9]\.|192\.168\.).{0,60}(?:200|open|connect)",   "Internal network access"),
+            # FIX[7] "internal" / "private" 단독 단어 → 일반 문장("internal server error") 오발.
+            #        사설 IP 범위(10./172.16-31./192.168.)가 직접 노출될 때만 SSRF 신호.
+            (r"(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}).{0,60}(?:200\b|open\b|connect)",  "SSRF — private IP accessed"),
         ],
         "path_traversal": [
             (r"root:x:0:0|daemon:x:|/etc/passwd.*root",                                          "Path traversal — /etc/passwd"),

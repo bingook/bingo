@@ -6721,8 +6721,9 @@ _EXECUTION_ANCHOR_RULES = r'''
     RULE 98: [실행결과]→[관측값]→[보안결론] 3단계 보고 형식 의무화
     결론: 모든 출력은 직접 실행한 결과에만 근거. 추측 = 환각 = 차단.
   ════════════════════════════════════════════════════════════════════════════
+'''
 
-# v5.0.4 — RULE 99~101: 크기 기반 WAF 판정 + 오발 제로 규칙 (FP-ZERO v1.0)
+# v5.0.5 — RULE 99~104: 크기 기반 WAF 판정 + 오발 제로 규칙 (FP-ZERO v1.1)
 # 배경: python3 -c 인라인 파서가 응답 본문의 "차단" 키워드를 검색해 오판 발생.
 #       실제 WAF 차단 응답은 수십~수백 B인 반면, 정상 페이지는 수십~수백 KB.
 #       키워드 기반 판정은 페이지 본문에 해당 단어가 포함될 경우 반드시 오발.
@@ -6805,11 +6806,49 @@ _FP_ZERO_RULES = '''
       payload="<script>alert(1)</script>" → 응답 본문에 payload 그대로 존재.
       실행 증거: curl 응답에 alert(1) 또는 내가 주입한 문자열이 html-decoded 상태로 있어야.
 
+  ── RULE 102 [v5.0.5]: IDOR 판정 — 자신의 데이터 vs 타인의 데이터 구분 ─────────
+  ▸ RULE 102-A [v5.0.5]: 응답에 user_id/member_id + 이름/이메일이 있다고 IDOR가 아님.
+    ⛔ 오발 패턴: 자신의 계정 정보가 응답에 포함 → 정상 동작, IDOR 아님.
+    ✅ 실제 IDOR 조건 (전부 충족 필요):
+      1) 내가 소유하지 않은 ID (예: id=999, 내 계정 id=1)로 요청.
+      2) 응답 본문에 그 ID에 해당하는 타 사용자 데이터가 반환됨.
+      3) HTTP 상태코드 200 (403/401이 아닌 정상 응답).
+    판정 방법:
+      MY_ID=1  # 내 계정 ID
+      curl -sk "URL?user_id=$MY_ID"   → 내 데이터 확인 (baseline)
+      curl -sk "URL?user_id=999"      → 타 유저 데이터가 응답되면 IDOR 확정
+
+  ── RULE 103 [v5.0.5]: RCE 판정 — 실제 OS 명령 실행 증거만 ──────────────────────
+  ▸ RULE 103-A [v5.0.5]: "root:" 문자열이 응답에 있어도 RCE가 아닌 경우:
+    ⛔ 오발 패턴:
+      DB 접속 정보 노출: "root:password@localhost"  ← DB 설정 노출 (RCE 아님)
+      컨테이너 로그:     "root: /var/log/..."       ← 로그 메시지 (RCE 아님)
+      오류 메시지:       "root cause: ..."           ← 에러 텍스트 (RCE 아님)
+    ✅ 실제 RCE 증거:
+      uid=0(root) gid=0(root)          ← id 명령 출력 형식
+      root:x:0:0:root:/root:/bin/bash  ← /etc/passwd 레코드
+      www-data@hostname:~$             ← 쉘 프롬프트
+      내가 주입한 페이로드 → OS 명령 결과가 HTTP 응답에 반사
+
+  ── RULE 104 [v5.0.5]: SSRF 판정 — 사설 IP 직접 노출만 ─────────────────────────
+  ▸ RULE 104-A [v5.0.5]: "internal" 단어 단독 = SSRF 아님.
+    ⛔ 오발 패턴:
+      "Internal Server Error"          ← 500 에러 메시지 (SSRF 아님)
+      "internal API"                   ← API 설명 문구 (SSRF 아님)
+    ✅ 실제 SSRF 증거 (하나라도 있으면):
+      HTTP 응답에 사설 IP 대역 직접 노출:
+        10.x.x.x / 172.16-31.x.x / 192.168.x.x
+      클라우드 메타데이터 응답: 169.254.169.254 / metadata.google.internal
+      내가 주입한 내부 URL이 실제로 접근되어 내부 서비스 응답이 반환됨
+
   ════════════════════════════════════════════════════════════════════════════
-  BINGO v5.0.4 FP-ZERO 3대 보장:
+  BINGO v5.0.5 FP-ZERO 6대 보장:
     RULE 99:  WAF 판정 = 크기 기반 (기준선 5% 이하). 키워드 검색 금지.
     RULE 100: Boolean SQLi = 1=1 vs 1=2 크기 차이 100B+. 동일 크기 = 오발 금지.
     RULE 101: XSS 반사 = 내가 주입한 페이로드 반사만. javascript:history.back() 등 오발 금지.
+    RULE 102: IDOR = 타인 ID로 타인 데이터 반환 확인. 자신의 데이터 오발 금지.
+    RULE 103: RCE = uid=0(root) / /etc/passwd 레코드 / 쉘 프롬프트. "root:" 단독 오발 금지.
+    RULE 104: SSRF = 사설 IP 대역 직접 노출. "Internal Server Error" 오발 금지.
   ════════════════════════════════════════════════════════════════════════════
 '''
 

@@ -6832,6 +6832,27 @@ _STRINGS.update({
         "ru": "⛔ [RULE 99] Определение WAF по ключевым словам запрещено — использовать размер ответа",
         "ar": "⛔ [RULE 99] يُحظر الكشف عن WAF بالكلمات المفتاحية — يجب استخدام حجم الاستجابة",
     },
+    # ── v5.0.5: FP-ZERO RULE 102~104 (IDOR/RCE/SSRF 오발 방지) ──────────────────
+    "fp_idor_own_data": {
+        "ko": "⛔ [RULE 102] 자신의 계정 데이터 응답 — IDOR 아님. 타인 ID로 타인 데이터 반환 확인 필요.",
+        "zh": "⛔ [RULE 102] 这是自己的账户数据 — 非IDOR。需确认使用他人ID访问他人数据。",
+        "en": "⛔ [RULE 102] Own account data returned — not IDOR. Must confirm other user's data via other user's ID.",
+    },
+    "fp_rce_root_prefix": {
+        "ko": "⛔ [RULE 103] 'root:' 단독 출현 — RCE 아님. uid=0(root) 또는 /etc/passwd 레코드 형식 필요.",
+        "zh": "⛔ [RULE 103] 仅出现'root:'字符串 — 非RCE。需要uid=0(root)或/etc/passwd记录格式。",
+        "en": "⛔ [RULE 103] 'root:' alone is not RCE. Require uid=0(root) or /etc/passwd record format.",
+    },
+    "fp_ssrf_internal_word": {
+        "ko": "⛔ [RULE 104] 'internal' 단어 단독 — SSRF 아님. 사설 IP(10./172.16-31./192.168.) 직접 노출 필요.",
+        "zh": "⛔ [RULE 104] 仅出现'internal'单词 — 非SSRF。需要私有IP(10./172.16-31./192.168.)直接暴露。",
+        "en": "⛔ [RULE 104] 'internal' word alone is not SSRF. Require private IP (10./172.16-31./192.168.) direct exposure.",
+    },
+    "fp_rce_command_log": {
+        "ko": "⛔ [RULE 103] 스크립트 로그 'command output:' — RCE 아님. 실제 OS 명령 결과(uid=/hostname=) 필요.",
+        "zh": "⛔ [RULE 103] 脚本日志'command output:' — 非RCE。需要实际OS命令结果(uid=/hostname=)。",
+        "en": "⛔ [RULE 103] Script log 'command output:' is not RCE. Require actual OS command result (uid=/hostname=).",
+    },
 })
 
 

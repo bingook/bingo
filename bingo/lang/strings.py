@@ -6785,6 +6785,53 @@ _STRINGS.update({
         "ru": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: обнаружен 'import requests' в bash-блоке → requests запрещён, нужно использовать curl",
         "ar": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: تم اكتشاف 'import requests' في كتلة bash → requests محظور، يجب استخدام curl",
     },
+
+    # ── v5.0.4: FP-ZERO — 크기 기반 WAF 판정 + 오발 제로 i18n 키 ─────────
+    "fp_waf_size_block": {
+        "ko": "⛔ WAF 차단 감지 — 응답 크기 {size}B (기준 {baseline}B의 {pct:.0f}%)",
+        "zh": "⛔ 检测到WAF拦截 — 响应大小 {size}B（基准 {baseline}B 的 {pct:.0f}%）",
+        "en": "⛔ WAF block detected — response size {size}B ({pct:.0f}% of baseline {baseline}B)",
+        "ja": "⛔ WAFブロック検出 — レスポンスサイズ {size}B（基準 {baseline}B の {pct:.0f}%）",
+        "es": "⛔ Bloqueo WAF detectado — tamaño de respuesta {size}B ({pct:.0f}% del baseline {baseline}B)",
+        "ru": "⛔ Обнаружена блокировка WAF — размер ответа {size}B ({pct:.0f}% от baseline {baseline}B)",
+        "ar": "⛔ تم اكتشاف حظر WAF — حجم الاستجابة {size}B ({pct:.0f}% من الأساس {baseline}B)",
+    },
+    "fp_waf_size_normal": {
+        "ko": "✅ 정상 응답 — 크기 {size}B (기준 {baseline}B, WAF 차단 아님)",
+        "zh": "✅ 正常响应 — 大小 {size}B（基准 {baseline}B，未被WAF拦截）",
+        "en": "✅ Normal response — size {size}B (baseline {baseline}B, not WAF blocked)",
+        "ja": "✅ 正常レスポンス — サイズ {size}B（基準 {baseline}B、WAFブロックなし）",
+        "es": "✅ Respuesta normal — tamaño {size}B (baseline {baseline}B, no bloqueado por WAF)",
+        "ru": "✅ Нормальный ответ — размер {size}B (baseline {baseline}B, WAF не блокирует)",
+        "ar": "✅ استجابة طبيعية — الحجم {size}B (الأساس {baseline}B، لا يوجد حظر WAF)",
+    },
+    "fp_boolean_no_diff": {
+        "ko": "❌ Boolean SQLi 오발 억제 — 1=1({t}B) ≈ 1=2({f}B) 크기 동일, WAF 차단 중일 가능성",
+        "zh": "❌ Boolean SQLi误判抑制 — 1=1({t}B) ≈ 1=2({f}B) 大小相同，可能被WAF拦截",
+        "en": "❌ Boolean SQLi FP suppressed — 1=1({t}B) ≈ 1=2({f}B) same size, likely WAF blocked",
+        "ja": "❌ Boolean SQLi誤検知抑制 — 1=1({t}B) ≈ 1=2({f}B) サイズ同じ、WAFブロック可能性",
+        "es": "❌ FP Boolean SQLi suprimido — 1=1({t}B) ≈ 1=2({f}B) mismo tamaño, posible bloqueo WAF",
+        "ru": "❌ Подавлен ложный позитив Boolean SQLi — 1=1({t}B) ≈ 1=2({f}B) одинаковый размер",
+        "ar": "❌ تم تجاهل الإيجابية الكاذبة Boolean SQLi — 1=1({t}B) ≈ 1=2({f}B) نفس الحجم",
+    },
+    "fp_xss_javascript_href": {
+        "ko": "❌ XSS 오발 억제 — javascript: href는 일반 HTML 링크, XSS 아님",
+        "zh": "❌ XSS误判抑制 — javascript: href 是普通HTML链接，不是XSS",
+        "en": "❌ XSS FP suppressed — javascript: href is normal HTML link, not XSS",
+        "ja": "❌ XSS誤検知抑制 — javascript: href は通常のHTMLリンク、XSSではない",
+        "es": "❌ FP XSS suprimido — javascript: href es enlace HTML normal, no XSS",
+        "ru": "❌ Подавлен ложный позитив XSS — javascript: href является обычной HTML-ссылкой",
+        "ar": "❌ تم تجاهل الإيجابية الكاذبة XSS — javascript: href هو رابط HTML عادي",
+    },
+    "fp_zero_rule99_violated": {
+        "ko": "⛔ [RULE 99] WAF 판정에 키워드 검색 사용 금지 — 크기 기반으로 판정할 것",
+        "zh": "⛔ [RULE 99] WAF判定禁止使用关键词搜索 — 必须基于响应大小判定",
+        "en": "⛔ [RULE 99] Keyword-based WAF detection forbidden — must use response size",
+        "ja": "⛔ [RULE 99] WAF判定にキーワード検索禁止 — レスポンスサイズで判定すること",
+        "es": "⛔ [RULE 99] Detección WAF por palabras clave prohibida — usar tamaño de respuesta",
+        "ru": "⛔ [RULE 99] Определение WAF по ключевым словам запрещено — использовать размер ответа",
+        "ar": "⛔ [RULE 99] يُحظر الكشف عن WAF بالكلمات المفتاحية — يجب استخدام حجم الاستجابة",
+    },
 })
 
 

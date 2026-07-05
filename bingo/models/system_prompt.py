@@ -6721,6 +6721,96 @@ _EXECUTION_ANCHOR_RULES = r'''
     RULE 98: [실행결과]→[관측값]→[보안결론] 3단계 보고 형식 의무화
     결론: 모든 출력은 직접 실행한 결과에만 근거. 추측 = 환각 = 차단.
   ════════════════════════════════════════════════════════════════════════════
+
+# v5.0.4 — RULE 99~101: 크기 기반 WAF 판정 + 오발 제로 규칙 (FP-ZERO v1.0)
+# 배경: python3 -c 인라인 파서가 응답 본문의 "차단" 키워드를 검색해 오판 발생.
+#       실제 WAF 차단 응답은 수십~수백 B인 반면, 정상 페이지는 수십~수백 KB.
+#       키워드 기반 판정은 페이지 본문에 해당 단어가 포함될 경우 반드시 오발.
+_FP_ZERO_RULES = '''
+# ── FP-ZERO v1.0 — 크기 기반 WAF 판정 + 오발 제로 ───────────────────────────
+
+  ── RULE 99 [v5.0.4]: WAF 판정 — 크기 우선, 키워드 금지 ──────────────────────
+  ▸ RULE 99-A [v5.0.4]: WAF 차단 응답은 크기(byte)로 판정한다. 키워드 금지.
+
+    [WAF 차단 판정 기준 — 크기 우선 원칙]
+
+    STEP 1 — 기준선(baseline) 크기 먼저 기록:
+      BASELINE=$(curl -sk -m 10 -o /dev/null -w '%{size_download}' "URL_NORMAL")
+      → 이 값이 기준. 보통 10만~50만 B.
+
+    STEP 2 — 주입 응답 크기 비교:
+      INJECTED=$(curl -sk -m 10 -o /dev/null -w '%{size_download}' "URL_WITH_PAYLOAD")
+      RATIO=$(echo "$INJECTED $BASELINE" | python3 -c "
+        import sys; i,b=[int(x) for x in sys.stdin.read().split()]
+        # 기준선의 5% 이하이면 WAF 차단으로 판정
+        print('WAF_BLOCK' if b>0 and i<b*0.05 else 'NORMAL')
+      ")
+
+    STEP 3 — 판정:
+      if [ "$RATIO" = "WAF_BLOCK" ]; then
+        echo "⛔ WAF 차단 — 크기 ${INJECTED}B (기준 ${BASELINE}B의 5% 이하)"
+      else
+        echo "✅ 정상 응답 — 크기 ${INJECTED}B (기준 ${BASELINE}B)"
+      fi
+
+    ⛔ 절대 금지 패턴 (오발 원인):
+      # 키워드("차단","blocked","forbidden","deny") HTML 검색 → 금지
+      # 이유: 정상 페이지 HTML에 해당 단어가 포함되어 반드시 오발 발생
+      response=$(curl ...); echo "$response" | grep -i '차단\|blocked' && echo "WAF"
+      # → 위 방식은 FALSE POSITIVE 100%. 절대 사용 금지.
+
+    ✅ 올바른 패턴:
+      SIZE=$(curl -sk -m 10 -o /dev/null -w '%{size_download}' "URL")
+      python3 -c "
+        size=$SIZE; base=BASELINE_VALUE
+        if base > 0 and size < base * 0.05:
+            print(f'⛔ WAF 차단 {size}B (baseline {base}B)')
+        else:
+            print(f'✅ 정상 {size}B')
+      "
+
+  ▸ RULE 99-B [v5.0.4]: WAF 판정 시 응답 본문 단어 검색 금지 목록:
+    금지 키워드 (HTML 본문 내 단어): 차단, blocked, forbidden, 거부, deny, 접근불가,
+                                      Access Denied, Not Allowed, 403, Blocked by
+    → 위 단어가 HTML에 포함되는 것은 정상 페이지일 수 있음.
+    → 크기 비율로만 판정 (기준선의 5% 이하 = WAF 차단).
+
+  ── RULE 100 [v5.0.4]: Boolean SQLi 판정 — 크기 차이 필수 ─────────────────────
+  ▸ RULE 100-A [v5.0.4]: Boolean-based SQLi는 1=1 vs 1=2 응답 크기 차이로 판정.
+
+    [올바른 Boolean SQLi 판정]
+    SIZE_TRUE=$(curl -sk -m 10 -o /dev/null -w '%{size_download}' "URL?id=1 AND 1=1--")
+    SIZE_FALSE=$(curl -sk -m 10 -o /dev/null -w '%{size_download}' "URL?id=1 AND 1=2--")
+    python3 -c "
+      t, f = $SIZE_TRUE, $SIZE_FALSE
+      diff = abs(t - f)
+      # 크기 차이가 100B 이상이고 10% 이상 차이 나면 Boolean 차이 있음
+      if diff >= 100 and (diff / max(t, f, 1)) >= 0.10:
+          print(f'✅ Boolean 차이 확인! 1=1:{t}B vs 1=2:{f}B (차이:{diff}B)')
+      else:
+          print(f'❌ Boolean 차이 없음. 1=1:{t}B ≈ 1=2:{f}B — WAF 차단이거나 취약 없음')
+    "
+
+    ⛔ 금지: 1=1 응답과 1=2 응답이 동일 크기(예: 둘 다 458B) → Boolean-based SQLi 없음.
+             WAF가 두 요청 모두 차단 중. Boolean 판정 금지, WAF 우회 먼저 시도.
+
+  ── RULE 101 [v5.0.4]: XSS 반사 판정 — 실제 JS 실행 컨텍스트만 ─────────────────
+  ▸ RULE 101-A [v5.0.4]: `javascript:` 문자열이 응답에 있어도 XSS가 아님.
+    아래 맥락은 XSS가 아니므로 보고 금지:
+      href="javascript:history.back()"   ← 일반 버튼 동작
+      href="javascript:void(0)"          ← 클릭 비활성화
+      onclick="javascript:..."            ← 인라인 이벤트 (인젝션 아님, 원래 코드)
+
+    ✅ 실제 XSS 반사: 내가 주입한 페이로드가 그대로 실행 컨텍스트에 반사될 때만.
+      payload="<script>alert(1)</script>" → 응답 본문에 payload 그대로 존재.
+      실행 증거: curl 응답에 alert(1) 또는 내가 주입한 문자열이 html-decoded 상태로 있어야.
+
+  ════════════════════════════════════════════════════════════════════════════
+  BINGO v5.0.4 FP-ZERO 3대 보장:
+    RULE 99:  WAF 판정 = 크기 기반 (기준선 5% 이하). 키워드 검색 금지.
+    RULE 100: Boolean SQLi = 1=1 vs 1=2 크기 차이 100B+. 동일 크기 = 오발 금지.
+    RULE 101: XSS 반사 = 내가 주입한 페이로드 반사만. javascript:history.back() 등 오발 금지.
+  ════════════════════════════════════════════════════════════════════════════
 '''
 
 _SYSTEM_PROMPT_ADDON = (
@@ -6734,4 +6824,5 @@ _SYSTEM_PROMPT_ADDON = (
     + _ZERO_HAL_RULES            # v4.1.0
     + _AUTO_PROXY_RULES          # v4.2.0
     + _EXECUTION_ANCHOR_RULES    # v4.3.0
+    + _FP_ZERO_RULES             # v5.0.4
 )

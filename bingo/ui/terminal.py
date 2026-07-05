@@ -2648,10 +2648,17 @@ class BingoTerminal:
             (r"80040e14|80040e07|80040e01|ODBC.*SQL|OLE DB.*SQL",                                 "OLEDB/ODBC SQL error"),
             (r"(?:WAITFOR|pg_sleep|SLEEP)\s*\([^)]+\).*?(?:\d{2,}\.?\d*\s*sec|took\s*\d+s)",    "Time-based SQLi delay"),
             (r"size.*?(\d{4,}).*?vs.*?(\d{4,})|length.*differ|response.*differ",                 "Response size difference"),
-            (r"1=1.{0,30}200|boolean.{0,30}differ|true.*false.*differ",                          "Boolean-based difference"),
+            # v5.0.4 fix: 1=1 패턴이 출력 텍스트 "boardNo_AND1=1: 200 458" 등에 오발 방지.
+            # 실제 Boolean 차이 = 1=1 vs 1=2 응답 SIZE가 다를 때만. 같은 크기면 WAF 차단이므로 금지.
+            (r"1=1.*?(?:size|byte|len|length|differ|!=|<>).*?1=2|boolean.{0,30}differ|true.*false.*differ", "Boolean-based difference"),
         ],
         "xss": [
-            (r"<script[^>]*>\s*alert|onerror\s*=|onload\s*=|javascript\s*:",                     "XSS payload reflected"),
+            (r"<script[^>]*>\s*alert",                                                            "XSS script-alert reflected"),
+            (r"onerror\s*=\s*(?:alert|eval|document|window|fetch|location)",                     "XSS event handler reflected"),
+            (r"onload\s*=\s*(?:alert|eval|document|window|fetch|location)",                      "XSS onload reflected"),
+            # v5.0.4 fix: `javascript:` 단독은 오발. href="javascript:history.back()" 같은 일반 HTML 제외.
+            # 실제 XSS: javascript:alert / javascript:eval / javascript:document.cookie 등 위험 함수만.
+            (r"javascript\s*:\s*(?:alert|eval|document\.|window\.|location\.href|fetch\s*\(|XMLHttp)", "XSS javascript: pseudo-protocol"),
             (r"xss.*(?:confirm|alert|prompt)\s*\(",                                               "XSS execution confirmed"),
             (r"payload.*reflect|reflect.*payload",                                                "Reflected payload"),
         ],

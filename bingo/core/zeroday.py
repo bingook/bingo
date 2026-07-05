@@ -528,7 +528,7 @@ class ZeroDayHunter:
         lines.append("2. CVE가 있는 경우 공개 PoC 익스플로잇 로직을 Python으로 재현하라.")
         lines.append("3. Exploit 힌트대로 페이로드를 생성하고 즉시 실행하라.")
         lines.append("4. 결과를 보고하고 다음 단계 공격으로 이어가라.")
-        lines.append("5. 모든 코드는 ```python 블록 안에 작성하라.")
+        lines.append("5. 모든 코드는 ```bash 블록 안에 curl 명령으로 작성하라. Python requests 사용 금지.")
 
         return "\n".join(lines)
 

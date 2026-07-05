@@ -286,24 +286,21 @@ class ClaimAnchorValidator:
                 f"[⛔ 증거 미앵커 클레임 차단 — Zero Hallucination v5]\n\n"
                 f"다음 취약점 주장에 실제 HTTP 실행 증거가 없습니다:\n{claims_str}\n\n"
                 f"■ 실제 HTTP 요청 없이 취약점을 '발견/확인'하는 것은 환각입니다.\n"
-                f"■ 먼저 실행 후 주장하세요:\n"
-                f"  r = requests.get('{target}', verify=False)\n"
-                f"  print(r.status_code, r.text[:300])\n"
+                f"■ 먼저 bash+curl로 실행 후 주장하세요:\n"
+                f"  curl -sk -m 10 '{target}' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:300])\"\n"
                 f"■ 실행 결과 없는 VERIFIED/CONFIRMED 클레임 금지."
             ),
             "zh": (
                 f"[⛔ 无证据声明拦截 — Zero Hallucination v5]\n\n"
                 f"以下漏洞声明缺乏真实HTTP执行证据:\n{claims_str}\n\n"
-                f"■ 没有执行HTTP请求就声明漏洞是幻觉。\n"
-                f"  r = requests.get('{target}', verify=False)\n"
-                f"  print(r.status_code, r.text[:300])"
+                f"■ 没有执行HTTP请求就声明漏洞是幻觉。请用bash+curl执行:\n"
+                f"  curl -sk -m 10 '{target}' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:300])\""
             ),
             "en": (
                 f"[⛔ UNANCHORED CLAIM BLOCKED — Zero Hallucination v5]\n\n"
                 f"Vulnerability claims without real HTTP execution evidence:\n{claims_str}\n\n"
                 f"■ Claiming vulnerabilities without executing HTTP requests is HALLUCINATION.\n"
-                f"  r = requests.get('{target}', verify=False)\n"
-                f"  print(r.status_code, r.text[:300])\n"
+                f"  Use bash+curl: curl -sk -m 10 '{target}' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:300])\"\n"
                 f"■ NO VERIFIED/CONFIRMED claims without evidence."
             ),
         }

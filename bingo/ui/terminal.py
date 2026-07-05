@@ -2401,13 +2401,13 @@ class BingoTerminal:
                 "[BINGO RUNTIME INTERCEPTED HALLUCINATION]\n"
                 f"REASON: {_reason_str}\n\n"
                 "RULE: You CANNOT claim vulnerability found / attack success / DB access\n"
-                "      WITHOUT a Python code block that produced HTTP evidence.\n"
-                "MANDATORY: Write REAL Python requests.get/post code that PROVES the claim.\n"
+                "      WITHOUT a bash block with curl that produced HTTP evidence.\n"
+                "MANDATORY: Write REAL bash+curl code that PROVES the claim.\n"
                 "DO NOT return JSON plans. DO NOT invent credentials or results.\n"
                 "DO NOT say 'my environment is limited to text'.\n"
-                "EVERY conclusion MUST come from actual HTTP response output.\n\n"
+                "EVERY conclusion MUST come from actual curl HTTP response output.\n\n"
                 f"Original task: {original_text[:200]}\n\n"
-                "Now write Python code that actually executes and proves the finding:"
+                "Now write a bash block with curl that actually executes and proves the finding:"
             )
             self.history.append(Message(role="user", content=_force_msg))
             _retry = self._stream_response(

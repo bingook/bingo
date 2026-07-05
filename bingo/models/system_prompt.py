@@ -666,11 +666,11 @@ VPN / IP environment (from NETWORK_ENV section):
 
 ⚡ 0DAY HUNTER AUTO MODE (v3.5.19):
   When [ZERODAY_CANDIDATES_DETECTED] is injected into the conversation:
-  1. MANDATORY: Immediately write Python code to verify and exploit the candidates.
+  1. MANDATORY: Immediately write a ```bash block with curl to verify and exploit the candidates.
   2. Priority order: HIGH confidence first → MEDIUM → LOW.
   3. If CVE is listed:
      - Look up the CVE's attack vector and reproduce the PoC logic.
-     - Do NOT just describe — write and EXECUTE the actual exploit code.
+     - Do NOT just describe — write and EXECUTE the actual bash+curl exploit code.
   4. If exploit_class is "rce": attempt command injection, rev-shell, or upload webshell.
   5. If exploit_class is "lfi": attempt /etc/passwd, php://filter base64, and log poisoning.
      php://filter VALIDATION (v4.9.4 — CRITICAL):

@@ -6565,32 +6565,32 @@ _STRINGS.update({
     # ── v4.9.1: 텍스트 레벨 환각 스캐너 (Gap 1 수정) ─────────────────
     "text_hallucination_detected": {
         "ko": (
-            "⛔ [TEXT_HALLUCINATION v4.9.1] 코드 실행 없이 텍스트로 결과 서술 감지\n"
-            "  ```python 코드 블록을 작성하고 실제 print() 출력만 보고하세요."
+            "⛔ [TEXT_HALLUCINATION v4.9.7] 코드 실행 없이 텍스트로 결과 서술 감지\n"
+            "  ```bash 블록으로 curl 명령을 작성하고 실제 HTTP 응답만 보고하세요."
         ),
         "zh": (
-            "⛔ [TEXT_HALLUCINATION v4.9.1] 检测到未执行代码即通过文字描述结果\n"
-            "  请编写 ```python 代码块，只报告实际 print() 输出."
+            "⛔ [TEXT_HALLUCINATION v4.9.7] 检测到未执行代码即通过文字描述结果\n"
+            "  请编写 ```bash 代码块使用curl，只报告实际HTTP响应输出."
         ),
         "en": (
-            "⛔ [TEXT_HALLUCINATION v4.9.1] Claimed result in text without code execution detected\n"
-            "  Write a ```python code block and only report actual print() output."
+            "⛔ [TEXT_HALLUCINATION v4.9.7] Claimed result in text without code execution detected\n"
+            "  Write a ```bash block with curl and only report actual HTTP response output."
         ),
         "ja": (
-            "⛔ [TEXT_HALLUCINATION v4.9.1] コード実行なしでテキストに結果を記述することを検出\n"
-            "  ```python コードブロックを書いて、実際の print() 出力のみを報告してください."
+            "⛔ [TEXT_HALLUCINATION v4.9.7] コード実行なしでテキストに結果を記述することを検出\n"
+            "  ```bash ブロックでcurlを使い、実際のHTTPレスポンスのみを報告してください."
         ),
         "ru": (
-            "⛔ [TEXT_HALLUCINATION v4.9.1] Обнаружено описание результатов без выполнения кода\n"
-            "  Напишите блок ```python и сообщайте только реальный вывод print()."
+            "⛔ [TEXT_HALLUCINATION v4.9.7] Обнаружено описание результатов без выполнения кода\n"
+            "  Напишите блок ```bash с curl и сообщайте только реальный HTTP-ответ."
         ),
         "ar": (
-            "⛔ [TEXT_HALLUCINATION v4.9.1] تم اكتشاف وصف النتائج في النص بدون تنفيذ كود\n"
-            "  اكتب كتلة ```python وأبلغ فقط عن مخرجات print() الفعلية."
+            "⛔ [TEXT_HALLUCINATION v4.9.7] تم اكتشاف وصف النتائج في النص بدون تنفيذ كود\n"
+            "  اكتب كتلة ```bash مع curl وأبلغ فقط عن استجابة HTTP الفعلية."
         ),
         "es": (
-            "⛔ [TEXT_HALLUCINATION v4.9.1] Resultado reclamado en texto sin ejecución de código\n"
-            "  Escriba un bloque ```python y reporte solo la salida real de print()."
+            "⛔ [TEXT_HALLUCINATION v4.9.7] Resultado reclamado en texto sin ejecución de código\n"
+            "  Escriba un bloque ```bash con curl y reporte solo la respuesta HTTP real."
         ),
     },
     # ── v4.9.1: Pattern 6 확장 (Gap 4 수정) ──────────────────────────

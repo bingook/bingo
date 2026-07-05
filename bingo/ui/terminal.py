@@ -4972,11 +4972,32 @@ class BingoTerminal:
         tasks: list[dict] = []
 
         # ── 환각 감지 헬퍼 ──────────────────────────────────────────────
-        def _detect_hallucination(raw_code: str) -> str | None:
+        def _detect_hallucination(raw_code: str, _block_type: str = "python") -> str | None:
             """JSON-in-code-block 또는 실행 불가 가짜 코드 감지.
+            _block_type: "python" 또는 "bash"
             문제가 없으면 None, 있으면 경고 메시지 반환."""
             import re as _hall_re
             s = raw_code.strip()
+
+            # ── v4.9.5: bash 블록 전용 환각 감지 ─────────────────────────────
+            if _block_type == "bash":
+                # bash 패턴 B1: curl/wget 없는 bash 블록 (echo만 있는 등)
+                _has_net_cmd = any(cmd in s for cmd in
+                    ["curl ", "wget ", "nmap ", "ffuf ", "httpx ", "nuclei "])
+                if not _has_net_cmd:
+                    return (
+                        "BASH_NO_CURL: bash block has no network command (curl/wget/nmap). "
+                        "Use: curl -s -m 10 -k \"https://TARGET/path\" | python3 -c \"import sys; d=sys.stdin.buffer.read(); print(d[:1000])\""
+                    )
+                # bash 패턴 B2: placeholder URL
+                if _hall_re.search(r'(?:TARGET_URL|YOUR_URL|PLACEHOLDER|example\.com|TARGET_HOST)', s, _hall_re.IGNORECASE):
+                    return (
+                        "BASH_PLACEHOLDER_URL: bash block contains placeholder URL. "
+                        "Replace with actual target URL."
+                    )
+                return None  # bash 블록은 위 검사만 통과하면 OK
+
+            # ── Python 블록 환각 감지 (기존 로직 유지) ────────────────────────
 
             # 패턴 1: 순수 JSON dict (import/def/print/requests 없음)
             if s.startswith("{") and s.endswith("}"):
@@ -4986,7 +5007,7 @@ class BingoTerminal:
                     return (
                         "JSON_DICT_NOT_CODE: Your code block contains only a JSON "
                         "dictionary, not Python. JSON cannot make HTTP requests. "
-                        "Rewrite with: import requests; r=requests.get(url); print(r.status_code)"
+                        "Rewrite as bash: curl -s \"https://TARGET/\" | python3 -c \"import sys; print(sys.stdin.buffer.read()[:500])\""
                     )
 
             # 패턴 2: 3줄 미만 & 네트워크 호출 없음 & import 있음 → stub
@@ -4996,8 +5017,8 @@ class BingoTerminal:
                  "urlopen", "urlretrieve", "pymssql", "pyodbc"])
             if len(_lines) <= 3 and not _has_network and "import" in s:
                 return (
-                    "STUB_CODE_NO_HTTP: Code has imports but NO HTTP calls "
-                    "(requests.get/post). Add real HTTP requests."
+                    "STUB_CODE_NO_HTTP: Code has imports but NO HTTP calls. "
+                    "Use bash block: curl -s \"https://TARGET/\" | python3 -c \"...\""
                 )
 
             # 패턴 3: print("...") 만 있고 실제 네트워크/로직 없음
@@ -6141,17 +6162,24 @@ class BingoTerminal:
                     f"{_fb_now}"
                 )
             else:
+                # v4.9.5: bash/curl 방식으로 재작성 유도
                 _hall_feedback = (
                     "[⛔ ALL CODE BLOCKS REJECTED — HALLUCINATION DETECTED]\n"
                     + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
-                    + "\n\nYou MUST rewrite ALL code blocks with REAL Python HTTP requests:\n"
-                    "  import requests\n"
-                    "  url = 'https://TARGET/endpoint'\n"
-                    "  r = requests.get(url, timeout=10, verify=False, "
-                    "headers={'User-Agent': 'Mozilla/5.0'})\n"
-                    "  print(f'[STATUS] {r.status_code}  {url}')\n"
-                    "  print(r.text[:500])\n"
-                    "NO JSON. NO dict literals. Write actual HTTP code NOW."
+                    + "\n\nYou MUST rewrite as a bash block with real curl:\n\n"
+                    "```bash\n"
+                    "curl -s -m 10 -k \\\n"
+                    "  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)' \\\n"
+                    "  'https://TARGET/path' \\\n"
+                    "  | /usr/bin/python3 -c \"\n"
+                    "import sys\n"
+                    "d=sys.stdin.buffer.read()\n"
+                    "t=d.decode('utf-8',errors='replace')\n"
+                    "print(f'[STATUS] {len(d)}B')\n"
+                    "print(t[:1500])\n"
+                    "\"\n"
+                    "```\n"
+                    "NO Python blocks. NO JSON. Use bash+curl ONLY."
                 )
             return [_hall_feedback]
 
@@ -6160,6 +6188,7 @@ class BingoTerminal:
         self._ilr_consecutive = 0   # v3.2.94: ILR 카운터도 리셋
         self._ilr_override = False  # v3.2.94: override 잔류 플래그 클리어
 
+        # ── v4.9.5: bash 블록 → .sh 파일 저장 후 실행 (multi-line curl+python3 지원) ──
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
         _BASH_ALLOWED = {
             "curl", "nmap", "nikto", "ffuf", "gobuster", "nuclei",
@@ -6167,23 +6196,52 @@ class BingoTerminal:
             "python3", "python",
         }
         history_text = " ".join(m.content for m in self.history if m.role == "user")
-        for block in bash_blocks:
-            import shlex
-            joined = block.strip().replace("\\\n", " ")
-            lines = [l.strip() for l in joined.splitlines()
-                     if l.strip() and not l.strip().startswith("#")]
-            if not lines:
+        import shlex as _shlex_bash
+        for _bash_i, block in enumerate(bash_blocks):
+            script = block.strip()
+            if not script:
                 continue
-            cmd_line = " ".join(lines)
+            # 첫 번째 실행 명령 추출 (파이프 앞 부분, 주석 제외)
+            first_real_lines = [
+                l.strip() for l in script.splitlines()
+                if l.strip() and not l.strip().startswith("#")
+            ]
+            if not first_real_lines:
+                continue
+            # 파이프 / && 앞 첫 명령어만 추출하여 allowlist 검사
+            _first_cmd_raw = first_real_lines[0].split("|")[0].split("&&")[0].strip()
+            _first_cmd_raw = _first_cmd_raw.replace("\\\n", " ").rstrip("\\").strip()
             try:
-                parts = shlex.split(cmd_line)
+                _first_parts = _shlex_bash.split(_first_cmd_raw)
             except Exception:
+                _first_parts = _first_cmd_raw.split()
+            if not _first_parts:
                 continue
-            if not parts or parts[0].split("/")[-1] not in _BASH_ALLOWED:
+            _bin_name = _first_parts[0].split("/")[-1]
+            if _bin_name not in _BASH_ALLOWED:
                 continue
-            if f"REAL EXECUTION: {cmd_line[:40]}" in history_text:
+            # 중복 실행 방지
+            _dedup_key = script[:60]
+            if f"REAL EXECUTION: {_dedup_key[:40]}" in history_text:
                 continue
-            tasks.append({"type": "bash", "cmd": cmd_line})
+            # ── bash 환각 감지 ──
+            _bash_hall = _detect_hallucination(script, _block_type="bash")
+            if _bash_hall:
+                self.console.print(
+                    f"[{THEME['error']}]⛔ [BASH HALLUCINATION #{_bash_i+1}] {_bash_hall[:120]}[/]"
+                )
+                _hallucination_msgs.append(_bash_hall)
+                continue
+            # ── multi-line .sh 파일로 저장 ──
+            _sh_path = tmp_dir / f"agent_bash_{len(tasks)}.sh"
+            _sh_path.write_text(script, encoding="utf-8")
+            _sh_path.chmod(0o755)
+            tasks.append({
+                "type": "bash",
+                "path": str(_sh_path),
+                "cmd": first_real_lines[0][:80],   # 표시용 1줄 요약
+                "preview": script[:120],
+            })
 
         if not tasks:
             return []
@@ -6235,16 +6293,17 @@ class BingoTerminal:
                             f"(no output, exit={proc.returncode})"
                         )
 
-                else:  # bash
+                else:  # bash — v4.9.5: .sh 파일로 실행 (multi-line curl+python3 지원)
                     with _lock:
                         self.console.print(
                             f"\n[{THEME['secondary']}]▶ {self.s['exec_running']}:[/] "
                             f"[{THEME['dim']}]{task['cmd'][:100]}[/]"
                         )
+                    _bash_cmd = ["bash", task["path"]] if task.get("path") else task["cmd"]
                     proc = subprocess.Popen(
-                        task["cmd"], shell=True,
+                        _bash_cmd,
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                        start_new_session=True,  # v3.2.99: WSL/VM Ctrl+C 격리
+                        start_new_session=True,
                     )
                     stdout, stderr = proc.communicate()
                     output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
@@ -6284,12 +6343,13 @@ class BingoTerminal:
                         env=env, bufsize=0,
                         start_new_session=True,  # v3.2.99: WSL/VM Ctrl+C 격리
                     )
-                else:
+                else:  # bash — v4.9.5: .sh 파일로 실행 (multi-line 유지)
+                    _bash_exec = ["bash", task["path"]] if task.get("path") else task["cmd"]
                     p = subprocess.Popen(
-                        task["cmd"], shell=True,
+                        _bash_exec,
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                         env=env, bufsize=0,
-                        start_new_session=True,  # v3.2.99: WSL/VM Ctrl+C 격리
+                        start_new_session=True,
                     )
                 with proc_list_lock:
                     proc_registry.append(p)

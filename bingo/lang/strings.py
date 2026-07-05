@@ -6738,6 +6738,34 @@ _STRINGS.update({
             "نتيجة الاستخراج غير موثوقة — تم قمع اكتشاف BINGO"
         ),
     },
+    # ── v4.9.5: bash+curl 전환 관련 키 ─────────────────────────────────────────
+    "bash_exec_start": {
+        "ko": "🔧 bash 실행",
+        "zh": "🔧 bash 执行",
+        "en": "🔧 bash exec",
+        "ja": "🔧 bash 実行",
+        "es": "🔧 ejecución bash",
+        "ru": "🔧 выполнение bash",
+        "ar": "🔧 تنفيذ bash",
+    },
+    "bash_hallucination_blocked": {
+        "ko": "⛔ [v4.9.5] BASH_HALLUCINATION: curl/네트워크 명령 없는 bash 블록 차단. bash+curl 방식으로 재작성 요청",
+        "zh": "⛔ [v4.9.5] BASH_HALLUCINATION: 无curl/网络命令的bash块已拦截. 请求重写为bash+curl方式",
+        "en": "⛔ [v4.9.5] BASH_HALLUCINATION: bash block with no curl/network command blocked. Rewrite as bash+curl requested",
+        "ja": "⛔ [v4.9.5] BASH_HALLUCINATION: curl/ネットワークコマンドのないbashブロックをブロック. bash+curlで書き直しを要求",
+        "es": "⛔ [v4.9.5] BASH_HALLUCINATION: bloque bash sin curl/comando de red bloqueado. Reescritura como bash+curl solicitada",
+        "ru": "⛔ [v4.9.5] BASH_HALLUCINATION: bash-блок без curl/сетевых команд заблокирован. Запрошена перезапись в формат bash+curl",
+        "ar": "⛔ [v4.9.5] BASH_HALLUCINATION: تم حجب كتلة bash بدون curl/أوامر شبكية. مطلوب إعادة الكتابة بصيغة bash+curl",
+    },
+    "bash_placeholder_blocked": {
+        "ko": "⛔ [v4.9.5] BASH_PLACEHOLDER: TARGET_URL/example.com 플레이스홀더 감지 → 실제 대상 URL로 재작성 필요",
+        "zh": "⛔ [v4.9.5] BASH_PLACEHOLDER: 检测到TARGET_URL/example.com占位符 → 需要用真实目标URL重写",
+        "en": "⛔ [v4.9.5] BASH_PLACEHOLDER: TARGET_URL/example.com placeholder detected → must rewrite with real target URL",
+        "ja": "⛔ [v4.9.5] BASH_PLACEHOLDER: TARGET_URL/example.comプレースホルダーを検出 → 実際のターゲットURLで書き直しが必要",
+        "es": "⛔ [v4.9.5] BASH_PLACEHOLDER: placeholder TARGET_URL/example.com detectado → debe reescribirse con URL de destino real",
+        "ru": "⛔ [v4.9.5] BASH_PLACEHOLDER: обнаружен заполнитель TARGET_URL/example.com → необходимо переписать с реальным целевым URL",
+        "ar": "⛔ [v4.9.5] BASH_PLACEHOLDER: تم اكتشاف placeholder TARGET_URL/example.com → يجب إعادة الكتابة بعنوان URL الحقيقي للهدف",
+    },
 })
 
 

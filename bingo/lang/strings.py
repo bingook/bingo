@@ -1931,6 +1931,16 @@ _STRINGS.update({
         "zh": "curl通过X-Forwarded-For/X-Real-IP等header绕过时 → sqlmap必须用-H选项添加相同header",
         "en": "If curl bypassed WAF via X-Forwarded-For/X-Real-IP headers → MUST add same header to sqlmap with -H option"},
 
+    # ── subprocess+time 차단 / Rich markup crash fix (v5.1.9+) ──────
+    "bash_subprocess_timing": {
+        "ko": "⛔ [BASH SUBPROCESS TIMING] bash 블록에서 subprocess+time 패턴 차단 — date +%s + curl 방식 사용",
+        "zh": "⛔ [BASH SUBPROCESS TIMING] 拦截bash块中的subprocess+time模式 — 请使用date +%s + curl方式",
+        "en": "⛔ [BASH SUBPROCESS TIMING] subprocess+time pattern inside bash is FORBIDDEN — use date +%s + curl instead"},
+    "rich_markup_crash_fix": {
+        "ko": "v5.1.9: [/dim] 태그 불일치 → rich MarkupError 크래시 수정 (try/except 방어)",
+        "zh": "v5.1.9: [/dim]标签不匹配 → 修复rich MarkupError崩溃（try/except防护）",
+        "en": "v5.1.9: [/dim] tag mismatch → fixed rich MarkupError crash (try/except guard)"},
+
     # ── VBScript 에러 / VBScript Error Detection (v2.3.21+) ──────────
     "vbscript_not_sqli_title":  {"ko": "⚠️  VBScript 에러 감지 — 이 파라미터들은 SQL 인젝션이 아닙니다",
                                   "zh": "⚠️  检测到VBScript错误 — 这些参数不是SQL注入点",

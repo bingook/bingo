@@ -3261,7 +3261,14 @@ class BingoTerminal:
                     # 스트리밍 중: 코드 블록 접기 + 내부 키워드 제거
                     collapsed = self._collapse_code_blocks(visible)
                     collapsed = self._filter_agent_noise(collapsed)
-                    buf = Text.from_markup(collapsed) if "[dim]" in collapsed else Text(collapsed, style="white")
+                    # v5.1.9: [/dim] 태그 불일치로 MarkupError 크래시 방어
+                    if "[dim]" in collapsed:
+                        try:
+                            buf = Text.from_markup(collapsed)
+                        except Exception:
+                            buf = Text(collapsed, style="white")
+                    else:
+                        buf = Text(collapsed, style="white")
                     live.update(buf)
 
         # ★ Live 컨텍스트 종료 후 중단 메시지 출력 (Live가 화면을 지우기 전에 출력하면 사라짐)
@@ -5218,6 +5225,20 @@ class BingoTerminal:
                     return (
                         "BASH_CONTAINS_REQUESTS: 'import requests' inside bash block is FORBIDDEN. "
                         "Do NOT use Python requests library. Use: curl ... | /usr/bin/python3 -c \"import sys; ...\""
+                    )
+                # bash 패턴 B0c: subprocess+time 을 이용한 Python 타이밍 측정 차단 (v5.1.9)
+                # python3 -c "import subprocess, time" → HTTP 요청을 subprocess로 래핑하는 패턴
+                # 올바른 방법: START=$(date +%s); curl ...; END=$(date +%s)
+                _has_subprocess_time = (
+                    "import subprocess" in _s_nc and
+                    ("import time" in _s_nc or "time.time" in _s_nc or "time.sleep" in _s_nc) and
+                    "import sys" not in _s_nc  # sys 파이프 처리는 허용
+                )
+                if _has_subprocess_time:
+                    return (
+                        "BASH_SUBPROCESS_TIMING: python3 subprocess+time inside bash is FORBIDDEN. "
+                        "Use bash timing: START=$(date +%s); curl -sk -m 30 URL; END=$(date +%s); ELAPSED=$((END-START)). "
+                        "NEVER wrap curl in python3 subprocess for timing measurement."
                     )
                 # bash 패턴 B1: curl/wget 없는 bash 블록 (echo만 있는 등)
                 _has_net_cmd = any(cmd in s for cmd in

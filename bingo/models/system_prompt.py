@@ -187,12 +187,25 @@ urllib.request / requests / httpx 등 Python 네트워크 라이브러리 사용
   THRESHOLD=$(( 5000 * 80 / 100 ))
   [ $ELAPSED -ge $THRESHOLD ] && echo "SLEEP=TRUE" || echo "SLEEP=FALSE"
 
-❌ FORBIDDEN — Python timing inside bash:
-  python3 -c "import urllib.request; ..."  ← BANNED (BASH_NO_CURL 차단)
-  python3 << 'EOF' import requests ...     ← BANNED (BASH_HEREDOC_PYTHON 차단)
+❌ FORBIDDEN — Python timing inside bash (ALL of these are BANNED):
+  python3 -c "import subprocess, time; ..."          ← BANNED (BASH_SUBPROCESS_TIMING 차단)
+  python3 -c "import subprocess, time, urllib.parse" ← BANNED (BASH_SUBPROCESS_TIMING 차단)
+  python3 -c "import urllib.request; ..."            ← BANNED (BASH_NO_CURL 차단)
+  python3 << 'EOF' import requests ...               ← BANNED (BASH_HEREDOC_PYTHON 차단)
 
-NOTE: `date +%s%N` = nanoseconds. Divide by 1000000 → milliseconds.
-      macOS에서 %N 미지원 시: `gdate +%s%N` (brew install coreutils) 사용.
+WHY subprocess is banned:
+  subprocess.run(['curl', ...]) inside python3 -c is the same as writing a Python block.
+  date +%s already measures milliseconds. There is NO reason to use subprocess+time.
+
+CORRECT timing for ALL cases (MySQL SLEEP, Oracle DBMS_LOCK, etc.):
+  START=$(date +%s)
+  curl -sk -m 30 -G "URL" --data-urlencode "param=PAYLOAD" -o /dev/null
+  END=$(date +%s)
+  echo "$((END - START))s elapsed"
+
+NOTE: `date +%s%N` = nanoseconds (Linux). `date +%s` = seconds (macOS/Linux both).
+      For millisecond precision on macOS: python3 -c "import time; print(int(time.time()*1000))"
+      But ONLY for timestamp printing, NOT for wrapping curl calls.
 """
 
 # ════════════════════════════════════════════════════════════════

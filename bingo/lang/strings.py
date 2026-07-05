@@ -6917,6 +6917,33 @@ _STRINGS.update({
         "zh": "⚠️  目标记忆中混入了其他域名URL — 已自动清理",
         "en": "⚠️  Target memory contained foreign domain URLs — auto-cleaned",
     },
+
+    # ── v5.1.1: FP-ZERO v1.2 — WAF 차단 / XSS · SQLi 오발 방지 ─────────────────
+    "fp_zero_v12_waf_blocked": {
+        "ko": "🛡️ WAF 차단 응답 감지 — 취약점 불인정 (RULE 106)",
+        "zh": "🛡️ 检测到WAF拦截响应 — 不认定为漏洞（RULE 106）",
+        "en": "🛡️ WAF block response detected — not treated as vulnerability (RULE 106)",
+    },
+    "fp_zero_v12_xss_src_skip": {
+        "ko": "ℹ️ 외부 스크립트 태그(src=) 감지 — XSS 증거 아님 (오발 방지)",
+        "zh": "ℹ️ 检测到外部脚本标签(src=) — 非XSS证据（防止误判）",
+        "en": "ℹ️ External script tag (src=) detected — not XSS evidence (FP guard)",
+    },
+    "fp_zero_v12_sqli_echo_skip": {
+        "ko": "ℹ️ bash 에코 메시지에서 SQLi 키워드 감지 — 서버 응답 아님 (오발 방지)",
+        "zh": "ℹ️ 在bash回显消息中检测到SQLi关键字 — 非服务器响应（防止误判）",
+        "en": "ℹ️ SQLi keyword in bash echo — not server response (FP guard)",
+    },
+    "fp_zero_v12_desc": {
+        "ko": "FP-ZERO v1.2: WAF차단·XSS src·SQLi echo 오발 방지 규칙 (RULE 106)",
+        "zh": "FP-ZERO v1.2: WAF拦截·XSS src·SQLi echo 误判防护规则（RULE 106）",
+        "en": "FP-ZERO v1.2: WAF block / XSS src / SQLi echo false-positive guards (RULE 106)",
+    },
+    "regression_fp_v12_pass": {
+        "ko": "✅ 회귀 테스트 v5.1.1 — FP-ZERO v1.2 패스 (신규 케이스 포함)",
+        "zh": "✅ 回归测试 v5.1.1 — FP-ZERO v1.2 通过（含新增案例）",
+        "en": "✅ Regression v5.1.1 — FP-ZERO v1.2 all passed (new cases included)",
+    },
 })
 
 

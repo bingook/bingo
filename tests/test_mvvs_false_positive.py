@@ -160,6 +160,41 @@ FP_CASES = [
         "Script located at /bin/startup.sh",
         id="pt-fp-bin-script",
     ),
+
+    # ── v5.1.1 신규 FP — 기록.md BINGO-0001/0002/0003 재현 케이스 ──────────────
+    # BINGO-0001: 정상 HTML 페이지의 외부 스크립트 2개 (XSS 오발)
+    pytest.param(
+        '<script src="/static/jquery.min.js"></script>\n'
+        '<script src="/static/app.bundle.js"></script>',
+        id="xss-fp-external-script-src-two-tags",
+    ),
+    # BINGO-0001 변형: src= 있는 스크립트는 단독으로도 안전
+    pytest.param(
+        '<html><head><script src="https://cdn.example.com/lib.js"></script>'
+        '<script src="/js/main.js"></script></head></html>',
+        id="xss-fp-script-src-only-no-inline",
+    ),
+    # BINGO-0002/0003: bash echo 메시지 안에 EXTRACTVALUE 키워드 (SQLi 오발)
+    pytest.param(
+        "[双重编码 EXTRACTVALUE 458B] HTTP 403 Forbidden — WAF blocked",
+        id="sqli-fp-extractvalue-in-bash-echo",
+    ),
+    # BINGO-0002/0003 변형: UPDATEXML 도 동일
+    pytest.param(
+        "[UPDATEXML payload test] size=201B status=403",
+        id="sqli-fp-updatexml-in-bash-echo",
+    ),
+    # WAF 차단 응답 전체 (SQLi/XSS 패턴 없음)
+    pytest.param(
+        "HTTP/1.1 403 Forbidden\nContent-Length: 512\n\n"
+        "Your request has been blocked by security policy.",
+        id="waf-fp-blocked-response-english",
+    ),
+    pytest.param(
+        "HTTP/1.1 403 Forbidden\nContent-Length: 400\n\n"
+        "요청이 차단되었습니다. 보안 정책 위반.",
+        id="waf-fp-blocked-response-korean",
+    ),
 ]
 
 
@@ -445,4 +480,113 @@ def test_bingo_signal_invalid_rejected(terminal_instance, signal_text):
         f"   신호: {signal_text[:120]}\n"
         f"   잘못 탐지됨: {found}\n"
         f"   → _validate_bingo_signal 증거 임계값 확인 필요"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v5.1.1 신규: FindingsExporter 패턴 직접 테스트 (기록.md BINGO-0001/0002/0003)
+# ═══════════════════════════════════════════════════════════════════════════════
+def _get_exporter():
+    """FindingsExporter._detect_vuln_type 직접 반환"""
+    from bingo.tools.findings_exporter import _detect_vuln_type, _WAF_BLOCK_EN, _WAF_BLOCK_KO
+    return _detect_vuln_type, _WAF_BLOCK_EN, _WAF_BLOCK_KO
+
+
+EXPORTER_FP_CASES = [
+    # BINGO-0001: <script src=...> 외부 스크립트 태그 (XSS 오발)
+    pytest.param(
+        '<script src="/static/jquery.min.js"></script>\n'
+        '<script src="/static/app.bundle.js"></script>',
+        id="exporter-xss-fp-script-src-two",
+    ),
+    # BINGO-0001 변형
+    pytest.param(
+        '<html><head><script src="https://cdn.example.com/lib.js"></script></head></html>',
+        id="exporter-xss-fp-script-src-cdn",
+    ),
+    # BINGO-0002: bash echo에 "EXTRACTVALUE" 키워드 (WAF 차단 상태)
+    pytest.param(
+        "[双重编码 EXTRACTVALUE] HTTP 403 Forbidden — WAF blocked. size=458B",
+        id="exporter-sqli-fp-extractvalue-echo",
+    ),
+    # BINGO-0003: UPDATEXML 배너
+    pytest.param(
+        "[UPDATEXML test payload] 403 blocked. size=201B",
+        id="exporter-sqli-fp-updatexml-echo",
+    ),
+    # WAF 차단 응답 (영어)
+    pytest.param(
+        "HTTP/1.1 403\nContent-Length: 500\n\nYour request has been blocked by security policy.",
+        id="exporter-waf-fp-blocked-en",
+    ),
+    # WAF 차단 응답 (한국어)
+    pytest.param(
+        "HTTP/1.1 403\nContent-Length: 400\n\n요청이 차단되었습니다. 보안 정책 위반.",
+        id="exporter-waf-fp-blocked-ko",
+    ),
+    # onerror= 이벤트 핸들러 속성 이름만 있음 (함수 없음)
+    pytest.param(
+        '<img src="photo.jpg" onerror="this.src=\'default.jpg\'">',
+        id="exporter-xss-fp-onerror-no-exec-func",
+    ),
+]
+
+EXPORTER_TP_CASES = [
+    # 실제 SQLi: extractvalue(1,concat(...)) — 괄호 포함
+    pytest.param(
+        "XPATH syntax error: '~5.7.38-log'\nextractvalue(1,concat(0x7e,@@version))",
+        "sqli",
+        id="exporter-sqli-tp-extractvalue-parens",
+    ),
+    # 실제 XSS: 인라인 스크립트 (src= 없음)
+    pytest.param(
+        '<script>alert(document.cookie)</script>',
+        "xss",
+        id="exporter-xss-tp-inline-alert-cookie",
+    ),
+    # 실제 XSS: onerror + alert 조합
+    pytest.param(
+        '<img src=x onerror="alert(1)">',
+        "xss",
+        id="exporter-xss-tp-onerror-alert",
+    ),
+]
+
+
+@pytest.mark.parametrize("text", EXPORTER_FP_CASES)
+def test_exporter_no_false_positive(text):
+    """FindingsExporter가 무해한 출력에서 취약점을 오발하지 않아야 함"""
+    _detect_vuln_type, _WAF_BLOCK_EN, _WAF_BLOCK_KO = _get_exporter()
+
+    # WAF 차단 조기 종료 테스트
+    is_waf = (len(text) <= 2000) and (
+        _WAF_BLOCK_EN.search(text) or _WAF_BLOCK_KO.search(text)
+    )
+    if is_waf:
+        return  # WAF 차단 = 조기 종료, 취약점 아님 → PASS
+
+    result = _detect_vuln_type(text, code_snippet=text)
+    assert result is None, (
+        f"\n🚨 EXPORTER FALSE POSITIVE!\n"
+        f"   텍스트: {repr(text[:120])}\n"
+        f"   잘못 탐지됨: {result}\n"
+        f"   → bingo/tools/findings_exporter.py 패턴 수정 필요"
+    )
+
+
+@pytest.mark.parametrize("text,expected_vuln", EXPORTER_TP_CASES)
+def test_exporter_true_positive_detected(text, expected_vuln):
+    """FindingsExporter가 실제 취약점 출력에서 올바르게 탐지해야 함"""
+    _detect_vuln_type, _, _ = _get_exporter()
+    result = _detect_vuln_type(text, code_snippet=text)
+    assert result is not None, (
+        f"\n❌ EXPORTER TRUE POSITIVE MISSED!\n"
+        f"   기대: {expected_vuln}\n"
+        f"   텍스트: {repr(text[:120])}\n"
+        f"   → findings_exporter.py 패턴 강화 필요"
+    )
+    assert result[0] == expected_vuln, (
+        f"\n❌ EXPORTER WRONG TYPE!\n"
+        f"   기대: {expected_vuln}\n"
+        f"   실제: {result[0]}"
     )

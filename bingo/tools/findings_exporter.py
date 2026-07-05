@@ -70,13 +70,21 @@ _SQLI_PATTERNS = [
     re.compile(r'\b(admin|administrator|root|sa|dba|superuser)\b.*?(password|passwd|pwd|hash)', re.I),
     # 구체적 추출 패턴
     re.compile(r'(table_name|column_name|table_schema)\s*[=:]\s*[\'"]?\w', re.I),
-    re.compile(r'extractvalue|updatexml|group_concat.*from', re.I),
+    # v5.1.1 FIX: "extractvalue" 단어 단독 매칭 → bash echo 문("EXTRACTVALUE 458B")에서 오발.
+    # 반드시 SQL 함수 호출 형태(괄호 포함)여야 실제 주입 시도로 인정.
+    # 이전: re.compile(r'extractvalue|updatexml|group_concat.*from', re.I)  ← echo 오발
+    re.compile(r'extractvalue\s*\(|updatexml\s*\(|group_concat\s*\([^)]*\)\s+from\s', re.I),
 ]
 
 _XSS_PATTERNS = [
-    re.compile(r'<script[^>]*>.*?</script>', re.I | re.DOTALL),
+    # v5.1.1 FIX: <script src="x.js"></script> 는 정상 외부 스크립트 — XSS 아님.
+    # src= 속성 없는 인라인 스크립트(내용 있음)만 매칭.
+    # 이전: re.compile(r'<script[^>]*>.*?</script>', re.I | re.DOTALL)  ← src 태그 오발
+    re.compile(r'<script\b(?![^>]*\bsrc\s*=)[^>]*>[^<\s]', re.I),
     re.compile(r'alert\s*\(\s*["\']?[^)]{0,50}["\']?\s*\)', re.I),
-    re.compile(r'onerror\s*=|onload\s*=|onfocus\s*=', re.I),
+    # v5.1.1 FIX: onerror= 단독(이벤트 핸들러 속성 이름만)도 오발.
+    # 실행 함수(alert/eval/document/fetch 등)가 포함된 경우만 매칭.
+    re.compile(r'(?:onerror|onload|onfocus|onmouseover)\s*=\s*["\']?\s*(?:alert|eval|document\.|window\.|fetch\s*\(|location\.)', re.I),
     re.compile(r'\bXSS\b.*?(confirmed|실행|성공|detected)', re.I),
     re.compile(r'window\.__BINGO_XSS__\s*=\s*1', re.I),
 ]
@@ -148,6 +156,18 @@ _SQLI_CONTEXT_KEYWORDS = re.compile(
     re.I
 )
 
+# v5.1.1: WAF 차단 응답 조기 종료 패턴
+# 소형 응답(≤ 2KB) + 차단 메시지 → 취약점 없음, 모든 패턴 검사 건너뜀
+# 방어 원리: WAF가 요청을 차단했다는 것은 페이로드가 서버에 도달 못했음 → 취약점 증명 불가
+_WAF_BLOCK_KO = re.compile(
+    r'(?:요청이\s*차단|차단\s*되었습니다|보안\s*정책\s*위반|접근.*차단|차단.*접근)',
+    re.I,
+)
+_WAF_BLOCK_EN = re.compile(
+    r'(?:request\s+(?:has\s+been\s+)?blocked|access\s+denied\s+by|blocked\s+by\s+(?:waf|security|policy))',
+    re.I,
+)
+
 # v4.9.4: Oracle 실패 오탐 억제 패턴
 # 추출된 값이 동일 문자의 반복이면 oracle이 실패한 것 (aaa..., bbb... 등)
 _ORACLE_FAILURE_REPEATED = re.compile(
@@ -180,6 +200,14 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
     - LFI 오탐 방지: php://filter 요청인데 HTML 응답(homepage redirect)이면 LFI 아님
     - Oracle 실패 억제: 추출값이 'aaa...' 반복 문자이면 credential/sqli 오탐 억제
     """
+    # ── v5.1.1: WAF 차단 응답 조기 종료 ─────────────────────────────────────────
+    # 소형 응답(≤ 2000B) + 한국어/영어 차단 메시지 → 취약점 감지 건너뜀.
+    # WAF 차단 = 페이로드 미도달, 취약점 증명 불가. 오발 방지.
+    if len(output) <= 2000 and (
+        _WAF_BLOCK_KO.search(output) or _WAF_BLOCK_EN.search(output)
+    ):
+        return None
+
     # ── v4.9.4: Oracle 실패 조기 감지 ─────────────────────────────────────────
     # 추출된 값이 동일 문자 10개 이상 반복(aaa...) → oracle 실패로 인한 오탐 → 즉시 None
     if _ORACLE_FAILURE_REPEATED.search(output):

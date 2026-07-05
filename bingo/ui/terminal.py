@@ -2669,9 +2669,13 @@ class BingoTerminal:
             # FIX[2] "xss.*confirm" → bingo 자체 로그 "✅ XSS confirmed" 등에서 오발.
             #        실제 실행 증거: alert()/confirm()/prompt() 리터럴이 HTTP 응답에 반사된 경우만.
             (r"<(?:script|img|svg|body)[^>]*>.*?(?:alert|confirm|prompt)\s*\(\s*['\"]?[^)]{0,40}['\"]?\s*\)", "XSS execution — reflected payload"),
-            # FIX[3] "payload.*reflect" → 스크립트 로그("payload reflected: 200") 오발 방지.
-            #        curl 응답 본문 안에 주입 페이로드 문자열(<script>, onerror=)이 그대로 있을 때만.
-            (r"(?:<script|onerror|onload|onfocus|onmouseover)\b.{0,200}(?:<script|onerror|onload)", "Reflected HTML injection marker"),
+            # FIX[3] v5.1.1: 이전 패턴 r"(?:<script|onerror|...)\b.{0,200}(?:<script|..." 은
+            #        정상 HTML 페이지에 <script src="a.js"></script><script src="b.js"> 처럼
+            #        외부 스크립트 2개만 있어도 200자 내에서 매칭 → 오발.
+            # 수정: src= 없는 인라인 <script>에 이벤트 핸들러(onerror= 등)가 결합된 경우만 매칭.
+            #      또는 이벤트 핸들러 속성에 실행 함수(alert/eval/document. 등)가 있는 경우.
+            (r"<script\b(?![^>]*\bsrc\s*=)[^>]*>[^<\s].{0,100}(?:onerror|onload|onfocus|alert|eval)", "Reflected inline-script injection"),
+            (r"(?:onerror|onload|onfocus|onmouseover)\s*=\s*['\"]?\s*(?:alert|eval|document\.|window\.|fetch\s*\(|location\.)", "Reflected event-handler injection"),
         ],
         "idor": [
             (r"(?:user|member|account|customer)_?(?:id|no|seq)\s*[=:]\s*\d+.{0,100}(?:name|email|phone|address)", "IDOR — other user data"),

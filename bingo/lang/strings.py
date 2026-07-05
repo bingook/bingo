@@ -4009,9 +4009,9 @@ _STRINGS.update({
         "en": "⛔ Simulation blocked → requesting real HTTP code...",
     },
     "sim_code_blocked": {
-        "ko": "⛔ [코드 내 모의실행 감지] simulated_response / 模拟 변수 사용 금지 — 실제 requests.get() 사용 필수",
-        "zh": "⛔ [检测到代码内模拟执行] 禁止使用simulated_response/模拟变量 — 必须使用真实requests.get()",
-        "en": "⛔ [In-code simulation detected] simulated_response/模拟 vars forbidden — use real requests.get()",
+        "ko": "⛔ [코드 내 모의실행 감지] simulated_response / 模拟 변수 사용 금지 — ```bash 블록 안에서 curl 명령으로 실제 HTTP 요청 필수",
+        "zh": "⛔ [检测到代码内模拟执行] 禁止使用simulated_response/模拟变量 — 必须在```bash块中使用curl发送真实HTTP请求",
+        "en": "⛔ [In-code simulation detected] simulated_response/模拟 vars forbidden — use real curl inside a ```bash block",
     },
     "sim_var_warning": {
         "ko": "⚠️ 코드에서 모의/가짜 결과 변수 감지 — 네트워크 연결 정상, 실제 HTTP 요청 실행 가능",

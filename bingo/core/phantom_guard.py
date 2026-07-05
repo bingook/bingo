@@ -524,21 +524,21 @@ class TargetMismatchGuard:
                 f"■ 현재 세션의 공인된 타겟: {target}\n"
                 f"■ 위 도메인은 현재 세션 스코프 외부입니다.\n"
                 f"■ 즉시 {target}에 대한 작업으로 복귀하세요.\n"
-                f"  requests.get('{target}', verify=False).status_code"
+                f"  curl -sk -o /dev/null -w '%{{http_code}}' 'https://{target}/'"
             ),
             "zh": (
                 f"[⚠️ 目标混淆警告]\n\n"
                 f"响应中检测到与会话目标({target})不同的域名:\n"
                 f"  混淆域名: {mlist}\n\n"
                 f"■ 当前会话授权目标: {target}\n"
-                f"■ 立即切换回: requests.get('{target}', verify=False).status_code"
+                f"■ 立即切换回: curl -sk -o /dev/null -w '%{{http_code}}' 'https://{target}/'"
             ),
             "en": (
                 f"[⚠️ TARGET MISMATCH — REFOCUS ON SESSION TARGET]\n\n"
                 f"Domains other than the session target ({target}) detected:\n"
                 f"  Unexpected: {mlist}\n\n"
                 f"■ Authorized target for this session: {target}\n"
-                f"■ Return immediately: requests.get('{target}', verify=False).status_code"
+                f"■ Return immediately: curl -sk -o /dev/null -w '%{{http_code}}' 'https://{target}/'"
             ),
         }
         return msgs.get(lang, msgs["en"])
@@ -604,35 +604,27 @@ class SelfCorrectionLoopBreaker:
                 f"[⛔ 자기수정 루프 차단 ({self._consecutive}회 연속)]\n\n"
                 f"타겟 오인 → 자기수정 루프가 {self._consecutive}회 연속 감지되었습니다.\n"
                 f"이 루프는 토큰을 낭비하며 실제 진행이 없습니다.\n\n"
-                f"■ 루프를 즉시 중단하고 다음을 실행하세요:\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  TARGET = '{target}'\n"
-                f"  r = requests.get(TARGET, verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('HEADERS:', dict(r.headers))\n"
-                f"  print('BODY:', r.text[:500])\n\n"
-                f"■ 자기수정, 사과, 재확인은 금지. 즉시 코드를 실행하세요."
+                f"■ 루프를 즉시 중단하고 bash+curl로 실행하세요:\n"
+                f"  curl -sk -m 10 -D - 'https://{target}/' | python3 -c "
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                f"■ 자기수정, 사과, 재확인은 금지. 즉시 curl 명령을 실행하세요."
             ),
             "zh": (
                 f"[⛔ 自我修正循环阻断 (连续{self._consecutive}次)]\n\n"
                 f"检测到目标混淆→自我修正循环{self._consecutive}次。\n"
                 f"此循环浪费token且无实际进展。\n\n"
-                f"■ 立即中止循环，执行以下代码:\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  TARGET = '{target}'\n"
-                f"  r = requests.get(TARGET, verify=False, timeout=10)\n"
-                f"  print(r.status_code, r.text[:500])\n\n"
-                f"■ 禁止继续自我修正。立即执行HTTP请求!"
+                f"■ 立即中止循环，用bash+curl执行:\n"
+                f"  curl -sk -m 10 'https://{target}/' | python3 -c "
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                f"■ 禁止继续自我修正。立即执行curl命令!"
             ),
             "en": (
                 f"[⛔ SELF-CORRECTION LOOP BROKEN ({self._consecutive} consecutive)]\n\n"
                 f"Target mismatch → self-correction loop detected {self._consecutive} times.\n"
                 f"This loop wastes tokens with zero real progress.\n\n"
-                f"■ BREAK THE LOOP NOW. Execute:\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  TARGET = '{target}'\n"
-                f"  r = requests.get(TARGET, verify=False, timeout=10)\n"
-                f"  print(r.status_code, r.text[:500])\n\n"
+                f"■ BREAK THE LOOP NOW. Execute with bash+curl:\n"
+                f"  curl -sk -m 10 -D - 'https://{target}/' | python3 -c "
+                f"\"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
                 f"■ NO MORE self-correction. Execute the code immediately!"
             ),
         }
@@ -1160,11 +1152,8 @@ class ZeroHttpClaimGuard:
                 "취약점 발견/확인 주장이 감지되었습니다.\n\n"
                 "■ 이것은 환각(hallucination)입니다.\n"
                 "■ 모든 취약점 주장 전에 반드시 실제 HTTP 요청을 실행해야 합니다:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('BODY:', r.text[:500])\n\n"
-                "■ 위 코드 실행 결과를 보고 취약점 여부를 판단하세요.\n"
+                f"  curl -sk -m 10 -D - 'https://{target}/' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                "■ 위 curl 실행 결과를 보고 취약점 여부를 판단하세요.\n"
                 "■ 증거 없는 VERIFIED/CONFIRMED 클레임은 절대 금지입니다."
             ),
             "zh": (
@@ -1173,9 +1162,7 @@ class ZeroHttpClaimGuard:
                 "却检测到漏洞发现/确认声明。\n\n"
                 "■ 这是幻觉(hallucination)。\n"
                 "■ 所有漏洞声明前必须执行真实HTTP请求:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code, r.text[:500])\n\n"
+                f"  curl -sk -m 10 'https://{target}/' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
                 "■ 禁止无证据的VERIFIED/CONFIRMED声明。"
             ),
             "en": (
@@ -1184,10 +1171,7 @@ class ZeroHttpClaimGuard:
                 "real HTTP request evidence in execution output.\n\n"
                 "■ This is HALLUCINATION.\n"
                 "■ All vuln claims MUST be backed by real HTTP execution:\n\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('BODY:', r.text[:500])\n\n"
+                f"  curl -sk -m 10 -D - 'https://{target}/' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
                 "■ VERIFIED/CONFIRMED claims WITHOUT evidence are FORBIDDEN."
             ),
         }
@@ -1241,34 +1225,24 @@ class HardSessionRestarter:
                 f"팬텀 모드 / 팬텀 가드 차단이 {n}회 연속 발생했습니다.\n"
                 "대화 히스토리를 초기화하고 새 세션으로 재시작합니다.\n\n"
                 f"■ 재시작 후 첫 번째 작업:\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('SERVER:', r.headers.get('Server','?'))\n"
-                f"  print('BODY:', r.text[:500])\n\n"
-                "■ 새 세션: 캐시 없음 / 이전 추정 없음 / 실시간 HTTP만 사용"
+                f"  curl -sk -m 10 -D - 'https://{target}/' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                "■ 새 세션: 캐시 없음 / 이전 추정 없음 / 실시간 curl HTTP만 사용"
             ),
             "zh": (
                 f"[🔄 强制会话重启 — 幻影模式连续{n}次拦截]\n\n"
                 f"幻影防护连续拦截{n}次。\n"
                 "正在清空对话历史并以新会话重启。\n\n"
                 f"■ 重启后首个任务:\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print(r.status_code, r.text[:500])\n\n"
-                "■ 新会话: 无缓存/无先前假设/仅使用实时HTTP"
+                f"  curl -sk -m 10 'https://{target}/' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                "■ 新会话: 无缓存/无先前假设/仅使用实时curl HTTP"
             ),
             "en": (
                 f"[🔄 HARD SESSION RESTART — Phantom Mode blocked {n}x consecutive]\n\n"
                 f"PhantomGuard blocked {n} consecutive responses.\n"
                 "Clearing conversation history and restarting session.\n\n"
                 f"■ First action after restart:\n"
-                f"  import requests, urllib3; urllib3.disable_warnings()\n"
-                f"  r = requests.get('{target}', verify=False, timeout=10)\n"
-                f"  print('STATUS:', r.status_code)\n"
-                f"  print('SERVER:', r.headers.get('Server','?'))\n"
-                f"  print('BODY:', r.text[:500])\n\n"
-                "■ New session: no cache / no prior assumptions / real-time HTTP only"
+                f"  curl -sk -m 10 -D - 'https://{target}/' | python3 -c \"import sys; r=sys.stdin.read(); print(r[:500])\"\n\n"
+                "■ New session: no cache / no prior assumptions / real-time curl HTTP only"
             ),
         }
         return msgs.get(lang, msgs["en"])

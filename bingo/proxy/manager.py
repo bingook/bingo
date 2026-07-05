@@ -492,9 +492,9 @@ class ProxyManager:
             return ""
         return (
             f"# [PROXY INJECTED by bingo v3.2.74]\n"
-            f"import urllib3; urllib3.disable_warnings()\n"
-            f"PROXIES = {{'http': '{e.url}', 'https': '{e.url}'}}\n"
-            f"# requests.get(url, proxies=PROXIES, verify=False, timeout=15)\n"
+            f"# Use in bash block:\n"
+            f"PROXY=\"{e.url}\"\n"
+            f"# curl --proxy \"${{PROXY}}\" -sk -m 15 \"${{URL}}\"\n"
         )
 
     # ── 세션 간 저장/복원 (v3.2.77) ─────────────────────────────────

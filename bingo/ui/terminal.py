@@ -2890,16 +2890,16 @@ class BingoTerminal:
             f"CONFIDENCE STATUS: [SUSPECTED ⚠️] — needs 2nd vector confirmation\n\n"
             f"MANDATORY VERIFICATION STEPS:\n{verify_body}\n\n"
             "RULES:\n"
-            "- Write Python code using a DIFFERENT technique from what you just used\n"
+            "- Write a ```bash block using curl with a DIFFERENT technique from what you just used\n"
             "- Do NOT repeat the same payload — use a different attack vector\n"
-            "- Include print() statements showing actual server response\n"
+            "- Include curl output showing actual server response\n"
             "- CRITICAL: DO NOT tag [CONFIRMED ✅] or [FALSE POSITIVE ❌] in THIS response\n"
-            "- CRITICAL: Write the verification code ONLY — do NOT pre-judge the result\n"
-            "- After the code RUNS and you SEE the actual output: THEN tag in your NEXT message\n"
+            "- CRITICAL: Write the verification bash+curl block ONLY — do NOT pre-judge the result\n"
+            "- After the bash block RUNS and you SEE the actual output: THEN tag in your NEXT message\n"
             "- [CONFIRMED ✅] = only after you see actual proof in execution output\n"
             "- [FALSE POSITIVE ❌] = only after you see the code ran and no evidence found\n"
             "- Predicting [FALSE POSITIVE] before code runs = HALLUCINATION — FORBIDDEN\n\n"
-            "Write verification code NOW (tagging comes AFTER execution):"
+            "Write verification bash+curl block NOW (tagging comes AFTER execution):"
         )
         self.history.append(Message(role="user", content=mvvs_prompt))
 
@@ -5042,7 +5042,7 @@ class BingoTerminal:
             if len(_non_print) == len(_all_imports) and len(_lines) > 0 and not _has_network:
                 return (
                     "PRINT_ONLY_CODE: Code only has print() statements and imports — "
-                    "no actual HTTP request or logic. Add requests.get(url) calls."
+                    "no actual HTTP request or logic. Use a bash block with curl commands."
                 )
 
             # 패턴 4: 도메인/URL 하드코딩 없이 variable placeholder만 있는 코드
@@ -5074,7 +5074,7 @@ class BingoTerminal:
                     "SIMULATED_VAR: Code assigns a simulated/mock/fake response variable "
                     "(simulated_response / 模拟结果 / 가상결과). "
                     "This means NO real HTTP request was made. "
-                    "DELETE the hardcoded data and use: r = requests.get(url); print(r.text[:500])"
+                    "DELETE the hardcoded data and use a bash block: curl -sk -m 30 \"URL\" | python3 -c 'import sys; print(sys.stdin.read()[:500])'"
                 )
 
             # 5-B: # 模拟 / # simulate 주석 직후 결과 dict 할당
@@ -5099,7 +5099,7 @@ class BingoTerminal:
             if _ASSUME_SERVER_RE.search(s) and not _has_network:
                 return (
                     "ASSUME_SERVER: Code says 'assume server returns ...' without making "
-                    "a real requests.get/post call. Replace assumption with actual HTTP request."
+                    "a real HTTP request. Replace assumption with actual curl command."
                 )
 
             # 5-D: 네트워크 호출은 있으나 결과를 바로 하드코딩으로 덮어쓰는 패턴
@@ -5113,9 +5113,9 @@ class BingoTerminal:
                 )
                 if _OVERRIDE_DICT.search(s):
                     return (
-                        "OVERRIDDEN_RESULT: Code calls requests.get/post but immediately "
+                        "OVERRIDDEN_RESULT: Code calls HTTP but immediately "
                         "overwrites result with a hardcoded dict/string. "
-                        "Use the ACTUAL response: r = requests.get(url); print(r.text)"
+                        "Use the ACTUAL response: curl -sk -m 30 \"URL\" | python3 -c 'import sys; print(sys.stdin.read())'"
                     )
 
             # ── v4.9.0 패턴 6: 텍스트 서술에서 미실행 결과 위조 감지 (확장) ──────
@@ -5155,8 +5155,9 @@ class BingoTerminal:
                     return (
                         "CLAIMED_RESULT_WITHOUT_EXEC: Code describes result "
                         f"({_m.group(0)[:80]!r}) as text/comment without running real HTTP "
-                        "request. ALL results MUST come from actual print() output of "
-                        "requests.get/post execution. Remove the fabricated result."
+                        "request. ALL results MUST come from actual curl execution output. "
+                        "Use: curl -sk -m 10 \"${TARGET}/path\" | python3 -c \"import sys; print(sys.stdin.read()[:500])\". "
+                        "Remove the fabricated result."
                     )
 
             # ── v4.9.3 패턴 7: AST 기반 타겟 URL 검사 (완전 재작성) ─────────────────
@@ -7467,9 +7468,10 @@ class BingoTerminal:
                         "  - '# 실제 네트워크 없어서 가상 결과' 주석 사용\n"
                         "  - print('[模拟] ...') 형태의 가짜 결과 출력\n\n"
                         "■ 지금 즉시:\n"
-                        "  import requests; r = requests.get(URL, timeout=10, verify=False)\n"
-                        "  print(r.status_code, r.text[:500])\n"
-                        "  위 코드로 실제 서버 응답을 받아 분석하세요.\n"
+                        "  ```bash\n"
+                        "  curl -sk -m 30 -D - 'https://TARGET/경로' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
+                        "  ```\n"
+                        "  위 bash+curl 명령으로 실제 서버 응답을 받아 분석하세요.\n"
                         "  bingo는 완전한 인터넷 연결 환경에서 실행됩니다."
                     ),
                     "zh": (
@@ -7480,10 +7482,10 @@ class BingoTerminal:
                         "  - 使用'# 模拟结果'注释\n"
                         "  - print('[模拟]...')输出虚假结果\n\n"
                         "■ 立即执行:\n"
-                        "  import requests\n"
-                        "  r = requests.get(目标URL, timeout=10, verify=False)\n"
-                        "  print(r.status_code, r.text[:500])\n"
-                        "  bingo在真实网络环境中运行，必须使用真实HTTP请求!"
+                        "  ```bash\n"
+                        "  curl -sk -m 30 -D - 'https://TARGET/路径' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
+                        "  ```\n"
+                        "  bingo在真实网络环境中运行，必须使用bash+curl发送真实HTTP请求!"
                     ),
                     "en": (
                         "[⛔ SIMULATED OUTPUT INTERCEPTED — BINGO RUNTIME BLOCKED]\n\n"
@@ -7494,12 +7496,12 @@ class BingoTerminal:
                         "  - Using '# simulate/模拟' comment blocks\n"
                         "  - print('[SIMULATED]...') fake output\n\n"
                         "■ DO THIS NOW:\n"
-                        "  import requests\n"
-                        "  r = requests.get(TARGET_URL, timeout=10, verify=False)\n"
-                        "  print(r.status_code, r.text[:500])\n"
-                        "  bingo runs in a REAL network environment. Use REAL HTTP requests!"
+                        "  ```bash\n"
+                        "  curl -sk -m 30 -D - 'https://TARGET/real-path' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
+                        "  ```\n"
+                        "  bingo runs in a REAL network environment. Use REAL bash+curl commands!"
                     ),
-                }.get(_lang, "[⛔ SIMULATED OUTPUT] Remove hardcoded fake results. Use requests.get() for real HTTP.")
+                }.get(_lang, "[⛔ SIMULATED OUTPUT] Remove hardcoded fake results. Use bash+curl for real HTTP.")
                 self.history.append(Message(role="user", content=f"[SIMULATED_OUTPUT_BLOCKED]\n{_sim_force_msg}"))
                 from ..models.registry import ModelRegistry as _MR_sim
                 _mc_sim = self.config.get_active_model_config()
@@ -7538,46 +7540,37 @@ class BingoTerminal:
                         "ko": (
                             "[⛔ 환각 코드 감지 — 즉시 재작성 필요]\n"
                             "작성한 코드에서 실제 HTTP 응답이 없습니다.\n"
-                            "반드시 아래 형식으로 코드를 다시 작성하세요:\n\n"
-                            "```python\n"
-                            "import requests\n"
-                            "url = 'https://TARGET/실제경로'\n"
-                            "r = requests.get(url, timeout=10, verify=False,\n"
-                            "    headers={'User-Agent': 'Mozilla/5.0'})\n"
-                            "print(f'[STATUS] {r.status_code}  {url}')\n"
-                            "print(r.text[:500])\n"
+                            "반드시 아래 형식으로 bash 블록을 다시 작성하세요:\n\n"
+                            "```bash\n"
+                            "curl -sk -m 30 -D - 'https://TARGET/실제경로' \\\n"
+                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
+                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(\"[STATUS] 200\"); print(r[:500])'\n"
                             "```\n"
                             "JSON 딕셔너리({...})나 가짜 출력은 절대 사용 금지."
                         ),
                         "zh": (
                             "[⛔ 检测到幻觉代码 — 必须立即重写]\n"
                             "您的代码没有产生真实的HTTP响应。\n"
-                            "必须按以下格式重写所有代码块:\n\n"
-                            "```python\n"
-                            "import requests\n"
-                            "url = 'https://TARGET/真实路径'\n"
-                            "r = requests.get(url, timeout=10, verify=False,\n"
-                            "    headers={'User-Agent': 'Mozilla/5.0'})\n"
-                            "print(f'[STATUS] {r.status_code}  {url}')\n"
-                            "print(r.text[:500])\n"
+                            "必须按以下bash+curl格式重写所有代码块:\n\n"
+                            "```bash\n"
+                            "curl -sk -m 30 -D - 'https://TARGET/真实路径' \\\n"
+                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
+                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
                             "```\n"
                             "禁止使用JSON字典({...})或伪造输出。"
                         ),
                         "en": (
                             "[⛔ HALLUCINATION CODE DETECTED — REWRITE REQUIRED]\n"
                             "Your code produced NO real HTTP responses.\n"
-                            "You MUST rewrite ALL code blocks like this:\n\n"
-                            "```python\n"
-                            "import requests\n"
-                            "url = 'https://TARGET/real-path'\n"
-                            "r = requests.get(url, timeout=10, verify=False,\n"
-                            "    headers={'User-Agent': 'Mozilla/5.0'})\n"
-                            "print(f'[STATUS] {r.status_code}  {url}')\n"
-                            "print(r.text[:500])\n"
+                            "You MUST rewrite ALL code blocks as bash+curl like this:\n\n"
+                            "```bash\n"
+                            "curl -sk -m 30 -D - 'https://TARGET/real-path' \\\n"
+                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
+                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
                             "```\n"
                             "FORBIDDEN: JSON dicts ({...}), fake output, simulation code."
                         ),
-                    }.get(_lang, "Rewrite with real requests.get/post code NOW.")
+                    }.get(_lang, "Rewrite with real bash+curl commands NOW.")
                     self.history.append(Message(role="user", content=_force_rewrite))
                     from ..models.registry import ModelRegistry as _MR_hall
                     _mc_hall = self.config.get_active_model_config()
@@ -7596,21 +7589,21 @@ class BingoTerminal:
                     "ko": (
                         "[⛔ 스크립트 출력 없음 — 환각 코드 의심]\n"
                         "스크립트가 실행됐지만 출력이 없습니다. "
-                        "코드에 실제 HTTP 요청(requests.get/post)이 없거나 JSON만 있습니다.\n"
-                        "반드시 requests.get(url)을 호출하고 print(r.status_code, r.text[:300])을 추가하세요."
+                        "bash 블록에 실제 curl HTTP 요청이 없거나 echo만 있습니다.\n"
+                        "반드시 curl -sk -m 30 'URL' 을 호출하고 파이프로 출력을 확인하세요."
                     ),
                     "zh": (
                         "[⛔ 脚本无输出 — 疑似幻觉代码]\n"
-                        "脚本执行但没有输出。代码中缺少真实HTTP请求或只包含JSON。\n"
-                        "必须调用requests.get(url)并添加print(r.status_code, r.text[:300])。"
+                        "脚本执行但没有输出。bash块中缺少真实curl HTTP请求或只包含echo。\n"
+                        "必须使用curl -sk -m 30 'URL' 并通过管道查看输出。"
                     ),
                     "en": (
                         "[⛔ SCRIPT NO OUTPUT — HALLUCINATION SUSPECTED]\n"
                         "Script ran but produced ZERO output. "
-                        "Your code has no real HTTP calls or contains only JSON.\n"
-                        "Add: r = requests.get(url); print(r.status_code); print(r.text[:300])"
+                        "Your bash block has no real curl HTTP calls or contains only echo.\n"
+                        "Add: curl -sk -m 30 'URL' | python3 -c 'import sys; print(sys.stdin.read()[:300])'"
                     ),
-                }.get(_lang, "Script produced no output. Add requests.get() and print(r.status_code).")
+                }.get(_lang, "Script produced no output. Add curl -sk -m 30 'URL' to the bash block.")
                 self.history.append(Message(role="user", content=f"[EXECUTION RESULT]\n{_no_output_msg}"))
                 model_cfg2 = self.config.get_active_model_config()
                 if not model_cfg2:
@@ -8252,15 +8245,13 @@ class BingoTerminal:
                         _wait_secs = 3  # 프록시 교체 시 짧은 대기
                         _proxy_hint_lines = [
                             f"[PROXY_ROTATED: now using {_new_entry}]",
-                            f"Add to your script:",
-                            f"  PROXIES = {{'http': '{_new_entry.url}', 'https': '{_new_entry.url}'}}",
-                            f"  # requests.get(url, proxies=PROXIES, timeout=15, verify=False)",
-                            f"  # httpx.get(url, proxies=PROXIES, timeout=15, verify=False)",
-                            f"  # session.get(url, proxies=PROXIES)",
+                            f"Add to your bash block:",
+                            f"  PROXY=\"{_new_entry.url}\"",
+                            f"  curl --proxy \"${{PROXY}}\" -sk -m 15 \"${{URL}}\"",
                         ]
                         if _new_entry.is_tor:
                             _proxy_hint_lines.append(
-                                "  # Tor: install stem for circuit rotation → pm.tor_new_circuit()"
+                                "  # Tor circuit rotation: echo -e 'AUTHENTICATE \"\"\\r\\nSIGNAL NEWNYM\\r\\nQUIT' | nc 127.0.0.1 9051"
                             )
                     else:
                         _proxy_warn = {
@@ -8311,18 +8302,16 @@ class BingoTerminal:
                         _proxy_hint_lines = [
                             "[SILENT_DROP_HEADER_BYPASS_APPLIED: no proxy available]",
                             "CAUSE: WAF is silently dropping your request (timeout, no response body).",
-                            "ACTION: Update your script with ALL of the following:",
-                            f"  headers = {{",
-                            f"    'User-Agent': '{_chosen_ua}',",
-                            f"    'X-Forwarded-For': '127.0.0.1',",
-                            f"    'X-Real-IP': '127.0.0.1',",
-                            f"    'True-Client-IP': '127.0.0.1',",
-                            f"    'Referer': 'https://www.google.com/',",
-                            f"    'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',",
-                            f"  }}",
-                            f"  # ADD before each request: time.sleep({_chosen_delay})",
-                            f"  import time, random",
-                            f"  time.sleep(random.uniform(3.0, 7.0))  # randomized delay",
+                            "ACTION: Update your bash block curl command with ALL of the following headers:",
+                            f"  curl -sk -m 15 \\",
+                            f"    -H 'User-Agent: {_chosen_ua}' \\",
+                            f"    -H 'X-Forwarded-For: 127.0.0.1' \\",
+                            f"    -H 'X-Real-IP: 127.0.0.1' \\",
+                            f"    -H 'True-Client-IP: 127.0.0.1' \\",
+                            f"    -H 'Referer: https://www.google.com/' \\",
+                            f"    -H 'Accept-Language: ko-KR,ko;q=0.9,en-US;q=0.8' \\",
+                            f"    \"${{URL}}\"",
+                            f"  # ADD between requests: sleep {_chosen_delay}  # randomized delay",
                             "If still blocked after 2 retries → use /proxy add <url> or /proxy tor",
                         ]
                         _wait_secs = max(_wait_secs, 6)  # silent drop은 좀 더 대기

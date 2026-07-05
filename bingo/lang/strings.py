@@ -1913,6 +1913,24 @@ _STRINGS.update({
         "zh": "v5.1.8: 删除系统提示'No sqlmap required' → 指示DB dump时主动使用sqlmap",
         "en": "v5.1.8: Removed 'No sqlmap required' from system prompt → LLM now instructed to use sqlmap for DB dump"},
 
+    # ── WAF bypass → sqlmap carry-over (v5.1.9+) ─────────────────────
+    "waf_bypass_sqlmap_rule": {
+        "ko": "v5.1.9: WAF 우회 기법을 sqlmap 명령에 자동 반영하는 규칙 추가 — curl 우회 성공 시 tamper/헤더를 sqlmap에 그대로 적용",
+        "zh": "v5.1.9: 新增WAF绕过技术自动应用到sqlmap命令的规则 — curl绕过成功时将tamper/header同步到sqlmap",
+        "en": "v5.1.9: Added WAF bypass carry-over rule for sqlmap — tamper scripts and bypass headers from curl are applied to sqlmap"},
+    "waf_sqlmap_cloudflare": {
+        "ko": "Cloudflare/Akamai/AWS WAF 감지 → sqlmap tamper: space2comment,randomcase,charencode,between + --random-agent --delay=2",
+        "zh": "检测到Cloudflare/Akamai/AWS WAF → sqlmap tamper: space2comment,randomcase,charencode,between + --random-agent --delay=2",
+        "en": "Cloudflare/Akamai/AWS WAF detected → sqlmap tamper: space2comment,randomcase,charencode,between + --random-agent --delay=2"},
+    "waf_sqlmap_korean": {
+        "ko": "한국 WAF(Wapples/Genian/Cloudbric) 감지 → sqlmap tamper: space2comment,versionedmorekeywords,randomcase + --random-agent --delay=3",
+        "zh": "检测到韩国WAF(Wapples/Genian/Cloudbric) → sqlmap tamper: space2comment,versionedmorekeywords,randomcase + --random-agent --delay=3",
+        "en": "Korean WAF (Wapples/Genian/Cloudbric) detected → sqlmap tamper: space2comment,versionedmorekeywords,randomcase + --random-agent --delay=3"},
+    "waf_sqlmap_header_carry": {
+        "ko": "curl에서 X-Forwarded-For/X-Real-IP 등 헤더 우회 성공 시 → sqlmap에 동일 헤더 -H 옵션으로 반드시 추가",
+        "zh": "curl通过X-Forwarded-For/X-Real-IP等header绕过时 → sqlmap必须用-H选项添加相同header",
+        "en": "If curl bypassed WAF via X-Forwarded-For/X-Real-IP headers → MUST add same header to sqlmap with -H option"},
+
     # ── VBScript 에러 / VBScript Error Detection (v2.3.21+) ──────────
     "vbscript_not_sqli_title":  {"ko": "⚠️  VBScript 에러 감지 — 이 파라미터들은 SQL 인젝션이 아닙니다",
                                   "zh": "⚠️  检测到VBScript错误 — 这些参数不是SQL注入点",

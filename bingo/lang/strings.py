@@ -6766,6 +6766,25 @@ _STRINGS.update({
         "ru": "⛔ [v4.9.5] BASH_PLACEHOLDER: обнаружен заполнитель TARGET_URL/example.com → необходимо переписать с реальным целевым URL",
         "ar": "⛔ [v4.9.5] BASH_PLACEHOLDER: تم اكتشاف placeholder TARGET_URL/example.com → يجب إعادة الكتابة بعنوان URL الحقيقي للهدف",
     },
+    # ── v4.9.6: heredoc/requests 차단 키 ──────────────────────────────────────
+    "bash_heredoc_blocked": {
+        "ko": "⛔ [v4.9.6] BASH_HEREDOC_PYTHON: bash 블록 안의 python3 << 'PYEOF' heredoc 차단 → curl | python3 -c 방식만 허용",
+        "zh": "⛔ [v4.9.6] BASH_HEREDOC_PYTHON: bash块内的python3 << 'PYEOF' heredoc已拦截 → 仅允许 curl | python3 -c 方式",
+        "en": "⛔ [v4.9.6] BASH_HEREDOC_PYTHON: python3 heredoc inside bash blocked → only curl | python3 -c pipe is allowed",
+        "ja": "⛔ [v4.9.6] BASH_HEREDOC_PYTHON: bash内のpython3 heredocをブロック → curl | python3 -c パイプのみ許可",
+        "es": "⛔ [v4.9.6] BASH_HEREDOC_PYTHON: heredoc de python3 en bash bloqueado → solo se permite curl | python3 -c",
+        "ru": "⛔ [v4.9.6] BASH_HEREDOC_PYTHON: heredoc python3 внутри bash заблокирован → разрешён только curl | python3 -c",
+        "ar": "⛔ [v4.9.6] BASH_HEREDOC_PYTHON: تم حجب heredoc python3 داخل bash → يُسمح فقط بـ curl | python3 -c",
+    },
+    "bash_requests_blocked": {
+        "ko": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: bash 블록에 'import requests' 감지 → requests 금지, curl 사용 필수",
+        "zh": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: bash块中检测到'import requests' → 禁止requests库，必须使用curl",
+        "en": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: 'import requests' in bash block blocked → requests forbidden, must use curl",
+        "ja": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: bashブロック内で'import requests'を検出 → requests禁止、curl使用必須",
+        "es": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: 'import requests' detectado en bash → requests prohibido, debe usar curl",
+        "ru": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: обнаружен 'import requests' в bash-блоке → requests запрещён, нужно использовать curl",
+        "ar": "⛔ [v4.9.6] BASH_CONTAINS_REQUESTS: تم اكتشاف 'import requests' في كتلة bash → requests محظور، يجب استخدام curl",
+    },
 })
 
 

@@ -4981,13 +4981,28 @@ class BingoTerminal:
 
             # ── v4.9.5: bash 블록 전용 환각 감지 ─────────────────────────────
             if _block_type == "bash":
+                # bash 패턴 B0: heredoc Python 감지 (가장 먼저 체크)
+                # "python3 << 'PYEOF'" 또는 "/usr/bin/python3 << 'EOF'" 등
+                if _hall_re.search(r'python3?\s*<<\s*[\'"]?\w+[\'"]?', s):
+                    return (
+                        "BASH_HEREDOC_PYTHON: Python heredoc inside bash is FORBIDDEN. "
+                        "<<'PYEOF' / <<'EOF' wrapping 'import requests' is the same as a Python block. "
+                        "ONLY pipe is allowed: curl ... | /usr/bin/python3 -c \"import sys; ...\""
+                    )
+                # bash 패턴 B0b: bash 안에 import requests 있으면 무조건 차단
+                if "import requests" in s:
+                    return (
+                        "BASH_CONTAINS_REQUESTS: 'import requests' inside bash block is FORBIDDEN. "
+                        "Do NOT use Python requests library. Use: curl ... | /usr/bin/python3 -c \"import sys; ...\""
+                    )
                 # bash 패턴 B1: curl/wget 없는 bash 블록 (echo만 있는 등)
                 _has_net_cmd = any(cmd in s for cmd in
                     ["curl ", "wget ", "nmap ", "ffuf ", "httpx ", "nuclei "])
                 if not _has_net_cmd:
                     return (
                         "BASH_NO_CURL: bash block has no network command (curl/wget/nmap). "
-                        "Use: curl -s -m 10 -k \"https://TARGET/path\" | python3 -c \"import sys; d=sys.stdin.buffer.read(); print(d[:1000])\""
+                        "You MUST use: curl -s -m 10 -k 'https://REAL_TARGET/path' | "
+                        "/usr/bin/python3 -c \"import sys; d=sys.stdin.buffer.read(); print(d[:1500])\""
                     )
                 # bash 패턴 B2: placeholder URL
                 if _hall_re.search(r'(?:TARGET_URL|YOUR_URL|PLACEHOLDER|example\.com|TARGET_HOST)', s, _hall_re.IGNORECASE):

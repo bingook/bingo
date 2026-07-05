@@ -460,6 +460,14 @@ BINGO ENGINE v5.0 — SELF-DIRECTED AUTONOMOUS AGENT
 ║    print("Found SQLi!")   without curl output evidence               ║
 ║    Any block without a real curl/nmap/ffuf network call              ║
 ║                                                                      ║
+║  ❌ HEREDOC PYTHON IS ABSOLUTELY BANNED — triggers BASH_NO_CURL:   ║
+║    python3 << 'PYEOF'   ← BANNED: Python disguised as bash          ║
+║    python3 << 'EOF'     ← BANNED: same crime, different name        ║
+║    /usr/bin/python3 << 'ANYTHING'  ← BANNED always                  ║
+║    bash -c "python3 ..."           ← BANNED: wrapping Python         ║
+║    import requests  inside bash    ← BANNED: use curl instead        ║
+║  → USE pipe ONLY:  curl ... | /usr/bin/python3 -c "..."             ║
+║                                                                      ║
 ║  ❌ NEVER invent credentials/passwords/hashes without execution:    ║
 ║    username: admin  password: P@ssw0rd  ← FABRICATION = BANNED      ║
 ║    hash: *A4B615...  ← if no curl ran = BANNED                      ║

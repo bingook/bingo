@@ -8347,6 +8347,15 @@ class BingoTerminal:
             # v3.2.27: JSON 필드 패턴 — API 응답 본문의 key-value 라인 오탐 방지
             # '"message": "unknown"', '"code": 0', '"status": "ok"' 등이 루프 감지에 걸리는 문제
             _JSON_FIELD_PATTERN = _re.compile(r'^"[a-zA-Z_][a-zA-Z0-9_]*"\s*:')
+            # v5.1.4: HTTP 상태+크기 패턴 — "200 458B", "404 1997B" 등은 SQL 데이터가 아님
+            # bash 스크립트가 curl 결과를 "STATUS SIZEb" 형식으로 출력할 때 오탐 방지
+            _HTTP_STATUS_SIZE_PATTERN = _re.compile(
+                r'^\d{3}\s+\d+[BbKkMmGg]?[Bb]?$'  # "200 458B", "404 1997B", "200 43kb"
+            )
+            # v5.1.4: 파일 크기 줄 패턴 — "  458 /tmp/klia_true.txt" 같은 wc -c 출력
+            _FILE_SIZE_LINE_PATTERN = _re.compile(
+                r'^\s*\d+\s+/tmp/'  # "  458 /tmp/foo.txt" → wc -c 결과
+            )
 
             _lines = trimmed.split("\n")
             _table_lines = []
@@ -8396,6 +8405,13 @@ class BingoTerminal:
                 # v3.2.9: 숫자/날짜/시간만으로 구성된 값 제외 (XML priority, lastmod 등)
                 if _NUMERIC_ONLY_PATTERN.match(_val):
                     continue
+                # v5.1.4: HTTP 상태+크기 출력 제외 ("200 458B", "404 1997B" 등)
+                # bash 스크립트가 curl 결과를 "STATUS SIZEb" 형식으로 출력 → SQL 데이터 아님
+                if _HTTP_STATUS_SIZE_PATTERN.match(_val):
+                    continue
+                # v5.1.4: wc -c 파일 크기 출력 제외 ("  458 /tmp/klia_true.txt" 등)
+                if _FILE_SIZE_LINE_PATTERN.match(_ls):
+                    continue
                 # v3.2.9: 값 자체가 XML/HTML 태그 형태이면 제외
                 if _XML_TAG_PATTERN.match(_val):
                     continue
@@ -8436,6 +8452,10 @@ class BingoTerminal:
                         or "error 50" in _dup_val_lower                   # "Error 503 ..."
                         or "forbidden" in _dup_val_lower                  # HTTP 403 Forbidden
                         or "not found" in _dup_val_lower                  # HTTP 404 Not Found
+                        # v5.1.4: HTTP 상태+크기 패턴 이중 방어 — "200 458B", "404 1997B"
+                        or _HTTP_STATUS_SIZE_PATTERN.match(_dup_val)      # "200 458B" 등
+                        # v5.1.4: wc -c 파일 크기 출력 이중 방어
+                        or _FILE_SIZE_LINE_PATTERN.match(_dup_val)        # "  458 /tmp/..."
                     )
                     if _is_waf_response:
                         # WAF 차단: 루프 오탐이므로 TOP 1 힌트 없이 스킵

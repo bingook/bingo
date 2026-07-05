@@ -6981,6 +6981,12 @@ _STRINGS.update({
         "zh": "⛔ [v5.1.3] BASH_PLACEHOLDER_URL: 检测到 curl/wget URL 中使用 'example.com' → 需要替换为真实目标 URL",
         "en": "⛔ [v5.1.3] BASH_PLACEHOLDER_URL: 'example.com' used as actual curl/wget target URL → replace with real target URL",
     },
+    # v5.1.4 — 루프 감지 오탐 방지: HTTP 상태+크기 패턴 필터 추가
+    "loop_fp_http_status_size": {
+        "ko": "⚡ 루프 오탐 스킵: '{name}'은 HTTP 상태+크기 출력 — SQL 데이터 루프 아님.",
+        "zh": "⚡ 跳过循环误报: '{name}' 是 HTTP 状态+大小输出，不是 SQL 数据循环。",
+        "en": "⚡ Loop false-positive skipped: '{name}' is HTTP status+size output — not SQL data loop.",
+    },
     # v5.1.4 — 시스템 프롬프트 bash 타이밍 템플릿 추가 (RULE SL-2)
     "rule_sl2_timing_added": {
         "ko": "[v5.1.4] RULE SL-2 추가: 타임기반 SQLi는 bash date+curl 타이밍 사용 (urllib 금지)",

@@ -6508,7 +6508,7 @@ class BingoTerminal:
                 _last_stripped = None
                 _killed_reason: str | None = None
                 _start_ts = __import__("time").time()
-                _SCRIPT_TIMEOUT = 1800  # 스크립트당 최대 1800초 (30분) [v3.2.50: 종합 스크립트 지원]
+                _SCRIPT_TIMEOUT = 300   # 스크립트당 최대 300초 (5분) [v5.1.6: 1800s→300s 단축, 고아 curl 방지]
                 _MAX_CONSEC_DUP = 100   # 동일 줄 100회 연속 → 루프 감지 [v3.2.54: 오탐 방지 강화]
                 _MAX_CONSEC_SCAN = 500  # 스캔 결과 줄은 500회까지 허용 (XSS 반사 등)
                 # 합법적 반복이 발생하는 스캔 결과 prefix — 더 높은 임계값 적용
@@ -6538,13 +6538,27 @@ class BingoTerminal:
 
                 def _hard_watchdog(proc: subprocess.Popen, deadline: float,
                                    fired: threading.Event) -> None:
-                    """stdout 스트림에 관계없이 deadline 이후 프로세스를 강제 종료."""
+                    """stdout 스트림에 관계없이 deadline 이후 프로세스 그룹 전체를 강제 종료.
+                    v5.1.6: proc.kill() → os.killpg() — bash 자식 프로세스(curl 등) 고아 방지.
+                    proc.kill()은 bash만 종료하고 자식 curl 프로세스가 stdout 파이프를
+                    유지해 스레드가 종료되지 않는 버그 수정."""
                     remaining = deadline - __import__("time").time()
                     if remaining > 0:
                         fired.wait(timeout=remaining)
                     if not fired.is_set():
+                        import os as _wd_os
+                        import signal as _wd_sig
                         try:
-                            proc.kill()
+                            pgid = _wd_os.getpgid(proc.pid)
+                            _wd_os.killpg(pgid, _wd_sig.SIGKILL)
+                        except Exception:
+                            try:
+                                proc.kill()
+                            except Exception:
+                                pass
+                        # stdout 파이프 강제 닫기 — 자식 프로세스 잔존 시 readline 해제
+                        try:
+                            proc.stdout.close()
                         except Exception:
                             pass
 
@@ -6634,11 +6648,21 @@ class BingoTerminal:
                         except Exception:
                             self.console.out(line)
 
-                    # 전체 타임아웃 체크
+                    # 전체 타임아웃 체크 [v5.1.6: p.terminate()→os.killpg() — 자식 curl 포함 종료]
                     if __import__("time").time() - _start_ts > _SCRIPT_TIMEOUT:
                         _killed_reason = f"TIMEOUT_{_SCRIPT_TIMEOUT}s"
+                        import os as _tmo_os
+                        import signal as _tmo_sig
                         try:
-                            p.terminate()
+                            pgid = _tmo_os.getpgid(p.pid)
+                            _tmo_os.killpg(pgid, _tmo_sig.SIGKILL)
+                        except Exception:
+                            try:
+                                p.terminate()
+                            except Exception:
+                                pass
+                        try:
+                            p.stdout.close()
                         except Exception:
                             pass
                         break
@@ -6751,6 +6775,9 @@ class BingoTerminal:
         HEARTBEAT = 1   # 1초마다 stop_flag 체크 (heartbeat 출력은 30초마다)
         elapsed = 0
         _heartbeat_print_interval = 30  # 화면 출력은 30초에 한 번
+        # v5.1.6: wall-clock 안전 타임아웃 — 워치독이 bash만 kill하고 자식 curl이 살아남아
+        # 스레드가 종료되지 않는 경우에 대한 2차 방어선 (_SCRIPT_TIMEOUT + 60s)
+        _WALL_CLOCK_MAX = 360  # _SCRIPT_TIMEOUT(300) + 60s 버퍼
         while any(_th.is_alive() for _th in threads):
             for _th in threads:
                 _th.join(timeout=HEARTBEAT)
@@ -6803,6 +6830,38 @@ class BingoTerminal:
                 self.console.print(
                     f"[{THEME['dim']}]  ⏱ {elapsed}s {_s.get('exec_running', 'running')}...[/]"
                 )
+
+            # v5.1.6: wall-clock 최대 타임아웃 — 워치독 실패 시 2차 강제 종료
+            # bash kill 후 자식 curl 프로세스가 stdout을 유지해 스레드가 무한 대기하는 버그 방어
+            if elapsed >= _WALL_CLOCK_MAX:
+                import signal as _wc_sig
+                import os as _wc_os
+                self.console.print(
+                    f"[bold red]⚠ WALL-CLOCK TIMEOUT ({elapsed}s) — 프로세스 그룹 강제 종료[/]"
+                )
+                with proc_list_lock:
+                    for _wp in proc_registry:
+                        try:
+                            pgid = _wc_os.getpgid(_wp.pid)
+                            _wc_os.killpg(pgid, _wc_sig.SIGKILL)
+                        except Exception:
+                            try:
+                                _wp.kill()
+                            except Exception:
+                                pass
+                        try:
+                            _wp.stdout.close()
+                        except Exception:
+                            pass
+                for _th in threads:
+                    _th.join(timeout=2)
+                for i, r in enumerate(results_text):
+                    if not r:
+                        results_text[i] = (
+                            f"=== WALL-CLOCK TIMEOUT ({elapsed}s) — "
+                            "script forcibly killed, partial results only ==="
+                        )
+                break
 
         return [r for r in results_text if r]
 

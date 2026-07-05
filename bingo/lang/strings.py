@@ -1881,6 +1881,14 @@ _STRINGS.update({
                                   "zh": "[脚本已终止: 超时]\n脚本超过{sec}秒限制，已被强制终止。\n请将脚本拆分为更小的块或优化循环。",
                                   "en": "[SCRIPT_KILLED: TIMEOUT]\nScript exceeded {sec}s timeout and was forcibly terminated.\nSplit the script into smaller blocks or optimize the loop."},
 
+    # ── v5.1.6: 고아 curl 프로세스 wall-clock 타임아웃 (프로세스 그룹 강제 종료) ──
+    "wallclock_timeout_killed": {"ko": "⚠ WALL-CLOCK 타임아웃 ({elapsed}s) — bash 종료 후 자식 curl 프로세스가 남아있어 프로세스 그룹 강제 종료",
+                                  "zh": "⚠ WALL-CLOCK超时({elapsed}s) — bash退出后子curl进程残留，已强制终止进程组",
+                                  "en": "⚠ WALL-CLOCK TIMEOUT ({elapsed}s) — orphaned curl children after bash exit, process group force-killed"},
+    "watchdog_orphan_fixed":    {"ko": "v5.1.6: 워치독이 bash만 종료하고 자식 curl이 stdout을 유지해 스레드가 무한 대기하던 버그 수정 (proc.kill→os.killpg)",
+                                  "zh": "v5.1.6: 修复watchdog仅kill bash但子curl保持stdout导致线程无限等待的bug(proc.kill→os.killpg)",
+                                  "en": "v5.1.6: Fixed watchdog killing only bash while child curl kept stdout open causing thread to hang forever (proc.kill→os.killpg)"},
+
     # ── VBScript 에러 / VBScript Error Detection (v2.3.21+) ──────────
     "vbscript_not_sqli_title":  {"ko": "⚠️  VBScript 에러 감지 — 이 파라미터들은 SQL 인젝션이 아닙니다",
                                   "zh": "⚠️  检测到VBScript错误 — 这些参数不是SQL注入点",

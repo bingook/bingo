@@ -2700,17 +2700,180 @@ class BingoTerminal:
         ],
     }
 
+    # ── BINGO_SIGNAL 구조화 신호 시스템 (v5.0.7) ──────────────────────────────
+    # 목적: LLM이 자유 형식 텍스트 대신 구조화된 JSON으로만 취약점을 보고하게 강제.
+    #        → 정규식 오발(false positive) 구조적 원천 차단.
+    #
+    # 형식: BINGO_SIGNAL:{"type":"sqli_boolean","evidence":{"size_true":15420,...}}
+    #
+    # MVVS 우선순위:
+    #   1순위 — BINGO_SIGNAL 구조화 신호 (증거 JSON 검증 후 판정)
+    #   2순위 — 정규식 MVVS_SIGNALS (보조 백업, 구조화 신호 없을 때만)
+    #
+    # 신호 타입 및 필수 증거 필드:
+    #   sqli_boolean : size_true(int), size_false(int) — diff >= 100B
+    #   sqli_error   : db_error(str) — ORA-/mysql_fetch 등 DB 에러 문자열
+    #   sqli_time    : delay_sec(float) — 실제 응답 지연 초(>=3)
+    #   xss          : payload(str), reflected(bool)
+    #   rce          : proof(str) — uid=0(root)/etc/passwd 레코드 중 하나
+    #   ssrf         : ip_accessed(str) — 사설 IP 또는 메타데이터 IP
+    #   idor         : other_user_id(int/str), data_returned(bool)
+    #   path_traversal: content(str) — root:x:0:0 등 실제 내용 포함
+
+    _BINGO_SIGNAL_PREFIX = "BINGO_SIGNAL:"
+
+    def _parse_bingo_signals(
+        self, output: str
+    ) -> "list[tuple[str, str, str]]":
+        """출력에서 BINGO_SIGNAL: 구조화 신호 파싱 및 증거 검증.
+
+        Returns: [(vuln_type, description, evidence_summary), ...]
+        실제 측정 증거가 있는 신호만 반환.
+        """
+        import json as _json
+        found: list[tuple[str, str, str]] = []
+        if not output:
+            return found
+        for line in output.splitlines():
+            line = line.strip()
+            if not line.startswith(self._BINGO_SIGNAL_PREFIX):
+                continue
+            try:
+                raw = line[len(self._BINGO_SIGNAL_PREFIX):]
+                data = _json.loads(raw)
+            except (_json.JSONDecodeError, ValueError):
+                continue  # JSON 파싱 실패 → 무시
+
+            stype = str(data.get("type", "")).lower()
+            evidence = data.get("evidence", {})
+            ok, desc, summary = self._validate_bingo_signal(stype, evidence)
+            if ok:
+                # vuln_type 정규화: sqli_boolean→sqli, path_traversal→path_traversal
+                _type_map = {
+                    "sqli_boolean": "sqli",
+                    "sqli_error": "sqli",
+                    "sqli_time": "sqli",
+                    "xss": "xss",
+                    "rce": "rce",
+                    "ssrf": "ssrf",
+                    "idor": "idor",
+                    "path_traversal": "path_traversal",
+                }
+                vuln_type = _type_map.get(stype, stype.split("_")[0])
+                found.append((vuln_type, desc, summary))
+        return found
+
+    def _validate_bingo_signal(
+        self, stype: str, evidence: dict
+    ) -> "tuple[bool, str, str]":
+        """BINGO_SIGNAL 증거 유효성 검증.
+
+        Returns: (valid, description, evidence_summary)
+        """
+        import re as _re
+
+        # ── SQLi Boolean ──────────────────────────────────────────────────────
+        if stype == "sqli_boolean":
+            st = int(evidence.get("size_true", 0))
+            sf = int(evidence.get("size_false", 0))
+            diff = abs(st - sf)
+            if diff < 100:
+                return False, "", f"diff={diff}B (<100B threshold)"
+            pct = diff / max(st, sf, 1) * 100
+            if pct < 10:
+                return False, "", f"diff={pct:.1f}% (<10% threshold)"
+            return True, "Boolean SQLi — size diff confirmed", f"true={st}B false={sf}B diff={diff}B ({pct:.0f}%)"
+
+        # ── SQLi Error ────────────────────────────────────────────────────────
+        elif stype == "sqli_error":
+            err = str(evidence.get("db_error", ""))
+            if not _re.search(r"ORA-\d{4,}|mysql_fetch|pg_query|80040e14|ODBC.*SQL|sql\s*(syntax|error)", err, _re.I):
+                return False, "", f"no DB error pattern in: {err[:60]}"
+            return True, "SQL error message confirmed", err[:80]
+
+        # ── SQLi Time-based ───────────────────────────────────────────────────
+        elif stype == "sqli_time":
+            delay = float(evidence.get("delay_sec", 0))
+            expected = float(evidence.get("expected_sec", 5))
+            if delay < max(expected * 0.8, 3.0):
+                return False, "", f"delay={delay}s < expected={expected}s"
+            return True, "Time-based SQLi — delay confirmed", f"delay={delay:.1f}s (expected={expected:.0f}s)"
+
+        # ── XSS ───────────────────────────────────────────────────────────────
+        elif stype == "xss":
+            payload = str(evidence.get("payload", ""))
+            reflected = bool(evidence.get("reflected", False))
+            if not payload or not reflected:
+                return False, "", f"payload={repr(payload[:40])} reflected={reflected}"
+            # 페이로드에 실제 스크립트 요소가 있어야 함
+            if not _re.search(r"<script|alert\s*\(|onerror\s*=|javascript:\s*(?:alert|eval|document)", payload, _re.I):
+                return False, "", f"payload has no executable element: {payload[:60]}"
+            return True, "XSS — payload reflected confirmed", f"payload={payload[:60]}"
+
+        # ── RCE ───────────────────────────────────────────────────────────────
+        elif stype == "rce":
+            proof = str(evidence.get("proof", ""))
+            if not _re.search(
+                r"uid=\d+\([^)]+\)|root:\w*:\d+:\d+|/etc/(?:passwd|shadow)|whoami\s*=\s*\w+",
+                proof, _re.I
+            ):
+                return False, "", f"no RCE proof pattern in: {proof[:80]}"
+            return True, "RCE — OS command execution confirmed", proof[:80]
+
+        # ── SSRF ──────────────────────────────────────────────────────────────
+        elif stype == "ssrf":
+            ip = str(evidence.get("ip_accessed", ""))
+            if not _re.match(
+                r"(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+                r"|172\.(?:1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}"
+                r"|192\.168\.\d{1,3}\.\d{1,3}"
+                r"|169\.254\.169\.254"
+                r"|metadata\.google\.internal)",
+                ip
+            ):
+                return False, "", f"not a private/metadata IP: {ip}"
+            return True, "SSRF — private/metadata IP accessed", f"ip={ip}"
+
+        # ── IDOR ──────────────────────────────────────────────────────────────
+        elif stype == "idor":
+            other_id = evidence.get("other_user_id")
+            returned = bool(evidence.get("data_returned", False))
+            if other_id is None or not returned:
+                return False, "", f"other_id={other_id} data_returned={returned}"
+            return True, "IDOR — other user data confirmed", f"user_id={other_id}"
+
+        # ── Path Traversal ────────────────────────────────────────────────────
+        elif stype == "path_traversal":
+            content = str(evidence.get("content", ""))
+            if not _re.search(r"root:x:0:0|daemon:x:|/bin/(?:sh|bash)\s*$", content, _re.M):
+                return False, "", f"no traversal content proof: {content[:60]}"
+            return True, "Path traversal — /etc/passwd confirmed", content[:60]
+
+        # ── 알 수 없는 타입 ───────────────────────────────────────────────────
+        else:
+            return False, "", f"unknown signal type: {stype}"
+
     def _detect_vuln_signal(
         self, combined_output: str
     ) -> "list[tuple[str, str, str]]":
         """코드 실행 결과에서 취약점 신호 감지.
 
+        1순위: BINGO_SIGNAL 구조화 신호 (증거 JSON 검증)
+        2순위: 정규식 MVVS_SIGNALS (구조화 신호 없을 때만)
+
         Returns: [(vuln_type, pattern_description, matched_snippet), ...]
         """
         import re as _re
-        found: list[tuple[str, str, str]] = []
         if not combined_output:
-            return found
+            return []
+
+        # 1순위: 구조화 신호 — 증거가 명확하면 즉시 반환
+        structured = self._parse_bingo_signals(combined_output)
+        if structured:
+            return structured
+
+        # 2순위: 정규식 백업 — 구조화 신호가 없을 때만 사용
+        found: list[tuple[str, str, str]] = []
         for vuln_type, patterns in self._MVVS_SIGNALS.items():
             for regex, desc in patterns:
                 m = _re.search(regex, combined_output, _re.IGNORECASE | _re.DOTALL)

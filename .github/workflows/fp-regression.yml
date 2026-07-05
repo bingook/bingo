@@ -51,6 +51,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Category | Tests |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| False Positive Prevention | 25 cases |" >> $GITHUB_STEP_SUMMARY
-          echo "| True Positive Detection   | 17 cases |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Total** | **42 cases** |" >> $GITHUB_STEP_SUMMARY
+              echo "| False Positive Prevention | 25 cases |" >> $GITHUB_STEP_SUMMARY
+              echo "| True Positive Detection   | 17 cases |" >> $GITHUB_STEP_SUMMARY
+              echo "| BINGO_SIGNAL Valid        | 10 cases |" >> $GITHUB_STEP_SUMMARY
+              echo "| BINGO_SIGNAL Invalid      | 12 cases |" >> $GITHUB_STEP_SUMMARY
+              echo "| **Total** | **64 cases** |" >> $GITHUB_STEP_SUMMARY

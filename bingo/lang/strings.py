@@ -6869,6 +6869,32 @@ _STRINGS.update({
         "zh": "⚠️  添加MVVS模式时必须在tests/test_mvvs_false_positive.py中添加FP/TP用例",
         "en": "⚠️  When adding MVVS patterns, always add FP/TP cases to tests/test_mvvs_false_positive.py",
     },
+    # BINGO_SIGNAL 구조화 보고 시스템 관련 메시지 (v5.0.7)
+    "bingo_signal_detected": {
+        "ko": "🎯 BINGO_SIGNAL 구조화 신호 탐지됨 — 증거 검증 완료",
+        "zh": "🎯 检测到BINGO_SIGNAL结构化信号 — 已验证证据",
+        "en": "🎯 BINGO_SIGNAL structured signal detected — evidence validated",
+    },
+    "bingo_signal_rejected": {
+        "ko": "⛔ BINGO_SIGNAL 증거 불충분 — 오발 차단됨",
+        "zh": "⛔ BINGO_SIGNAL证据不足 — 已阻止误判",
+        "en": "⛔ BINGO_SIGNAL rejected — insufficient evidence, false positive blocked",
+    },
+    "bingo_signal_invalid_json": {
+        "ko": "⚠️  BINGO_SIGNAL JSON 파싱 실패 — 형식 오류",
+        "zh": "⚠️  BINGO_SIGNAL JSON解析失败 — 格式错误",
+        "en": "⚠️  BINGO_SIGNAL JSON parse failed — format error",
+    },
+    "bingo_signal_fallback_regex": {
+        "ko": "🔍 구조화 신호 없음 — 정규식 백업 모드로 탐지 시도",
+        "zh": "🔍 无结构化信号 — 切换至正则备用模式检测",
+        "en": "🔍 No structured signal — falling back to regex detection mode",
+    },
+    "bingo_signal_rule_add_reminder": {
+        "ko": "⚠️  새 BINGO_SIGNAL 타입 추가 시 _validate_bingo_signal 및 테스트 케이스 반드시 추가",
+        "zh": "⚠️  添加新BINGO_SIGNAL类型时必须同步更新_validate_bingo_signal及测试用例",
+        "en": "⚠️  When adding new BINGO_SIGNAL types, always update _validate_bingo_signal and test cases",
+    },
 })
 
 

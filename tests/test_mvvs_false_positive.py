@@ -1,19 +1,23 @@
 """
-MVVS False-Positive Regression Suite — FP-ZERO v1.1
-=====================================================
-목적: MVVS 취약점 신호 감지기(_MVVS_SIGNALS)가 실제로 무해한 텍스트에
-      오발(False Positive)을 내지 않는지 릴리즈마다 자동 검증.
+MVVS False-Positive Regression Suite — FP-ZERO v1.2 (BINGO_SIGNAL)
+====================================================================
+목적: 취약점 탐지기가 실제로 무해한 텍스트에 오발(False Positive)을
+      내지 않는지 릴리즈마다 자동 검증.
+
+구조:
+    1. FP 테스트: 무해한 텍스트 → MVVS 신호 없어야 함
+    2. TP 테스트: 실제 취약점 출력 → MVVS 신호 있어야 함
+    3. BINGO_SIGNAL 검증 테스트:
+       - 유효한 BINGO_SIGNAL → 탐지됨
+       - 증거 불충분 BINGO_SIGNAL → 거절됨 (허위 신호 차단)
 
 실행 방법:
     pytest tests/test_mvvs_false_positive.py -v
 
-규칙:
-    - FP 테스트: 무해한 텍스트 → MVVS 신호 없어야 함  (아래 FP_CASES)
-    - TP 테스트: 실제 취약점 출력 → MVVS 신호 있어야 함 (아래 TP_CASES)
-
 릴리즈 체크리스트:
     [ ] pytest tests/test_mvvs_false_positive.py -v → 전부 PASS
-    [ ] 새 규칙 추가 시 FP_CASES / TP_CASES에 케이스 반드시 추가
+    [ ] 새 MVVS 패턴 추가 시 FP_CASES / TP_CASES에 케이스 반드시 추가
+    [ ] 새 BINGO_SIGNAL 타입 추가 시 SIGNAL_VALID / SIGNAL_INVALID에 케이스 추가
 """
 import re
 import sys
@@ -263,11 +267,129 @@ TP_CASES = [
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# BINGO_SIGNAL 구조화 신호 테스트 케이스 (v5.0.7)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# 유효한 BINGO_SIGNAL — 증거 충분 → 탐지됨
+SIGNAL_VALID_CASES = [
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"sqli_boolean","evidence":{"size_true":15420,"size_false":203}}',
+        "sqli",
+        id="signal-sqli-boolean-valid",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"sqli_error","evidence":{"db_error":"You have an error in your SQL syntax"}}',
+        "sqli",
+        id="signal-sqli-error-valid",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"sqli_time","evidence":{"delay_sec":5.12,"expected_sec":5}}',
+        "sqli",
+        id="signal-sqli-time-valid",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"xss","evidence":{"payload":"<script>alert(1)</script>","reflected":true}}',
+        "xss",
+        id="signal-xss-valid",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"rce","evidence":{"proof":"uid=0(root) gid=0(root) groups=0(root)"}}',
+        "rce",
+        id="signal-rce-uid-root",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"rce","evidence":{"proof":"root:x:0:0:root:/root:/bin/bash"}}',
+        "rce",
+        id="signal-rce-passwd-record",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"ssrf","evidence":{"ip_accessed":"169.254.169.254"}}',
+        "ssrf",
+        id="signal-ssrf-aws-metadata",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"ssrf","evidence":{"ip_accessed":"192.168.1.10"}}',
+        "ssrf",
+        id="signal-ssrf-private-192",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"idor","evidence":{"other_user_id":999,"data_returned":true}}',
+        "idor",
+        id="signal-idor-valid",
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"path_traversal","evidence":{"content":"root:x:0:0:root:/root:/bin/bash"}}',
+        "path_traversal",
+        id="signal-path-traversal-valid",
+    ),
+]
+
+# 증거 불충분/허위 BINGO_SIGNAL — 거절되어야 함 (오발 방지 핵심)
+SIGNAL_INVALID_CASES = [
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"sqli_boolean","evidence":{"size_true":458,"size_false":460}}',
+        id="signal-sqli-boolean-tiny-diff",       # diff=2B < 100B
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"sqli_boolean","evidence":{"size_true":15420,"size_false":15300}}',
+        id="signal-sqli-boolean-small-pct",        # diff=120B but <10% of 15420
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"sqli_error","evidence":{"db_error":"server returned an error"}}',
+        id="signal-sqli-error-generic",            # generic error, not DB-specific
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"sqli_time","evidence":{"delay_sec":1.2,"expected_sec":5}}',
+        id="signal-sqli-time-too-short",           # 1.2s < 4s (80% of 5s)
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"xss","evidence":{"payload":"<b>hello</b>","reflected":true}}',
+        id="signal-xss-harmless-tag",              # no executable element
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"xss","evidence":{"payload":"<script>alert(1)</script>","reflected":false}}',
+        id="signal-xss-not-reflected",             # reflected=false
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"rce","evidence":{"proof":"root password changed"}}',
+        id="signal-rce-no-uid-pattern",            # no uid= or passwd record
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"ssrf","evidence":{"ip_accessed":"203.0.113.5"}}',
+        id="signal-ssrf-public-ip",                # public IP, not private
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"ssrf","evidence":{"ip_accessed":"Internal Server Error"}}',
+        id="signal-ssrf-error-string",             # string, not IP
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"idor","evidence":{"other_user_id":999,"data_returned":false}}',
+        id="signal-idor-not-returned",             # data_returned=false
+    ),
+    pytest.param(
+        'BINGO_SIGNAL:{"type":"path_traversal","evidence":{"content":"Permission denied"}}',
+        id="signal-path-traversal-no-proof",       # no passwd record
+    ),
+    pytest.param(
+        'not a signal at all, just text with BINGO_SIGNAL: in it but invalid json',
+        id="signal-invalid-json",                   # malformed JSON
+    ),
+]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # pytest 테스트 함수
 # ═══════════════════════════════════════════════════════════════════════════════
 @pytest.fixture(scope="module")
 def signals():
     return _get_signals()
+
+
+@pytest.fixture(scope="module")
+def terminal_instance():
+    """BingoTerminal 인스턴스 (BINGO_SIGNAL 파서 테스트용)"""
+    from bingo.ui.terminal import BingoTerminal  # noqa
+    return BingoTerminal.__new__(BingoTerminal)
 
 
 @pytest.mark.parametrize("text", FP_CASES)
@@ -293,4 +415,34 @@ def test_true_positive_detected(signals, vuln_expected, text):
         f"   텍스트: {repr(text[:120])}\n"
         f"   실제 매칭: {matches}\n"
         f"   → MVVS 패턴이 실제 취약점을 탐지하지 못함 — 패턴 강화 필요"
+    )
+
+
+@pytest.mark.parametrize("signal_text,expected_type", SIGNAL_VALID_CASES)
+def test_bingo_signal_valid_accepted(terminal_instance, signal_text, expected_type):
+    """유효한 BINGO_SIGNAL은 반드시 탐지되어야 함 (True Signal 확인)"""
+    found = terminal_instance._parse_bingo_signals(signal_text)
+    assert found, (
+        f"\n❌ VALID BINGO_SIGNAL NOT DETECTED!\n"
+        f"   신호: {signal_text[:120]}\n"
+        f"   기대 타입: {expected_type}\n"
+        f"   → _validate_bingo_signal 로직 확인 필요"
+    )
+    detected_types = [f[0] for f in found]
+    assert expected_type in detected_types, (
+        f"\n❌ WRONG BINGO_SIGNAL TYPE!\n"
+        f"   기대: {expected_type}\n"
+        f"   실제: {detected_types}"
+    )
+
+
+@pytest.mark.parametrize("signal_text", SIGNAL_INVALID_CASES)
+def test_bingo_signal_invalid_rejected(terminal_instance, signal_text):
+    """증거 불충분/허위 BINGO_SIGNAL은 반드시 거절되어야 함 (False Signal 차단)"""
+    found = terminal_instance._parse_bingo_signals(signal_text)
+    assert not found, (
+        f"\n🚨 INVALID BINGO_SIGNAL ACCEPTED!\n"
+        f"   신호: {signal_text[:120]}\n"
+        f"   잘못 탐지됨: {found}\n"
+        f"   → _validate_bingo_signal 증거 임계값 확인 필요"
     )

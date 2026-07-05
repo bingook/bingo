@@ -6842,7 +6842,7 @@ _FP_ZERO_RULES = '''
       내가 주입한 내부 URL이 실제로 접근되어 내부 서비스 응답이 반환됨
 
   ════════════════════════════════════════════════════════════════════════════
-  BINGO v5.0.5 FP-ZERO 6대 보장:
+  BINGO v5.0.7 FP-ZERO 6대 보장:
     RULE 99:  WAF 판정 = 크기 기반 (기준선 5% 이하). 키워드 검색 금지.
     RULE 100: Boolean SQLi = 1=1 vs 1=2 크기 차이 100B+. 동일 크기 = 오발 금지.
     RULE 101: XSS 반사 = 내가 주입한 페이로드 반사만. javascript:history.back() 등 오발 금지.
@@ -6850,6 +6850,84 @@ _FP_ZERO_RULES = '''
     RULE 103: RCE = uid=0(root) / /etc/passwd 레코드 / 쉘 프롬프트. "root:" 단독 오발 금지.
     RULE 104: SSRF = 사설 IP 대역 직접 노출. "Internal Server Error" 오발 금지.
   ════════════════════════════════════════════════════════════════════════════
+'''
+
+# v5.0.7 — RULE 105: BINGO_SIGNAL 구조화 보고 강제 (텍스트 기반 오발 원천 차단)
+_BINGO_SIGNAL_RULES = '''
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ── RULE 105 [v5.0.7]: BINGO_SIGNAL 구조화 보고 — 취약점 판정 필수 형식 ────
+  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ▸ RULE 105 [v5.0.7]: 취약점 발견 시 bash 블록에서 반드시 BINGO_SIGNAL 형식으로 출력.
+    "취약점을 발견했습니다" 같은 자연어 설명만으로 보고 금지.
+    BINGO_SIGNAL이 없으면 시스템이 취약점을 인식하지 못함.
+
+  ┌─ 필수 출력 형식 ───────────────────────────────────────────────────────┐
+  │                                                                        │
+  │  BINGO_SIGNAL:{"type":"<타입>","evidence":{<증거 JSON>}}               │
+  │                                                                        │
+  └────────────────────────────────────────────────────────────────────────┘
+
+  ── 타입별 증거 필드 (전부 실제 측정값/실행 결과여야 함) ─────────────────
+
+  ▸ sqli_boolean:
+      evidence: {"size_true": <int>, "size_false": <int>}
+      예: BINGO_SIGNAL:{"type":"sqli_boolean","evidence":{"size_true":15420,"size_false":203}}
+      조건: |size_true - size_false| >= 100B AND 차이 비율 >= 10%
+
+  ▸ sqli_error:
+      evidence: {"db_error": "<DB 에러 문자열>"}
+      예: BINGO_SIGNAL:{"type":"sqli_error","evidence":{"db_error":"You have an error in your SQL syntax"}}
+
+  ▸ sqli_time:
+      evidence: {"delay_sec": <float>, "expected_sec": <float>}
+      예: BINGO_SIGNAL:{"type":"sqli_time","evidence":{"delay_sec":5.12,"expected_sec":5}}
+
+  ▸ xss:
+      evidence: {"payload": "<주입한 페이로드>", "reflected": true}
+      예: BINGO_SIGNAL:{"type":"xss","evidence":{"payload":"<script>alert(1)</script>","reflected":true}}
+      조건: payload에 실행 가능 요소(<script>/onerror=/alert() 등) 포함 필수
+
+  ▸ rce:
+      evidence: {"proof": "<OS 명령 실행 결과>"}
+      예: BINGO_SIGNAL:{"type":"rce","evidence":{"proof":"uid=0(root) gid=0(root) groups=0(root)"}}
+      조건: uid=0(root) 형식 또는 root:x:0:0 형식 또는 whoami=<사용자명> 필수
+
+  ▸ ssrf:
+      evidence: {"ip_accessed": "<접근된 사설/메타데이터 IP>"}
+      예: BINGO_SIGNAL:{"type":"ssrf","evidence":{"ip_accessed":"169.254.169.254"}}
+      조건: 10.x/172.16-31.x/192.168.x 또는 클라우드 메타데이터 IP 필수
+
+  ▸ idor:
+      evidence: {"other_user_id": <타인 ID>, "data_returned": true}
+      예: BINGO_SIGNAL:{"type":"idor","evidence":{"other_user_id":999,"data_returned":true}}
+
+  ▸ path_traversal:
+      evidence: {"content": "<파일 내용 일부>"}
+      예: BINGO_SIGNAL:{"type":"path_traversal","evidence":{"content":"root:x:0:0:root:/root:/bin/bash"}}
+
+  ── bash 블록 내 사용 방법 ────────────────────────────────────────────────
+
+  # 예시: Boolean SQLi 확인 후 BINGO_SIGNAL 출력
+  ```bash
+  SIZE_TRUE=$(curl -sk "$URL?id=1 AND 1=1" | wc -c)
+  SIZE_FALSE=$(curl -sk "$URL?id=1 AND 1=2" | wc -c)
+  python3 -c "
+  t,f=$SIZE_TRUE,$SIZE_FALSE; diff=abs(t-f)
+  if diff>=100 and diff/max(t,f,1)*100>=10:
+      import json; print('BINGO_SIGNAL:'+json.dumps({'type':'sqli_boolean','evidence':{'size_true':t,'size_false':f}}))
+  else:
+      print(f'NO_SIGNAL: size_true={t} size_false={f} diff={diff}B (threshold not met)')
+  "
+  ```
+
+  ⛔ 금지 패턴 (자연어 설명만으로 취약점 보고):
+    "Boolean SQLi 발견! 응답 크기가 다릅니다."  ← BINGO_SIGNAL 없음 → 시스템 미인식
+    "root: 출력됨, RCE 가능성 있음"              ← BINGO_SIGNAL 없음 → 시스템 미인식
+
+  ✅ 올바른 패턴:
+    BINGO_SIGNAL:{"type":"sqli_boolean","evidence":{"size_true":15420,"size_false":203}}
+    BINGO_SIGNAL:{"type":"rce","evidence":{"proof":"uid=0(root) gid=0(root)"}}
 '''
 
 _SYSTEM_PROMPT_ADDON = (
@@ -6864,4 +6942,5 @@ _SYSTEM_PROMPT_ADDON = (
     + _AUTO_PROXY_RULES          # v4.2.0
     + _EXECUTION_ANCHOR_RULES    # v4.3.0
     + _FP_ZERO_RULES             # v5.0.4
+    + _BINGO_SIGNAL_RULES        # v5.0.7
 )

@@ -6757,7 +6757,7 @@ _FP_ZERO_RULES = '''
     ⛔ 절대 금지 패턴 (오발 원인):
       # 키워드("차단","blocked","forbidden","deny") HTML 검색 → 금지
       # 이유: 정상 페이지 HTML에 해당 단어가 포함되어 반드시 오발 발생
-      response=$(curl ...); echo "$response" | grep -i '차단\|blocked' && echo "WAF"
+      response=$(curl ...); echo "$response" | grep -iE '차단|blocked' && echo "WAF"
       # → 위 방식은 FALSE POSITIVE 100%. 절대 사용 금지.
 
     ✅ 올바른 패턴:

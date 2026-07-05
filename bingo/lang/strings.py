@@ -1903,6 +1903,16 @@ _STRINGS.update({
         "zh": "v5.1.7: 根本解决方案 — 执行前直接向脚本注入超时(watchdog降级为真正的最后防线)",
         "en": "v5.1.7: Root cause fix — inject timeout into script before execution (watchdog is now a true last resort)"},
 
+    # ── v5.1.8: sqlmap/ghauri/hydra BASH_ALLOWED 복구 ──
+    "sqlmap_allowed_restored":  {
+        "ko": "v5.1.8: sqlmap, ghauri, hydra, medusa, wafw00f, wfuzz, wpscan을 _BASH_ALLOWED에 추가 — curl 전환 시 누락으로 DB 덤프 불가했던 문제 수정",
+        "zh": "v5.1.8: 将sqlmap/ghauri/hydra/medusa/wafw00f/wfuzz/wpscan加入_BASH_ALLOWED — 修复curl迁移时遗漏导致无法DB dump的问题",
+        "en": "v5.1.8: Added sqlmap/ghauri/hydra/medusa/wafw00f/wfuzz/wpscan to _BASH_ALLOWED — fixed DB dump broken since curl transition"},
+    "sysprompt_sqlmap_allowed": {
+        "ko": "v5.1.8: 시스템 프롬프트 'No sqlmap required' 삭제 → DB 덤프 시 sqlmap 적극 사용 지시",
+        "zh": "v5.1.8: 删除系统提示'No sqlmap required' → 指示DB dump时主动使用sqlmap",
+        "en": "v5.1.8: Removed 'No sqlmap required' from system prompt → LLM now instructed to use sqlmap for DB dump"},
+
     # ── VBScript 에러 / VBScript Error Detection (v2.3.21+) ──────────
     "vbscript_not_sqli_title":  {"ko": "⚠️  VBScript 에러 감지 — 이 파라미터들은 SQL 인젝션이 아닙니다",
                                   "zh": "⚠️  检测到VBScript错误 — 这些参数不是SQL注入点",

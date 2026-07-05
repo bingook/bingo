@@ -6425,8 +6425,18 @@ class BingoTerminal:
         # ── v4.9.5: bash 블록 → .sh 파일 저장 후 실행 (multi-line curl+python3 지원) ──
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
         _BASH_ALLOWED = {
+            # HTTP / 스캔
             "curl", "nmap", "nikto", "ffuf", "gobuster", "nuclei",
-            "httpx", "subfinder", "amass", "whatweb", "john", "hashcat",
+            "httpx", "subfinder", "amass", "whatweb",
+            # SQLi / 익스플로잇 [v5.1.8: sqlmap, ghauri 추가 — DB 덤프용]
+            "sqlmap", "ghauri",
+            # 브루트포스
+            "hydra", "medusa", "wfuzz", "wpscan",
+            # WAF 탐지
+            "wafw00f",
+            # 크랙
+            "john", "hashcat",
+            # Python (로컬 처리)
             "python3", "python",
         }
         history_text = " ".join(m.content for m in self.history if m.role == "user")

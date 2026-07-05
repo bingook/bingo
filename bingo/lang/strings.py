@@ -6906,6 +6906,12 @@ _STRINGS.update({
         "zh": "🧠 已加载目标记忆 — 仅供参考（优先执行新指令）",
         "en": "🧠 Target memory loaded — reference only (new session takes priority)",
     },
+    # ── v5.1.0: 'n' 선택 시 메모리 초기화 (주입 없음) ─────────────────────
+    "tm_new_session_reset": {
+        "ko": "🗑️ 새 세션 — 이전 메모리 초기화 (파일은 유지, 컨텍스트 완전 비움)",
+        "zh": "🗑️ 新会话 — 已清空上下文（文件保留，可通过 'y' 恢复）",
+        "en": "🗑️ New session — context reset (file kept, use 'y' next time to restore)",
+    },
     "tm_wrong_target_warn": {
         "ko": "⚠️  타겟 메모리에 다른 도메인 URL이 섞여 있었습니다 — 자동 정리됨",
         "zh": "⚠️  目标记忆中混入了其他域名URL — 已自动清理",

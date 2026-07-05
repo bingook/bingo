@@ -5123,16 +5123,84 @@ class BingoTerminal:
                         "requests.get/post execution. Remove the fabricated result."
                     )
 
-            # ── v4.9.2 패턴 7: 타겟 외 도메인 URL 실행 원천 차단 (오탐 수정) ──────
-            # 기록.md L1079: LLM이 hanurschool.nurihaus.com 코드를 생성해 실행 → 무단 타겟 변경
-            # v4.9.0 버그: Googlebot User-Agent 헤더 내 URL(http://www.google.com/bot.html)을
-            #              실제 요청 타겟으로 오인해 정상 코드를 차단하는 오탐 발생
-            # v4.9.2 수정: HTTP 요청 메서드(requests.get/post 등)의 실제 타겟 URL만 검사
-            #              - 헤더 딕셔너리(User-Agent/Referer 등) 내 URL 제외
-            #              - 주석(# ...) 내 URL 제외
-            #              - url= 변수 할당과 요청 메서드 첫 인수만 추출
+            # ── v4.9.3 패턴 7: AST 기반 타겟 URL 검사 (완전 재작성) ─────────────────
+            # 이전 방식(regex): 주석·헤더 딕셔너리 내 URL을 오탐 → User-Agent의
+            #   http://www.google.com/bot.html 를 실제 요청 타겟으로 잘못 판단
+            # 새 방식(AST): Python 코드 파서로 구문 트리를 직접 분석
+            #   - AST는 주석을 완전히 무시 (파서 단계에서 제거됨)
+            #   - 딕셔너리 값 vs 함수 호출 인수를 구조적으로 구분
+            #   - requests.get(URL), session.post(url=URL) 의 실제 인수만 추출
+            #   - headers={'User-Agent':'...'} 내 값은 절대 추출하지 않음
+            import ast as _p7ast
             import urllib.parse as _up
-            import re as _p7re
+
+            def _p7_ast_extract_request_urls(code_str: str) -> list:
+                """AST 구문 트리에서 실제 HTTP 요청 타겟 URL만 추출.
+                - 주석, 헤더 딕셔너리, 문자열 변수 내 URL 완전 제외
+                - 요청 메서드 첫 인수(위치) 또는 url= 키워드 인수만 수집
+                - url/target/base_url 변수 할당도 수집
+                """
+                _HTTP_METHODS = {
+                    'get', 'post', 'put', 'patch', 'delete',
+                    'head', 'options', 'request', 'urlopen',
+                }
+                _URL_VAR_NAMES = {
+                    'url', 'target', 'endpoint', 'base_url',
+                    'base', 'host', 'uri', 'target_url',
+                }
+                _found: list = []
+
+                # SyntaxError 발생 시(f-string 등 Python 버전 차이) 빈 리스트 반환
+                try:
+                    _tree = _p7ast.parse(code_str)
+                except SyntaxError:
+                    return _found
+
+                def _str_val(node) -> str | None:
+                    """AST 노드에서 문자열 상수 값 추출."""
+                    if isinstance(node, _p7ast.Constant) and isinstance(node.value, str):
+                        return node.value
+                    # f-string (JoinedStr): 첫 번째 Constant 조각에 도메인 포함
+                    if isinstance(node, _p7ast.JoinedStr) and node.values:
+                        _fst = node.values[0]
+                        if isinstance(_fst, _p7ast.Constant) and isinstance(_fst.value, str):
+                            return _fst.value
+                    return None
+
+                for _node in _p7ast.walk(_tree):
+                    # ── 함수/메서드 호출: requests.get(URL), session.post(url=URL) ──
+                    if isinstance(_node, _p7ast.Call):
+                        if isinstance(_node.func, _p7ast.Attribute):
+                            if _node.func.attr.lower() in _HTTP_METHODS:
+                                # 첫 번째 위치 인수
+                                if _node.args:
+                                    _v = _str_val(_node.args[0])
+                                    if _v and _v.startswith('http'):
+                                        _found.append(_v)
+                                # url= 키워드 인수
+                                for _kw in _node.keywords:
+                                    if _kw.arg == 'url':
+                                        _v = _str_val(_kw.value)
+                                        if _v and _v.startswith('http'):
+                                            _found.append(_v)
+                    # ── 변수 할당: url = "https://...", target = "https://..." ──
+                    elif isinstance(_node, _p7ast.Assign):
+                        for _tgt in _node.targets:
+                            if isinstance(_tgt, _p7ast.Name) and _tgt.id.lower() in _URL_VAR_NAMES:
+                                _v = _str_val(_node.value)
+                                if _v and _v.startswith('http'):
+                                    _found.append(_v)
+                    # ── 어노테이션 할당: url: str = "https://..." ──
+                    elif isinstance(_node, _p7ast.AnnAssign):
+                        if (isinstance(_node.target, _p7ast.Name)
+                                and _node.target.id.lower() in _URL_VAR_NAMES
+                                and _node.value is not None):
+                            _v = _str_val(_node.value)
+                            if _v and _v.startswith('http'):
+                                _found.append(_v)
+
+                return _found
+
             _active_target = (
                 getattr(self, "_agent_state", {}).get("target")
                 or getattr(self, "_current_target", None)
@@ -5142,49 +5210,17 @@ class BingoTerminal:
                 _t_parsed = _up.urlparse(_t_str)
                 _t_domain = _t_parsed.netloc.lower().removeprefix("www.")
 
-                # 1단계: 주석 제거 (# 로 시작하는 라인/인라인 주석)
-                _p7_no_comments = _p7re.sub(r'(?m)#[^\n]*', '', s)
+                # AST로 실제 요청 타겟 URL만 추출
+                _p7_urls = _p7_ast_extract_request_urls(s)
 
-                # 2단계: 헤더 딕셔너리 값 제거 (User-Agent, Referer 등 헤더 내 URL 오탐 방지)
-                # headers = {...} 또는 "headers": {...} 형태의 딕셔너리 전체를 빈 값으로 치환
-                _p7_no_headers = _p7re.sub(
-                    r'(?i)(?:headers|hdr|hdrs)\s*=\s*\{[^{}]*\}',
-                    'headers={}',
-                    _p7_no_comments,
-                )
-                # 인라인 헤더 딕셔너리 (중첩 없는 단층 딕셔너리)도 제거
-                _p7_no_headers = _p7re.sub(
-                    r'(?i)["\'](?:user.?agent|referer|origin|host|x-forwarded)["\'][^,}]*',
-                    '""',
-                    _p7_no_headers,
-                )
-
-                # 3단계: 실제 HTTP 요청 타겟 URL만 추출
-                # 대상: requests.get/post/put/patch/delete/head, session.get 등의 첫 인수
-                _REQ_URL_RE = _p7re.compile(
-                    r'(?:requests|urllib\.request|httpx|session|sess|s|r|client|req)\s*\.\s*'
-                    r'(?:get|post|put|patch|delete|head|options|request|urlopen)\s*\(\s*'
-                    r'(?:url\s*=\s*)?f?[\'\"](https?://[^\'\"\\<>\s\n]+)',
-                    _p7re.IGNORECASE,
-                )
-                _p7_target_urls = _REQ_URL_RE.findall(_p7_no_headers)
-
-                # 4단계: url/target/endpoint 변수에 직접 할당된 URL도 추출
-                _VAR_URL_RE = _p7re.compile(
-                    r'(?:^|\s)(?:url|target|endpoint|base_url|host)\s*=\s*f?[\'\"](https?://[^\'\"\\<>\s\n]+)',
-                    _p7re.IGNORECASE | _p7re.MULTILINE,
-                )
-                _p7_target_urls += _VAR_URL_RE.findall(_p7_no_headers)
-
-                # 5단계: 추출된 실제 요청 타겟 URL만 도메인 비교
-                for _cu in _p7_target_urls:
-                    # f-string 변수 placeholder({...}) 제거 후 비교
+                import re as _p7re
+                for _cu in _p7_urls:
+                    # f-string placeholder({...}) 제거 후 도메인 비교
                     _cu_clean = _p7re.sub(r'\{[^}]+\}', '', _cu)
                     _cu_parsed = _up.urlparse(_cu_clean)
                     _cu_domain = _cu_parsed.netloc.lower().removeprefix("www.")
                     if not _cu_domain:
                         continue
-                    # 도메인 불일치 → 실행 차단
                     if _cu_domain != _t_domain:
                         return (
                             f"TARGET_DOMAIN_MISMATCH: Code sends HTTP request to '{_cu}' "
@@ -7842,38 +7878,55 @@ class BingoTerminal:
             if _has_timeout:
                 _detected_blocks.append("Request timeout — possible WAF silent drop")
             if _has_blocked:
-                # ── v4.9.2: WAF 페이로드 차단 vs 실제 IP 차단 구분 ────────────────
-                # 문제: WAF가 특정 페이로드를 차단할 때 응답 본문에 "blocked/banned" 등
-                #       텍스트가 포함되면 IP 전체 차단으로 오인 → 15초 불필요 대기
-                # 해결: 사이트 루트(/)가 정상 응답 시 → IP 차단 아님 → 페이로드 차단으로 처리
+                # ── v4.9.3: WAF 페이로드 차단 vs 실제 IP 차단 구분 (강화) ──────────
+                # 이전(v4.9.2): 루트(/) 1개 체크 → 루트도 WAF 차단 시 IP 차단으로 오판
+                # 개선: 루트 + /robots.txt + /favicon.ico 3개 시도 → 하나라도 200이면 WAF 차단
+                #       모두 실패해도 실제 연결 자체가 되면(비-4xx 응답) WAF 차단으로 처리
                 _hb_target = self._agent_state.get("target", "") or getattr(self.config, "target", "")
                 _hb_is_real_ipblock = True  # 기본 발동 (검증 실패 시 안전하게 유지)
                 if _hb_target:
                     try:
                         import httpx as _hb_hx
-                        _hb_root = _hb_target if "://" in _hb_target else f"https://{_hb_target}"
-                        if not _hb_root.endswith("/"):
-                            _hb_root = _hb_root.rstrip("/") + "/"
-                        _hb_resp = _hb_hx.get(
-                            _hb_root,
-                            headers={"User-Agent": "Mozilla/5.0"},
-                            follow_redirects=True,
-                            timeout=6,
-                            verify=False,
-                        )
-                        if _hb_resp.status_code == 200 and len(_hb_resp.text) > 500:
-                            # 루트 정상 접근 → IP 차단 아님, WAF 페이로드 차단
+                        _hb_base = _hb_target if "://" in _hb_target else f"https://{_hb_target}"
+                        _hb_base = _hb_base.rstrip("/")
+                        # 검증 경로: 루트 → /robots.txt → /favicon.ico
+                        _hb_probe_paths = ["/", "/robots.txt", "/favicon.ico"]
+                        _hb_accessible = False
+                        _hb_any_response = False  # 연결 자체는 됨 (WAF가 422/406 등 반환)
+                        for _hb_path in _hb_probe_paths:
+                            try:
+                                _hb_resp = _hb_hx.get(
+                                    _hb_base + _hb_path,
+                                    headers={"User-Agent": "Mozilla/5.0 (compatible; probe/1.0)"},
+                                    follow_redirects=True,
+                                    timeout=5,
+                                    verify=False,
+                                )
+                                _hb_any_response = True
+                                # 200-399: 정상 접근 가능 → IP 차단 아님
+                                if 200 <= _hb_resp.status_code < 400:
+                                    _hb_accessible = True
+                                    break
+                                # 서버가 응답은 함(4xx 포함) → 완전 연결 불가는 아님
+                            except (_hb_hx.ConnectError, _hb_hx.ConnectTimeout):
+                                # 연결 자체 실패 → 다음 경로 시도
+                                continue
+                            except Exception:
+                                _hb_any_response = True  # 읽기 오류도 연결은 된 것
+                                break
+                        # 하나라도 정상 응답 OR 서버가 응답 자체는 함 → WAF 페이로드 차단
+                        if _hb_accessible or _hb_any_response:
                             _hb_is_real_ipblock = False
                             _lang_hb = getattr(self.config, "lang", "en")
                             _hb_fp_msg = self.s.get("waf_payload_blocked_not_ip", {
-                                "ko": "⚡ 'blocked' 텍스트 감지됐지만 사이트 루트 정상 접근 — WAF 페이로드 차단 (IP 차단 아님, 오탐 억제)",
-                                "zh": "⚡ 检测到'blocked'文本但站点根路径可访问 — WAF拦截特定载荷（非IP封锁，误报已抑制）",
-                                "en": "⚡ 'blocked' text detected but site root accessible — WAF payload block, NOT IP block (false positive suppressed)",
-                            }).get(_lang_hb, "⚡ WAF payload block (not IP block) — false positive suppressed")
+                                "ko": "⚡ 'blocked' 감지됐지만 서버 응답 정상 — WAF 페이로드 차단 (IP 차단 아님)",
+                                "zh": "⚡ 检测到'blocked'但服务器正常响应 — WAF载荷拦截（非IP封锁）",
+                                "en": "⚡ 'blocked' text but server responds — WAF payload block, NOT IP block",
+                            }).get(_lang_hb, "⚡ WAF payload block (not IP block)")
                             self.console.print(f"[dim]{_hb_fp_msg}[/]")
                             _detected_blocks.append("WAF payload blocked (not IP block)")
                     except Exception:
-                        pass  # 검증 실패 → 안전하게 IP 차단으로 유지
+                        pass  # 검증 예외 → 안전하게 IP 차단으로 유지
                 if _hb_is_real_ipblock:
                     _detected_blocks.append("IP block/ban detected")
             if _has_unavail:

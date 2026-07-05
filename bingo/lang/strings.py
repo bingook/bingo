@@ -6600,70 +6600,78 @@ _STRINGS.update({
         "en": "⛔ [PATTERN6_EXT v4.9.1] Claimed result inside code block (extended pattern) detected — blocked",
     },
 
-    # ── v4.9.2: Pattern 7 오탐 수정 — 헤더 내 URL 제외 ────────────────────────────
+    # ── v4.9.3: Pattern 7 AST 기반 재작성 — regex 오탐 구조적 불가능 ────────────
+    # v4.9.2: regex로 헤더 제거 → 일부 엣지케이스 여전히 오탐 가능
+    # v4.9.3: ast.parse() 사용 → Python 파서 수준에서 주석/헤더 완전 제외
     "pattern7_fp_fixed": {
         "ko": (
-            "⛔ [PATTERN7 v4.9.2] 타겟 외 도메인 HTTP 요청 감지 — 실행 차단\n"
+            "⛔ [PATTERN7 v4.9.3/AST] 타겟 외 도메인 HTTP 요청 감지 — 실행 차단\n"
             "코드가 현재 타겟({target})이 아닌 다른 도메인({offender})으로 요청을 보내려 합니다.\n"
-            "헤더/주석 내 URL은 제외 후 실제 요청 타겟만 검사합니다."
+            "AST 파싱으로 실제 요청 인수만 검사 (헤더/주석 내 URL 완전 제외)."
         ),
         "zh": (
-            "⛔ [PATTERN7 v4.9.2] 检测到非目标域名HTTP请求 — 已阻止执行\n"
+            "⛔ [PATTERN7 v4.9.3/AST] 检测到非目标域名HTTP请求 — 已阻止执行\n"
             "代码尝试向 {offender} 发送请求，但活跃目标为 {target}。\n"
-            "已排除headers/注释中的URL，仅检查实际请求目标。"
+            "使用AST解析仅检查实际请求参数（完全排除headers/注释中的URL）。"
         ),
         "en": (
-            "⛔ [PATTERN7 v4.9.2] Non-target domain HTTP request detected — blocked\n"
+            "⛔ [PATTERN7 v4.9.3/AST] Non-target domain HTTP request detected — blocked\n"
             "Code attempts to request {offender} but the ACTIVE TARGET is {target}.\n"
-            "URLs in headers/comments excluded; only actual request targets are checked."
+            "AST parsing used — only actual request args checked (headers/comments fully excluded)."
         ),
         "ja": (
-            "⛔ [PATTERN7 v4.9.2] 非ターゲットドメインへのHTTPリクエスト検出 — ブロック\n"
-            "コードが{offender}へリクエストしようとしていますが、アクティブターゲットは{target}です。"
+            "⛔ [PATTERN7 v4.9.3/AST] 非ターゲットドメインへのHTTPリクエスト検出 — ブロック\n"
+            "コードが{offender}へリクエストしようとしていますが、アクティブターゲットは{target}です。\n"
+            "ASTパーシングで実際のリクエスト引数のみを検査（ヘッダー/コメント内URL完全除外）。"
         ),
         "es": (
-            "⛔ [PATTERN7 v4.9.2] Solicitud HTTP a dominio no objetivo detectada — bloqueada\n"
-            "El código intenta solicitar {offender} pero el objetivo activo es {target}."
+            "⛔ [PATTERN7 v4.9.3/AST] Solicitud HTTP a dominio no objetivo detectada — bloqueada\n"
+            "El código intenta solicitar {offender} pero el objetivo activo es {target}.\n"
+            "Análisis AST: solo se verifican argumentos reales de solicitud (headers/comentarios excluidos)."
         ),
         "ru": (
-            "⛔ [PATTERN7 v4.9.2] Обнаружен HTTP-запрос к стороннему домену — заблокировано\n"
-            "Код пытается обратиться к {offender}, но активная цель — {target}."
+            "⛔ [PATTERN7 v4.9.3/AST] Обнаружен HTTP-запрос к стороннему домену — заблокировано\n"
+            "Код пытается обратиться к {offender}, но активная цель — {target}.\n"
+            "Используется AST-анализ: проверяются только аргументы запроса (headers/комментарии исключены)."
         ),
         "ar": (
-            "⛔ [PATTERN7 v4.9.2] تم اكتشاف طلب HTTP إلى نطاق غير مستهدف — تم الحظر\n"
-            "الكود يحاول الاتصال بـ {offender} لكن الهدف النشط هو {target}."
+            "⛔ [PATTERN7 v4.9.3/AST] تم اكتشاف طلب HTTP إلى نطاق غير مستهدف — تم الحظر\n"
+            "الكود يحاول الاتصال بـ {offender} لكن الهدف النشط هو {target}.\n"
+            "يستخدم تحليل AST: يتم فحص وسائط الطلب الفعلية فقط (URL في الترويسات/التعليقات مستبعدة تمامًا)."
         ),
     },
 
-    # ── v4.9.2: WAF 페이로드 차단 vs IP 차단 구분 ────────────────────────────────
+    # ── v4.9.3: WAF 페이로드 차단 vs IP 차단 구분 (다중 경로 검증) ──────────────
+    # v4.9.2: 루트(/) 1개만 체크 → 루트가 WAF에 차단된 경우 IP 차단으로 오판 가능
+    # v4.9.3: /robots.txt, /favicon.ico 등 3개 경로 순차 시도 → 하나라도 응답 시 WAF 차단
     "waf_payload_blocked_not_ip": {
         "ko": (
-            "⚡ 'blocked' 텍스트 감지됐지만 사이트 루트 정상 접근 확인 — "
-            "WAF 페이로드 차단 (IP 차단 아님, IP 차단 오탐 억제)"
+            "⚡ 'blocked' 감지됐지만 서버 응답 정상 확인 — "
+            "WAF 페이로드 차단 (IP 차단 아님, 다중경로 검증 완료)"
         ),
         "zh": (
-            "⚡ 检测到'blocked'文本但站点根路径可访问 — "
-            "WAF拦截特定载荷（非IP封锁，IP封锁误报已抑制）"
+            "⚡ 检测到'blocked'但服务器正常响应 — "
+            "WAF拦截特定载荷（非IP封锁，多路径验证完成）"
         ),
         "en": (
-            "⚡ 'blocked' text found but site root is accessible — "
-            "WAF payload block, NOT IP block (IP block false positive suppressed)"
+            "⚡ 'blocked' text found but server responding normally — "
+            "WAF payload block, NOT IP block (multi-path probe confirmed)"
         ),
         "ja": (
-            "⚡ 'blocked'テキスト検出もサイトルートにアクセス可能 — "
-            "WAFペイロードブロック（IPブロックではない、誤検出抑制）"
+            "⚡ 'blocked'テキスト検出もサーバーは正常応答 — "
+            "WAFペイロードブロック（IPブロックではない、複数パス検証済み）"
         ),
         "es": (
-            "⚡ Texto 'blocked' detectado pero la raíz del sitio es accesible — "
-            "Bloqueo de carga WAF, NO bloqueo de IP (falso positivo suprimido)"
+            "⚡ Texto 'blocked' detectado pero el servidor responde normalmente — "
+            "Bloqueo de carga WAF, NO bloqueo de IP (verificación multi-ruta confirmada)"
         ),
         "ru": (
-            "⚡ Текст 'blocked' обнаружен, но корень сайта доступен — "
-            "WAF заблокировал нагрузку, IP не заблокирован (ложное срабатывание подавлено)"
+            "⚡ Текст 'blocked' обнаружен, но сервер отвечает нормально — "
+            "WAF заблокировал нагрузку, IP не заблокирован (многопутевая проверка подтверждена)"
         ),
         "ar": (
-            "⚡ تم اكتشاف نص 'blocked' لكن جذر الموقع قابل للوصول — "
-            "WAF يحظر الحمولة وليس IP (تم قمع الإيجابية الكاذبة)"
+            "⚡ تم اكتشاف نص 'blocked' لكن الخادم يستجيب بشكل طبيعي — "
+            "WAF يحظر الحمولة وليس IP (تم تأكيد التحقق متعدد المسارات)"
         ),
     },
 })

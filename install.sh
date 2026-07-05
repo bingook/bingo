@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # ================================================================
-#  Bingo Installer — macOS / Linux
+#  Bingo Installer — macOS / Linux / WSL2
 #  One-liner: curl -fsSL https://raw.githubusercontent.com/bingook/bingo/main/install.sh | bash
+#
+#  Supported:
+#    macOS (Intel / Apple Silicon)
+#    Linux (Ubuntu / Debian / Fedora / Arch …)
+#    WSL2  (Windows Subsystem for Linux 2)
 # ================================================================
 set -euo pipefail
 
@@ -29,12 +34,25 @@ info() { echo -e "${DIM}  $*${RESET}"; }
 
 detect_os() {
     OS="unknown"
+    IS_WSL=false
     case "$(uname -s)" in
         Darwin) OS="macos" ;;
-        Linux)  OS="linux" ;;
+        Linux)
+            OS="linux"
+            # WSL2 감지 (환경변수 또는 커널 버전)
+            if [ -n "${WSL_DISTRO_NAME:-}" ] || [ -n "${WSLENV:-}" ]; then
+                IS_WSL=true
+            elif [ -f /proc/version ] && grep -qi "microsoft" /proc/version 2>/dev/null; then
+                IS_WSL=true
+            fi
+            ;;
         *)      OS="other" ;;
     esac
-    info "OS: $OS ($(uname -m))"
+    if $IS_WSL; then
+        info "OS: WSL2 / Linux ($(uname -m)) — ✅ Supported"
+    else
+        info "OS: $OS ($(uname -m))"
+    fi
 }
 
 check_python() {
@@ -149,7 +167,7 @@ verify() {
 
 clear
 echo -e "${GREEN}$(banner)${RESET}"
-echo -e "${CYAN}  macOS / Linux Installer${RESET}"
+echo -e "${CYAN}  macOS / Linux / WSL2 Installer${RESET}"
 echo ""
 
 detect_os

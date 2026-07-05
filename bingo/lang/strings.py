@@ -3324,13 +3324,13 @@ _STRINGS.update({
                                      "zh": "🔕 [LOOP v3.2.28] 超过150字符行 — 已排除循环检测（防日志行误报）",
                                      "en": "🔕 [LOOP v3.2.28] Line >150 chars — excluded from loop detection (log line false-positive prevention)"},
 
-    # ── 플랫폼 차단 메시지 (v3.2.55) ─────────────────────────────────
-    "platform_win32":               {"ko": "❌ bingo는 Windows에서 실행할 수 없습니다.\n   macOS 또는 Linux를 사용하세요.",
-                                     "zh": "❌ bingo 不支持 Windows。\n   请使用 macOS 或 Linux。",
-                                     "en": "❌ bingo does not support Windows.\n   Please use macOS or Linux."},
-    "platform_wsl":                 {"ko": "❌ bingo는 WSL(Windows Subsystem for Linux) 환경을 지원하지 않습니다.\n   네이티브 Linux 또는 macOS를 사용하세요.",
-                                     "zh": "❌ bingo 不支持 WSL（Windows Subsystem for Linux）。\n   请使用原生 Linux 或 macOS。",
-                                     "en": "❌ bingo does not support WSL (Windows Subsystem for Linux).\n   Please use native Linux or macOS."},
+    # ── 플랫폼 메시지 (v5.0.3) ────────────────────────────────────────
+    "platform_win32":               {"ko": "⚠️  Windows 네이티브 환경입니다.\n   WSL2(Windows Subsystem for Linux 2) 사용을 권장합니다.\n   일부 기능(curl/bash 실행)은 WSL2에서만 정상 동작합니다.",
+                                     "zh": "⚠️  检测到 Windows 原生环境。\n   建议使用 WSL2（Windows Subsystem for Linux 2）。\n   部分功能（curl/bash 执行）仅在 WSL2 下正常工作。",
+                                     "en": "⚠️  Windows native environment detected.\n   Recommended: WSL2 (Windows Subsystem for Linux 2).\n   Some features (curl/bash execution) work best on WSL2."},
+    "platform_wsl":                 {"ko": "✅ WSL2(Windows Subsystem for Linux) 환경을 감지했습니다.\n   bingo가 WSL2에서 정상적으로 실행됩니다.",
+                                     "zh": "✅ 检测到 WSL2（Windows Subsystem for Linux）环境。\n   bingo 在 WSL2 上可以正常运行。",
+                                     "en": "✅ WSL2 (Windows Subsystem for Linux) environment detected.\n   bingo runs normally on WSL2."},
 
     # ── v3.2.57: 스킬 로딩 / Playwright / 헬루시네이션 방지 ──────────
     "skill_auto_detected":       {"ko": "🧠 스킬 자동 매칭: {count}개 로드됨",

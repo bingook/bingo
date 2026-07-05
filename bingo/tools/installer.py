@@ -63,12 +63,12 @@ _RECIPES: dict[str, dict] = {
     "nikto": {
         "macos":   lambda log: _brew_install("nikto", log),
         "linux":   lambda log: _apt_install("nikto", log) or _yum_install("nikto", log),
-        "windows": lambda log: log("  nikto: Linux/macOS only") or False,
+        "windows": lambda log: _apt_install("nikto", log) or (log("  nikto: run 'sudo apt install nikto' in WSL2") or False),
     },
     "whatweb": {
         "macos":   lambda log: _brew_install("whatweb", log),
         "linux":   lambda log: _apt_install("whatweb", log) or _yum_install("whatweb", log),
-        "windows": lambda log: log("  whatweb: Linux/macOS only") or False,
+        "windows": lambda log: _apt_install("whatweb", log) or (log("  whatweb: run 'sudo apt install whatweb' in WSL2") or False),
     },
     "sqlmap": {
         "macos":   lambda log: _pip_install("sqlmap", log),

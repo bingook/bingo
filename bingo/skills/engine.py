@@ -507,11 +507,14 @@ class SkillEngine:
                 score += 3
             if any(kw in t for t in skill.get("tags", [])):
                 score += 2
-            if kw in skill.get("desc", "").lower():
+            desc = skill.get("desc", "") or skill.get("description", "")
+            if isinstance(desc, str) and kw in desc.lower():
                 score += 1
-            if kw in " ".join(skill.get("commands", [])).lower():
+            cmds = skill.get("commands", [])
+            if isinstance(cmds, list) and kw in " ".join(cmds).lower():
                 score += 1
-            if kw in " ".join(skill.get("payloads", [])).lower():
+            payloads = skill.get("payloads", [])
+            if isinstance(payloads, list) and kw in " ".join(payloads).lower():
                 score += 2
 
             if score > 0:

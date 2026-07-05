@@ -6599,6 +6599,73 @@ _STRINGS.update({
         "zh": "⛔ [PATTERN6_EXT v4.9.1] 检测到代码块内描述未执行结果 (扩展模式) — 已阻止执行",
         "en": "⛔ [PATTERN6_EXT v4.9.1] Claimed result inside code block (extended pattern) detected — blocked",
     },
+
+    # ── v4.9.2: Pattern 7 오탐 수정 — 헤더 내 URL 제외 ────────────────────────────
+    "pattern7_fp_fixed": {
+        "ko": (
+            "⛔ [PATTERN7 v4.9.2] 타겟 외 도메인 HTTP 요청 감지 — 실행 차단\n"
+            "코드가 현재 타겟({target})이 아닌 다른 도메인({offender})으로 요청을 보내려 합니다.\n"
+            "헤더/주석 내 URL은 제외 후 실제 요청 타겟만 검사합니다."
+        ),
+        "zh": (
+            "⛔ [PATTERN7 v4.9.2] 检测到非目标域名HTTP请求 — 已阻止执行\n"
+            "代码尝试向 {offender} 发送请求，但活跃目标为 {target}。\n"
+            "已排除headers/注释中的URL，仅检查实际请求目标。"
+        ),
+        "en": (
+            "⛔ [PATTERN7 v4.9.2] Non-target domain HTTP request detected — blocked\n"
+            "Code attempts to request {offender} but the ACTIVE TARGET is {target}.\n"
+            "URLs in headers/comments excluded; only actual request targets are checked."
+        ),
+        "ja": (
+            "⛔ [PATTERN7 v4.9.2] 非ターゲットドメインへのHTTPリクエスト検出 — ブロック\n"
+            "コードが{offender}へリクエストしようとしていますが、アクティブターゲットは{target}です。"
+        ),
+        "es": (
+            "⛔ [PATTERN7 v4.9.2] Solicitud HTTP a dominio no objetivo detectada — bloqueada\n"
+            "El código intenta solicitar {offender} pero el objetivo activo es {target}."
+        ),
+        "ru": (
+            "⛔ [PATTERN7 v4.9.2] Обнаружен HTTP-запрос к стороннему домену — заблокировано\n"
+            "Код пытается обратиться к {offender}, но активная цель — {target}."
+        ),
+        "ar": (
+            "⛔ [PATTERN7 v4.9.2] تم اكتشاف طلب HTTP إلى نطاق غير مستهدف — تم الحظر\n"
+            "الكود يحاول الاتصال بـ {offender} لكن الهدف النشط هو {target}."
+        ),
+    },
+
+    # ── v4.9.2: WAF 페이로드 차단 vs IP 차단 구분 ────────────────────────────────
+    "waf_payload_blocked_not_ip": {
+        "ko": (
+            "⚡ 'blocked' 텍스트 감지됐지만 사이트 루트 정상 접근 확인 — "
+            "WAF 페이로드 차단 (IP 차단 아님, IP 차단 오탐 억제)"
+        ),
+        "zh": (
+            "⚡ 检测到'blocked'文本但站点根路径可访问 — "
+            "WAF拦截特定载荷（非IP封锁，IP封锁误报已抑制）"
+        ),
+        "en": (
+            "⚡ 'blocked' text found but site root is accessible — "
+            "WAF payload block, NOT IP block (IP block false positive suppressed)"
+        ),
+        "ja": (
+            "⚡ 'blocked'テキスト検出もサイトルートにアクセス可能 — "
+            "WAFペイロードブロック（IPブロックではない、誤検出抑制）"
+        ),
+        "es": (
+            "⚡ Texto 'blocked' detectado pero la raíz del sitio es accesible — "
+            "Bloqueo de carga WAF, NO bloqueo de IP (falso positivo suprimido)"
+        ),
+        "ru": (
+            "⚡ Текст 'blocked' обнаружен, но корень сайта доступен — "
+            "WAF заблокировал нагрузку, IP не заблокирован (ложное срабатывание подавлено)"
+        ),
+        "ar": (
+            "⚡ تم اكتشاف نص 'blocked' لكن جذر الموقع قابل للوصول — "
+            "WAF يحظر الحمولة وليس IP (تم قمع الإيجابية الكاذبة)"
+        ),
+    },
 })
 
 

@@ -15,6 +15,7 @@ from rich.table import Table
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.markdown import Markdown
+from rich.markup import escape as _markup_escape
 from rich.rule import Rule
 from rich.prompt import Prompt
 from prompt_toolkit import PromptSession
@@ -3210,10 +3211,13 @@ class BingoTerminal:
 
             icon = "🐍" if lang == "python" else "⚡"
             _wait_label = _s.get("exec_waiting", "Waiting to execute")
+            # _markup_escape: 코드 내 [, ] 등 Rich 마크업 문자 이스케이프 → [/dim] 크래시 방지
+            _l0 = _markup_escape(lines[0][:70]) if lines else ""
+            _l1 = _markup_escape(lines[1][:70]) if len(lines) > 1 else ""
             return (
                 f"\n[dim]┌─ {icon} {lang.upper()} [{intent}] — {total}L[/dim]\n"
-                f"[dim]│  {lines[0][:70] if lines else ''}[/dim]\n"
-                f"[dim]│  {lines[1][:70] if len(lines) > 1 else ''}[/dim]\n"
+                f"[dim]│  {_l0}[/dim]\n"
+                f"[dim]│  {_l1}[/dim]\n"
                 f"[dim]└─ ... ({_wait_label})[/dim]\n"
             )
 
@@ -7112,7 +7116,8 @@ class BingoTerminal:
 
         while True:
             # 코드 블록 없으면 → AI에게 코드 작성 재촉 (최대 3회)
-            if "```" not in current_response:
+            # v5.2.2: TOOL_CALL이 있으면 "코드 없음" 처리 우회 — _run_code_blocks에서 처리
+            if "```" not in current_response and "TOOL_CALL:" not in current_response:
                 # ── v3.2.86: Web3/DApp 감사 JSON은 코드 블록 없어도 정상 완료 ──
                 _web3_data = self._is_web3_audit_json(current_response.strip())
                 if _web3_data is not None:
@@ -7160,7 +7165,7 @@ class BingoTerminal:
             import re as _pgre_pre
             _has_executable_code = bool(
                 _pgre_pre.search(r"```(?:python|py|bash|sh)\n", current_response, _pgre_pre.DOTALL)
-            )
+            ) or ("TOOL_CALL:" in current_response)  # v5.2.2: TOOL_CALL도 실행 가능으로 처리
 
             if self._phantom_guard is not None and not _has_executable_code:
                 # 코드 블록 없을 때만 PHANTOM 사전 차단 (텍스트만 있는 응답)

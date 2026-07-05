@@ -7145,6 +7145,19 @@ _STRINGS.update({
         "zh": "[v5.2.1] 工具自动探测 — 搜索 PATH/homebrew/go/pip 所有路径",
         "en": "[v5.2.1] Tool auto-detect — searches PATH/homebrew/go/pip all paths",
     },
+    # ─────────────────────────────────────────────────────────────────
+    # v5.2.2 — bash 블록 미리보기 [/dim] 크래시 수정 + TOOL_CALL 루프 버그 수정
+    # ─────────────────────────────────────────────────────────────────
+    "fix_dim_escape": {
+        "ko": "[v5.2.2] bash 미리보기 [/dim] 크래시 수정 — Rich 마크업 이스케이프 적용",
+        "zh": "[v5.2.2] 修复bash预览[/dim]崩溃 — 应用Rich标记转义",
+        "en": "[v5.2.2] bash preview [/dim] crash fix — Rich markup escape applied",
+    },
+    "fix_toolcall_loop": {
+        "ko": "[v5.2.2] TOOL_CALL 루프 버그 수정 — TOOL_CALL만 있어도 bash 강제 재요청 안 함",
+        "zh": "[v5.2.2] 修复TOOL_CALL循环bug — 仅有TOOL_CALL时不再强制要求bash块",
+        "en": "[v5.2.2] TOOL_CALL loop bug fix — no forced bash re-request when only TOOL_CALL present",
+    },
 })
 
 

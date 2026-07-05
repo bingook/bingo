@@ -7121,6 +7121,30 @@ _STRINGS.update({
         "zh": "[v5.2.0] 组合方式: LLM 通过 TOOL_CALL 调用 Python 函数 → 函数内部执行 bash/外部工具 → 返回结果",
         "en": "[v5.2.0] Combined method: LLM calls Python fn via TOOL_CALL → fn runs bash/external tools internally → returns result",
     },
+
+    # ─────────────────────────────────────────────────────────────────
+    # v5.2.1 — sqlmap 다중 실행 경로 자동 탐색
+    # ─────────────────────────────────────────────────────────────────
+    "sqlmap_autodetect": {
+        "ko": "[v5.2.1] sqlmap 자동 탐색 — 설치 방식에 상관없이 자동 실행 (PATH/pip/module/git clone)",
+        "zh": "[v5.2.1] sqlmap 自动探测 — 无论安装方式均可自动执行 (PATH/pip/module/git clone)",
+        "en": "[v5.2.1] sqlmap auto-detect — runs automatically regardless of install method (PATH/pip/module/git clone)",
+    },
+    "sqlmap_found": {
+        "ko": "✅ sqlmap 발견: {}",
+        "zh": "✅ 找到 sqlmap: {}",
+        "en": "✅ sqlmap found: {}",
+    },
+    "sqlmap_not_found": {
+        "ko": "⛔ sqlmap 미발견 — pip install sqlmap / apt install sqlmap / brew install sqlmap 중 하나로 설치 필요",
+        "zh": "⛔ 未找到 sqlmap — 请通过 pip install sqlmap / apt install sqlmap / brew install sqlmap 安装",
+        "en": "⛔ sqlmap not found — install via pip install sqlmap / apt install sqlmap / brew install sqlmap",
+    },
+    "tool_autodetect": {
+        "ko": "[v5.2.1] 도구 자동 탐색 — PATH/homebrew/go/pip 경로 전부 탐색",
+        "zh": "[v5.2.1] 工具自动探测 — 搜索 PATH/homebrew/go/pip 所有路径",
+        "en": "[v5.2.1] Tool auto-detect — searches PATH/homebrew/go/pip all paths",
+    },
 })
 
 

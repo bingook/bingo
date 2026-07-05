@@ -5952,124 +5952,36 @@ class BingoTerminal:
                 # "__SYNTAX_ERR__" = 수정 불가 문법 오류 (None 과 다름: None = 정상)
                 return ("__WARN_SYNTAX__" if _is_py312_fstring else "__SYNTAX_ERR__"), _applied_fix_names
 
-        python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
+        # ── v4.9.6: Python 블록 완전 폐기 — bash+curl 전용 ─────────────────────
+        # Python 블록은 실행하지 않고 즉시 bash 재작성 요청으로 전환
         _hallucination_msgs: list[str] = []
-        for i, block in enumerate(python_blocks):
-            code = block.strip()
-            if not code:
-                continue
-
-            # 환각 감지 — JSON 코드블록이면 건너뜀
-            _hall = _detect_hallucination(code)
-            if _hall:
-                self.console.print(
-                    f"[{THEME['error']}]⛔ [HALLUCINATION BLOCKED #{i+1}] {_hall[:120]}[/]"
-                )
-                _hallucination_msgs.append(_hall)
-                continue
-
-            # 구문 사전 검증 + 무한루프 패턴 차단
-            _checked, _applied_fix_names = _precheck_python_code(code)
-            # base64 자동 주입 감지 (v3.2.26, RULE 26-Y)
-            if isinstance(_checked, str) and _checked.startswith("__BASE64_INJECTED__\n"):
-                _checked = _checked[len("__BASE64_INJECTED__\n"):]
-                _b64_msg = t("base64_alias_forbidden", "🔧 [PRECHECK] import base64 injected (b64 alias / missing import detected)")
-                self.console.print(f"[{THEME['dim']}]{_b64_msg}[/]")
-            # urllib.parse 자동 주입 감지
-            if isinstance(_checked, str) and _checked.startswith("__URLLIB_INJECTED__\n"):
-                _checked = _checked[len("__URLLIB_INJECTED__\n"):]
-                _ul_msg = t("urllib_parse_injected", "🔧 [PRECHECK] import urllib.parse injected (was missing)")
-                self.console.print(f"[{THEME['dim']}]{_ul_msg}[/]")
-            # 인코딩 자동 주입 감지
-            if isinstance(_checked, str) and _checked.startswith("__ENCODE_INJECTED__\n"):
-                _checked = _checked[len("__ENCODE_INJECTED__\n"):]
-                _enc_msg = t("encoding_inject_notice", "🔤 [PRECHECK] r.text → smart_decode() injected (auto encoding detection)")
-                self.console.print(f"[{THEME['dim']}]{_enc_msg}[/]")
-            # v3.2.20: AI가 _smart_decode() 직접 호출했으나 def 없음 → def만 주입
-            if isinstance(_checked, str) and _checked.startswith("__SMART_DECODE_INJECTED__\n"):
-                _checked = _checked[len("__SMART_DECODE_INJECTED__\n"):]
-                _sd_msg = t("smart_decode_def_injected", "🔧 [PRECHECK] _smart_decode() 호출 감지 — def 자동 주입 (NameError 방지)")
-                self.console.print(f"[{THEME['dim']}]{_sd_msg}[/]")
-            if isinstance(_checked, str) and _checked.startswith("__BLOCKED__:"):
-                _block_reason = _checked[len("__BLOCKED__:"):]
-                _loop_label = t("loop_block_label", "🚫 [LOOP BLOCK #{n}] {reason}").replace("{n}", str(i + 1)).replace("{reason}", _block_reason[:120])
-                self.console.print(f"[bold red]{_loop_label}[/]")
-                # v3.2.94: ILR 전용 카운터 별도 집계 (LOOP_BLOCK 공유 카운터와 분리)
-                if "INFINITE_LOOP_RISK" in _block_reason:
-                    _hallucination_msgs.append(f"ILR_BLOCKED: {_block_reason}")
-                else:
-                    _hallucination_msgs.append(f"LOOP_BLOCKED: {_block_reason}")
-                continue  # 이 코드블록 실행 건너뜀
-            elif _checked == "__WARN_SYNTAX__":
-                # Python 3.12 호환 f-string (실행은 시도, 조용한 안내만)
-                _checked = None
-            elif _checked == "__SYNTAX_ERR__":
-                # 수정 불가 문법 오류 — 스크립트를 건너뛰고 AI에 에러 내용 통보
-                _sw_msg = t("syntax_precheck_warn", "⚠ [SYNTAX PRECHECK #{n}] SyntaxError detected — auto-fix failed. Check f-string backslash or dict subscript issues.").replace("{n}", str(i + 1))
-                self.console.print(f"[{THEME['warn']}]{_sw_msg}[/]")
-                # 스크립트 실행을 건너뛰고 AI가 즉시 수정하도록 피드백 주입
-                _se_feedback = (
-                    f"[SYNTAX_ERR SCRIPT #{i+1} SKIPPED]\n"
-                    f"Python syntax error detected in generated code — script was NOT executed.\n"
-                    f"Common causes: f-string with same-type quotes inside {{}} (Python <3.12), "
-                    f"backslash inside f-string expression, or unclosed brackets.\n"
-                    f"Fix: use temp variable to extract complex expressions out of f-strings, "
-                    f"e.g. _k='key'; f\"{{_k}}\" instead of f\"{{d['key']}}\".\n"
-                    f"Regenerate the code block with correct syntax."
-                )
-                _hallucination_msgs.append(_se_feedback)
-                continue  # 이 코드블록 실행 건너뜀
-            elif _checked is None:
-                pass  # 코드 정상, 변경 없음 — 경고 없음
-            elif _checked is not None and _checked != code:
-                # 타임아웃 주입 여부 확인
-                _timeout_injected = (
-                    "timeout=30" in _checked and "timeout=30" not in code
-                ) or (
-                    "login_timeout=10" in _checked and "login_timeout=10" not in code
-                )
-                # URL 연소 버그 수정 여부 확인
-                _url_fixed = (
-                    import_re := __import__("re"),
-                    bool(_url_fixed_re := _url_fixed_re if (_url_fixed_re := import_re.search(
-                        r'https?://', code
-                    )) else None) and
-                    code.count("https://") != _checked.count("https://")
-                )[-1]
-                # _applied_fix_names 에 수집된 수정 항목을 구체적으로 출력
-                if _applied_fix_names:
-                    _fix_detail = ", ".join(t(k, k) for k in _applied_fix_names)
-                    self.console.print(
-                        f"[{THEME['secondary']}]🔧 [AUTO-FIX] {_fix_detail}[/]"
-                    )
-                elif _timeout_injected:
-                    _to_msg = t("requests_timeout_injected",
-                                "⚠️  Auto-injected timeout=30 into requests calls (prevents server hang)")
-                    self.console.print(f"[{THEME['warn']}]{_to_msg}[/]")
-                elif _url_fixed:
-                    _uf_msg = t("url_concat_fixed",
-                                "🔧  URL concat bug auto-fixed: base_url + 'https://...' → using full URL only")
-                    self.console.print(f"[{THEME['warn']}]{_uf_msg}[/]")
-                code = _checked
-
-            tools_header = (
-                "import sys as _sys, os as _os, warnings as _warnings\n"
-                "_sys.path.insert(0, _os.path.expanduser('~/.bingo'))\n"
-                "# ── SSL/InsecureRequestWarning 전역 억제 ─────────────────────\n"
-                "_warnings.filterwarnings('ignore', message='Unverified HTTPS request')\n"
-                "_warnings.filterwarnings('ignore', category=DeprecationWarning)\n"
-                "try:\n"
-                "    import urllib3 as _urllib3\n"
-                "    _urllib3.disable_warnings(_urllib3.exceptions.InsecureRequestWarning)\n"
-                "except Exception:\n"
-                "    pass\n"
+        python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
+        if python_blocks:
+            _py_count = len([b for b in python_blocks if b.strip()])
+            _py_block_msg = (
+                f"PYTHON_BLOCK_FORBIDDEN: Found {_py_count} Python block(s). "
+                "Python blocks are DISABLED in v4.9.6+. "
+                "You MUST rewrite ALL code as bash blocks using curl piped to python3 -c. "
+                "Example:\n"
+                "```bash\n"
+                "curl -s -m 15 -k \\\n"
+                "  -H 'User-Agent: Mozilla/5.0' \\\n"
+                "  'https://REAL_TARGET/path' \\\n"
+                "  | /usr/bin/python3 -c \"\n"
+                "import sys\n"
+                "d=sys.stdin.buffer.read()\n"
+                "t=d.decode('utf-8',errors='replace')\n"
+                "print(f'[STATUS] {len(d)}B'); print(t[:1500])\n"
+                "\"\n"
+                "```"
             )
-            if "agent_tools" not in code and "from agent_tools" not in code:
-                code = tools_header + code
-            script_path = tmp_dir / f"agent_script_{i}.py"
-            script_path.write_text(code, encoding="utf-8")
-            preview = " | ".join(l.strip() for l in code.splitlines()[:3] if l.strip())[:80]
-            tasks.append({"type": "python", "idx": i, "path": str(script_path), "preview": preview})
+            self.console.print(
+                f"[{THEME['error']}]⛔ [v4.9.6 PYTHON_BLOCK_FORBIDDEN] "
+                f"{_py_count} Python block(s) detected — NOT executed. "
+                f"Rewrite as bash+curl.[/]"
+            )
+            _hallucination_msgs.append(_py_block_msg)
+        # (v4.9.6: Python 블록 처리 로직 완전 제거 — bash+curl 전용)
 
         # 모든 블록이 환각으로 차단됐을 경우 → 강제 수정 메시지 반환
         if _hallucination_msgs and not tasks:
@@ -6267,48 +6179,16 @@ class BingoTerminal:
 
         def _run_task(task: dict, slot: int) -> None:
             try:
+                # v4.9.6: Python 타입 제거 — bash+curl 전용. python 타입은 실행 불가.
                 if task["type"] == "python":
-                    with _lock:
-                        self.console.print(
-                            f"\n[{THEME['secondary']}]▶ {self.s.get('python_exec', 'Python execution')} "
-                            f"[#{task['idx']+1}]:[/] [{THEME['dim']}]{task['preview']}...[/]"
-                        )
-                    proc = subprocess.Popen(
-                        ["python3", task["path"]],
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
-                        start_new_session=True,  # v3.2.99: WSL/VM Ctrl+C 격리
+                    results_text[slot] = (
+                        "=== PYTHON_BLOCK_FORBIDDEN (v4.9.6) ===\n"
+                        "Python blocks are disabled. This should not reach here.\n"
+                        "=== EXIT: 1 ==="
                     )
-                    stdout, stderr = proc.communicate()
-                    output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
-                    # v3.2.22: Traceback 폭탄 → 1줄 에러로 압축 (표시용 + AI 컨텍스트용)
-                    output_filtered, _tb_orig, _tb_filt = _filter_traceback(output)
-                    if _tb_orig > 0:
-                        # Traceback 필터 작동 — 다국어 알림
-                        _tb_msg = t(
-                            "traceback_filtered",
-                            f"📦 [EXEC] Traceback {_tb_orig}줄 → {_tb_filt}줄로 압축 (에러만 표시)"
-                        ).format(n=_tb_orig, count=_tb_filt)
-                        with _lock:
-                            self.console.print(f"[{THEME['dim']}]{_tb_msg}[/]")
-                    if output_filtered.strip():
-                        preview_out = "\n".join(output_filtered.strip().splitlines()[:60])
-                        with _lock:
-                            try:
-                                self.console.print(f"[{THEME['dim']}]{_resc(preview_out)}[/]")
-                            except Exception:
-                                self.console.out(preview_out)
-                        results_text[slot] = (
-                            f"=== PYTHON EXECUTION (script_{task['idx']}) ===\n"
-                            f"{output_filtered.strip()}\n=== EXIT: {proc.returncode} ==="
-                        )
-                    else:
-                        results_text[slot] = (
-                            f"=== PYTHON EXECUTION (script_{task['idx']}) ===\n"
-                            f"(no output, exit={proc.returncode})"
-                        )
+                    return
 
-                else:  # bash — v4.9.5: .sh 파일로 실행 (multi-line curl+python3 지원)
+                else:  # bash — v4.9.5~: .sh 파일로 실행 (multi-line curl+python3 지원)
                     with _lock:
                         self.console.print(
                             f"\n[{THEME['secondary']}]▶ {self.s['exec_running']}:[/] "
@@ -6762,10 +6642,10 @@ class BingoTerminal:
                 _no_code_retry += 1
                 _lang = getattr(self.config, "lang", "en")
                 _nudge = {
-                    "ko": "분석을 계속하려면 반드시 ```python 코드 블록을 포함해야 합니다. 다음 공격 단계의 코드를 즉시 작성하세요.",
-                    "zh": "要继续分析，必须包含 ```python 代码块。请立即编写下一步攻击代码。",
-                    "en": "To continue, you MUST include a ```python code block. Write the next attack step code NOW.",
-                }.get(_lang, "Write the next ```python code block NOW to continue.")
+                    "ko": "분석을 계속하려면 반드시 ```bash 코드 블록(curl 사용)을 포함해야 합니다. 다음 공격 단계의 bash+curl 코드를 즉시 작성하세요.",
+                    "zh": "要继续分析，必须包含 ```bash 代码块（使用curl）。请立即编写下一步攻击的bash+curl代码。",
+                    "en": "To continue, you MUST include a ```bash code block with curl. Write the next attack step as bash+curl NOW.",
+                }.get(_lang, "Write the next ```bash curl block NOW to continue.")
                 self.history.append(Message(role="user", content=f"[CONTINUE REQUIRED]\n{_nudge}"))
                 from ..models.registry import ModelRegistry as _MR
                 _mc = self.config.get_active_model_config()
@@ -6866,27 +6746,27 @@ class BingoTerminal:
                         _th_snippet = _th_m.group(0)[:80].strip()
                         _th_feedback = {
                             "ko": (
-                                f"[TEXT_HALLUCINATION_DETECTED v4.9.0]\n"
+                                f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"코드 실행 없이 텍스트로 결과를 서술했습니다: '{_th_snippet}'\n"
-                                f"이것은 실제 실행 결과가 아닙니다. 반드시 ```python 블록으로 "
-                                f"코드를 작성하고 실제 requests.get/post 실행 후 print() 출력만 보고하세요."
+                                f"이것은 실제 실행 결과가 아닙니다. 반드시 ```bash 블록으로 "
+                                f"curl 명령을 작성하고 실제 HTTP 응답을 print() 하세요."
                             ),
                             "zh": (
-                                f"[TEXT_HALLUCINATION_DETECTED v4.9.0]\n"
+                                f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"在未执行代码的情况下，通过文字描述了结果: '{_th_snippet}'\n"
-                                f"这不是真实的执行结果。必须用 ```python 代码块实际运行 "
-                                f"requests.get/post，只报告 print() 的实际输出。"
+                                f"这不是真实的执行结果。必须用 ```bash 代码块运行curl，"
+                                f"只报告实际HTTP响应输出。"
                             ),
                             "en": (
-                                f"[TEXT_HALLUCINATION_DETECTED v4.9.0]\n"
+                                f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"You described results in text without executing code: '{_th_snippet}'\n"
-                                f"This is not real execution output. You MUST write a ```python code block, "
-                                f"run actual requests.get/post, and only report real print() output."
+                                f"This is not real execution output. You MUST write a ```bash block "
+                                f"with real curl commands and only report actual HTTP response output."
                             ),
                         }.get(_lang_th, (
-                            f"[TEXT_HALLUCINATION_DETECTED v4.9.0] "
+                            f"[TEXT_HALLUCINATION_DETECTED v4.9.6] "
                             f"Claimed result without code: '{_th_snippet}' — "
-                            f"Write a ```python code block with real HTTP calls."
+                            f"Write a ```bash block with real curl calls."
                         ))
                         self.console.print(f"[bold red]⛔ {_th_feedback}[/bold red]")
                         self.history.append(Message(role="user", content=_th_feedback))

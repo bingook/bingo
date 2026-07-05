@@ -314,13 +314,15 @@ class BingoTerminal:
         try:
             from ..core.target_memory import load as _tm_load, save as _tm_save, \
                 record_sqli_point as _tm_sqli, record_users as _tm_users, \
-                record_endpoint as _tm_ep, build_context_injection as _tm_ctx
+                record_endpoint as _tm_ep, build_context_injection as _tm_ctx, \
+                purge_foreign_domains as _tm_purge
             self._tm_load = _tm_load
             self._tm_save = _tm_save
             self._tm_sqli = _tm_sqli
             self._tm_users = _tm_users
             self._tm_ep = _tm_ep
             self._tm_ctx = _tm_ctx
+            self._tm_purge = _tm_purge
             self._tm_available = True
         except Exception:
             self._tm_available = False
@@ -9580,28 +9582,45 @@ class BingoTerminal:
                 "en": "🗑️ Previous session state cleared (credentials/tables/DB reset)",
             }.get(_lang, "🗑️ Previous session state cleared")
             self.console.print(f"[{THEME['dim']}]{_cleared}[/]\n")
-            # ── v3.2.71: 타겟 메모리 주입 ─────────────────────────────────────
-            # 새 세션 시작 시에도 이전 탐색에서 발견한 SQLi 포인트·유저 등을 불러와 주입.
-            # AI가 처음부터 알고 있어서 중복 탐색 없이 바로 취약점으로 직행 가능.
+            # ── v3.2.71 fix: 타겟 메모리 주입 (참고용 — 새 세션 명령 우선) ─────────
+            # 새 세션 시작 시 이전 탐색 결과를 배경 참고용으로만 주입.
+            # "즉시 실행" 명령 제거 → AI가 새 사용자 입력을 우선 따르도록 변경.
+            # (이전 버그: incheon.or.kr 등 다른 도메인 항목이 메모리에 섞여 있으면
+            #  AI가 해당 도메인을 현재 타겟으로 오인해 테스트하는 문제 수정)
             if self._tm_available and target:
                 try:
+                    # 저장된 메모리에서 다른 도메인 항목 먼저 정리 (v5.0.9 fix)
+                    try:
+                        _purged = self._tm_purge(target)
+                        if _purged > 0:
+                            _plabel = {
+                                "ko": f"🧹 타겟 메모리 정리 완료 — {_purged}개 다른 도메인 항목 제거",
+                                "zh": f"🧹 目标记忆已清理 — 已移除 {_purged} 条其他域名记录",
+                                "en": f"🧹 Target memory cleaned — {_purged} foreign domain entries removed",
+                            }.get(_lang, f"🧹 Memory cleaned ({_purged} removed)")
+                            self.console.print(f"[dim]{_plabel}[/dim]\n")
+                    except Exception:
+                        pass
                     _ctx = self._tm_ctx(target, _lang)
                     if _ctx:
                         self.history.append(Message(
                             role="user",
                             content=(
-                                "[🧠 TARGET MEMORY — CRITICAL PRIORITY]\n"
+                                "[🧠 TARGET MEMORY — BACKGROUND REFERENCE ONLY]\n"
                                 + _ctx
-                                + "\n\n[INSTRUCTION] Start with the SQLi points listed above. "
-                                "Do NOT waste time re-scanning login forms or doing brute force. "
-                                "Go straight to blind/error-based SQLi on the confirmed parameters."
+                                + "\n\n[IMPORTANT] This is REFERENCE data from a PREVIOUS session. "
+                                "A NEW session has started. "
+                                "Wait for the user's next message to determine the current target and task. "
+                                "Do NOT automatically act on any domain, URL, or endpoint listed above "
+                                "unless the user explicitly requests it. "
+                                "The user's new instruction takes absolute priority over this memory."
                             )
                         ))
                         _mem_label = {
-                            "ko": f"🧠 타겟 메모리 로드됨 — 이전 탐색 결과를 AI에 주입",
-                            "zh": f"🧠 已加载目标记忆 — 将上次发现注入AI上下文",
-                            "en": f"🧠 Target memory loaded — injecting previous findings into AI",
-                        }.get(_lang, "🧠 Target memory loaded")
+                            "ko": f"🧠 타겟 메모리 로드됨 — 참고용 (새 세션 명령 우선)",
+                            "zh": f"🧠 已加载目标记忆 — 仅供参考（优先执行新指令）",
+                            "en": f"🧠 Target memory loaded — reference only (new session)",
+                        }.get(_lang, "🧠 Target memory loaded (reference only)")
                         self.console.print(f"[bold green]{_mem_label}[/bold green]\n")
                 except Exception:
                     pass

@@ -6895,6 +6895,22 @@ _STRINGS.update({
         "zh": "⚠️  添加新BINGO_SIGNAL类型时必须同步更新_validate_bingo_signal及测试用例",
         "en": "⚠️  When adding new BINGO_SIGNAL types, always update _validate_bingo_signal and test cases",
     },
+    # ── v5.0.9: 타겟 메모리 도메인 오염 방지 ─────────────────────────────
+    "tm_purge_foreign": {
+        "ko": "🧹 타겟 메모리 정리 — {n}개 다른 도메인 항목 제거됨",
+        "zh": "🧹 目标记忆已清理 — 已移除 {n} 条其他域名记录",
+        "en": "🧹 Target memory cleaned — {n} foreign domain entries removed",
+    },
+    "tm_memory_ref_only": {
+        "ko": "🧠 타겟 메모리 로드됨 — 참고용 (새 세션 명령 우선)",
+        "zh": "🧠 已加载目标记忆 — 仅供参考（优先执行新指令）",
+        "en": "🧠 Target memory loaded — reference only (new session takes priority)",
+    },
+    "tm_wrong_target_warn": {
+        "ko": "⚠️  타겟 메모리에 다른 도메인 URL이 섞여 있었습니다 — 자동 정리됨",
+        "zh": "⚠️  目标记忆中混入了其他域名URL — 已自动清理",
+        "en": "⚠️  Target memory contained foreign domain URLs — auto-cleaned",
+    },
 })
 
 

@@ -249,6 +249,10 @@ def parse_all_sessions_for_target(target: str) -> ParseResult:
     """
     특정 타겟과 관련된 모든 세션 로그를 파싱해서 정보를 통합 반환.
     target: URL 문자열 (e.g. "https://www.kira.or.kr")
+
+    Bug-fix v5.0.9: 타겟 도메인과 다른 도메인의 URL(SQLi 포인트·엔드포인트)을
+    메모리에서 제외. 이전에는 klia.or.kr 세션에 incheon.or.kr 탐색 기록이
+    섞여 있으면 AI가 incheon.or.kr을 현재 타겟으로 오인하는 버그가 있었음.
     """
     if not _SESSIONS_DIR.exists():
         return ParseResult(target, [], [], [], [])
@@ -256,6 +260,19 @@ def parse_all_sessions_for_target(target: str) -> ParseResult:
     # 타겟 도메인 추출
     domain_m = re.search(r"https?://([^/]+)", target)
     domain = domain_m.group(1) if domain_m else target
+    # 루트 도메인만 추출 (예: www.klia.or.kr → klia.or.kr)
+    _root_domain = re.sub(r"^(?:www\d*|m|mobile|admin|cms)\.", "", domain)
+
+    def _url_matches_target(url: str) -> bool:
+        """URL이 현재 타겟 도메인에 속하는지 확인."""
+        if not url or url.startswith("/"):
+            return True  # 상대 경로는 허용
+        m = re.search(r"https?://([^/]+)", url)
+        if not m:
+            return True
+        url_domain = m.group(1)
+        url_root = re.sub(r"^(?:www\d*|m|mobile|admin|cms)\.", "", url_domain)
+        return url_domain == domain or url_root == _root_domain or url_root.endswith("." + _root_domain)
 
     all_sqli: list[dict] = []
     all_users: list[str] = []
@@ -275,12 +292,15 @@ def parse_all_sessions_for_target(target: str) -> ParseResult:
             header = log_file.read_text(encoding="utf-8", errors="replace")[:2000]
         except Exception:
             continue
-        if domain not in header:
+        if domain not in header and _root_domain not in header:
             continue
 
         result = parse_session_log(log_file)
 
         for pt in result.sqli_points:
+            # 타겟 도메인 URL만 수집 (다른 도메인 제외)
+            if not _url_matches_target(pt["url"]):
+                continue
             key = f"{pt['url']}:{pt['param']}"
             if key not in _seen_sqli:
                 _seen_sqli.add(key)
@@ -292,6 +312,9 @@ def parse_all_sessions_for_target(target: str) -> ParseResult:
                 all_users.append(u)
 
         for ep in result.endpoints:
+            # 타겟 도메인 엔드포인트만 수집 (다른 도메인 제외)
+            if not _url_matches_target(ep["url"]):
+                continue
             if ep["url"] not in _seen_eps:
                 _seen_eps.add(ep["url"])
                 all_eps.append(ep)
@@ -314,6 +337,8 @@ def parse_and_save_to_memory(log_path: Path, target: str) -> tuple[int, int, int
     세션 로그를 파싱해 target_memory에 저장.
     terminal.py 세션 종료 시점에 호출.
 
+    Bug-fix v5.0.9: 타겟 도메인과 다른 도메인의 URL은 저장하지 않음.
+
     Returns: (sqli_count, user_count, ep_count)
     """
     try:
@@ -323,7 +348,25 @@ def parse_and_save_to_memory(log_path: Path, target: str) -> tuple[int, int, int
 
     result = parse_session_log(log_path)
 
+    # 타겟 도메인 추출 (도메인 필터용)
+    domain_m = re.search(r"https?://([^/]+)", target)
+    _target_domain = domain_m.group(1) if domain_m else target
+    _root_domain = re.sub(r"^(?:www\d*|m|mobile|admin|cms)\.", "", _target_domain)
+
+    def _url_ok(url: str) -> bool:
+        if not url or url.startswith("/"):
+            return True
+        m = re.search(r"https?://([^/]+)", url)
+        if not m:
+            return True
+        ud = m.group(1)
+        ur = re.sub(r"^(?:www\d*|m|mobile|admin|cms)\.", "", ud)
+        return ud == _target_domain or ur == _root_domain or ur.endswith("." + _root_domain)
+
+    sqli_count = 0
     for pt in result.sqli_points:
+        if not _url_ok(pt["url"]):
+            continue
         try:
             record_sqli_point(
                 target,
@@ -332,6 +375,7 @@ def parse_and_save_to_memory(log_path: Path, target: str) -> tuple[int, int, int
                 pt.get("method", "GET"),
                 sqli_type=pt.get("sqli_type", "unknown"),
             )
+            sqli_count += 1
         except Exception:
             pass
 
@@ -341,9 +385,13 @@ def parse_and_save_to_memory(log_path: Path, target: str) -> tuple[int, int, int
         except Exception:
             pass
 
+    ep_count = 0
     for ep in result.endpoints:
+        if not _url_ok(ep["url"]):
+            continue
         try:
             record_endpoint(target, ep["url"], ep.get("status", 200), ep.get("note", ""))
+            ep_count += 1
         except Exception:
             pass
 
@@ -360,7 +408,7 @@ def parse_and_save_to_memory(log_path: Path, target: str) -> tuple[int, int, int
             pass
 
     return (
-        len(result.sqli_points),
+        sqli_count,
         len(result.confirmed_users),
-        len(result.endpoints),
+        ep_count,
     )

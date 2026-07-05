@@ -54,6 +54,53 @@ def save(target: str, data: dict) -> None:
     path.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def purge_foreign_domains(target: str) -> int:
+    """
+    Bug-fix v5.0.9: 저장된 메모리에서 현재 타겟과 다른 도메인의 항목을 제거.
+    이전 세션에서 incheon.or.kr 등 다른 도메인이 klia.or.kr 메모리에 섞인 경우 정리.
+    Returns: 제거된 항목 수
+    """
+    domain_m = re.search(r"https?://([^/]+)", target)
+    if not domain_m:
+        return 0
+    _target_domain = domain_m.group(1)
+    _root_domain = re.sub(r"^(?:www\d*|m|mobile|admin|cms)\.", "", _target_domain)
+
+    def _ok(url: str) -> bool:
+        if not url or url.startswith("/"):
+            return True
+        m = re.search(r"https?://([^/]+)", url)
+        if not m:
+            return True
+        ud = m.group(1)
+        ur = re.sub(r"^(?:www\d*|m|mobile|admin|cms)\.", "", ud)
+        return ud == _target_domain or ur == _root_domain or ur.endswith("." + _root_domain)
+
+    mem = load(target)
+    if not mem:
+        return 0
+
+    removed = 0
+    sqli_orig = mem.get("sqli_points", [])
+    sqli_clean = [p for p in sqli_orig if _ok(p.get("url", ""))]
+    removed += len(sqli_orig) - len(sqli_clean)
+
+    ep_orig = mem.get("endpoints", [])
+    ep_clean = [e for e in ep_orig if _ok(e.get("url", ""))]
+    removed += len(ep_orig) - len(ep_clean)
+
+    if removed > 0:
+        mem["sqli_points"] = sqli_clean
+        mem["endpoints"] = ep_clean
+        mem["_updated"] = datetime.now().isoformat()
+        _MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+        key = _domain_key(target)
+        path = _MEMORY_DIR / f"{key}.json"
+        path.write_text(json.dumps(mem, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return removed
+
+
 def record_sqli_point(target: str, url: str, param: str, method: str,
                        size_normal: int | None = None, size_injected: int | None = None,
                        sqli_type: str = "unknown") -> None:

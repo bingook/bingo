@@ -5183,11 +5183,35 @@ class BingoTerminal:
         # v5.2.0 ── TOOL_CALL 파서 (bash 블록 처리 이전에 실행)
         # 형식: TOOL_CALL:{"name":"sqli_timebased","args":{"url":"...","param":"id"}}
         # ══════════════════════════════════════════════════════════════════════
-        _tool_call_pattern = re.compile(
-            r'TOOL_CALL\s*:\s*(\{.*?\})',
-            re.DOTALL,
-        )
-        _tool_matches = _tool_call_pattern.findall(response)
+        # v5.2.3 fix: 중첩 {} 파싱 버그 수정 — 비탐욕 정규식 대신 괄호 카운터 사용
+        def _extract_tool_call_jsons(text: str) -> list[str]:
+            """TOOL_CALL: 뒤 JSON을 중괄호 깊이 카운팅으로 추출 (중첩 {} 지원)"""
+            found: list[str] = []
+            for _m in re.finditer(r'TOOL_CALL\s*:\s*', text):
+                pos = _m.end()
+                if pos >= len(text) or text[pos] != '{':
+                    continue
+                depth, j, in_str, esc = 0, pos, False, False
+                while j < len(text):
+                    c = text[j]
+                    if esc:
+                        esc = False
+                    elif c == '\\' and in_str:
+                        esc = True
+                    elif c == '"':
+                        in_str = not in_str
+                    elif not in_str:
+                        if c == '{':
+                            depth += 1
+                        elif c == '}':
+                            depth -= 1
+                            if depth == 0:
+                                found.append(text[pos: j + 1])
+                                break
+                    j += 1
+            return found
+
+        _tool_matches = _extract_tool_call_jsons(response)
 
         if _tool_matches:
             tool_results: list[str] = []
@@ -5210,6 +5234,10 @@ class BingoTerminal:
                     tool_results.append(
                         f"TOOL_RESULT:{{'name':'?','error':'JSON parse failed: {_je}','success':false}}"
                     )
+                    # v5.2.3: debug 출력 (개발 모드)
+                    import os as _os
+                    if _os.environ.get("BINGO_DEBUG"):
+                        console.print(f"[dim red]  [TOOL_CALL DEBUG] raw={_raw_json!r}[/dim red]")
                     self.console.print(
                         f"[{THEME['error']}]⚠ TOOL_CALL JSON parse error: {_je}[/]"
                     )

@@ -7158,6 +7158,11 @@ _STRINGS.update({
         "zh": "[v5.2.2] 修复TOOL_CALL循环bug — 仅有TOOL_CALL时不再强制要求bash块",
         "en": "[v5.2.2] TOOL_CALL loop bug fix — no forced bash re-request when only TOOL_CALL present",
     },
+    "fix_toolcall_nested_json": {
+        "ko": "[v5.2.3] TOOL_CALL 중첩 JSON 파싱 버그 수정 — 비탐욕 정규식 → 괄호 카운터로 교체",
+        "zh": "[v5.2.3] 修复TOOL_CALL嵌套JSON解析bug — 用括号计数器替代非贪婪正则",
+        "en": "[v5.2.3] TOOL_CALL nested JSON parse fix — replaced non-greedy regex with brace counter",
+    },
 })
 
 

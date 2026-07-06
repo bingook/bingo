@@ -225,7 +225,18 @@ class BingoTerminal:
         # Agent 루프 중단 플래그 (Ctrl+C)
         self._agent_stop_flag = threading.Event()
         # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
-        self._agent_state_path = Path.home() / ".config" / "bingo" / "agent_state.json"
+        # v6.0.1: 프로세스 PID별 독립 파일 → 다중 터미널 동시 실행 시 상태 오염 방지
+        import os as _os
+        _state_dir = Path.home() / ".config" / "bingo"
+        self._agent_state_path = _state_dir / f"agent_state_{_os.getpid()}.json"
+        # 24시간 이상 된 stale agent_state 파일 자동 정리
+        try:
+            import time as _t
+            for _f in _state_dir.glob("agent_state_*.json"):
+                if _t.time() - _f.stat().st_mtime > 86400:
+                    _f.unlink(missing_ok=True)
+        except Exception:
+            pass
         self._agent_state: dict = self._load_agent_state()
         # ── 화이트박스 분석 상태 (v3.2.82) ────────────────────────────
         self._whitebox_context: str = ""          # AI에 주입할 화이트박스 컨텍스트

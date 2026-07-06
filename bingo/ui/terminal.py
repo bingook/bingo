@@ -6362,36 +6362,8 @@ class BingoTerminal:
                 # "__SYNTAX_ERR__" = 수정 불가 문법 오류 (None 과 다름: None = 정상)
                 return ("__WARN_SYNTAX__" if _is_py312_fstring else "__SYNTAX_ERR__"), _applied_fix_names
 
-        # ── v4.9.6: Python 블록 완전 폐기 — bash+curl 전용 ─────────────────────
-        # Python 블록은 실행하지 않고 즉시 bash 재작성 요청으로 전환
+        # ── v6.2.0: Python 블록 실행 허용 — sqlmap 없이 Python으로 직접 SQLi ─────
         _hallucination_msgs: list[str] = []
-        python_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
-        if python_blocks:
-            _py_count = len([b for b in python_blocks if b.strip()])
-            _py_block_msg = (
-                f"PYTHON_BLOCK_FORBIDDEN: Found {_py_count} Python block(s). "
-                "Python blocks are DISABLED in v4.9.6+. "
-                "You MUST rewrite ALL code as bash blocks using curl piped to python3 -c. "
-                "Example:\n"
-                "```bash\n"
-                "curl -s -m 15 -k \\\n"
-                "  -H 'User-Agent: Mozilla/5.0' \\\n"
-                "  'https://REAL_TARGET/path' \\\n"
-                "  | /usr/bin/python3 -c \"\n"
-                "import sys\n"
-                "d=sys.stdin.buffer.read()\n"
-                "t=d.decode('utf-8',errors='replace')\n"
-                "print(f'[STATUS] {len(d)}B'); print(t[:1500])\n"
-                "\"\n"
-                "```"
-            )
-            self.console.print(
-                f"[{THEME['error']}]⛔ [v4.9.6 PYTHON_BLOCK_FORBIDDEN] "
-                f"{_py_count} Python block(s) detected — NOT executed. "
-                f"Rewrite as bash+curl.[/]"
-            )
-            _hallucination_msgs.append(_py_block_msg)
-        # (v4.9.6: Python 블록 처리 로직 완전 제거 — bash+curl 전용)
 
         # 모든 블록이 환각으로 차단됐을 경우 → 강제 수정 메시지 반환
         if _hallucination_msgs and not tasks:
@@ -6666,6 +6638,26 @@ class BingoTerminal:
                 "preview": script[:120],
             })
 
+        # ── v6.2.0: Python 블록 파싱 및 tasks 추가 ──────────────────────────────
+        python_raw_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
+        for _py_i, py_block in enumerate(python_raw_blocks):
+            py_script = py_block.strip()
+            if not py_script:
+                continue
+            _py_dedup_key = py_script[:60]
+            if f"PYTHON EXECUTION" in history_text and _py_dedup_key[:40] in history_text:
+                continue
+            _py_path = tmp_dir / f"agent_python_{len(tasks)}.py"
+            _py_path.write_text(py_script, encoding="utf-8")
+            first_py_line = next((l.strip() for l in py_script.splitlines() if l.strip() and not l.strip().startswith("#")), py_script[:80])
+            tasks.append({
+                "type": "python",
+                "path": str(_py_path),
+                "idx": _py_i,
+                "cmd": first_py_line[:80],
+                "preview": py_script[:120],
+            })
+
         if not tasks:
             return []
 
@@ -6675,13 +6667,29 @@ class BingoTerminal:
 
         def _run_task(task: dict, slot: int) -> None:
             try:
-                # v4.9.6: Python 타입 제거 — bash+curl 전용. python 타입은 실행 불가.
+                # v6.2.0: Python/bash 모두 실행
                 if task["type"] == "python":
-                    results_text[slot] = (
-                        "=== PYTHON_BLOCK_FORBIDDEN (v4.9.6) ===\n"
-                        "Python blocks are disabled. This should not reach here.\n"
-                        "=== EXIT: 1 ==="
+                    _py_cmd = ["python3", task["path"]]
+                    proc = subprocess.Popen(
+                        _py_cmd,
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        start_new_session=True,
                     )
+                    stdout, stderr = proc.communicate()
+                    output = (stdout.decode("utf-8", "replace") + stderr.decode("utf-8", "replace"))
+                    if output.strip():
+                        preview_out = "\n".join(output.strip().splitlines()[:50])
+                        with _lock:
+                            self.console.print(f"[{THEME['dim']}]{_resc(preview_out)}[/]")
+                        results_text[slot] = (
+                            f"=== PYTHON EXECUTION: script_{task.get('idx', slot)} ===\n"
+                            f"{output.strip()}\n=== EXIT CODE: {proc.returncode} ==="
+                        )
+                    else:
+                        results_text[slot] = (
+                            f"=== PYTHON EXECUTION: script_{task.get('idx', slot)} ===\n"
+                            f"(no output, exit code {proc.returncode})"
+                        )
                     return
 
                 else:  # bash — v4.9.5~: .sh 파일로 실행 (multi-line curl+python3 지원)

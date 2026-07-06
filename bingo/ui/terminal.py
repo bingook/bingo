@@ -5264,17 +5264,94 @@ class BingoTerminal:
                 _ok  = _result.get("success", False)
                 _ec  = _result.get("exit_code", -1)
 
-                # 화면에 결과 미리보기 출력
-                _preview = "\n".join(_out.splitlines()[:30])
+                # 화면에 결과 미리보기 출력 (v5.2.7: 스마트 필터 적용)
                 _color = THEME["success"] if _ok else THEME["warn"]
                 self.console.print(
-                    f"[{_color}]{'✅' if _ok else '⚠'} TOOL_RESULT [{_tool_name}] "
+                    f"[{_color}]{'✅' if _ok else '⚠'} TOOL_RESULT  "
                     f"exit={_ec} elapsed={_elapsed}s[/]"
                 )
-                if _preview:
+                if _out:
+                    import re as _re_tr
                     from rich.markup import escape as _esc
+                    # ── TOOL_RESULT 스마트 필터 ──
+                    # AI에게 보내는 _result_str은 필터 없이 전체 보존
+                    # 터미널 미리보기만 핵심 줄로 제한
+                    _IMP_TR = _re_tr.compile(
+                        r'(?:'
+                        r'HTTP/\d'
+                        r'|status[=:\s]+\d{3}'
+                        r'|\b(?:200|201|204|301|302|307|400|401|403|404|429|500|502)\b'
+                        r'|content-length\s*:\s*\d'
+                        r'|location\s*:\s*https?'
+                        r'|set-cookie\s*:'
+                        r'|server\s*:\s*\S'
+                        r'|x-powered-by|waf|cloudflare'
+                        r'|detected|found|error|exception'
+                        r'|---http_status|---size'
+                        r'|\[\+\]|\[-\]|\[!\]'
+                        r'|✅|❌|⚠|🔍|💥'
+                        r')',
+                        _re_tr.IGNORECASE,
+                    )
+                    _HTML_TR = _re_tr.compile(r'<[a-zA-Z/!]')
+                    _HDR_TR  = _re_tr.compile(r'^[A-Za-z][A-Za-z0-9\-]+\s*:\s*\S')
+                    _disp_lines: list[str] = []
+                    _html_run = 0
+                    _hdr_run  = 0
+                    _suppressed_html = 0
+                    _suppressed_hdr  = 0
+                    for _ln in _out.splitlines()[:120]:  # 최대 120줄 검사
+                        _s = _ln.strip()
+                        if not _s:
+                            continue
+                        # 항상 표시: 중요 패턴
+                        if _IMP_TR.search(_s):
+                            if _suppressed_html:
+                                _disp_lines.append(f"  ⋯ {_suppressed_html} HTML lines hidden")
+                                _suppressed_html = 0
+                            if _suppressed_hdr:
+                                _disp_lines.append(f"  ⋯ {_suppressed_hdr} header lines hidden")
+                                _suppressed_hdr = 0
+                            _html_run = _hdr_run = 0
+                            _disp_lines.append(_ln[:200])
+                            continue
+                        # HTTP 헤더 블록
+                        if _HDR_TR.match(_s):
+                            _hdr_run += 1
+                            _html_run = 0
+                            if _hdr_run <= 6:
+                                _disp_lines.append(_ln[:200])
+                            else:
+                                _suppressed_hdr += 1
+                            continue
+                        else:
+                            if _suppressed_hdr:
+                                _disp_lines.append(f"  ⋯ {_suppressed_hdr} header lines hidden")
+                                _suppressed_hdr = 0
+                            _hdr_run = 0
+                        # HTML 태그 밀집 줄
+                        if len(_HTML_TR.findall(_s)) >= 2 or (_s.startswith("<") and _s.endswith(">")):
+                            _html_run += 1
+                            _hdr_run = 0
+                            if _html_run <= 3:
+                                _disp_lines.append(_ln[:200])
+                            else:
+                                _suppressed_html += 1
+                            continue
+                        else:
+                            if _suppressed_html:
+                                _disp_lines.append(f"  ⋯ {_suppressed_html} HTML lines hidden")
+                                _suppressed_html = 0
+                            _html_run = 0
+                        # 일반 줄 (200자 제한)
+                        _disp_lines.append(_ln[:200])
+                    if _suppressed_html:
+                        _disp_lines.append(f"  ⋯ {_suppressed_html} HTML lines hidden")
+                    if _suppressed_hdr:
+                        _disp_lines.append(f"  ⋯ {_suppressed_hdr} header lines hidden")
+                    _preview = "\n".join(_disp_lines)
                     try:
-                        self.console.print(f"[{THEME['dim']}]{_esc(_preview[:1200])}[/]")
+                        self.console.print(f"[{THEME['dim']}]{_esc(_preview)}[/]")
                     except Exception:
                         self.console.print(_preview[:1200])
 

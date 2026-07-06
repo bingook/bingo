@@ -824,10 +824,19 @@ class BingoTerminal:
     def _get_input(self) -> str:
         model_cfg = self.config.get_active_model_config()
         model_name = model_cfg.display_name() if model_cfg else "no-model"
-        return self._session.prompt(
-            HTML(f'<ansigreen><b>❯</b></ansigreen> '),
-            style=PT_STYLE,
-        )
+        try:
+            return self._session.prompt(
+                HTML(f'<ansigreen><b>❯</b></ansigreen> '),
+                style=PT_STYLE,
+            )
+        except RuntimeError:
+            # v6.0.3: Python 3.12 + prompt_toolkit asyncio 충돌
+            # 장시간 에이전트 루프 후 asyncio.run() cannot be called from a running event loop
+            # → input() 폴백으로 크래시 방지
+            import sys as _sys
+            _sys.stdout.write("❯ ")
+            _sys.stdout.flush()
+            return input()
 
     # ────────────────────────────────────────────────────────────────
     # 실행 루프 중 힌트 입력 — Ctrl+C 후 힌트 주면 루프 유지

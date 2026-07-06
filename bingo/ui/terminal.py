@@ -6595,12 +6595,26 @@ class BingoTerminal:
             목적: 스크립트 자체가 자기 제한 시간 내 종료 → watchdog은 진짜 마지막 방어선.
             """
             import re as _re
+            import platform as _plt
 
             lines_out: list[str] = []
             _in_while_true = False
+            _is_macos = _plt.system() == "Darwin"
 
             for _ln in src.split("\n"):
                 _stripped = _ln.rstrip()
+
+                # ── (0) macOS: grep -P → grep -E (BSD grep는 -P 미지원) ──
+                if _is_macos and not _stripped.lstrip().startswith("#"):
+                    if "grep" in _stripped:
+                        # 단독 플래그: grep -P "..." → grep -E "..."
+                        _stripped = _re.sub(r'(\bgrep\s+)-P\b', r'\1-E', _stripped)
+                        # 복합 플래그: grep -nP / grep -Po / grep -Pn 등
+                        _stripped = _re.sub(
+                            r'(\bgrep\s+-[a-zA-Z]*)P([a-zA-Z]*)',
+                            lambda m: f'{m.group(1)}E{m.group(2)}',
+                            _stripped,
+                        )
 
                 # ── (1) curl 타임아웃 주입 ──────────────────────────
                 # 주석 줄 / echo 줄은 건드리지 않음

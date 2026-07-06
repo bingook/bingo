@@ -84,13 +84,27 @@ class RedTeamSession:
             s.phases[k] = pr
         return s
 
-    def add_finding(self, phase: str, finding: dict):
+    def add_finding(self, phase: str, finding_type_or_dict, finding_dict=None, severity=None):
         """
         finding을 세션에 추가. 절대 차단 없음.
-        evidence_level 자동 라벨링 (기존 finding 호환):
+        2가지 호출 형식 모두 지원:
+          - add_finding(phase, finding_dict)                          ← 2인자 형식
+          - add_finding(phase, type_name, data_dict, severity)        ← 4인자 형식
+        evidence_level 자동 라벨링:
           - curl/url/status_code 있으면 → VERIFIED
-          - 없으면 → LIKELY (기존 발견들은 증거가 있다고 신뢰)
+          - 없으면 → LIKELY
         """
+        # 4인자 형식: (phase, type_name, data_dict, severity) → dict로 병합
+        if finding_dict is not None:
+            base = dict(finding_dict) if isinstance(finding_dict, dict) else {}
+            base["type"] = str(finding_type_or_dict)
+            if severity is not None:
+                base["severity"] = str(severity)
+            finding = base
+        else:
+            # 2인자 형식: finding_type_or_dict 자체가 dict
+            finding = finding_type_or_dict if isinstance(finding_type_or_dict, dict) else {"raw": finding_type_or_dict}
+
         if phase not in self.phases:
             self.phases[phase] = PhaseResult(phase=phase, status="running")
 

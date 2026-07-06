@@ -5404,88 +5404,11 @@ class BingoTerminal:
             import re as _hall_re
             s = raw_code.strip()
 
-            # ── v4.9.5: bash 블록 전용 환각 감지 ─────────────────────────────
+            # ── v6.0.0: bash 블록 — Claude CLI 모드 (제약 없음) ─────────────────
+            # PhantomGuard bash 제약 완전 제거. Claude CLI처럼 모든 bash/python 패턴 허용.
+            # heredoc, import requests, subprocess, 네트워크 없는 블록 — 전부 허용.
             if _block_type == "bash":
-                # v5.1.3: B0/B0b/B2 오탐 방지 — 주석(#) 행을 제거한 사본으로 패턴 검사
-                # 이유: LLM이 설명 목적으로 "# python3 << 'PYEOF' 는 금지" 같은 주석을 남기면
-                #       실제 코드가 정상임에도 오탐 발생 → 주석 행은 환각 검사 대상 제외
-                _s_nc = '\n'.join(
-                    l for l in s.splitlines()
-                    if not l.strip().startswith('#')
-                )
-
-                # bash 패턴 B0: heredoc Python 감지 (가장 먼저 체크)
-                # "python3 << 'PYEOF'" 또는 "/usr/bin/python3 << 'EOF'" 등
-                # v5.1.3: _s_nc 사용 → 주석 행 "# python3 << 'EOF'" 오탐 제외
-                if _hall_re.search(r'python3?\s*<<\s*[\'"]?\w+[\'"]?', _s_nc):
-                    return (
-                        "BASH_HEREDOC_PYTHON: Python heredoc inside bash is FORBIDDEN. "
-                        "<<'PYEOF' / <<'EOF' wrapping 'import requests' is the same as a Python block. "
-                        "ONLY pipe is allowed: curl ... | /usr/bin/python3 -c \"import sys; ...\""
-                    )
-                # bash 패턴 B0b: bash 안에 import requests 있으면 무조건 차단
-                # v5.1.3: _s_nc 사용 → "# import requests 금지" 주석 오탐 제외
-                if "import requests" in _s_nc:
-                    return (
-                        "BASH_CONTAINS_REQUESTS: 'import requests' inside bash block is FORBIDDEN. "
-                        "Do NOT use Python requests library. Use: curl ... | /usr/bin/python3 -c \"import sys; ...\""
-                    )
-                # bash 패턴 B0c: subprocess+time 을 이용한 Python 타이밍 측정 차단 (v5.1.9)
-                # python3 -c "import subprocess, time" → HTTP 요청을 subprocess로 래핑하는 패턴
-                # 올바른 방법: START=$(date +%s); curl ...; END=$(date +%s)
-                _has_subprocess_time = (
-                    "import subprocess" in _s_nc and
-                    ("import time" in _s_nc or "time.time" in _s_nc or "time.sleep" in _s_nc) and
-                    "import sys" not in _s_nc  # sys 파이프 처리는 허용
-                )
-                if _has_subprocess_time:
-                    return (
-                        "BASH_SUBPROCESS_TIMING: python3 subprocess+time inside bash is FORBIDDEN. "
-                        "Use bash timing: START=$(date +%s); curl -sk -m 30 URL; END=$(date +%s); ELAPSED=$((END-START)). "
-                        "NEVER wrap curl in python3 subprocess for timing measurement."
-                    )
-                # bash 패턴 B1: 네트워크 명령 없는 bash 블록 차단
-                # v5.2.4: sqlmap, gobuster, nikto, hydra 등 pentest 도구도 네트워크 명령으로 인정
-                _NET_CMDS = [
-                    "curl ", "wget ", "nmap ", "ffuf ", "httpx ", "nuclei ",
-                    "sqlmap ", "gobuster ", "nikto ", "hydra ", "wfuzz ",
-                    "dirb ", "dirsearch ", "subfinder ", "amass ", "masscan ",
-                    "wafw00f ", "whatweb ", "wapiti ", "burpsuite ", "zaproxy ",
-                ]
-                _has_net_cmd = any(cmd in s for cmd in _NET_CMDS)
-                if not _has_net_cmd:
-                    # v5.1.1 FIX: 이전 curl로 저장한 /tmp/ 파일을 python3 -c 로 파싱 → 허용
-                    # v5.1.3 확장: /tmp/ 를 참조하는 모든 후처리 블록 허용
-                    _is_local_op = (
-                        "/tmp/" in s and
-                        "requests" not in s and
-                        "urllib" not in s and
-                        "httpx" not in s
-                    )
-                    if not _is_local_op:
-                        return (
-                            "BASH_NO_CURL: bash block has no network command (curl/wget/nmap/sqlmap/etc). "
-                            "You MUST use: curl -s -m 10 -k 'https://REAL_TARGET/path' | "
-                            "/usr/bin/python3 -c \"import sys; d=sys.stdin.buffer.read(); print(d[:1500])\""
-                        )
-                # bash 패턴 B2: placeholder URL
-                # v5.1.3: _s_nc 사용 → 주석 내 예시 URL 오탐 제외
-                #   TARGET_URL/YOUR_URL/PLACEHOLDER/TARGET_HOST → 주석 제외 후 검사
-                if _hall_re.search(r'(?:TARGET_URL|YOUR_URL|PLACEHOLDER|TARGET_HOST)', _s_nc, _hall_re.IGNORECASE):
-                    return (
-                        "BASH_PLACEHOLDER_URL: bash block contains placeholder URL. "
-                        "Replace with actual target URL."
-                    )
-                # example.com 은 주석/설명에 등장 가능 → curl/wget 실제 URL에 있을 때만 오탐
-                if _hall_re.search(
-                    r'(?:curl|wget)\s+[^\n]*\bexample\.com\b',
-                    _s_nc, _hall_re.IGNORECASE,
-                ):
-                    return (
-                        "BASH_PLACEHOLDER_URL: bash block uses 'example.com' as the actual target URL. "
-                        "Replace with the real target URL."
-                    )
-                return None  # bash 블록은 위 검사만 통과하면 OK
+                return None  # bash 블록은 무조건 통과
 
             # ── Python 블록 환각 감지 (기존 로직 유지) ────────────────────────
 
@@ -5500,16 +5423,11 @@ class BingoTerminal:
                         "Rewrite as bash: curl -s \"https://TARGET/\" | python3 -c \"import sys; print(sys.stdin.buffer.read()[:500])\""
                     )
 
-            # 패턴 2: 3줄 미만 & 네트워크 호출 없음 & import 있음 → stub
+            # 패턴 2: (v6.0.0 제거) STUB_CODE_NO_HTTP — Claude CLI 모드에서는 허용
             _lines = [l for l in s.splitlines() if l.strip() and not l.strip().startswith("#")]
             _has_network = any(kw in s for kw in
                 ["requests.", "urllib.", "httpx.", "socket.connect", "http.client",
                  "urlopen", "urlretrieve", "pymssql", "pyodbc"])
-            if len(_lines) <= 3 and not _has_network and "import" in s:
-                return (
-                    "STUB_CODE_NO_HTTP: Code has imports but NO HTTP calls. "
-                    "Use bash block: curl -s \"https://TARGET/\" | python3 -c \"...\""
-                )
 
             # 패턴 3: print("...") 만 있고 실제 네트워크/로직 없음
             _non_print = [l for l in _lines if not l.strip().startswith("print(")]

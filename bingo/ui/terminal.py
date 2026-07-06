@@ -6838,6 +6838,7 @@ class BingoTerminal:
 
                 # ── v5.2.7: 스마트 터미널 출력 필터 (렉 방지) ──
                 # AI 컨텍스트(all_lines)에는 모든 내용 전달, 화면엔 핵심만 표시
+                import re as _re  # noqa: F811 — 로컬 임포트 (스코프 내 re 별칭)
                 _disp_html_run: int = 0        # 연속 HTML 태그 줄 수
                 _disp_hdr_run:  int = 0        # 연속 HTTP 헤더 줄 수
                 _disp_suppressed: int = 0      # 억제된 줄 수 (알림용)

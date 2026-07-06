@@ -6836,6 +6836,139 @@ class BingoTerminal:
                     "During handling of the above exception, another exception occurred:",
                 })
 
+                # ── v5.2.7: 스마트 터미널 출력 필터 (렉 방지) ──
+                # AI 컨텍스트(all_lines)에는 모든 내용 전달, 화면엔 핵심만 표시
+                _disp_html_run: int = 0        # 연속 HTML 태그 줄 수
+                _disp_hdr_run:  int = 0        # 연속 HTTP 헤더 줄 수
+                _disp_suppressed: int = 0      # 억제된 줄 수 (알림용)
+                _MAX_HTML_RUN   = 3            # HTML 줄 최대 3줄까지 표시
+                _MAX_HDR_RUN    = 7            # HTTP 헤더 최대 7줄까지 표시
+                _MAX_LINE_DISP  = 220          # 긴 줄은 220자로 잘라서 표시
+
+                # HTML 태그 감지
+                _HTML_TAG_PAT = _re.compile(r'<[a-zA-Z/!]')
+                # HTTP 헤더 줄 감지: "Key: value"
+                _HDR_LINE_PAT = _re.compile(r'^[A-Za-z][A-Za-z0-9\-]+\s*:\s*\S')
+                # 항상 표시할 중요 패턴
+                _IMP_PAT = _re.compile(
+                    r'(?:'
+                    r'HTTP/\d'
+                    r'|status[=:\s]+\d{3}'
+                    r'|\b(?:200|201|204|301|302|307|308|400|401|403|404|429|500|502|503)\b'
+                    r'|content-length\s*:\s*\d'
+                    r'|location\s*:\s*https?'
+                    r'|set-cookie\s*:'
+                    r'|server\s*:\s*\S'
+                    r'|x-powered-by'
+                    r'|waf|cloudflare|cf-ray'
+                    r'|error|exception|traceback'
+                    r'|found|vuln|inject|payload|xss|sqli|rce|lfi|ssrf'
+                    r'|\[\+\]|\[-\]|\[!\]|\[\*\]'
+                    r'|✅|❌|⚠|🔍|💥|🚨|⛔|🔴|🟢|🟡'
+                    r'|Parameter:|Endpoint:|Target:|WAF:|Tech:|결과:|발견:|탐지:'
+                    r')',
+                    _re.IGNORECASE,
+                )
+
+                def _smart_display(ln: str) -> None:
+                    """v5.2.7: 스마트 필터 — AI에는 모든 줄 전달, 화면엔 핵심만."""
+                    nonlocal _disp_html_run, _disp_hdr_run, _disp_suppressed
+                    s = ln.strip()
+                    if not s:
+                        return
+
+                    # ① 항상 표시: 중요 패턴 포함 줄
+                    if _IMP_PAT.search(s):
+                        _disp_html_run = 0
+                        _disp_hdr_run  = 0
+                        _do_print(ln)
+                        return
+
+                    # ② HTTP 헤더 블록 제어
+                    if _HDR_LINE_PAT.match(s):
+                        _disp_hdr_run += 1
+                        _disp_html_run = 0
+                        if _disp_hdr_run <= _MAX_HDR_RUN:
+                            _do_print(ln)
+                        elif _disp_hdr_run == _MAX_HDR_RUN + 1:
+                            _suppress_notice("hdr")
+                        else:
+                            _disp_suppressed += 1
+                        return
+                    else:
+                        if _disp_hdr_run > _MAX_HDR_RUN:
+                            # 헤더 블록 끝 — 억제 요약 출력 후 리셋
+                            _flush_suppress_notice()
+                        _disp_hdr_run = 0
+
+                    # ③ HTML 태그 밀집 줄 제어
+                    _htag_n = len(_HTML_TAG_PAT.findall(s))
+                    if _htag_n >= 2 or (s.startswith("<") and s.endswith(">")):
+                        _disp_html_run += 1
+                        _disp_hdr_run = 0
+                        if _disp_html_run <= _MAX_HTML_RUN:
+                            _do_print(ln)
+                        elif _disp_html_run == _MAX_HTML_RUN + 1:
+                            _suppress_notice("html")
+                        else:
+                            _disp_suppressed += 1
+                        return
+                    else:
+                        if _disp_html_run > _MAX_HTML_RUN:
+                            _flush_suppress_notice()
+                        _disp_html_run = 0
+
+                    # ④ 긴 줄 잘라서 표시 (JSON body, 긴 URL 등)
+                    if len(s) > _MAX_LINE_DISP:
+                        short = s[:_MAX_LINE_DISP] + f"  [dim]…+{len(s)-_MAX_LINE_DISP}c[/dim]"
+                        _do_print(short, raw=True)
+                        return
+
+                    # ⑤ 나머지 일반 줄 — 그대로 표시
+                    _do_print(ln)
+
+                def _do_print(txt: str, raw: bool = False) -> None:
+                    with _lock:
+                        try:
+                            if raw:
+                                self.console.print(f"[{THEME['dim']}]{txt}[/]")
+                            else:
+                                self.console.print(f"[{THEME['dim']}]{_resc(txt)}[/]")
+                        except Exception:
+                            self.console.out(txt)
+
+                _suppress_label: str = ""
+
+                def _suppress_notice(kind: str) -> None:
+                    nonlocal _suppress_label, _disp_suppressed
+                    _suppress_label = kind
+                    _disp_suppressed = 1
+                    _lbl = {"html": "HTML", "hdr": "headers"}.get(kind, kind)
+                    with _lock:
+                        try:
+                            self.console.print(
+                                f"[{THEME['dim']}]  ⋯ [{_lbl} output suppressed — full data sent to AI][/]"
+                            )
+                        except Exception:
+                            pass
+
+                def _flush_suppress_notice() -> None:
+                    nonlocal _disp_suppressed, _suppress_label
+                    if _disp_suppressed > 0:
+                        with _lock:
+                            try:
+                                _lbl = {"html": "HTML lines", "hdr": "header lines"}.get(
+                                    _suppress_label, "lines"
+                                )
+                                self.console.print(
+                                    f"[{THEME['dim']}]  ⋯ {_disp_suppressed} {_lbl} hidden[/]"
+                                )
+                            except Exception:
+                                pass
+                        _disp_suppressed = 0
+                        _suppress_label = ""
+                # ──────────────────────────────────────────────
+
                 for raw_line in p.stdout:
                     line = raw_line.decode("utf-8", "replace").rstrip()
                     if not line:
@@ -6865,12 +6998,10 @@ class BingoTerminal:
                             _flush_tb_compressed(len(_tb_buf))
                         continue
 
+                    # AI 컨텍스트에는 항상 전체 줄 보존
                     all_lines.append(line)
-                    with _lock:
-                        try:
-                            self.console.print(f"[{THEME['dim']}]{_resc(line)}[/]")
-                        except Exception:
-                            self.console.out(line)
+                    # 터미널에는 스마트 필터 적용 (v5.2.7)
+                    _smart_display(line)
 
                     # 전체 타임아웃 체크 [v5.1.6: p.terminate()→os.killpg() — 자식 curl 포함 종료]
                     if __import__("time").time() - _start_ts > _SCRIPT_TIMEOUT:

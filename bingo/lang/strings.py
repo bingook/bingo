@@ -7178,6 +7178,17 @@ _STRINGS.update({
         "zh": "⚡ 检测到403但主站可访问 — 认证/权限拒绝（非IP封锁）",
         "en": "⚡ 403 detected but main site accessible — auth/permission denied, NOT IP block",
     },
+    # v5.2.7: 스마트 출력 필터 관련 메시지
+    "output_html_suppressed": {
+        "ko": "  ⋯ [HTML 출력 억제됨 — 전체 내용은 AI에게 전달됨]",
+        "zh": "  ⋯ [HTML输出已抑制 — 完整内容已发送至AI]",
+        "en": "  ⋯ [HTML output suppressed — full data sent to AI]",
+    },
+    "output_headers_suppressed": {
+        "ko": "  ⋯ [HTTP 헤더 출력 억제됨 — 전체 내용은 AI에게 전달됨]",
+        "zh": "  ⋯ [HTTP头部输出已抑制 — 完整内容已发送至AI]",
+        "en": "  ⋯ [HTTP headers suppressed — full data sent to AI]",
+    },
 })
 
 

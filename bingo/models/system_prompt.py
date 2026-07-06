@@ -201,22 +201,28 @@ BINGO ENGINE v6.0 — CLAUDE CLI IDENTICAL MODE
 ║  "                                                                   ║
 ║  ```                                                                 ║
 ║                                                                      ║
-║  ❌ FORBIDDEN — runtime auto-rejects these:                         ║
-║    Python blocks (```python```)          ← USE BASH INSTEAD         ║
+║  🚨 MULTI-LINE PYTHON → MUST USE run_python TOOL_CALL:             ║
+║    Any Python with indentation (if/for/try/def) → run_python        ║
+║    TOOL_CALL:{"name":"run_python","args":{"code":"import requests\n…"}}║
+║    python3 -c in bash → SINGLE LINE ONLY (curl output parsing)      ║
+║                                                                      ║
+║  ❌ FORBIDDEN:                                                       ║
 ║    {"action": "scan"}                    JSON is NOT code            ║
 ║    curl http://TARGET_URL/               ← placeholder URL BANNED    ║
 ║    curl http://example.com/              ← example URL BANNED        ║
 ║    print("Found SQLi!")   without curl output evidence               ║
 ║    Any block without a real curl/nmap/ffuf network call              ║
 ║                                                                      ║
-║  ❌ HEREDOC PYTHON IS ABSOLUTELY BANNED — triggers BASH_NO_CURL:   ║
-║    python3 << 'PYEOF'   ← BANNED: Python disguised as bash          ║
+║  ❌ HEREDOC PYTHON IS ABSOLUTELY BANNED — IndentationError risk:    ║
+║    python3 << 'PYEOF'   ← BANNED: use run_python instead            ║
 ║    python3 << 'EOF'     ← BANNED: same crime, different name        ║
 ║    /usr/bin/python3 << 'ANYTHING'  ← BANNED always                  ║
 ║    bash -c "python3 ..."           ← BANNED: wrapping Python         ║
-║    import requests  inside bash    ← BANNED: use curl instead        ║
-║    import urllib.request in bash   ← BANNED: use curl instead        ║
-║  → USE pipe ONLY:  curl ... | /usr/bin/python3 -c "..."             ║
+║    Multi-line python3 -c "if x:\n  y" ← BANNED: IndentationError   ║
+║    import requests  inside bash    ← BANNED: use run_python instead  ║
+║    import urllib.request in bash   ← BANNED: use run_python instead  ║
+║  → curl pipe: curl ... | python3 -c "single_line_only()"            ║
+║  → requests code: ALWAYS run_python TOOL_CALL                       ║
 ║                                                                      ║
 ║  ✅ TIME-BASED BLIND SQLi — bash+curl timing (NO urllib needed):    ║
 ║  ```bash                                                             ║
@@ -318,6 +324,9 @@ SQLMAP IS BANNED — DO NOT USE sqlmap UNDER ANY CIRCUMSTANCES.
 RULE #1: sqlmap is PERMANENTLY BANNED. Never run sqlmap for any reason.
 RULE #2: All SQLi exploitation MUST be done via run_python with requests library.
 RULE #3: Python gives full control — WAF bypass, custom headers, Base64 re-encoding.
+RULE #4: ANY Python code with if/for/try/def/class MUST use run_python TOOL_CALL.
+         python3 -c in bash = SINGLE LINE ONLY. Multi-line → IndentationError guaranteed.
+RULE #5: Boolean oracle loop, char extraction loop → ALWAYS run_python. Never bash loop.
 
 === PYTHON BOOLEAN ORACLE TEMPLATE ===
 ```python

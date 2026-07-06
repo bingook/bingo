@@ -3355,6 +3355,124 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       # 또는 단순히 concat 사용:
       url = base + "/search?q=" + requests.utils.quote(val + "'", safe='')
 
+  ── RULE 26-AC [v5.4.0]: Cloudflare WAF 오탐 방지 — CDN 링크 ≠ WAF, vary:CF-Worker ≠ WAF ──
+
+  ▸ RULE 26-AC [v5.4.0]: Cloudflare WAF 탐지 시 반드시 아래 강철 조건 2개를 모두 확인하라.
+    CDN 링크 또는 vary 헤더만 보고 "Cloudflare 탐지됨"을 선언하는 것은 CRITICAL FALSE POSITIVE다.
+
+    ★ Cloudflare WAF가 활성화된 유일한 증거 (2개 모두 필요):
+      (A) 응답 헤더에 `server: cloudflare` 가 포함됨
+      (B) 응답 헤더에 `cf-ray:` 가 포함됨
+
+    ★ 절대로 Cloudflare WAF 증거가 아닌 것:
+      (X1) 페이지 HTML body 내 `cdnjs.cloudflare.com` 스크립트 태그
+             → 이것은 무료 오픈소스 CDN으로 WAF와 완전히 무관하다
+             → `<script src="https://cdnjs.cloudflare.com/...">` 발견 → Cloudflare WAF 아님
+      (X2) 응답 헤더에 `vary: CF-Worker` 만 존재
+             → Rhymix CMS, XpressEngine, 일부 CMS가 Cloudflare 통합 설정만 해도 이 헤더를 보냄
+             → `server: Apache` 또는 `server: nginx` 면 Cloudflare 프록시가 아님
+      (X3) wafw00f의 "Generic WAF detected (200→403 response diff)" 메시지
+             → 이것은 ANY 방화벽/접근제어를 의미하며 Cloudflare 특정이 아님
+      (X4) `__cfduid` 쿠키 단독 (이미 Cloudflare가 폐기한 쿠키)
+
+    CORRECT WAF 결론 예시:
+      헤더: `server: cloudflare`, `cf-ray: 12345abc` → [Cloudflare WAF CONFIRMED] ✅
+      헤더: `server: Apache`, `vary: CF-Worker`     → [Cloudflare WAF: NOT present] ❌ (일반 서버)
+      HTML: cdnjs.cloudflare.com 스크립트 발견        → [Cloudflare WAF: NOT present] ❌ (CDN 사용뿐)
+
+    WRONG — 오탐으로 인한 잘못된 전략:
+      # wafw00f "generic WAF" + vary:CF-Worker → "Cloudflare 탐지됨" 선언
+      # → Cloudflare 우회 tamper 적용 (space2comment, double encode)
+      # → 실제로는 Apache 서버, 한국 CMS 자체 접근제어 → 완전 잘못된 bypass 전략
+
+    CORRECT — 반드시 헤더 직접 확인:
+      if "server: cloudflare" in resp_headers AND "cf-ray:" in resp_headers:
+          waf = "cloudflare"  # 진짜 Cloudflare
+      elif "x-waf-status" in resp_headers:
+          waf = "wapples"
+      elif "vary: CF-Worker" in resp_headers and "server: cloudflare" not in resp_headers:
+          waf = "generic_cms_rule"  # Rhymix/XE CMS → Cloudflare 아님
+      else:
+          waf = "unknown"
+
+    RULE:
+    1. `cdnjs.cloudflare.com`이 HTML에 있어도 → Cloudflare WAF 아님. 공격 전략 변경 금지.
+    2. `vary: CF-Worker`만 있고 `server: cloudflare` 없으면 → Cloudflare WAF 아님.
+    3. wafw00f "Generic" 결과 → Cloudflare 아님. tamper=space2comment만 기본 적용.
+    4. 진짜 Cloudflare: 반드시 `server: cloudflare` + `cf-ray:` 두 헤더가 함께 있어야 함.
+    5. Rhymix/XE CMS 사이트의 `vary: CF-Worker` = CMS 자체 기능, Cloudflare WAF 아님.
+
+  ── RULE 26-AD [v5.4.0]: SQLi 전 반드시 전체 파라미터 크롤링 — 첫 번째 파라미터 실패 = 즉시 크롤링 ──
+
+  ▸ RULE 26-AD [v5.4.0]: SQLi 테스트는 한두 개의 파라미터만 시도하고 포기하면 안 된다.
+    실제 취약 파라미터를 놓치는 가장 큰 원인 = 크롤링 없이 추측으로 파라미터를 선택하는 것.
+
+    MANDATORY 순서 (SQLi 전 반드시):
+    ① 홈페이지 + sitemap.xml + robots.txt + 링크 추출 → URL 파라미터 목록 수집
+    ② JS 파일에서 API 엔드포인트 및 파라미터명 추출
+    ③ 발견된 모든 URL의 GET/POST 파라미터 목록화 (중복 제거)
+    ④ 파라미터 우선순위: ID/SRL/INDEX/NUM 계열 > 검색 > 필터 > 기타
+    ⑤ 각 파라미터를 sqli_error → sqli_timebased → sqli_boolean 순서로 테스트
+    ⑥ 모두 실패 시 → sqlmap -u "URL?param=VAL*" --batch --level=3 로 자동 탐지
+
+    Rhymix CMS / XE / XpressEngine 특화 취약 파라미터 목록 (한국 사이트):
+      GET 파라미터 (우선 테스트):
+        document_srl=<숫자>   ← 게시물 번호 (가장 자주 취약)
+        category_srl=<숫자>
+        page=<숫자>
+        vid=<문자열>
+        idx=<숫자>
+        board_srl=<숫자>
+        group_srl=<숫자>
+        menu_srl=<숫자>
+        member_srl=<숫자>
+        no=<숫자>
+        num=<숫자>
+        seq=<숫자>
+        id=<숫자>
+      POST 파라미터:
+        search_keyword=
+        keyword=
+        q=
+        query=
+
+    크롤링 코드 (반드시 실행):
+      # ① 홈페이지에서 파라미터 추출
+      curl -sk -m 30 -L "https://TARGET/" | \
+        python3 -c "
+      import sys,re
+      html=sys.stdin.read()
+      urls=re.findall(r'href=[\"\'](https?://[^\"\']+?[?][^\"\']+)[\"\'|]', html)
+      urls+=re.findall(r'href=[\"\'](/[^\"\']+?[?][^\"\']+)[\"\'|]', html)
+      params=set()
+      for u in urls:
+          q=u.split('?',1)
+          if len(q)>1:
+              for p in q[1].split('&'):
+                  k=p.split('=')[0].strip()
+                  if k: params.add((k, u))
+      for k,u in sorted(params):
+          print(f'PARAM:{k}  URL:{u[:100]}')
+      "
+
+    크롤링 없이 SQLi 포기 금지:
+      WRONG:
+        search_keyword 파라미터 테스트 → NOT vulnerable
+        → "notice 모듈 SQLi 불가능, 다른 공격으로 전환"  ← 조기 포기!
+
+      CORRECT:
+        search_keyword 파라미터 → NOT vulnerable
+        → 즉시 크롤링 시작: 모든 URL/파라미터 수집
+        → document_srl, category_srl 등 다른 파라미터 테스트
+        → 여전히 실패 → sqlmap --crawl=2 로 자동 발견
+
+    RULE:
+    1. 처음 만나는 파라미터 1-2개 실패로 SQLi 포기 금지.
+    2. 반드시 사이트 전체 크롤링 후 파라미터 목록을 뽑아 모두 테스트.
+    3. Rhymix/XE CMS → document_srl, category_srl을 FIRST PRIORITY로 테스트.
+    4. sqlmap --crawl=2 --batch --level=3 --risk=2 를 중간 단계에 반드시 사용.
+    5. "notice 검색 기능 SQLi 불가" ≠ "사이트 전체 SQLi 불가" — 절대 혼동 금지.
+
   ── 27. SQLi Extraction & Oracle Quality ──
 
   ▸ RULE 27-A: EXTRACTVALUE / UPDATEXML result extraction — use the MySQL error format.

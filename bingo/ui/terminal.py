@@ -6639,9 +6639,20 @@ class BingoTerminal:
             })
 
         # ── v6.2.0: Python 블록 파싱 및 tasks 추가 ──────────────────────────────
+        def _fix_indent(code: str) -> str:
+            """IndentationError 자동 교정 (terminal.py 인라인 버전)."""
+            import ast as _ast, textwrap as _tw
+            def _ok(c):
+                try: _ast.parse(c); return True
+                except: return False
+            if _ok(code): return code
+            d = _tw.dedent(code)
+            if _ok(d): return d
+            return code
+
         python_raw_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
         for _py_i, py_block in enumerate(python_raw_blocks):
-            py_script = py_block.strip()
+            py_script = _fix_indent(py_block.strip())   # v6.2.3: 자동 교정
             if not py_script:
                 continue
             _py_dedup_key = py_script[:60]

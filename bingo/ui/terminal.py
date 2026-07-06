@@ -8282,8 +8282,19 @@ class BingoTerminal:
             ))
 
             # 403 — "403 forbidden" 패턴 (단순 "403" 숫자는 제외)
-            _has_403 = bool(_bre.search(
+            # v5.2.6: CORS/인증 관련 403은 IP 차단 아님 → CORS 헤더 동반 시 제외
+            _has_403_raw = bool(_bre.search(
                 r'(?:403\s+forbidden|status[:\s]+403|http/\d[.\d]*\s+403)', _raw_lower))
+            # CORS 또는 인증 관련 403인지 판별 (API endpoint 접근 거부는 IP 차단 아님)
+            _has_cors_403 = _has_403_raw and bool(_bre.search(
+                r'access-control-allow-origin'
+                r'|access-control-allow-credentials'
+                r'|vary[:\s]+origin'
+                r'|www-authenticate[:\s]'  # 인증 요구 헤더 = auth 403
+                r'|401\s+unauthorized',    # 같은 출력에 401도 있으면 인증 문제
+                _raw_lower,
+            ))
+            _has_403 = _has_403_raw and not _has_cors_403
 
             # 503
             _has_503 = bool(_bre.search(
@@ -8348,7 +8359,30 @@ class BingoTerminal:
                 if _rl_confirmed:
                     _detected_blocks.append("Rate limit hit")
             if _has_403:
-                _detected_blocks.append("403 Forbidden — possible IP block")
+                # v5.2.6: 403도 IPBlockDetector 교차검증 — 메인 사이트 접근 가능하면 오탐
+                _403_target = self._agent_state.get("target", "") or getattr(self.config, "target", "")
+                _403_confirmed = True
+                if _403_target:
+                    try:
+                        from ..core.ip_block_detector import IPBlockDetector as _IPBD403
+                        _403_detector = _IPBD403(_403_target)
+                        _403_result = _403_detector.check()
+                        if not _403_result.blocked:
+                            # 메인 사이트 접근 가능 → API 엔드포인트 403은 인증/권한 문제
+                            _lang_403 = getattr(self.config, "lang", "en")
+                            _403_fp_msg = self.s.get("forbidden_403_not_ipblock", {
+                                "ko": "⚡ 403 감지됐지만 메인 사이트 접근 가능 — 인증/권한 거부 (IP 차단 아님)",
+                                "zh": "⚡ 检测到403但主站可访问 — 认证/权限拒绝（非IP封锁）",
+                                "en": "⚡ 403 detected but main site accessible — auth/permission denied, NOT IP block",
+                            })
+                            if isinstance(_403_fp_msg, dict):
+                                _403_fp_msg = _403_fp_msg.get(_lang_403, "⚡ 403 auth/permission denial (not IP block)")
+                            self.console.print(f"[dim]{_403_fp_msg}[/]")
+                            _403_confirmed = False
+                    except Exception:
+                        pass  # 교차검증 실패 → 안전하게 발동 유지
+                if _403_confirmed:
+                    _detected_blocks.append("403 Forbidden — possible IP block")
             if _has_503:
                 _detected_blocks.append("503 Service Unavailable")
             if _has_conn:

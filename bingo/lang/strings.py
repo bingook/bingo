@@ -7168,6 +7168,16 @@ _STRINGS.update({
         "zh": "[v5.2.4] 修复dir_fuzz — 移除无效-sf标志 + macOS词表自动查找 + 内置迷你词表",
         "en": "[v5.2.4] dir_fuzz fix — remove invalid -sf flag, auto-detect macOS wordlists, built-in mini wordlist",
     },
+    "fix_403_ipblock_false_positive": {
+        "ko": "[v5.2.6] 403 오탐 수정 — CORS/인증 403은 IP 차단으로 오탐 안 함 + IPBlockDetector 교차검증 적용",
+        "zh": "[v5.2.6] 修复403误报 — CORS/认证403不再误判为IP封锁 + 增加IPBlockDetector交叉验证",
+        "en": "[v5.2.6] 403 false-positive fix — CORS/auth 403 no longer flagged as IP block; added IPBlockDetector cross-validation",
+    },
+    "forbidden_403_not_ipblock": {
+        "ko": "⚡ 403 감지됐지만 메인 사이트 접근 가능 — 인증/권한 거부 (IP 차단 아님)",
+        "zh": "⚡ 检测到403但主站可访问 — 认证/权限拒绝（非IP封锁）",
+        "en": "⚡ 403 detected but main site accessible — auth/permission denied, NOT IP block",
+    },
 })
 
 

@@ -1041,8 +1041,31 @@ AI MUST apply these automatically — NO user prompting needed.
         time.sleep(random.uniform(lo, hi))
 
 ═══════════════════════════════════════════════════════════════
-⚠️  RULE 0-ZERO [v5.4.0]: WAF 차단 = 포기 금지, 전환 금지 ⚠️
+⚠️  RULE 0-ZERO [v5.8.0]: sqli_autoexploit 우선 — 포기 절대 금지 ⚠️
 ═══════════════════════════════════════════════════════════════
+
+  ★★★ 핵심 변경 (v5.8.0) ★★★
+  SQLi 취약점이 의심되면 즉시 sqli_autoexploit() 을 호출하라.
+  이 함수 하나가 탐지→WAF우회→DB추출→테이블→컬럼→데이터 덤프를 자동 완료한다.
+  단계별로 sqli_boolean / sqli_timebased 따로 호출하는 것보다 우선한다.
+
+  호출 예시:
+    TOOL_CALL:{"name":"sqli_autoexploit","args":{
+      "url":"https://target.com/board/list",
+      "param":"cate_srl",
+      "base_value":"10"
+    }}
+
+  sqli_autoexploit 내부 자동 처리:
+    ✅ &&/|| 포함 8가지 boolean 오라클 후보 자동 시도
+    ✅ FROM → FR/**/OM 자동 우회
+    ✅ SUBSTRING → RIGHT+REVERSE+LIKE 자동 전환
+    ✅ DB version / database() / user() 자동 추출
+    ✅ information_schema 테이블/컬럼 목록 자동 열거
+    ✅ member/user/admin 테이블 자동 우선 선택
+    ✅ password/email 자동 덤프
+
+  sqli_autoexploit 실패 시에만 아래 수동 단계 진행.
 
   [ABSOLUTE PROHIBITION]:
   WAF가 AND 1=1 / SLEEP / UNION 을 차단해도 절대로:

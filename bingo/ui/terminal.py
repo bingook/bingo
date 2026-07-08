@@ -3621,7 +3621,7 @@ class BingoTerminal:
         elif name == "/kb":
             self._cmd_kb(arg)
         elif name == "/cve":
-            self._cmd_cve(arg)
+            self._warn("⚠️  /cve 명령이 제거되었습니다. CVE DB가 삭제되었습니다.")
         elif name == "/batch":
             self._cmd_batch(arg)
         elif name == "/chain":
@@ -11351,82 +11351,6 @@ class BingoTerminal:
             self._success(self.s.get("kb_reloaded", "Knowledge base reloaded"))
         else:
             self._warn(self.s.get("kb_usage", "Usage: /kb [list|search <kw>|show <name>|reload]"))
-
-    # ── /cve ──────────────────────────────────────────────────────
-    def _cmd_cve(self, arg: str = "") -> None:
-        """/cve [sync|status|search <kw>|<CVE-ID>]  — CVE/Exploit KB"""
-        from ..knowledge.cve_sync import CVESyncer
-        from ..knowledge.loader import KBLoader
-        from rich.table import Table as _T
-
-        sub = arg.strip().split(None, 1)
-        cmd = sub[0].lower() if sub else "status"
-        param = sub[1].strip() if len(sub) > 1 else ""
-
-        syncer = CVESyncer()
-
-        if cmd in ("sync", "update"):
-            self._info(self.s.get("cve_sync_start", "🔄 CVE KB 동기화 시작..."))
-
-            def _cb(msg: str) -> None:
-                self.console.print(f"  [dim]{msg}[/]")
-
-            result = syncer.sync(progress_cb=_cb)
-            total = result.get("total", 0)
-            self._success(
-                self.s.get("cve_sync_done", "✅ CVE KB 동기화 완료 ({n}개 문서)").format(n=total)
-            )
-            cve_r  = result.get("cve", {})
-            expl_r = result.get("exploit", {})
-            if cve_r.get("ok"):
-                self.console.print(f"  [cyan]trickest/cve:[/] {cve_r.get('synced', 0)}개")
-            else:
-                self.console.print(f"  [red]trickest/cve:[/] {cve_r.get('error', 'failed')}")
-            if expl_r.get("ok"):
-                self.console.print(f"  [cyan]exploitarium:[/] {expl_r.get('synced', 0)}개")
-            else:
-                self.console.print(f"  [red]exploitarium:[/] {expl_r.get('error', 'failed')}")
-
-        elif cmd == "status":
-            st = syncer.status()
-            t = _T(title="[bold cyan]CVE KB Status[/]", border_style=THEME["primary"])
-            t.add_column("Source", style="cyan", width=20)
-            t.add_column("Docs", width=8)
-            t.add_column("Last Sync", width=12)
-            t.add_row("trickest/cve", str(st["cve_docs"]), st["cve_last"])
-            t.add_row("exploitarium", str(st["exploit_docs"]), st["exploit_last"])
-            self.console.print(t)
-            self.console.print(f"  [dim]KB 경로: {st['kb_root']}[/]")
-            if st["cve_docs"] == 0:
-                self.console.print(f"  [yellow]💡 /cve sync 실행 시 trickest/cve + exploitarium 동기화[/]")
-
-        elif cmd in ("search", "find"):
-            if not param:
-                self._warn(self.s.get("cve_search_empty", "Usage: /cve search <keyword|CVE-ID>"))
-                return
-            kb = KBLoader()
-            results = kb.search(param, top_k=8)
-            if not results:
-                self._info(self.s.get("cve_no_results",
-                    "No results for '{query}'. Run /cve sync first").format(query=param))
-                return
-            for r in results:
-                self.console.print(f"[{THEME['primary']}]📄 {r['name']}[/]")
-                self.console.print(f"  [dim]{r['snippet']}[/]\n")
-
-        elif __import__("re").match(r"^cve-\d{4}-\d+$", cmd, __import__("re").IGNORECASE):
-            # /cve CVE-2024-12345 형식
-            kb = KBLoader()
-            content = kb.get(cmd.upper())
-            if content:
-                self.console.print(content[:4000])
-            else:
-                self._info(self.s.get("cve_not_found",
-                    "{cve_id} not found. Run /cve sync and retry").format(cve_id=cmd.upper()))
-
-        else:
-            self._warn(self.s.get("cve_usage",
-                "Usage: /cve [sync|status|search <kw>|<CVE-ID>]"))
 
     # ── /batch ────────────────────────────────────────────────────
     def _cmd_batch(self, arg: str = "") -> None:

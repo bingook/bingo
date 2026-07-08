@@ -6627,13 +6627,17 @@ class BingoTerminal:
                 continue
             # ── v6.2.13: bash 블록 내 독립 Python 문 감지 및 제거 ───────────────
             # AI가 bash 블록 최상위에 'import sys, json' 같은 Python 구문을 혼용하는 버그 방지
-            # 단, python3 -c "..." 내부의 import 줄은 제거하지 않음
+            # 단, python3 -c "..." 내부 또는 heredoc(python3 << 'PYEOF') 내부는 제거 안 함
             _PY_ONLY_RE = re.compile(
                 r'^(?:import\s+\S|from\s+\S+\s+import\s|def\s+\w+\s*\(|class\s+\w+[\s:(])'
             )
             _PY3_OPEN_RE = re.compile(r'\bpython3?\s+-c\s+(["\'])')
-            _in_py3_c = False   # python3 -c "..." 내부 여부
+            # v6.2.19: heredoc 감지 (python3 << 'EOF' / python3 << "EOF" / python3 <<'EOF')
+            _HEREDOC_OPEN_RE = re.compile(r'\bpython3?\s+<<\s*[\'"]?(\w+)[\'"]?\s*$')
+            _in_py3_c = False       # python3 -c "..." 내부 여부
             _py3_quote = None
+            _in_heredoc = False     # python3 << 'PYEOF' 내부 여부
+            _heredoc_end = None     # heredoc 종료 마커
             _cleaned_lines = []
             _removed_any = False
             _bclean_lang = getattr(self.config, "lang", "en")
@@ -6641,20 +6645,33 @@ class BingoTerminal:
             _bclean_msg = _bclean_s.get("bash_cleanup_py_removed", "⚠ [BASH CLEANUP] Standalone Python statement removed")
             for _bline in script.splitlines():
                 _bstripped = _bline.strip()
-                if _in_py3_c:
-                    # python3 -c 문자열 내부 → 건드리지 않음
+                # heredoc 내부 → Python 코드 그대로 보존
+                if _in_heredoc:
                     _cleaned_lines.append(_bline)
-                    # 닫는 따옴표만 있는 줄이면 종료
+                    if _bstripped == _heredoc_end:
+                        _in_heredoc = False
+                        _heredoc_end = None
+                    continue
+                # python3 -c 내부 → 그대로 보존
+                if _in_py3_c:
+                    _cleaned_lines.append(_bline)
                     if _bstripped in (_py3_quote, _py3_quote + ';'):
                         _in_py3_c = False
                         _py3_quote = None
                     continue
-                # python3 -c "..." 여는지 확인
+                # heredoc 열기 감지
+                _hm = _HEREDOC_OPEN_RE.search(_bline)
+                if _hm:
+                    _in_heredoc = True
+                    _heredoc_end = _hm.group(1)
+                    _cleaned_lines.append(_bline)
+                    continue
+                # python3 -c "..." 열기 감지
                 _open_m = _PY3_OPEN_RE.search(_bline)
                 if _open_m:
                     _q = _open_m.group(1)
                     _rest = _bline[_open_m.end():]
-                    if _q not in _rest:   # 같은 줄에 닫는 따옴표 없음 → 멀티라인
+                    if _q not in _rest:
                         _in_py3_c = True
                         _py3_quote = _q
                     _cleaned_lines.append(_bline)

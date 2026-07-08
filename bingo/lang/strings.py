@@ -6869,6 +6869,247 @@ _STRINGS.update({
         "zh": "⚠ [BASH CLEANUP] 移除独立Python语句",
         "en": "⚠ [BASH CLEANUP] Standalone Python statement removed",
     },
+    # v6.2.21: 한국어 전용 하드코딩 메시지 → 다국어 키 변환
+    "waf_spa_catch_all": {
+        "ko": "⚠ SPA catch-all 라우터 감지 — 경로 탐색 무의미",
+        "zh": "⚠ 检测到 SPA catch-all 路由 — 路径枚举无效",
+        "en": "⚠ SPA catch-all router detected — path enumeration futile",
+    },
+    "waf_custom_detected": {
+        "ko": "⚠ 커스텀 WAF 감지 (HTTP {codes})",
+        "zh": "⚠ 检测到自定义 WAF (HTTP {codes})",
+        "en": "⚠ Custom WAF detected (HTTP {codes})",
+    },
+    "waf_captcha_bypass_detected": {
+        "ko": "⚠ CAPTCHA 우회 가능 감지! (파일명=정답)",
+        "zh": "⚠ 检测到可绕过 CAPTCHA！(文件名=答案)",
+        "en": "⚠ Bypassable CAPTCHA detected! (filename=answer)",
+    },
+    "waf_payload_block_hint": {
+        "ko": "⚡ WAF 페이로드 차단 감지 (IP 차단 아님) → 페이로드 변형 후 재시도",
+        "zh": "⚡ 检测到 WAF 载荷封锁（非 IP 封锁）→ 变形载荷后重试",
+        "en": "⚡ WAF payload block detected (NOT IP ban) → retry with modified payload",
+    },
+    "whitebox_endpoints_count": {
+        "ko": "엔드포인트 {n_ep}개 | 파라미터 {n_par}개",
+        "zh": "端点 {n_ep} 个 | 参数 {n_par} 个",
+        "en": "{n_ep} endpoints | {n_par} parameters",
+    },
+    "whitebox_ctx_active": {
+        "ko": "화이트박스 컨텍스트 주입 활성화",
+        "zh": "白盒上下文注入已激活",
+        "en": "Whitebox context injection active",
+    },
+    "agent_priority_usage": {
+        "ko": "사용법: /agent priority sqli,xss,ssrf",
+        "zh": "用法: /agent priority sqli,xss,ssrf",
+        "en": "Usage: /agent priority sqli,xss,ssrf",
+    },
+    "agent_priority_set": {
+        "ko": "에이전트 우선순위 설정: ",
+        "zh": "代理优先级已设置: ",
+        "en": "Agent priority set: ",
+    },
+    "session_cookie_injected": {
+        "ko": "이후 모든 AI 요청에 세션 쿠키가 자동으로 주입됩니다.",
+        "zh": "此后所有 AI 请求将自动注入 Session Cookie。",
+        "en": "Session cookies will be auto-injected into all AI requests.",
+    },
+    "cred_saved_label": {
+        "ko": "저장된 자격증명:",
+        "zh": "已保存的凭据:",
+        "en": "Saved credentials:",
+    },
+    "cred_saved_ok": {
+        "ko": "✅ 자격증명 저장 완료",
+        "zh": "✅ 凭据已保存",
+        "en": "✅ Credentials saved",
+    },
+    "cred_auto_use": {
+        "ko": "이후 AI 요청에서 이 자격증명을 자동으로 사용합니다.",
+        "zh": "此后 AI 请求中将自动使用该凭据。",
+        "en": "These credentials will be auto-used in AI requests.",
+    },
+    "session_clear_hint": {
+        "ko": "세션 초기화: /session clear",
+        "zh": "清除会话: /session clear",
+        "en": "Reset session: /session clear",
+    },
+    "session_no_active": {
+        "ko": "활성 세션 없음. /login 또는 /cred 로 세션을 설정하세요.",
+        "zh": "无活动会话。使用 /login 或 /cred 设置会话。",
+        "en": "No active session. Use /login or /cred to set a session.",
+    },
+    "session_active_label": {
+        "ko": "🔐 활성 세션",
+        "zh": "🔐 活动会话",
+        "en": "🔐 Active Session",
+    },
+    "session_login_url_label": {
+        "ko": "  로그인 URL : ",
+        "zh": "  登录 URL   : ",
+        "en": "  Login URL  : ",
+    },
+    "session_evidence_label": {
+        "ko": "  증거수준   : ",
+        "zh": "  证据级别   : ",
+        "en": "  Evidence   : ",
+    },
+    "session_cookie_label": {
+        "ko": "  쿠키       : ",
+        "zh": "  Cookie     : ",
+        "en": "  Cookies    : ",
+    },
+    "cred_auto_login": {
+        "ko": "🔍 자격증명 감지 → /login 자동 실행",
+        "zh": "🔍 检测到凭据 → 自动执行 /login",
+        "en": "🔍 Credentials detected → auto-running /login",
+    },
+    "cred_auto_save": {
+        "ko": "🔍 자격증명 감지 → /cred 저장 (URL 미감지)",
+        "zh": "🔍 检测到凭据 → 保存至 /cred（未检测到 URL）",
+        "en": "🔍 Credentials detected → saved to /cred (URL not detected)",
+    },
+    "lab_progress_title": {
+        "ko": "📊 웹 실습 진행상황",
+        "zh": "📊 Web 实验进度",
+        "en": "📊 Web Lab Progress",
+    },
+    "recon_subdomains_label": {
+        "ko": "📌 서브도메인 ({n}개):",
+        "zh": "📌 子域名 ({n} 个):",
+        "en": "📌 Subdomains ({n}):",
+    },
+    "recon_subdomains_more": {
+        "ko": "  ... 외 {n}개",
+        "zh": "  ... 及其他 {n} 个",
+        "en": "  ... and {n} more",
+    },
+    "recon_emails_label": {
+        "ko": "📧 이메일 ({n}개):",
+        "zh": "📧 电子邮件 ({n} 个):",
+        "en": "📧 Emails ({n}):",
+    },
+    "recon_shodan_label": {
+        "ko": "🌐 Shodan 결과 ({n}개):",
+        "zh": "🌐 Shodan 结果 ({n} 个):",
+        "en": "🌐 Shodan results ({n}):",
+    },
+    "recon_asset_db_step": {
+        "ko": "  Step 3/3  자산 DB 생성 및 우선순위 분류...",
+        "zh": "  Step 3/3  构建资产 DB 并分类优先级...",
+        "en": "  Step 3/3  Building asset DB and priority classification...",
+    },
+    "recon_no_endpoints": {
+        "ko": "(엔드포인트 없음)",
+        "zh": "(无端点)",
+        "en": "(no endpoints)",
+    },
+    "recon_saved": {
+        "ko": "💾 저장 완료: {path}",
+        "zh": "💾 已保存: {path}",
+        "en": "💾 Saved: {path}",
+    },
+    "session_cleared": {
+        "ko": "세션 초기화 완료.",
+        "zh": "会话已清除。",
+        "en": "Session cleared.",
+    },
+    "ctf_failed_list": {
+        "ko": "실패 항목 목록:",
+        "zh": "失败项目列表:",
+        "en": "Failed challenges:",
+    },
+    "ctf_load_error": {
+        "ko": "❌ ctf_lab_engine 로드 실패 — bingo/tools/ctf_lab_engine.py 확인",
+        "zh": "❌ ctf_lab_engine 加载失败 — 检查 bingo/tools/ctf_lab_engine.py",
+        "en": "❌ ctf_lab_engine load failed — check bingo/tools/ctf_lab_engine.py",
+    },
+    "ctf_check_error": {
+        "ko": "❌ 웹 실습 점검 오류: {e}",
+        "zh": "❌ CTF 实验检查错误: {e}",
+        "en": "❌ CTF lab check error: {e}",
+    },
+    "tool_install_warn": {
+        "ko": "툴 설치 경고: {e}",
+        "zh": "工具安装警告: {e}",
+        "en": "Tool install warning: {e}",
+    },
+    "nuclei_results_label": {
+        "ko": "🧬 Nuclei 결과:",
+        "zh": "🧬 Nuclei 结果:",
+        "en": "🧬 Nuclei results:",
+    },
+    "scan_usage": {
+        "ko": "사용법: /scan <url>  예) /scan https://target.com",
+        "zh": "用法: /scan <url>  示例: /scan https://target.com",
+        "en": "Usage: /scan <url>  e.g. /scan https://target.com",
+    },
+    "mscan_usage": {
+        "ko": "사용법: /mscan <url>  예) /mscan https://target.com",
+        "zh": "用法: /mscan <url>  示例: /mscan https://target.com",
+        "en": "Usage: /mscan <url>  e.g. /mscan https://target.com",
+    },
+    "webshell_usage": {
+        "ko": "사용법: /webshell <url>  예) /webshell https://target.com",
+        "zh": "用法: /webshell <url>  示例: /webshell https://target.com",
+        "en": "Usage: /webshell <url>  e.g. /webshell https://target.com",
+    },
+    "recon_usage": {
+        "ko": "사용법: /recon {sub} <도메인/타겟>",
+        "zh": "用法: /recon {sub} <域名/目标>",
+        "en": "Usage: /recon {sub} <domain/target>",
+    },
+    "cve_removed": {
+        "ko": "⚠️  /cve 명령이 제거되었습니다. CVE DB가 삭제되었습니다.",
+        "zh": "⚠️  /cve 命令已移除。CVE 数据库已删除。",
+        "en": "⚠️  /cve command has been removed. CVE DB was deleted.",
+    },
+    "recon_passive_done": {
+        "ko": "✅ Passive 수집 완료 — 서브도메인 {sd} / 이메일 {em} / Shodan {sh}",
+        "zh": "✅ 被动侦察完成 — 子域名: {sd} / 邮箱: {em} / Shodan: {sh}",
+        "en": "✅ Passive recon done — Subdomains: {sd} / Emails: {em} / Shodan: {sh}",
+    },
+    "recon_active_start": {
+        "ko": "🗺 Active Recon 시작: {target}",
+        "zh": "🗺 主动侦察开始: {target}",
+        "en": "🗺 Active Recon: {target}",
+    },
+    "recon_live_hosts_label": {
+        "ko": "🟢 Live Hosts ({n}개):",
+        "zh": "🟢 存活主机 ({n} 个):",
+        "en": "🟢 Live Hosts ({n}):",
+    },
+    "recon_open_ports_label": {
+        "ko": "🔓 열린 포트 (총 {n}개):",
+        "zh": "🔓 开放端口 (共 {n} 个):",
+        "en": "🔓 Open Ports ({n} total):",
+    },
+    "recon_js_endpoints_label": {
+        "ko": "📜 JS Endpoints ({n}개):",
+        "zh": "📜 JS 端点 ({n} 个):",
+        "en": "📜 JS Endpoints ({n}):",
+    },
+    "recon_active_done": {
+        "ko": "✅ Active 수집 완료 — Live {live} / 포트 {ports} / JS Endpoints {js}",
+        "zh": "✅ 主动侦察完成 — 存活: {live} / 端口: {ports} / JS 端点: {js}",
+        "en": "✅ Active recon done — Live: {live} / Ports: {ports} / JS Endpoints: {js}",
+    },
+    "recon_step1": {
+        "ko": "  Step 1/3  Passive 수집 중...",
+        "zh": "  Step 1/3  被动信息收集中...",
+        "en": "  Step 1/3  Passive collection in progress...",
+    },
+    "waf_detect_msg": {
+        "ko": "{target} 사이트의 WAF와 보안 장치를 탐지해줘. Python httpx로 직접 헤더, 응답 패턴 분석해서 식별해.",
+        "zh": "检测 {target} 站点的 WAF 和安全设备。使用 Python httpx 直接分析响应头和响应模式来识别。",
+        "en": "Detect WAF and security devices on {target}. Use Python httpx to directly analyze headers and response patterns to identify them.",
+    },
+    "webshell_msg": {
+        "ko": "타겟: {target}\n웹쉘 업로드를 시도해줘. Gnuboard5 취약점 및 범용 GIF polyglot webshell 기법을 포함하여 업로드 가능한 경로 탐색부터 실행 확인까지 전 과정을 수행해.",
+        "zh": "目标: {target}\n尝试上传 Webshell。包含 Gnuboard5 漏洞及通用 GIF polyglot webshell 技术，执行从查找可上传路径到确认执行的全过程。",
+        "en": "Target: {target}\nAttempt webshell upload. Include Gnuboard5 vulnerabilities and GIF polyglot webshell techniques. Perform the full process from finding uploadable paths to confirming execution.",
+    },
 })
 
 

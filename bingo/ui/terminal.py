@@ -1321,7 +1321,7 @@ class BingoTerminal:
                             f"  → DO NOT try /admin/, /login/, /wp-admin/ — they all 'exist'"
                         )
                         self.console.print(
-                            f"[{THEME['warn']}]  ⚠ SPA catch-all 라우터 감지 — 경로 탐색 무의미[/]"
+                            f"[{THEME['warn']}]  {self.s.get('waf_spa_catch_all', '⚠ SPA catch-all router detected — path enumeration futile')}[/]"
                         )
                 except Exception:
                     pass
@@ -1522,7 +1522,7 @@ class BingoTerminal:
                     + "tab/newline whitespace, case mixing, chunked encoding"
                 )
                 self.console.print(
-                    f"[{THEME['warn']}]  ⚠ 커스텀 WAF 감지 (HTTP {[sc for _, sc, _ in _custom_waf_detected]})[/]"
+                    f"[{THEME['warn']}]  {self.s.get('waf_custom_detected', '⚠ Custom WAF detected (HTTP {codes})').format(codes=[sc for _, sc, _ in _custom_waf_detected])}[/]"
                 )
             # 하위 호환용
             param_links = [l for l, _ in param_links_verified] + [l for l, _ in param_links_redirect]
@@ -1610,7 +1610,7 @@ class BingoTerminal:
                         + "  → Auto-bypass: read filename → extract answer → submit"
                     )
                     self.console.print(
-                        f"[{THEME['warn']}]  ⚠ CAPTCHA 우회 가능 감지! (파일명=정답)[/]"
+                        f"[{THEME['warn']}]  {self.s.get('waf_captcha_bypass_detected', '⚠ Bypassable CAPTCHA detected! (filename=answer)')}[/]"
                     )
 
             # ── 5. API / JS 엔드포인트 힌트 ──────────────────────────
@@ -3016,19 +3016,16 @@ class BingoTerminal:
             if arg:
                 self._cmd_scan(arg)
             else:
-                self._warn("Usage: /scan <url>  예) /scan https://target.co.kr")
+                self._warn(self.s.get('scan_usage', 'Usage: /scan <url>  e.g. /scan https://target.com'))
         elif name == "/mscan":
             if arg:
                 self._cmd_mscan(arg)
             else:
-                self._warn("Usage: /mscan <url>  예) /mscan https://target.co.kr")
+                self._warn(self.s.get('mscan_usage', 'Usage: /mscan <url>  e.g. /mscan https://target.com'))
         elif name == "/waf":
             # /waf 명령은 제거됨 → AI에게 직접 탐지 코드 작성 위임
             target = arg or "https://target.com"
-            self._send_message(
-                f"{target} 사이트의 WAF와 보안 장치를 탐지해줘. "
-                f"Python httpx로 직접 헤더, 응답 패턴 분석해서 식별해."
-            )
+            self._send_message(self.s.get('waf_detect_msg', 'Detect WAF and security devices on {target}. Use Python httpx to directly analyze headers and response patterns to identify them.').format(target=target))
         elif name == "/login":
             self._cmd_login(arg)
         elif name == "/cred":
@@ -3039,7 +3036,7 @@ class BingoTerminal:
                     "login_url": "", "username": "", "password": "",
                     "cookies": {}, "evidence": "", "active": False,
                 }
-                self._success("세션 초기화 완료.")
+                self._success(self.s.get('session_cleared', 'Session cleared.'))
             else:
                 self._cmd_session()
         elif name == "/crack":
@@ -3066,14 +3063,9 @@ class BingoTerminal:
         elif name == "/webshell":
             _ws_target = arg.strip() or self._agent_state.get("target", "")
             if not _ws_target:
-                self._warn("Usage: /webshell <url>  예) /webshell https://target.co.kr")
+                self._warn(self.s.get('webshell_usage', 'Usage: /webshell <url>  e.g. /webshell https://target.com'))
             else:
-                self._send_message(
-                    f"타겟: {_ws_target}\n"
-                    f"웹쉘 업로드를 시도해줘. "
-                    f"Gnuboard5 취약점 및 범용 GIF polyglot webshell 기법을 포함하여 "
-                    f"업로드 가능한 경로 탐색부터 실행 확인까지 전 과정을 수행해."
-                )
+                self._send_message(self.s.get('webshell_msg', 'Target: {target}\nAttempt webshell upload. Include Gnuboard5 vulnerabilities and GIF polyglot webshell techniques. Perform the full process from finding uploadable paths to confirming execution.').format(target=_ws_target))
         # ── v3.4.0 신규 명령어 ────────────────────────────────────────
         elif name == "/role":
             self._cmd_role(arg)
@@ -3086,7 +3078,7 @@ class BingoTerminal:
         elif name == "/kb":
             self._cmd_kb(arg)
         elif name == "/cve":
-            self._warn("⚠️  /cve 명령이 제거되었습니다. CVE DB가 삭제되었습니다.")
+                self._warn(self.s.get('cve_removed', '⚠️  /cve command has been removed. CVE DB was deleted.'))
         elif name == "/batch":
             self._cmd_batch(arg)
         elif name == "/chain":
@@ -3185,8 +3177,7 @@ class BingoTerminal:
                 )
             if result.endpoints:
                 self.console.print(
-                    f"[{THEME['dim']}]엔드포인트 {len(result.endpoints)}개 | "
-                    f"파라미터 {len(result.params)}개[/]"
+                    f"[{THEME['dim']}]{self.s.get('whitebox_endpoints_count', '{n_ep} endpoints | {n_par} parameters').format(n_ep=len(result.endpoints), n_par=len(result.params))}[/]"
                 )
 
         # 상태 저장 → 다음 채팅에 자동 주입
@@ -3246,12 +3237,12 @@ class BingoTerminal:
             )
             if self._agent_plan.context_injection:
                 self.console.print(
-                    f"[{THEME['dim']}]화이트박스 컨텍스트 주입 활성화[/]"
+                    f"[{THEME['dim']}]{self.s.get('whitebox_ctx_active', 'Whitebox context injection active')}[/]"
                 )
 
         elif cmd == "priority":
             if not rest:
-                self._warn("사용법: /agent priority sqli,xss,ssrf")
+                self._warn(self.s.get("agent_priority_usage", "Usage: /agent priority sqli,xss,ssrf"))
                 return
             types = [t.strip() for t in rest.split(",")]
             dispatcher = VulnAgentDispatcher()
@@ -3260,7 +3251,7 @@ class BingoTerminal:
                 user_specified=types,
             )
             self.console.print(
-                f"[{THEME['success']}]에이전트 우선순위 설정: "
+                f"[{THEME['success']}]{self.s.get('agent_priority_set', 'Agent priority set: ')}"
                 f"{' → '.join(self._agent_plan.priority)}[/]"
             )
 
@@ -3476,7 +3467,7 @@ class BingoTerminal:
                     f"[white]{'; '.join(f'{k}={v}' for k, v in result.cookies.items())}[/]"
                 )
             self.console.print(
-                f"[{THEME['dim']}]이후 모든 AI 요청에 세션 쿠키가 자동으로 주입됩니다.[/]\n"
+                f"[{THEME['dim']}]{self.s.get('session_cookie_injected', 'Session cookies will be auto-injected into all AI requests.')}[/]\n"
             )
             self._add_to_log(
                 "system",
@@ -3500,12 +3491,12 @@ class BingoTerminal:
             # 현재 저장된 자격증명 표시
             if self._auth_session.get("active"):
                 self.console.print(
-                    f"[{THEME['accent']}]저장된 자격증명:[/]\n"
-                    f"  URL: {self._auth_session['login_url'] or '(없음)'}\n"
+                    f"[{THEME['accent']}]{self.s.get('cred_saved_label', 'Saved credentials:')}[/]\n"
+                    f"  URL: {self._auth_session['login_url'] or '(N/A)'}\n"
                     f"  ID: {self._auth_session['username']}\n"
                     f"  PW: {'*' * len(self._auth_session['password'])}\n"
-                    f"  쿠키: {self._auth_session['cookies']}\n"
-                    f"  증거수준: {self._auth_session['evidence']}"
+                    f"  Cookie: {self._auth_session['cookies']}\n"
+                    f"  Evidence: {self._auth_session['evidence']}"
                 )
             else:
                 self._info(self.s.get("cred_none", "저장된 자격증명이 없습니다."))
@@ -3538,13 +3529,13 @@ class BingoTerminal:
             "active": True,
         })
         self.console.print(
-            f"[{THEME['success']}]✅ 자격증명 저장 완료[/]\n"
+            f"[{THEME['success']}]{self.s.get('cred_saved_ok', '✅ Credentials saved')}[/]\n"
             f"  ID: {username}  PW: {'*' * len(password)}"
         )
         if extra_cookies:
-            self.console.print(f"  쿠키: {extra_cookies}")
+            self.console.print(f"  Cookie: {extra_cookies}")
         self.console.print(
-            f"[{THEME['dim']}]이후 AI 요청에서 이 자격증명을 자동으로 사용합니다.[/]\n"
+            f"[{THEME['dim']}]{self.s.get('cred_auto_use', 'These credentials will be auto-used in AI requests.')}[/]\n"
         )
 
     # ── /session — 현재 인증 세션 상태 확인 / 초기화 ─────────────────
@@ -3552,20 +3543,18 @@ class BingoTerminal:
         """현재 인증 세션 상태를 출력하거나 초기화한다."""
         if self._auth_session.get("active"):
             self.console.print(
-                f"\n[{THEME['accent']}]🔐 활성 세션[/]\n"
-                f"  로그인 URL : {self._auth_session['login_url'] or '(미설정)'}\n"
+                f"\n[{THEME['accent']}]{self.s.get('session_active_label', '🔐 Active Session')}[/]\n"
+                f"{self.s.get('session_login_url_label', '  Login URL  : ')}{self._auth_session['login_url'] or '(N/A)'}\n"
                 f"  ID         : {self._auth_session['username']}\n"
                 f"  PW         : {'*' * len(self._auth_session['password'])}\n"
-                f"  증거수준   : [{THEME['success']}]{self._auth_session['evidence']}[/]\n"
-                f"  쿠키       : {self._auth_session['cookies']}\n"
+                f"{self.s.get('session_evidence_label', '  Evidence   : ')}[{THEME['success']}]{self._auth_session['evidence']}[/]\n"
+                f"{self.s.get('session_cookie_label', '  Cookies    : ')}{self._auth_session['cookies']}\n"
             )
-            from ..lang.strings import get_strings
-            s = get_strings(getattr(self.config, "lang", "ko"))
             self.console.print(
-                f"[{THEME['dim']}]세션 초기화: /session clear[/]"
+                f"[{THEME['dim']}]{self.s.get('session_clear_hint', 'Reset session: /session clear')}[/]"
             )
         else:
-            self._info("활성 세션 없음. /login 또는 /cred 로 세션을 설정하세요.")
+            self._info(self.s.get("session_no_active", "No active session. Use /login or /cred to set a session."))
 
     # ────────────────────────────────────────────────────────────────
     # /hint 명령어 — 실행 루프 실행 중이 아닐 때도 다음 AI 호출에 힌트 삽입
@@ -3759,13 +3748,13 @@ class BingoTerminal:
 
         if url and login_intent:
             self.console.print(
-                f"[{THEME['dim']}]🔍 자격증명 감지 → /login 자동 실행[/]\n"
+                f"[{THEME['dim']}]{self.s.get('cred_auto_login', '🔍 Credentials detected → auto-running /login')}[/]\n"
                 f"   URL: {url}  ID: {username}  PW: {'*' * len(password)}"
             )
             self._cmd_login(f"{url} {username} {password}")
         elif username and password:
             self.console.print(
-                f"[{THEME['dim']}]🔍 자격증명 감지 → /cred 저장 (URL 미감지)[/]\n"
+                f"[{THEME['dim']}]{self.s.get('cred_auto_save', '🔍 Credentials detected → saved to /cred (URL not detected)')}[/]\n"
                 f"   ID: {username}  PW: {'*' * len(password)}"
             )
             self._cmd_cred(f"{username} {password}")
@@ -4362,10 +4351,10 @@ class BingoTerminal:
             total = state.get("total", "?")
             last = state.get("last_updated", "N/A")
             self.console.print(
-                f"[{THEME['info']}]📊 웹 실습 진행상황[/]\n"
-                f"  타겟: {base_url}\n"
-                f"  완료: {len(solved)}개 / 전체 {total}개\n"
-                f"  최종 업데이트: {last}"
+                f"[{THEME['info']}]{self.s.get('lab_progress_title', '📊 Web Lab Progress')}[/]\n"
+                f"  Target: {base_url}\n"
+                f"  Done: {len(solved)} / {total}\n"
+                f"  Last updated: {last}"
             )
             return
 
@@ -4447,19 +4436,16 @@ class BingoTerminal:
             # 실패한 항목 목록 출력
             failed = [ch for ch in report.challenges if not ch.solved and ch.error]
             if failed:
-                self.console.print(f"[{THEME['warn']}]\n실패 항목 목록:[/]")
+                self.console.print(f"[{THEME['warn']}]\n{self.s.get('ctf_failed_list', 'Failed challenges:')}[/]")
                 for ch in failed[:10]:
                     self.console.print(
                         f"[{THEME['dim']}]  • [{ch.category}] {ch.title}: {ch.error}[/]"
                     )
 
         except ImportError:
-            self.console.print(
-                f"[{THEME['error']}]❌ ctf_lab_engine 로드 실패 — "
-                f"bingo/tools/ctf_lab_engine.py 확인[/]"
-            )
+            self.console.print(f"[{THEME['error']}]{self.s.get('ctf_load_error', '❌ ctf_lab_engine load failed — check bingo/tools/ctf_lab_engine.py')}[/]")
         except Exception as e:
-            self.console.print(f"[{THEME['error']}]❌ 웹 실습 점검 오류: {e}[/]")
+            self.console.print(f"[{THEME['error']}]{self.s.get('ctf_check_error', '❌ CTF lab check error: {e}').format(e=e)}[/]")
 
     _CTF_USAGE = {
         "ko": (
@@ -4512,7 +4498,7 @@ class BingoTerminal:
                     if _src.exists():
                         _sh.copy2(str(_src), str(_dst))
             except Exception as _e:
-                self.console.print(f"[dim]툴 설치 경고: {_e}[/dim]")
+                self.console.print(f"[dim]{self.s.get('tool_install_warn', 'Tool install warning: {e}').format(e=_e)}[/dim]")
 
         self.console.print(_Panel(
             f"[bold cyan]🚀 {self.s.get('mscan_title', 'Multi-Agent Scan')}[/bold cyan]\n"
@@ -7917,7 +7903,7 @@ class BingoTerminal:
                     f"DO NOT say 'IP blocked — change VPN'. Keep trying with payload variations."
                 )
                 self.console.print(
-                    f"[{THEME['warn']}]  ⚡ WAF 페이로드 차단 감지 (IP 차단 아님) → 페이로드 변형 후 재시도[/]"
+                    f"[{THEME['warn']}]  {self.s.get('waf_payload_block_hint', '⚡ WAF payload block detected (NOT IP ban) → retry with modified payload')}[/]"
                 )
 
             # ── CAPTCHA 오탐 방지 v3.2.16 ─────────────────────────────────────
@@ -11091,7 +11077,7 @@ class BingoTerminal:
         target = parts[1] if len(parts) > 1 else ""
 
         if not target and sub not in ("help",):
-            self._warn(f"사용법: /recon {sub} <domain/target>")
+            self._warn(self.s.get('recon_usage', 'Usage: /recon {sub} <domain/target>').format(sub=sub))
             return
 
         # ── /recon passive ──────────────────────────────────────────────
@@ -11107,19 +11093,19 @@ class BingoTerminal:
                     fofa_key=_os.environ.get("FOFA_KEY", ""),
                     hunter_key=_os.environ.get("HUNTER_KEY", ""),
                 )
-                self.console.print(f"\n[bold]📌 서브도메인 ({len(result.subdomains)}개):[/bold]")
+                self.console.print(f"\n[bold]{self.s.get('recon_subdomains_label', '📌 Subdomains ({n}):').format(n=len(result.subdomains))}[/bold]")
                 for sd in sorted(result.subdomains)[:50]:
                     self.console.print(f"  {sd}")
                 if len(result.subdomains) > 50:
-                    self.console.print(f"  ... 외 {len(result.subdomains)-50}개")
+                    self.console.print(self.s.get('recon_subdomains_more', '  ... and {n} more').format(n=len(result.subdomains)-50))
 
                 if result.emails:
-                    self.console.print(f"\n[bold]📧 이메일 ({len(result.emails)}개):[/bold]")
+                    self.console.print(f"\n[bold]{self.s.get('recon_emails_label', '📧 Emails ({n}):').format(n=len(result.emails))}[/bold]")
                     for em in sorted(result.emails)[:20]:
                         self.console.print(f"  {em}")
 
                 if result.shodan_results:
-                    self.console.print(f"\n[bold]🌐 Shodan 결과 ({len(result.shodan_results)}개):[/bold]")
+                    self.console.print(f"\n[bold]{self.s.get('recon_shodan_label', '🌐 Shodan results ({n}):').format(n=len(result.shodan_results))}[/bold]")
                     for sh in result.shodan_results[:10]:
                         ip = sh.get("ip_str", sh.get("ip", "?"))
                         ports = sh.get("ports", [])
@@ -11137,10 +11123,7 @@ class BingoTerminal:
                         self.console.print(f"  {dk}")
 
                 self.console.print(
-                    f"\n[green]✅ Passive 수집 완료 — "
-                    f"서브도메인 {len(result.all_subdomains())} / "
-                    f"이메일 {len(result.emails)} / "
-                    f"Shodan {len(result.shodan_results)}[/green]")
+                    f"\n[green]{self.s.get('recon_passive_done', '✅ Passive recon done — Subdomains: {sd} / Emails: {em} / Shodan: {sh}').format(sd=len(result.all_subdomains()), em=len(result.emails), sh=len(result.shodan_results))}[/green]")
             except ImportError as e:
                 self._warn(f"Recon passive module import error: {e}")
 
@@ -11149,25 +11132,25 @@ class BingoTerminal:
             try:
                 from ..core.recon.active import run_active
                 self.console.print(
-                    f"[bold cyan]🗺 Active Recon 시작: {target}[/bold cyan]")
+                    f"[bold cyan]{self.s.get('recon_active_start', '🗺 Active Recon: {target}').format(target=target)}[/bold cyan]")
                 extra_subs = list(parts[2:]) if len(parts) > 2 else []
                 result = run_active(domain=target, subdomains=extra_subs if extra_subs else None)
 
                 if result.live_hosts:
                     self.console.print(
-                        f"\n[bold]🟢 Live Hosts ({len(result.live_hosts)}개):[/bold]")
+                        f"\n[bold]{self.s.get('recon_live_hosts_label', '🟢 Live Hosts ({n}):').format(n=len(result.live_hosts))}[/bold]")
                     for h in result.live_hosts[:30]:
                         tech = ", ".join(h.technologies) if h.technologies else "-"
                         waf  = h.waf or "-"
                         self.console.print(
                             f"  [{h.status}] {h.url}  tech={tech}  waf={waf}")
                     if len(result.live_hosts) > 30:
-                        self.console.print(f"  ... 외 {len(result.live_hosts)-30}개")
+                        self.console.print(self.s.get('recon_subdomains_more', '  ... and {n} more').format(n=len(result.live_hosts)-30))
 
                 if result.port_results:
                     total_ports = sum(len(p.open_ports) for p in result.port_results)
                     self.console.print(
-                        f"\n[bold]🔓 Open Ports (총 {total_ports}개):[/bold]")
+                        f"\n[bold]{self.s.get('recon_open_ports_label', '🔓 Open Ports ({n} total):').format(n=total_ports)}[/bold]")
                     for p in result.port_results[:20]:
                         svc_str = ", ".join(
                             f"{port}/{p.services.get(port, '?')}"
@@ -11177,16 +11160,13 @@ class BingoTerminal:
 
                 if result.js_endpoints:
                     self.console.print(
-                        f"\n[bold]📜 JS Endpoints ({len(result.js_endpoints)}개):[/bold]")
+                        f"\n[bold]{self.s.get('recon_js_endpoints_label', '📜 JS Endpoints ({n}):').format(n=len(result.js_endpoints))}[/bold]")
                     for ep in result.js_endpoints[:20]:
                         self.console.print(f"  {ep}")
 
                 total_ports_cnt = sum(len(p.open_ports) for p in result.port_results)
                 self.console.print(
-                    f"\n[green]✅ Active 수집 완료 — "
-                    f"Live {len(result.live_hosts)} / "
-                    f"Ports {total_ports_cnt} / "
-                    f"JS Endpoints {len(result.js_endpoints)}[/green]")
+                    f"\n[green]{self.s.get('recon_active_done', '✅ Active recon done — Live: {live} / Ports: {ports} / JS Endpoints: {js}').format(live=len(result.live_hosts), ports=total_ports_cnt, js=len(result.js_endpoints))}[/green]")
             except ImportError as e:
                 self._warn(f"Recon active module import error: {e}")
 
@@ -11201,7 +11181,7 @@ class BingoTerminal:
                     f"[bold cyan]🚀 Full Recon 시작: {target}[/bold cyan]")
 
                 # Step 1: Passive
-                self.console.print("[dim]  Step 1/3  Passive 수집 중...[/dim]")
+                self.console.print(f"[dim]{self.s.get('recon_step1', '  Step 1/3  Passive collection in progress...')}[/dim]")
                 passive = run_passive(
                     domain=target,
                     shodan_key=_os.environ.get("SHODAN_KEY", ""),
@@ -11221,7 +11201,7 @@ class BingoTerminal:
                 )
 
                 # Step 3: AssetDB + 우선순위 분류
-                self.console.print("[dim]  Step 3/3  자산 DB 생성 및 우선순위 분류...[/dim]")
+                self.console.print(f"[dim]{self.s.get('recon_asset_db_step', '  Step 3/3  Building asset DB and priority classification...')}[/dim]")
                 out_dir = _os.path.join(
                     _os.path.expanduser("~"), ".bingo", "recon", target,
                     str(int(_time.time()))
@@ -11234,7 +11214,7 @@ class BingoTerminal:
 
                 # 저장
                 saved_path = db.save()
-                self.console.print(f"\n[green]💾 저장 완료: {saved_path}[/green]")
+                self.console.print(f"\n[green]{self.s.get('recon_saved', '💾 Saved: {path}').format(path=saved_path)}[/green]")
 
             except ImportError as e:
                 self._warn(f"Recon full module import error: {e}")
@@ -11253,7 +11233,7 @@ class BingoTerminal:
                     for ep in endpoints[:40]:
                         self.console.print(f"  {ep}")
                 else:
-                    self.console.print("  (엔드포인트 없음)")
+                    self.console.print(f"  {self.s.get('recon_no_endpoints', '(no endpoints)')}")
 
                 if secrets:
                     self.console.print(
@@ -11286,7 +11266,7 @@ class BingoTerminal:
                 findings_str = db.run_nuclei(severity=severity)
 
                 if findings_str.strip():
-                    self.console.print(f"\n[bold red]🧬 Nuclei 결과:[/bold red]")
+                    self.console.print(f"\n[bold red]{self.s.get('nuclei_results_label', '🧬 Nuclei results:')}[/bold red]")
                     self.console.print(findings_str)
                 else:
                     self.console.print(

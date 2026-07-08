@@ -64,3 +64,7 @@ idor_sensitive_*
 license_*.jpg
 reg_sqli_*.html
 probe__*.html
+
+# CVE 데이터베이스 — 용량 과다, /cve sync로 필요시 다운로드
+bingo/knowledge/base/CVE/
+bingo/knowledge/base/Exploitarium/

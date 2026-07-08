@@ -340,6 +340,15 @@ RULE #6: WAF가 SQL 함수를 차단하면 → FIRST call waf_sqli_db to get alt
          Example: SUBSTR blocked → waf_sqli_db(["SUBSTR"]) → RIGHT(LEFT(str,pos),1)
 RULE #7: run_python으로 Boolean Oracle 직접 작성 시 → 반드시 아래 캘리브레이션 블록 포함.
          캘리브레이션 없는 Boolean Oracle = 결과 신뢰 불가.
+RULE #8: curl --write-out 사용 시 올바른 변수명:
+         ✅ CORRECT: -w "%{http_code}"  -w "%{size_download}"  -w "%{time_total}"
+         ❌ WRONG:   -w "%{siz}e"  -w "%{size}"  -w "%{http-code}"
+         → curl에서 %{size_download}가 응답 바이트 수. %{siz}e 는 존재하지 않음.
+RULE #9: curl을 순차적으로 루프 실행하지 말 것 (35초 타임아웃 위험).
+         여러 URL 테스트 시 → run_python의 requests로 병렬 처리하거나,
+         bash에서 & + wait 사용:
+           curl ... URL1 & curl ... URL2 & wait
+         절대 for문으로 순차 curl 실행하지 말 것 (각 10초 × 10개 = 100초 초과).
 
 === BOOLEAN ORACLE 필수 캘리브레이션 템플릿 (run_python 사용 시 복붙 필수) ===
 import requests, time, urllib3

@@ -141,11 +141,11 @@ _RCE_PATTERNS = [
 _CRED_PATTERNS = [
     re.compile(r'(?:password|passwd|pwd)\s*[=:]\s*[\'"]?([^\s\'"]{4,})', re.I),
     re.compile(r'(?:admin|root|sa)\s*[/|:]\s*([^\s]{4,})', re.I),
-    re.compile(r'\$2[aby]\$\d+\$[./A-Za-z0-9]{53}'),          # bcrypt
-    # v4.8.0: MD5/SHA 해시 — 독립적으로 등장한 경우만 매칭 (URL인코딩/SQL 인젝션 출력 오탐 방지)
-    # 이전: r'[0-9a-f]{32,}' → URL 인코딩(%XX), SQL EXTRACTVALUE 출력에서 오탐 발생
-    # 수정: 앞뒤에 non-hex 경계 요구 + 최소 32자 완전 hex 문자열만 허용
-    re.compile(r'(?<![%a-zA-Z0-9/])[0-9a-f]{32,64}(?![0-9a-f])', re.I),  # MD5/SHA hash
+    re.compile(r'\$2[aby]\$\d+\$[./A-Za-z0-9]{53}'),          # bcrypt hash (very specific)
+    # v6.2.10: MD5/SHA 해시 — 세션쿠키 오탐 억제를 위해 "password" 또는 "hash" 컨텍스트 필요
+    # 이전: r'(?<![%a-zA-Z0-9/])[0-9a-f]{32,64}' → 세션ID, Apache mod_status 등에서 오탐 다수
+    # 수정: hash 단어가 주변에 있거나, password= 앞에 있는 경우만 매칭
+    re.compile(r'(?:hash|passwd|md5|sha1|sha256)\s*[:=]\s*([0-9a-f]{32,64})', re.I),
 ]
 
 # v4.8.0: SQLi 컨텍스트 키워드 — 코드에 이것이 있으면 credential보다 sqli 우선
@@ -183,8 +183,10 @@ _ORACLE_FAILURE_WARNING = re.compile(
 
 _AUTH_BYPASS_PATTERNS = [
     re.compile(r'(관리자|admin)\s*(패널|panel|dashboard|로그인|login)\s*(성공|접근|완료|OK)', re.I),
-    re.compile(r'HTTP/\d.*?200.*?admin', re.I),
-    re.compile(r'Set-Cookie:.*?(admin|session|auth|jwt)', re.I),
+    # v6.2.10: Set-Cookie 단독으론 auth_bypass 아님 — 제거 (세션쿠키 오탐 다수 발생)
+    # re.compile(r'Set-Cookie:.*?(admin|session|auth|jwt)', re.I),  ← 삭제됨
+    # HTTP 200 + admin — URL 경로가 실제로 admin이어야 함 (응답 헤더 텍스트 아님)
+    re.compile(r'(Location|URL):\s*.*?/admin(?:/|$)', re.I),
     re.compile(r'(welcome|dashboard|admin)\s*-\s*(admin|root|manager)', re.I),
 ]
 

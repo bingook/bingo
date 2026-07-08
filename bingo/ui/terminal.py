@@ -6640,14 +6640,33 @@ class BingoTerminal:
 
         # ── v6.2.0: Python 블록 파싱 및 tasks 추가 ──────────────────────────────
         def _fix_indent(code: str) -> str:
-            """IndentationError 자동 교정 (terminal.py 인라인 버전)."""
-            import ast as _ast, textwrap as _tw
+            """IndentationError 자동 교정 v6.2.10 (terminal.py 인라인 버전).
+            try:/if:/for:/def:/class: 뒤 잘못된 들여쓰기 자동 수정."""
+            import ast as _ast, textwrap as _tw, re as _re
             def _ok(c):
                 try: _ast.parse(c); return True
                 except: return False
             if _ok(code): return code
+            # Step 1: dedent
             d = _tw.dedent(code)
             if _ok(d): return d
+            # Step 2: 탭 → 4-space
+            tab_fixed = _re.sub(r'^\t+', lambda m: '    ' * len(m.group()), d, flags=_re.MULTILINE)
+            if _ok(tab_fixed): return tab_fixed
+            # Step 3: 콜론으로 끝나는 줄 다음에 들여쓰기 없으면 pass 삽입
+            lines = tab_fixed.splitlines()
+            fixed = []
+            for i, line in enumerate(lines):
+                fixed.append(line)
+                stripped = line.rstrip()
+                if stripped.endswith(':') and stripped.lstrip() and not stripped.lstrip().startswith('#'):
+                    indent_lvl = len(line) - len(line.lstrip())
+                    next_line = lines[i + 1] if i + 1 < len(lines) else ""
+                    next_indent = len(next_line) - len(next_line.lstrip()) if next_line.strip() else 0
+                    if next_indent <= indent_lvl and next_line.strip():
+                        fixed.append(' ' * (indent_lvl + 4) + 'pass')
+            pass_fixed = '\n'.join(fixed)
+            if _ok(pass_fixed): return pass_fixed
             return code
 
         python_raw_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
@@ -7606,94 +7625,8 @@ class BingoTerminal:
                 except Exception:
                     pass  # VPN 감지 오류는 실행 차단하지 않음
 
-            # ── v3.5.20: 0day Hunter — 버전/에러/CVE 자동 탐지 + exploit 자동 연동 ─
-            # Dir-1 탐지: 버전 핑거프린팅 + 에러 패턴 (Mitel/wappd/libwebp/glibc 포함)
-            # Dir-2 활용: Exploit 힌트 + PoC 페이로드 생성 지시 + exploit 모듈 직접 실행
-            # Dir-3 매핑: 로컬 CVE DB + NVD API 자동 조회
-            if _combined_out:
-                try:
-                    from ..core.zeroday import ZeroDayHunter as _ZDH
-                    _zdh = _ZDH()
-                    _lang_zd = getattr(self.config, "lang", "en")
-                    _zd_candidates = _zdh.analyze(
-                        _combined_out,
-                        lang=_lang_zd,
-                        do_nvd_lookup=True,
-                    )
-                    if _zd_candidates:
-                        # 콘솔 배너 출력
-                        _zd_banner_txt = _zdh.format_banner(_zd_candidates, lang=_lang_zd)
-                        self.console.print(f"\n{_zd_banner_txt}")
-                        # strings.py 다국어 부가 안내
-                        _zd_hint = self.s.get(
-                            "zeroday_auto_inject",
-                            "⬆ 0day Hunter가 위 후보를 AI에게 자동 전달 — PoC 코드 자동 생성 시작",
-                        )
-                        self.console.print(f"[dim]{_zd_hint}[/dim]")
-
-                        # ── v3.5.20: exploit 클래스별 자동 모듈 연동 ──────────────
-                        _exploit_cls_set = {c.exploit_class for c in _zd_candidates}
-
-                        # Mitel MiCollab 자동 탐지 + 연동 힌트 출력
-                        if "micollab_bypass" in _exploit_cls_set or any(
-                            "CVE-2024-35286" in c.cves or "CVE-2024-41713" in c.cves
-                            for c in _zd_candidates
-                        ):
-                            _mc_hint = self.s.get(
-                                "zeroday_micollab_hint",
-                                "🎯 Mitel MiCollab exploit 모듈 사용 가능:"
-                                " from bingo.core.exploits.mitel_micollab import MitelMiCollabExploit",
-                            )
-                            self.console.print(f"[bold red]{_mc_hint}[/bold red]")
-
-                        # MediaTek wappd 연동 힌트
-                        if "memory_corruption" in _exploit_cls_set and any(
-                            "CVE-2024-20017" in c.cves for c in _zd_candidates
-                        ):
-                            _wd_hint = self.s.get(
-                                "zeroday_wappd_hint",
-                                "📡 MediaTek wappd exploit:"
-                                " from bingo.core.exploits.mediatek_wappd import WappdExploit",
-                            )
-                            self.console.print(f"[bold yellow]{_wd_hint}[/bold yellow]")
-
-                        # libwebp 연동 힌트
-                        if any("CVE-2023-4863" in c.cves for c in _zd_candidates):
-                            _wp_hint = self.s.get(
-                                "zeroday_webp_hint",
-                                "🖼️  libwebp exploit:"
-                                " from bingo.core.exploits.webp_cve2023_4863 import WebPExploit",
-                            )
-                            self.console.print(f"[bold yellow]{_wp_hint}[/bold yellow]")
-
-                        # glibc LPE 연동 힌트
-                        if "lpe_critical" in _exploit_cls_set or any(
-                            "CVE-2023-4911" in c.cves for c in _zd_candidates
-                        ):
-                            _gl_hint = self.s.get(
-                                "zeroday_glibc_hint",
-                                "⚡ glibc LPE exploit:"
-                                " from bingo.core.exploits.glibc_tunables import GlibcTunablesExploit",
-                            )
-                            self.console.print(f"[bold red]{_gl_hint}[/bold red]")
-
-                        # AI에게 후보 주입 → Dir-2 PoC 자동 생성
-                        _zd_inject = _zdh.format_inject_message(_zd_candidates, lang=_lang_zd)
-                        self.history.append(Message(role="user", content=_zd_inject))
-                        from ..models.registry import ModelRegistry as _MR_zd
-                        _mc_zd = self.config.get_active_model_config()
-                        if _mc_zd:
-                            _m_zd = _MR_zd.build(_mc_zd)
-                            current_response = self._stream_response(
-                                _m_zd.chat_stream(self._build_messages(""))
-                            )
-                            if current_response:
-                                self.history.append(
-                                    Message(role="assistant", content=current_response)
-                                )
-                        continue
-                except Exception:
-                    pass  # 0day Hunter 오류는 실행 차단하지 않음
+            # v6.2.10: 0day Hunter 제거 — 자동 탐지가 오탐 다수 발생 (git_exposure on HTTP 400 등)
+            # CVE/버전 기반 exploit은 AI가 직접 판단해 tool_call로 실행하도록 위임
 
             # ── v3.5.22: Recon 모듈 자동 탐지 ───────────────────────────────
             # 채팅 모드 실행 결과에서 정보수집/자산수집 컨텍스트 자동 감지 → /recon 힌트 출력

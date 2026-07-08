@@ -168,6 +168,22 @@ _WAF_BLOCK_EN = re.compile(
     re.I,
 )
 
+# v6.2.16: WAF 보안 도메인 302 리다이렉트 패턴 (페이로드 차단 = 취약점 없음)
+# 예: Location: http://sh1.igear.co.kr/secure/index.html → WAF payload block, NOT sqli evidence
+_WAF_SECURITY_REDIRECT = re.compile(
+    r'location\s*:\s*https?://(?:'
+    r'[a-z0-9.-]*igear\.co\.kr'      # igear WAF (Korea)
+    r'|[a-z0-9.-]*securecp\.co\.kr'  # SecureCP WAF (Korea)
+    r'|[a-z0-9.-]*cloudbric\.'       # Cloudbric WAF (Korea)
+    r'|[a-z0-9.-]*sitelock\.'        # SiteLock WAF
+    r'|[a-z0-9.-]*sucuri\.'          # Sucuri WAF
+    r'|[a-z0-9.-]*incapsula\.'       # Imperva/Incapsula WAF
+    r'|[a-z0-9.-]*akamai\.'          # Akamai WAF
+    r'|[a-z0-9.-]*cloudflare\.com/cdn-cgi/error'  # Cloudflare block
+    r')/(?:secure|block|blocked|deny|error|403)',
+    re.I,
+)
+
 # v4.9.4: Oracle 실패 오탐 억제 패턴
 # 추출된 값이 동일 문자의 반복이면 oracle이 실패한 것 (aaa..., bbb... 등)
 _ORACLE_FAILURE_REPEATED = re.compile(
@@ -208,6 +224,12 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
     if len(output) <= 2000 and (
         _WAF_BLOCK_KO.search(output) or _WAF_BLOCK_EN.search(output)
     ):
+        return None
+
+    # ── v6.2.16: WAF 보안도메인 302 리다이렉트 조기 종료 ─────────────────────────
+    # 302 → igear/securecp/cloudbric 등 보안 도메인 = WAF 페이로드 차단.
+    # 이는 취약점 증거가 아님 → 오탐 방지. IP 전체 차단도 아님 (특정 페이로드 차단).
+    if _WAF_SECURITY_REDIRECT.search(output.lower()):
         return None
 
     # ── v4.9.4: Oracle 실패 조기 감지 ─────────────────────────────────────────

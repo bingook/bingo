@@ -8535,6 +8535,39 @@ class BingoTerminal:
             if _has_unavail:
                 _detected_blocks.append("Temporarily unavailable")
 
+            # ── v6.2.16: WAF 보안도메인 302 → 페이로드 차단 (IP 차단 아님) ───────────────
+            # igear, securecp, cloudbric 등으로 리다이렉트 = WAF가 그 페이로드를 차단한 것.
+            # "IP 전체 차단"이 아님! 다른 페이로드/헤더/쿠키로 재시도 가능.
+            _waf_redirect_note = ""
+            _waf_sec_domains = [
+                "igear.co.kr", "securecp.co.kr", "cloudbric.", "sitelock.",
+                "sucuri.", "incapsula.", "/secure/index", "/blocked", "/deny",
+            ]
+            _has_waf_sec_redirect = any(
+                f"location: http" in _raw_lower and d in _raw_lower
+                for d in _waf_sec_domains
+            )
+            if _has_waf_sec_redirect:
+                import re as _wrex
+                _waf_loc = _wrex.search(r'location:\s*(\S+)', _raw_lower)
+                _waf_loc_url = _waf_loc.group(1) if _waf_loc else "unknown"
+                _lang_wr = getattr(self.config, "lang", "en")
+                _waf_redirect_note = (
+                    f"\n[WAF_PAYLOAD_BLOCK — NOT IP BLOCK]\n"
+                    f"302 Redirect → {_waf_loc_url}\n"
+                    f"This is a WAF payload-level block. Your IP is NOT banned.\n"
+                    f"The WAF blocked THIS SPECIFIC PAYLOAD/PATTERN.\n"
+                    f"REQUIRED ACTIONS:\n"
+                    f"  1. Get session cookies first: curl -sc /tmp/c.txt -sk -A 'Mozilla/5.0' 'TARGET/' -o /dev/null\n"
+                    f"  2. Retry with cookies: curl -b /tmp/c.txt -sk 'TARGET/page?param=PAYLOAD'\n"
+                    f"  3. Change payload: try encoding, case variation, comment insertion\n"
+                    f"  4. Try different bypass: /**/ instead of space, 0x41 instead of 'A'\n"
+                    f"DO NOT say 'IP blocked — change VPN'. Keep trying with payload variations."
+                )
+                self.console.print(
+                    f"[{THEME['warn']}]  ⚡ WAF 페이로드 차단 감지 (IP 차단 아님) → 페이로드 변형 후 재시도[/]"
+                )
+
             # ── CAPTCHA 오탐 방지 v3.2.16 ─────────────────────────────────────
             # 문제: _raw_lower에 AI 스크립트 출력 HTML이 포함됨
             #       → HTML 안의 <script src="...recaptcha..."> 태그 때문에 오탐 발생
@@ -9028,6 +9061,7 @@ class BingoTerminal:
                 "=== BINGO REAL EXECUTION RESULTS ===\n"
                 + trimmed
                 + _ip_block_hint
+                + _waf_redirect_note
                 + "\n=== END REAL RESULTS ===\n\n"
                 + state_summary
                 + "NEXT ACTION: Continue from where you left off. "

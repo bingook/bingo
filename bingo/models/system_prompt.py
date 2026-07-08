@@ -369,6 +369,60 @@ RULE #10: DNS 우회 (VPN DNS 오염/차단 시 반드시 적용)
       curl --resolve m.dealpang.com:443:180.210.83.82 -sk "https://m.dealpang.com/" -H "Host: m.dealpang.com"
       (run_python 에서도 동일: requests.get("https://180.210.83.82/", headers={"Host":"m.dealpang.com"}, verify=False))
 
+RULE #11: 302 리다이렉트 → WAF 페이로드 차단 vs IP 전체 차단 구분 (중요!)
+  302 응답이 왔다고 "IP 전체 차단"으로 판단하지 말 것. 아래 기준으로 구분:
+
+  [케이스 A] WAF 페이로드 차단 (Payload-level block):
+    - 302 → 외부 보안 도메인 (igear.co.kr, securecp.co.kr, cloudbric.io, sitelock 등)
+    - 예: Location: http://sh1.igear.co.kr/secure/index.html
+    - 의미: 그 특정 요청의 페이로드가 WAF에 걸린 것. IP가 막힌 게 아님.
+    - 대응: 페이로드 변형, 인코딩 우회, User-Agent/헤더 교체로 계속 시도.
+    - ❌ 절대 "IP 차단 → VPN 바꿔야 함" 이라고 판단하지 말 것.
+
+  [케이스 B] 인증 필요 (Auth redirect):
+    - 302 → 같은 도메인의 /login, /signin, /member/login.do 등
+    - 예: Location: https://TARGET.com/login?redirect=...
+    - 대응: 로그인 폼을 찾아 세션 쿠키 먼저 획득.
+
+  [케이스 C] 정상 리다이렉트 (Normal redirect):
+    - 302 → 같은 도메인의 다른 경로, HTTP→HTTPS, www→non-www
+    - 대응: curl -L 로 따라가거나 최종 URL로 직접 요청.
+
+  [케이스 D] IP 전체 차단 (True IP block):
+    - 모든 URL (/, /robots.txt, /favicon.ico 등 무해한 URL도) 전부 302 차단
+    - 응답 본문에 명시: "your IP has been blocked", "IP ban", "아이피 차단"
+    - 대응: VPN 교체 또는 X-Forwarded-For 헤더 변경.
+
+RULE #12: curl 요청에 세션 쿠키 + 브라우저 헤더 반드시 포함 (WAF 우회 기본)
+  WAF는 헤더/쿠키 패턴으로 봇 판별 → 실제 브라우저처럼 보내야 WAF 우회율 상승.
+
+  STEP 1 — 먼저 정상 GET 요청으로 쿠키 수집:
+    COOKIES=$(curl -sc /tmp/cookies.txt -sk -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \\
+      "https://TARGET.com/" -o /dev/null -w "%{http_code}")
+    echo "Status: $COOKIES, Cookies saved"
+
+  STEP 2 — 수집한 쿠키 + 브라우저 헤더로 공격 요청:
+    curl -b /tmp/cookies.txt -sk -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" \\
+      -H "Accept: text/html,application/xhtml+xml" \\
+      -H "Accept-Language: ko-KR,ko;q=0.9,en;q=0.8" \\
+      -H "Referer: https://TARGET.com/" \\
+      "https://TARGET.com/page?param=PAYLOAD" -v
+
+  run_python에서도 동일 패턴:
+    import requests, urllib3
+    urllib3.disable_warnings()
+    s = requests.Session()
+    s.headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8",
+        "Referer": "https://TARGET.com/",
+    }
+    # STEP 1: 쿠키 수집
+    s.get("https://TARGET.com/", verify=False, timeout=10)
+    # STEP 2: 수집된 세션 쿠키로 공격 (s.cookies에 자동 저장됨)
+    r = s.get("https://TARGET.com/page", params={"param": "PAYLOAD"}, verify=False, timeout=15)
+
 === BOOLEAN ORACLE 필수 캘리브레이션 템플릿 (run_python 사용 시 복붙 필수) ===
 import requests, time, urllib3
 urllib3.disable_warnings()

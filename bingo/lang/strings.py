@@ -6926,6 +6926,12 @@ _STRINGS.update({
         "zh": "  ⋯ [HTTP头部输出已抑制 — 完整内容已发送至AI]",
         "en": "  ⋯ [HTTP headers suppressed — full data sent to AI]",
     },
+    # v6.2.14: bash 블록 내 독립 Python 구문 제거 경고
+    "bash_cleanup_py_removed": {
+        "ko": "⚠ [BASH CLEANUP] 독립 Python 구문 제거",
+        "zh": "⚠ [BASH CLEANUP] 移除独立Python语句",
+        "en": "⚠ [BASH CLEANUP] Standalone Python statement removed",
+    },
 })
 
 

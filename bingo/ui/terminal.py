@@ -6636,6 +6636,9 @@ class BingoTerminal:
             _py3_quote = None
             _cleaned_lines = []
             _removed_any = False
+            _bclean_lang = getattr(self.config, "lang", "en")
+            _bclean_s = get_strings(_bclean_lang)
+            _bclean_msg = _bclean_s.get("bash_cleanup_py_removed", "⚠ [BASH CLEANUP] Standalone Python statement removed")
             for _bline in script.splitlines():
                 _bstripped = _bline.strip()
                 if _in_py3_c:
@@ -6659,7 +6662,7 @@ class BingoTerminal:
                 # 최상위 bash 레벨에서만 Python 전용 구문 제거
                 if _bstripped and _PY_ONLY_RE.match(_bstripped):
                     self.console.print(
-                        f"[{THEME['warn']}]⚠ [BASH CLEANUP] 독립 Python 구문 제거: {_bstripped[:60]}[/]"
+                        f"[{THEME['warn']}]{_bclean_msg}: {_bstripped[:60]}[/]"
                     )
                     _removed_any = True
                     continue

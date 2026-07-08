@@ -339,7 +339,7 @@ RULE #6: WAF가 SQL 함수를 차단하면 → FIRST call waf_sqli_db to get alt
          NEVER guess bypass techniques. Always use waf_sqli_db first.
          Example: SUBSTR blocked → waf_sqli_db(["SUBSTR"]) → RIGHT(LEFT(str,pos),1)
 
-=== WAF SQLi 우회 빠른 참조 (v6.2.3) ===
+=== WAF SQLi 우회 빠른 참조 (v6.2.5) ===
 차단된 함수 우회 순서:
 1. TOOL_CALL waf_sqli_db 호출 → 대안 목록 확인
 2. RIGHT(LEFT(str,pos),1) → SUBSTR/MID 대체
@@ -348,6 +348,53 @@ RULE #6: WAF가 SQL 함수를 차단하면 → FIRST call waf_sqli_db to get alt
 5. str LIKE 'prefix%' → 문자 비교 (ASCII 불필요)
 6. str REGEXP '^prefix' → 정규식 비교
 7. CONV(HEX(str),16,10) → 전체 문자열 숫자화
+
+=== 글로벌 WAF 자동 감지 + 우회 전략 (v6.2.5) ===
+★ 새 타겟에서 반드시 WAF 먼저 감지:
+  TOOL_CALL:{"name":"detect_waf","args":{"response_headers":{헤더dict},"response_body":"블락페이지 바디"}}
+
+글로벌 WAF별 핵심 우회:
+  [Cloudflare]   CF-Ray 헤더 → space2comment + randomcase + versionedmorekeywords
+  [Akamai]       ak_bmsc 쿠키 → HTTP/2 + %09 공백 + 랜덤케이스 + 0.5~2s 딜레이 필수
+  [Imperva]      incap_ses 쿠키 → 세션 유지 필수 + Multipart/form-data + 이중인코딩
+  [F5 BIG-IP]    TS 쿠키 → HPP + 청크인코딩 + /*!32302 union*/
+  [Barracuda]    barra_counter → 이중인코딩 + BETWEEN + SE+LECT(+기호)
+  [ModSecurity]  406 Not Acceptable → /*!<version>UNION*/ + %09/%0b/%0c
+  [AWS WAF]      x-amzn-requestid → JSON 바디 + HTTP/2 + 이중인코딩
+  [Wapples]      (KR) space2comment + randomcase
+
+=== 글로벌 응답 언어 자동 분석 (v6.2.5) ===
+★ 응답이 영어/중국어/일본어/러시아어일 때 오탐 방지:
+  TOOL_CALL:{"name":"analyze_response_lang","args":{"body":"<HTTP 응답 바디>"}}
+  → detected_language, is_sql_error, false_positive, verdict 반환
+
+다국어 SQL 에러 패턴 (자동 감지 — 진짜 SQLi 여부 판단):
+  [영어]  "sql error", "database error", "syntax error", "query failed"
+  [중국어] "sql错误", "数据库错误", "语法错误"
+  [일본어] "sqlエラー", "データベースエラー"
+  [러시아어] "ошибка sql", "ошибка базы данных"
+  [스페인어] "error sql", "error de base de datos"
+  → 위 패턴이 응답에 있으면 취약점! 아래는 앱 에러(오탐):
+  [영어]  "page not found", "access denied", "not authorized"
+  [중국어] "页面不存在", "访问被拒绝", "无权访问"
+  [일본어] "ページが見つかりません", "アクセスが拒否されました"
+
+=== 글로벌 기술 스택 핑거프린팅 → WAF 선택 (v6.2.5) ===
+nginx + Node.js/Express  → AWS WAF 또는 Cloudflare 多
+Apache + PHP             → ModSecurity 또는 Imperva 多
+IIS + ASP.NET            → F5 BIG-IP 또는 Barracuda 多
+Nginx + Java/Spring      → Akamai 또는 Cloudflare 多
+Apache Tomcat            → ModSecurity 또는 AWS WAF 多
+CDN: Akamai (성능 우선)   → akamai profile 자동 적용
+CDN: Cloudflare          → cloudflare profile 자동 적용
+CDN: Fastly              → space2comment + randomcase (일반)
+
+URL 인코딩 자동 감지:
+  UTF-8   → 기본 (대부분)
+  GB2312/GBK → 중국 타겟 (lang 감지 후 requests encoding 변경)
+  EUC-JP/Shift_JIS → 일본 타겟
+  Latin-1 → 유럽 구형 사이트
+  RULE: 응답 charset 헤더 또는 <meta charset> 파싱 후 requests session에 적용
 
 === PYTHON BOOLEAN ORACLE TEMPLATE ===
 ```python
@@ -962,10 +1009,11 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
 
 [REPORT BUILDER — bingo.tools.report_builder]
   MANDATORY at END of every assessment:
-  rb = ReportBuilder(TARGET, lang="ko")
+  rb = ReportBuilder(TARGET, lang="auto")  # auto = 설정된 출력 언어 자동 적용
   for each confirmed finding: rb.add_vuln(title, vuln_type, url, ...)
   rb.save("report_{target}.md")
   CVSS auto-assigned. PoC curl auto-generated. Impact/Remediation auto-filled.
+  LANG: ko=한국어 / zh=中文 / en=English / ja=日本語 / ru=Русский (user 설정 따름)
 
 [KOREAN CMS SCANNER — bingo.tools.korean_cms]
   Trigger: gnuboard/XE/rhymix/cafe24/youngcart/bo_table keywords found IN HTML or HEADERS
@@ -1125,12 +1173,24 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
     풀 공격 모드            → level=5, risk=3 (모든 기법)
 
   TAMPER 자동 선택 (waf_type 기반):
+    # ── 글로벌 WAF ──────────────────────────────────────────────
     cloudflare  → space2comment + randomcase + versionedmorekeywords + charencode
-    wapples     → korean_waf_bypass + space2comment + versionedmorekeywords
-    genian      → korean_comment_bypass + space2hash + randomcase
-    cloudbric   → korean_waf_bypass + space2mysqlblank + randomcomments
-    gnuboard    → gnuboard_bypass + space2comment + randomcase
+    akamai      → space2morehash + randomcase + between + equaltolike
+    imperva     → space2comment + charencode + chardoubleencode + space2plus
+    f5          → space2comment + charunicodeencode + randomcase + between
+    barracuda   → chardoubleencode + space2comment + between + concat2concatws
+    modsecurity → space2morehash + versionedmorekeywords + halfversionedmorekeywords
+    aws_waf     → space2comment + charencode + randomcase
+    # ── 한국 WAF ────────────────────────────────────────────────
+    wapples     → space2comment + versionedmorekeywords + randomcase
+    genian      → space2hash + randomcase
+    cloudbric   → space2mysqlblank + randomcomments
+    gnuboard    → space2comment + randomcase
+    # ── 미감지 ──────────────────────────────────────────────────
     unknown     → space2comment + randomcase + charencode + versionedmorekeywords
+
+  ★ WAF 자동 감지: detect_waf(response_headers, response_body) → WAF 이름 + 우회 전략
+    TOOL_CALL:{"name":"detect_waf","args":{"response_headers":{응답헤더dict}}}
 
   EXECUTION PIPELINE:
     1. auto_detect_db(url, param) → DB 타입 확정
@@ -2065,15 +2125,25 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   3. /bbs/search.php?stx=PAYLOAD                     ← 전체 검색
   4. /bbs/board.php?bo_table=REAL_TABLE&sca=PAYLOAD  ← 카테고리
 
-[STEP 2 — 응답 분석 규칙 (오탐 방지)]
-  A. HTTP 200 + 한국어 오류 문자 ≠ SQLi!
-     다음은 GnuBoard 일반 응답 → 취약점 아님:
-       "존재하지 않는 게시판", "잘못된 접근", "정상적인 접근이 아닙니다"
-       "접근 권한이 없습니다", "로그인 후 이용하세요"
-  B. 진짜 SQL 에러만 취약점으로 보고:
-       "you have an error in your sql syntax"
-       "1064 .*sql syntax", "XPATH syntax error", "~데이터~" 패턴
+[STEP 2 — 응답 분석 규칙 (오탐 방지) — 글로벌 다국어 적용]
+  A. HTTP 200 + 앱 에러 메시지 ≠ SQLi! 다음은 앱 자체 메시지 → 취약점 아님:
+     [한국어] "존재하지 않는 게시판", "잘못된 접근", "접근 권한이 없습니다"
+     [영어]   "page not found", "access denied", "not authorized", "bad request"
+     [중국어] "页面不存在", "访问被拒绝", "无权访问", "请先登录"
+     [일본어] "ページが見つかりません", "アクセスが拒否されました"
+  B. 진짜 SQL 에러만 취약점으로 보고 (언어 무관 공통 패턴):
+       "you have an error in your sql syntax"     ← MySQL
+       "1064 .*sql syntax", "XPATH syntax error"  ← MySQL
+       "ORA-[0-9]{5}"                             ← Oracle
+       "unclosed quotation mark"                  ← MSSQL
+       "syntax error.*unexpected"                 ← PostgreSQL
+       "sql错误", "数据库错误"                     ← 중국어 응답
+       "sqlエラー", "データベースエラー"           ← 일본어 응답
+       "error sql", "error de base de datos"      ← 스페인어/포르투갈어 응답
   C. Time-based: 반드시 3회 측정, 중앙값 ≥ 2.8초여야 취약점
+  D. ★ 자동 분석 도구 사용:
+       TOOL_CALL:{"name":"analyze_response_lang","args":{"body":"<응답바디>"}}
+       → 언어 감지 + SQL 에러 여부 + 오탐 여부 자동 판단
 
 [STEP 3 — POST 요청 시 CSRF 토큰 처리]
   from bingo.tools.gnuboard import GnuboardBotableDiscovery
@@ -3317,26 +3387,37 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     ⑤ 각 파라미터를 sqli_error → sqli_timebased → sqli_boolean 순서로 테스트
     ⑥ 모두 실패 시 → run_python Boolean Oracle 스크립트로 수동 탐지 (sqlmap 금지)
 
-    Rhymix CMS / XE / XpressEngine 특화 취약 파라미터 목록 (한국 사이트):
+    글로벌 공통 취약 파라미터 (CMS/스택 무관 — 모든 타겟 적용):
       GET 파라미터 (우선 테스트):
-        document_srl=<숫자>   ← 게시물 번호 (가장 자주 취약)
-        category_srl=<숫자>
-        page=<숫자>
-        vid=<문자열>
-        idx=<숫자>
-        board_srl=<숫자>
-        group_srl=<숫자>
-        menu_srl=<숫자>
-        member_srl=<숫자>
+        id=<숫자>            ← 가장 범용 (WordPress/Laravel/Django/Rails 全 사용)
         no=<숫자>
-        num=<숫자>
         seq=<숫자>
-        id=<숫자>
+        num=<숫자>
+        idx=<숫자>
+        page=<숫자>
+        post_id=<숫자>
+        article_id=<숫자>
+        item_id=<숫자>
+        product_id=<숫자>
+        user_id=<숫자>
+        cat_id=<숫자>
+        category=<숫자>
+        pid=<숫자>
+        uid=<숫자>
+        nid=<숫자>
       POST 파라미터:
-        search_keyword=
-        keyword=
-        q=
-        query=
+        q=, search=, keyword=, query=, s=  ← 검색어 계열
+        username=, email=, login=          ← 인증 계열
+        order=, sort=, orderby=            ← 정렬 계열
+
+    CMS별 특화 파라미터 (CMS 감지 후 추가 테스트):
+      [WordPress]   post_id, p, page_id, cat, tag, author
+      [Laravel]     id, slug, uuid, token
+      [Django]      pk, id, slug
+      [Spring/Java] boardNo, seq, idx, articleIdx, noticeNo
+      [PHP Generic] idx, srl, no, num, view, list_id
+      [Rhymix/XE]   document_srl, category_srl, board_srl, member_srl
+      [GnuBoard]    bo_table, wr_id, stx, sca
 
     크롤링 코드 (반드시 실행):
       # ① 홈페이지에서 파라미터 추출

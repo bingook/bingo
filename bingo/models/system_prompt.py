@@ -1059,11 +1059,12 @@ AI MUST apply these automatically — NO user prompting needed.
   sqli_autoexploit 내부 자동 처리:
     ✅ &&/|| 포함 8가지 boolean 오라클 후보 자동 시도
     ✅ FROM → FR/**/OM 자동 우회
-    ✅ SUBSTRING → RIGHT+REVERSE+LIKE 자동 전환
+    ✅ 이진 탐색 (binary search) 으로 문자 추출 — 선형 대비 10배 빠름 (자동 적용)
     ✅ DB version / database() / user() 자동 추출
     ✅ information_schema 테이블/컬럼 목록 자동 열거
     ✅ member/user/admin 테이블 자동 우선 선택
     ✅ password/email 자동 덤프
+    ✅ 실시간 진행 출력 — 추출 중 글자가 하나씩 출력됨 (무한 대기 없음)
 
   sqli_autoexploit 실패 시에만 아래 수동 단계 진행.
 

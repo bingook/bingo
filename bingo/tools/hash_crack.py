@@ -551,12 +551,27 @@ def extract_hashes_from_text(text: str, strict: bool = True) -> list[str]:
         r'(?:old_password|passwd|password|hash|pwd|pw)\s*[:=]', re.IGNORECASE
     )
 
+    # v6.2.17: 파일명 캐시 버스팅 해시 탐지 정규식
+    # 예: main.a39888f755d305910a0945e236ac1fc6.js, chunk.abc123.min.css
+    _FILENAME_CACHE_RE = re.compile(
+        r'[./\-_][0-9a-fA-F]{32,64}\.[a-zA-Z]{2,5}(?:[?&#\s"\')|]|$)',
+    )
+
     found = []
     for idx, pat in enumerate(patterns):
         for m in re.finditer(pat, text):
             candidate = m.group(0).strip("| \t\n")
             if not candidate:
                 continue
+
+            # v6.2.17: 파일명 캐시 버스팅 해시 제외 (main.HASH.js, chunk.HASH.min.css 등)
+            # 해시 앞뒤 컨텍스트로 파일명 패턴 감지
+            pre_char_idx = max(0, m.start() - 1)
+            pre_char = text[pre_char_idx] if m.start() > 0 else ''
+            post_window = text[m.end():min(len(text), m.end() + 12)]
+            # .HASH.ext 패턴: 앞에 '.' 이고 뒤에 '.확장자' 있으면 캐시 버스팅 해시
+            if pre_char in './-_' and re.match(r'\.[a-zA-Z]{2,5}(?:[?&#\s"\')|]|$)', post_window):
+                continue  # 파일명 캐시 버스팅 해시 → 오탐
 
             # OLD_PASSWORD 16-char(idx 8): passwd=/hash= 같은 컨텍스트 키워드 필수
             if idx == 8:

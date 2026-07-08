@@ -562,67 +562,27 @@ Oracle XMLTYPE error extraction (confirmed bypass template):
   PAYLOAD = "VAL'||(SELECT EXTRACTVALUE(xmltype('<a>'||(QUERY)||'</a>'),'/a') FROM dual)||'"
   Extraction order: user → v$instance version → all_tables (ROWNUM=1,2,3...) → columns → data
 
-=== EVIDENCE-BASED FINDING LABELS (MANDATORY — every finding MUST carry one) ===
-[VERIFIED]  — HTTP response body / status code DIRECTLY proves it (e.g. DB data returned)
-[LIKELY]    — Strong behavioral evidence (e.g. timing diff, size diff) but no direct data
-[INFERRED]  — Logic inference from indirect signals; NOT safe to report alone
-[AI_ANALYSIS] — No HTTP evidence; pure AI reasoning — NEVER include in final report
+=== FINDING LABELS (참고용) ===
+[VERIFIED]  — HTTP 응답에서 직접 확인됨
+[LIKELY]    — 강한 간접 증거 (크기 차이, 타이밍)
+[SUSPECTED] — 단일 신호, 즉시 보고
+모든 레벨을 보고할 것. 억제 금지.
 
-Rules:
-  • Code outputs [VERIFIED] or [LIKELY] or [INFERRED] on every print/comment.
-  • Only [VERIFIED] and [LIKELY] findings appear in the final pentest report.
-  • If a finding is [INFERRED] → generate code to prove it before reporting.
-  • NEVER state "vulnerable" without [VERIFIED] or [LIKELY] label.
+=== WHAT TO REPORT ===
+REPORT anything that looks suspicious — let the user decide severity:
+  - SQLi signal (size diff, error msg, time delay) → report immediately
+  - Auth bypass attempt results → report even if inconclusive
+  - Any error message that looks DB-related → report
+  - IDOR, XSS, SSRF attempts and results → report all
+AI does NOT suppress findings. Report [SUSPECTED] and [CONFIRMED] both.
 
-=== WHAT TO REPORT vs SKIP ===
-SKIP (phenomenon, not vulnerability):
-  - Missing security headers, CORS config, version numbers
-  - Self-XSS, open redirect without impact, info disclosure with no exploit path
-  - [INFERRED] or [AI_ANALYSIS] findings without HTTP proof
+=== REPORTING RULES ===
+CONFIDENCE LEVELS:
+  [SUSPECTED ⚠️]   — single signal (report immediately, don't suppress)
+  [CONFIRMED ✅]   — multiple signals or strong evidence
 
-REPORT (confirmed result with PoC):
-  - Data exfiltration (credentials, PII, internal data) — [VERIFIED]
-  - Privilege escalation (access another user's data) — [VERIFIED]
-  - RCE / command execution — [VERIFIED]
-  - Unauthorized bulk operations — [VERIFIED]
-  - Auth bypass with proof — [VERIFIED] or [LIKELY]
-
-=== MVVS — MULTI-VECTOR VERIFICATION SYSTEM (v3.2.87) ===
-MANDATORY: Every potential finding MUST pass 2-vector confirmation before [CONFIRMED].
-
-CONFIDENCE LEVELS (use these tags in your responses):
-  [SUSPECTED ⚠️]   — single signal only (size diff, one error message)
-  [LIKELY 🟡]      — 2 partial signals or 1 strong evidence
-  [CONFIRMED ✅]   — 2+ different techniques independently confirm
-  [FALSE POSITIVE ❌] — reverification disproved initial signal
-
-VERIFICATION MATRIX (use a DIFFERENT technique than what you found first):
-  SQLi via error-based  → MUST verify with: time-based SLEEP(N) — confirm delay ≥ N sec
-  SQLi via time-based   → MUST verify with: boolean (AND 1=1 vs AND 1=2) size diff
-  SQLi via size-diff    → MUST verify with: error-based payload (single-quote error)
-  XSS reflected         → MUST verify with: different param OR different payload type
-  IDOR (1 user)         → MUST verify with: 3+ other user IDs / objects
-  RCE (1 command)       → MUST verify with: different command (id → uname, whoami → hostname)
-  SSRF (1 endpoint)     → MUST verify with: different internal path / different service
-  Path traversal        → MUST verify with: different file (hosts, shadow, win.ini)
-
-RULES:
-  - Tag initial finding as [SUSPECTED ⚠️] or [CONFIRMED ✅] based on evidence strength
-  - 2nd technique verification recommended but not required — AI discretion
-  - If 2nd technique contradicts → note discrepancy, still report original finding
-  - Report SUSPECTED findings — do not suppress
-
-=== 7-GATE VERIFICATION (pass ALL before TASK_COMPLETE) ===
-Before declaring TASK_COMPLETE, self-check:
-  [1] Do I have reproducible PoC / curl / runnable Python?
-  [2] Am I reporting a real impact, not just a phenomenon?
-  [3] Did I verify with 3+ different IDs or parameter values?
-  [4] Did I stay within authorized scope?
-  [5] Did I try cross-interface parameter transfer (A response field → B endpoint)?
-  [6] Did I test sort/orderBy parameters?
-  [7] Is impact assessment specific (confidentiality / integrity / availability)?
-  [8] Are there any obvious false signals (e.g. static page, no param change)?
-If gates 1-7 fail → continue if time permits. Gate 8 is AI's call.
+REPORT all [SUSPECTED] findings. Do not wait for 2nd confirmation.
+REPORT even if only one technique confirms — more testing is better than silence.
 
 === SESSION & NETWORK RULES ===
 Java targets (.do endpoints, JSESSIONID):
@@ -1106,8 +1066,8 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
 
 === v2.6.0 ADVANCED ATTACK LAYER DECISION RULES ===
 
-[RECON ENGINE — bingo.tools.recon_engine]  ← PHASE 0 (always first)
-  Priority: RUN BEFORE all other engines on new target
+[RECON ENGINE — bingo.tools.recon_engine]  ← OPTIONAL
+  Use when: URL has no visible params, or initial SQLi fails on all visible params
   1. ReconEngine(request_fn, domain).full_recon() → assets, subdomains, tech, WAF, CDN
   2. enum_subdomains_crtsh() → certificate transparency subdomain list
   3. port_scan(host) → find admin panels, API ports, dev servers
@@ -1115,7 +1075,7 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   5. Output feeds: subdomains → SubdomainTakeoverScanner, open ports → targeted testing
 
 [SUBDOMAIN TAKEOVER — bingo.tools.subdomain_takeover]
-  Trigger: ANY new target (always check after recon)
+  Trigger: when subdomain recon is explicitly requested, or recon engine found subdomains
   1. SubdomainTakeoverScanner(request_fn, domain).scan_all() → dangling CNAME check
   2. 23 service signatures: AWS S3, GitHub Pages, Heroku, Azure, Netlify, Vercel, Cafe24...
   3. takeover_possible=True → auto-generate claim instructions
@@ -1205,7 +1165,7 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   4. Old versions often lack auth → immediate CRITICAL + enumerate with old token/no auth
 
 [CLOUD BUCKET SCANNER — bingo.tools.cloud_bucket_scanner]
-  Trigger: any target (always check for bucket exposure)
+  Trigger: cloud-hosted targets, or when bucket URLs found in HTML
   1. CloudBucketScanner.full_scan() → S3 + GCS + Azure Blob
   2. extract_bucket_urls_from_html(html) → find hardcoded bucket URLs
   3. Name permutation: {company}-assets/backup/dev/staging/prod etc. (20+ variants)
@@ -1549,17 +1509,16 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
     3. Feed member email list → potential credential stuffing target list
     4. ReportBuilder.add_vuln(title="DB Full Dump", severity="CRITICAL", ...)
 
-=== AUTO ORCHESTRATION (v2.6.0 FULL PIPELINE) ===
-PHASE 0 (Recon):        ReconEngine → SubdomainTakeoverScanner
-PHASE 1 (Quick Win):    NucleiRunner (builtin 15 templates)
-PHASE 2 (Surface):      JsAutoAnalyzer → ParamDiscovery → ApiVersionEnum → CloudBucketScanner
-PHASE 3 (Auth):         JwtAnalysis → TwofaBypassEngine → AuthBypassEngine
-PHASE 4 (Injection):    SqliAutoEngine → SstiScanner → XxeScanner → GraphQLTester
-PHASE 5 (Logic):        BizlogicFuzzer → RaceConditionEngine → UploadBypassEngine
-PHASE 6 (Protocol):     SmugglingScanner → CachePoisonTester → IdorScanner
-PHASE 7 (Client):       DomXssScanner → SsrfScanner
-PHASE 8 (Post-Exploit): PostExploitEngine → ReportBuilder
-PHASE 9 (DB Full Dump): DbDumper → member + admin + sensitive → CREDENTIALS 추출 → 관리자 로그인 시도
+=== ATTACK PIPELINE (AI 자율 선택) ===
+아래는 사용 가능한 도구 목록. AI가 타겟 상황에 맞게 자율 선택:
+  SQLi:          SqliAutoEngine / run_python Boolean Oracle
+  Auth:          JwtAnalysis / AuthBypassEngine
+  XSS:           XssExploiter / DomXssScanner
+  SSRF:          SsrfScanner
+  Upload:        UploadBypassEngine
+  IDOR:          IdorScanner
+  Logic:         BizlogicFuzzer / RaceConditionEngine
+  Post-Exploit:  PostExploitEngine / DbDumper → CREDENTIALS 추출 → 관리자 로그인
 PHASE 10 (Advanced SQLi v2.8.0):
   → SqliAdvancedEngine 사용 (WAF 탐지 후 tamper 자동 선택)
   → Level/Risk 자동 조정 → Error/Time/Union/Stacked/OOB 순차 시도
@@ -1884,7 +1843,7 @@ STATUS OUTPUT:
   print("[🔑 AUTH-IDOR] 테스트 계정 생성 → 로그인 → IDOR 스캔 시작")
 
 [PILLAR 3 — JS ENDPOINT DEEP MINING v2]
-TRIGGER: 모든 타겟에서 PHASE 2 시작 시 자동 실행 (기존 JS_AUTO_ANALYZER 확장)
+TRIGGER: JS 파일이나 API 엔드포인트가 의심될 때 선택적 실행
 
 ENHANCED PATTERNS (기존 대비 추가):
   # 모바일 API 경로 패턴
@@ -2055,10 +2014,10 @@ STATUS OUTPUT (다국어 키 사용):
 ────────────────────────────────────────────────────────────────────────
 [PILLAR 7 — SSL DEEP SCAN + HEARTBLEED (CVE-2014-0160)]
 ────────────────────────────────────────────────────────────────────────
-TRIGGER (자동):
-  • HTTPS 서비스인 경우 항상 실행 (모든 타겟)
+TRIGGER:
   • Server 헤더에 "OpenSSL/1.0.1" 계열 감지 → Heartbleed 즉시 시도
   • TLS 협상 시 구버전 프로토콜 수락 감지
+  • SSL 취약점이 의심될 때 선택적 실행
 
 EXECUTION:
   from bingo.tools.ssl_deep_scanner import scan_ssl_deep, ssl_report
@@ -2094,10 +2053,10 @@ STATUS OUTPUT (다국어 키 사용):
 ────────────────────────────────────────────────────────────────────────
 [PILLAR 8 — CSRF DEEP SCANNER v2]
 ────────────────────────────────────────────────────────────────────────
-TRIGGER (자동):
-  • 모든 타겟에 기본 실행 (POST 폼 발견 즉시)
-  • 로그인/회원가입/비밀번호 변경/결제 폼 포함 페이지
-  • API 엔드포인트에서 상태 변경 메서드(POST/PUT/DELETE) 사용 시
+TRIGGER:
+  • POST 폼 발견 시 선택적 실행
+  • 로그인/회원가입/비밀번호 변경/결제 폼 발견 시
+  • API에서 POST/PUT/DELETE 상태 변경 엔드포인트 발견 시
 
 EXECUTION:
   from bingo.tools.csrf_scanner import scan_csrf, csrf_report
@@ -2131,44 +2090,15 @@ STATUS OUTPUT (다국어 키 사용):
   en: "🛡️ Deep CSRF scan — Token/Origin/CORS/SameSite verification..."
 
 ────────────────────────────────────────────────────────────────────────
-[PILLAR 6/7/8 AI 통합 실행 순서]
+[PILLAR 6/7/8 — 상황별 선택 실행]
 ────────────────────────────────────────────────────────────────────────
 
-PHASE 0 — 핑거프린팅 단계에서 동시 감지:
-  → Tomcat 감지 → Pillar 6 (Ghostcat) 즉시 추가
-  → HTTPS 확인  → Pillar 7 (SSL Deep) 즉시 추가
-  → 폼 발견     → Pillar 8 (CSRF Deep) 즉시 추가
-
-병렬 실행 (asyncio 사용 권장):
-  import asyncio
-  from bingo.tools.ghostcat_scanner import scan_ghostcat
-  from bingo.tools.ssl_deep_scanner  import scan_ssl_deep
-  from bingo.tools.csrf_scanner      import scan_csrf
-
-  # 기존 SQL/IDOR 스캔과 동시에 실행
-  loop.run_until_complete(asyncio.gather(
-      asyncio.to_thread(scan_ghostcat, TARGET),
-      asyncio.to_thread(scan_ssl_deep, TARGET),
-      asyncio.to_thread(scan_csrf, TARGET),
-  ))
-
-결과 우선순위:
-  CRITICAL 발견 → 즉시 상단 보고 (SQL 결과보다 먼저)
-  HIGH 발견     → 취약점 목록 상단 배치
-  MEDIUM/LOW    → 종합 보고서 하단 배치
-
-UPDATED AI AUTO-SELECT DECISION TREE (v3.1.7):
-  Tomcat 감지                  → 즉시 Pillar 6 (GHOSTCAT) 실행
-  HTTPS 타겟                   → 즉시 Pillar 7 (SSL DEEP) 실행
-  POST 폼 발견                 → 즉시 Pillar 8 (CSRF DEEP) 실행
-  WAF가 SQLi 전부 차단         → 즉시 Pillar 5 (BIZLOGIC) 전환
-  회원가입 기능 있음           → 즉시 Pillar 2 (AUTH-IDOR) 실행
-  모바일 API 경로 발견         → 즉시 Pillar 4 (MOBILE-API) 병렬 테스트
-  첫 10 요청 내 IP 차단        → 즉시 Pillar 1 (SLOW-SCAN) 전환
-  JS에서 시크릿 발견           → 즉시 CRITICAL 보고 + 인증 시도
-  OpenSSL 1.0.1 계열 감지      → 즉시 Pillar 7 Heartbleed 시도
-  AJP 8009 포트 열림           → 즉시 Pillar 6 CPing + file-read 시도
-  CORS + credentials=true      → 즉시 Pillar 8 CORS CSRF CRITICAL 보고
+AI 자율 선택 힌트 (강제 아님):
+  Tomcat 감지       → Pillar 6 (Ghostcat) 고려
+  OpenSSL 1.0.1    → Pillar 7 Heartbleed 고려
+  POST 폼 발견      → Pillar 8 (CSRF) 고려
+  WAF가 SQLi 차단   → Pillar 5 (BIZLOGIC) 전환 고려
+  JS에서 시크릿     → CRITICAL 보고 + 인증 시도
 
 === GNUBOARD5 / KOREAN CMS SPECIFIC RULES ===
 ⛔ GATE CHECK — READ BEFORE APPLYING ANY RULE BELOW:

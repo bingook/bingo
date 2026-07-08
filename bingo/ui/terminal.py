@@ -6181,6 +6181,29 @@ class BingoTerminal:
                         fixed.append(' ' * (indent_lvl + 4) + 'pass')
             pass_fixed = '\n'.join(fixed)
             if _ok(pass_fixed): return pass_fixed
+            # Step 4: try: 블록에 except/finally 없는 경우 → except Exception: pass 자동 삽입
+            # v6.2.25: "SyntaxError: expected 'except' or 'finally' block" 자동 보완
+            _s4 = pass_fixed
+            for _ in range(10):
+                try:
+                    _ast.parse(_s4)
+                    return _s4
+                except SyntaxError as _e4:
+                    if "expected 'except' or 'finally'" not in str(_e4):
+                        break
+                    _ln4 = getattr(_e4, 'lineno', 0)
+                    if not _ln4:
+                        break
+                    _ls4 = _s4.splitlines()
+                    _el4 = _ln4 - 1
+                    if not (0 <= _el4 < len(_ls4)):
+                        break
+                    _tl4 = _ls4[_el4]
+                    _ind4 = len(_tl4) - len(_tl4.lstrip()) if _tl4.strip() else 0
+                    _ls4.insert(_el4, ' ' * _ind4 + 'except Exception:')
+                    _ls4.insert(_el4 + 1, ' ' * (_ind4 + 4) + 'pass')
+                    _s4 = '\n'.join(_ls4)
+            if _ok(_s4): return _s4
             return code
 
         python_raw_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)

@@ -350,6 +350,25 @@ RULE #9: curl을 순차적으로 루프 실행하지 말 것 (35초 타임아웃
            curl ... URL1 & curl ... URL2 & wait
          절대 for문으로 순차 curl 실행하지 말 것 (각 10초 × 10개 = 100초 초과).
 
+RULE #10: DNS 우회 (VPN DNS 오염/차단 시 반드시 적용)
+  증상: curl/requests가 192.0.0.1, 198.18.x.x 같은 가짜 IP 반환 → 접속 실패
+  해결 순서:
+    STEP 1 — 진짜 IP 획득 (DoH 방식, run_python 사용):
+      TOOL_CALL:{"name":"run_python","args":{"code":"import requests,json\nr=requests.get('https://dns.google/resolve',params={'name':'TARGET.com','type':'A'},timeout=10)\nips=[a['data'] for a in r.json().get('Answer',[]) if a.get('type')==1]\nprint('REAL_IP:',ips[0] if ips else 'NOT_FOUND')"}}
+
+    STEP 2 — curl --resolve 로 직접 접속 (DNS 완전 우회):
+      curl --resolve TARGET.com:443:REAL_IP -sk "https://TARGET.com/path" -H "Host: TARGET.com"
+      curl --resolve TARGET.com:80:REAL_IP -s "http://TARGET.com/path" -H "Host: TARGET.com"
+
+    ❌ 절대 하지 말 것:
+      - curl 기본 DNS 사용 (이미 오염됨)
+      - curl --dns-servers (대부분 지원 안 함)
+      - python3 -c "import socket; socket.getaddrinfo(...)" (동일하게 오염된 DNS 사용)
+    
+    예시: m.dealpang.com 진짜 IP=180.210.83.82 이면:
+      curl --resolve m.dealpang.com:443:180.210.83.82 -sk "https://m.dealpang.com/" -H "Host: m.dealpang.com"
+      (run_python 에서도 동일: requests.get("https://180.210.83.82/", headers={"Host":"m.dealpang.com"}, verify=False))
+
 === BOOLEAN ORACLE 필수 캘리브레이션 템플릿 (run_python 사용 시 복붙 필수) ===
 import requests, time, urllib3
 urllib3.disable_warnings()

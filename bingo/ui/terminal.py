@@ -6625,6 +6625,27 @@ class BingoTerminal:
                 )
                 _hallucination_msgs.append(_bash_hall)
                 continue
+            # ── v6.2.13: bash 블록 내 Python 문 감지 및 제거 ──────────────────
+            # AI가 bash 블록에 'import sys, json' 같은 Python 구문을 혼용하는 버그 방지
+            _PY_ONLY_RE = re.compile(
+                r'^(import\s+\S|from\s+\S+\s+import\s|def\s+\w+\s*\(|class\s+\w+[\s:(])',
+                re.MULTILINE
+            )
+            _py_in_bash = _PY_ONLY_RE.findall(script)
+            if _py_in_bash:
+                # Python 전용 줄 제거
+                _cleaned_lines = []
+                for _bline in script.splitlines():
+                    _bstripped = _bline.strip()
+                    if _bstripped and _PY_ONLY_RE.match(_bstripped):
+                        self.console.print(
+                            f"[{THEME['warn']}]⚠ [BASH CLEANUP] Python 구문 제거: {_bstripped[:60]}[/]"
+                        )
+                        continue
+                    _cleaned_lines.append(_bline)
+                script = '\n'.join(_cleaned_lines).strip()
+                if not script:
+                    continue
             # ── v5.1.7: 스크립트 전처리 (curl 타임아웃 + while 카운터 자동 주입) ──
             script = _sanitize_script(script)
             # ── multi-line .sh 파일로 저장 ──

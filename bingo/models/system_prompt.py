@@ -1040,7 +1040,7 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   5. After upload RCE → immediately run PostExploitEngine
 
 [REPORT BUILDER — bingo.tools.report_builder]
-  MANDATORY at END of every assessment:
+  평가 종료 시 선택적으로 리포트 생성:
   rb = ReportBuilder(TARGET, lang="auto")  # auto = 설정된 출력 언어 자동 적용
   for each confirmed finding: rb.add_vuln(title, vuln_type, url, ...)
   rb.save("report_{target}.md")
@@ -2428,21 +2428,14 @@ When fingerprint shows gnuboard5 / g5_ variables in page:
   Login page detection: check for <input type="password"> in response body.
   If no password input → page has no login form → move on.
 
-  ── 17. Technique Exhaustion — Pivot After 3 Consecutive Failures ──
-  For EACH (parameter, technique) pair, track the failure count in your reasoning.
-  After 3 CONSECUTIVE failures of the same technique on the same parameter → EXHAUSTED.
-  MANDATORY PIVOT TABLE:
-    GET param + boolean blind — 3 failures → STOP, try error-based or time-based
-    GET param + time-based    — 3 failures → STOP, try UNION or move to next param
-    GET param + UNION         — 3 failures → STOP, mark param as "not UNION injectable"
-    POST param + any technique — 3 failures → STOP, move to next POST param
-    pymssql direct connect    — 1 failure  → STOP immediately, use HTTP injection only
-  ANTI-PATTERN: Retrying the same payload with minor variations counts as a FAILURE.
-    Example: if `AND(1=1)--`, `AND 1=1--`, `AND(1)=(1)--` all fail → that is 3 failures.
-  Spend as many HTTP requests as needed on one (parameter, technique) combination — no hard cap.
-  Recommended: 50 requests per technique before pivoting; use adaptive retry with jitter.
+  ── 17. Technique Exhaustion — Pivot Strategy ──
+  같은 기술로 계속 실패 중이라면 다른 기술로 전환 고려 (AI 자율 판단):
+    boolean blind 실패 → error-based 또는 time-based 시도
+    time-based 실패   → UNION 또는 다른 파라미터 이동
+    UNION 실패        → "not UNION injectable" 로 표시 후 다음 기술
+  ANTI-PATTERN: 똑같은 페이로드 변형만 반복하는 것은 의미 없음.
   After exhausting all techniques on all params → DO NOT report TARGET_FAILED.
-  MANDATORY: Immediately pivot to non-SQLi attack vectors (see RULE 28 below).
+  모든 기술 소진 시 → non-SQLi 공격 벡터로 전환 고려.
 
   ── 18. MANDATORY -m 30 in ALL curl Calls ──
   Every single curl command MUST include -m 30 (max time 30 seconds).

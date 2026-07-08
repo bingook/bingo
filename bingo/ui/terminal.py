@@ -6625,24 +6625,46 @@ class BingoTerminal:
                 )
                 _hallucination_msgs.append(_bash_hall)
                 continue
-            # ── v6.2.13: bash 블록 내 Python 문 감지 및 제거 ──────────────────
-            # AI가 bash 블록에 'import sys, json' 같은 Python 구문을 혼용하는 버그 방지
+            # ── v6.2.13: bash 블록 내 독립 Python 문 감지 및 제거 ───────────────
+            # AI가 bash 블록 최상위에 'import sys, json' 같은 Python 구문을 혼용하는 버그 방지
+            # 단, python3 -c "..." 내부의 import 줄은 제거하지 않음
             _PY_ONLY_RE = re.compile(
-                r'^(import\s+\S|from\s+\S+\s+import\s|def\s+\w+\s*\(|class\s+\w+[\s:(])',
-                re.MULTILINE
+                r'^(?:import\s+\S|from\s+\S+\s+import\s|def\s+\w+\s*\(|class\s+\w+[\s:(])'
             )
-            _py_in_bash = _PY_ONLY_RE.findall(script)
-            if _py_in_bash:
-                # Python 전용 줄 제거
-                _cleaned_lines = []
-                for _bline in script.splitlines():
-                    _bstripped = _bline.strip()
-                    if _bstripped and _PY_ONLY_RE.match(_bstripped):
-                        self.console.print(
-                            f"[{THEME['warn']}]⚠ [BASH CLEANUP] Python 구문 제거: {_bstripped[:60]}[/]"
-                        )
-                        continue
+            _PY3_OPEN_RE = re.compile(r'\bpython3?\s+-c\s+(["\'])')
+            _in_py3_c = False   # python3 -c "..." 내부 여부
+            _py3_quote = None
+            _cleaned_lines = []
+            _removed_any = False
+            for _bline in script.splitlines():
+                _bstripped = _bline.strip()
+                if _in_py3_c:
+                    # python3 -c 문자열 내부 → 건드리지 않음
                     _cleaned_lines.append(_bline)
+                    # 닫는 따옴표만 있는 줄이면 종료
+                    if _bstripped in (_py3_quote, _py3_quote + ';'):
+                        _in_py3_c = False
+                        _py3_quote = None
+                    continue
+                # python3 -c "..." 여는지 확인
+                _open_m = _PY3_OPEN_RE.search(_bline)
+                if _open_m:
+                    _q = _open_m.group(1)
+                    _rest = _bline[_open_m.end():]
+                    if _q not in _rest:   # 같은 줄에 닫는 따옴표 없음 → 멀티라인
+                        _in_py3_c = True
+                        _py3_quote = _q
+                    _cleaned_lines.append(_bline)
+                    continue
+                # 최상위 bash 레벨에서만 Python 전용 구문 제거
+                if _bstripped and _PY_ONLY_RE.match(_bstripped):
+                    self.console.print(
+                        f"[{THEME['warn']}]⚠ [BASH CLEANUP] 독립 Python 구문 제거: {_bstripped[:60]}[/]"
+                    )
+                    _removed_any = True
+                    continue
+                _cleaned_lines.append(_bline)
+            if _removed_any:
                 script = '\n'.join(_cleaned_lines).strip()
                 if not script:
                     continue

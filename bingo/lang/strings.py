@@ -4182,39 +4182,6 @@ _STRINGS.update({
         "en": "📊 Rendering audit results...",
     },
 
-    # ── v3.2.87: MVVS — Multi-Vector Verification System i18n 키 ──────────
-    "mvvs_triggered": {
-        "ko": "🔍 MVVS — 2차 검증 자동 실행 중...",
-        "zh": "🔍 MVVS — 自动执行二次验证...",
-        "en": "🔍 MVVS — Auto-triggering secondary verification...",
-    },
-    "mvvs_confirmed": {
-        "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
-        "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
-        "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
-    },
-    "mvvs_false_positive": {
-        "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
-        "zh": "❌ [FALSE POSITIVE] — 基于执行结果，误报确认",
-        "en": "❌ [FALSE POSITIVE] — Confirmed false positive from execution output",
-    },
-    # v4.5.0: 실행 후 followup_response에서 감지된 CONFIRMED/FALSE POSITIVE
-    "mvvs_confirmed_exec": {
-        "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
-        "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
-        "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
-    },
-    "mvvs_false_positive_exec": {
-        "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
-        "zh": "❌ [FALSE POSITIVE] — 基于执行结果，误报确认",
-        "en": "❌ [FALSE POSITIVE] — Confirmed false positive from execution output",
-    },
-    # v4.5.0: 실행 전 LLM 예측에 의한 사전 판정 억제 로그
-    "mvvs_tag_suppressed_pre_exec": {
-        "ko": "⏳ 실행 전 판정 억제 — 코드 실행 후 실제 결과로 판단",
-        "zh": "⏳ 执行前判定抑制 — 等待代码执行结果再判断",
-        "en": "⏳ Pre-exec tag suppressed — judgment after actual code execution",
-    },
     # v4.6.0: Rate limit 오탐 억제 메시지
     "rate_limit_fp_suppressed": {
         "ko": "⚡ 'rate limit' 텍스트 감지됐지만 실제 차단 없음 (오탐 억제됨)",
@@ -4276,31 +4243,6 @@ _STRINGS.update({
             "  5) Recursive functions MUST have base case: if n<=0: return\n"
             "Rewrite the code."
         ),
-    },
-    "mvvs_suspected": {
-        "ko": "⚠️  [SUSPECTED] — 단일 신호 감지, 검증 필요",
-        "zh": "⚠️  [SUSPECTED] — 单一信号检测，需要验证",
-        "en": "⚠️  [SUSPECTED] — Single signal detected, needs verification",
-    },
-    "mvvs_likely": {
-        "ko": "🟡 [LIKELY] — 부분 검증 완료, 추가 확인 권장",
-        "zh": "🟡 [LIKELY] — 部分验证完成，建议进一步确认",
-        "en": "🟡 [LIKELY] — Partially verified, further confirmation recommended",
-    },
-    "mvvs_signal_found": {
-        "ko": "⚡ 취약점 신호 감지됨 — 자동 재검증 시작",
-        "zh": "⚡ 检测到漏洞信号 — 开始自动重新验证",
-        "en": "⚡ Vulnerability signal detected — starting auto re-verification",
-    },
-    "mvvs_no_signal": {
-        "ko": "✓ 취약점 신호 없음 — 계속 진행",
-        "zh": "✓ 未检测到漏洞信号 — 继续",
-        "en": "✓ No vulnerability signal — continuing",
-    },
-    "mvvs_max_retry": {
-        "ko": "ℹ️  MVVS 최대 재시도 도달 — 다음 단계로 진행",
-        "zh": "ℹ️  MVVS 已达最大重试次数 — 进入下一步",
-        "en": "ℹ️  MVVS max retry reached — proceeding to next step",
     },
     # ── v3.2.88: /load 세션 복원 ──────────────────────────────────────
     # 고객 피드백: "哥，不可以直接喂会话吗" — 세션 파일 직접 입력 → 이어가기
@@ -6660,11 +6602,6 @@ _STRINGS.update({
         "ko": "🚨 FP-ZERO 회귀 테스트 실패 — 릴리즈 전 오발 수정 필수",
         "zh": "🚨 FP-ZERO 回归测试失败 — 发布前必须修复误判",
         "en": "🚨 FP-ZERO regression suite FAILED — must fix false positives before release",
-    },
-    "fp_new_pattern_warning": {
-        "ko": "⚠️  MVVS 패턴 추가 시 tests/test_mvvs_false_positive.py에 FP/TP 케이스 반드시 추가",
-        "zh": "⚠️  添加MVVS模式时必须在tests/test_mvvs_false_positive.py中添加FP/TP用例",
-        "en": "⚠️  When adding MVVS patterns, always add FP/TP cases to tests/test_mvvs_false_positive.py",
     },
     # BINGO_SIGNAL 구조화 보고 시스템 관련 메시지 (v5.0.7)
     "bingo_signal_detected": {

@@ -269,19 +269,7 @@ class BingoTerminal:
         # 네트워크 환경 (VPN 감지 결과 캐싱)
         self._net_env: dict = {}
         self._detect_network_env()
-        # v3.5.3: Phantom Guard liveness probe — 네트워크 환경 확인 후 즉시 실행
-        self._pg_liveness_ok: bool = True  # 기본값: 정상 (probe 실패 시 False)
-        try:
-            if self._phantom_guard is not None:
-                import threading as _thr
-                def _run_liveness():
-                    _lr = self._phantom_guard.run_liveness_probe()  # type: ignore[union-attr]
-                    self._pg_liveness_ok = _lr.ok
-                _t = _thr.Thread(target=_run_liveness, daemon=True)
-                _t.start()
-                _t.join(timeout=6.0)  # 최대 6초 대기 (non-blocking)
-        except Exception:
-            pass
+
         # /retry 용 마지막 실행 결과 캐시
         self._last_exec_result: str = ""
         # 현재 세션에서 실제 확인된 항목 (이전 세션 carry-over 구분용)
@@ -301,27 +289,11 @@ class BingoTerminal:
         # 브루트포스 연속 실패 카운터 (자동 포기 + 벡터 전환용)
         self._bruteforce_fail_count: int = 0
         self._bruteforce_abort_triggered: bool = False
-        self._mvvs_loop_count: int = 0  # v3.2.87: MVVS 루프당 카운터
         self._loop_block_consecutive: int = 0  # v3.2.91: LOOP_BLOCK 연속 차단 카운터 (무한사이클 방지)
         self._ilr_consecutive: int = 0         # v3.2.94: INFINITE_LOOP_RISK 전용 연속 카운터
         self._ilr_override: bool = False       # v3.2.94: ILR 3회 연속 차단 후 override 허용 플래그
-        # v3.5.3: Phantom Mode Guard v2 (팬텀 모드 / 구캐시 / 타겟오인 / 자기수정루프 /
-        #         liveness probe / HTTP0건 차단 / hard session restart)
-        try:
-            from ..core.phantom_guard import PhantomGuard as _PhantomGuard
-            _pg_lang = getattr(self.config, "lang", "ko") if hasattr(self, "config") else "ko"
-            self._phantom_guard: "_PhantomGuard | None" = _PhantomGuard(
-                session_target=getattr(self.config, "target", "") if hasattr(self, "config") else "",
-                lang=_pg_lang,
-                phantom_limit=2,
-                correction_limit=3,
-                cache_reuse_limit=2,
-                hard_restart_threshold=3,
-                enable_liveness_probe=True,
-                enable_zero_http_guard=True,
-            )
-        except Exception:
-            self._phantom_guard = None  # type: ignore[assignment]
+        # v6.2.20: PhantomGuard disabled — restrictions removed, kept only for VPN check
+        self._phantom_guard = None  # type: ignore[assignment]
         # 도메인별 메모리 모듈 (target_memory)
         try:
             from ..core.target_memory import load as _tm_load, save as _tm_save, \
@@ -2093,14 +2065,7 @@ class BingoTerminal:
                 self._exec_loop_count = 0
                 self._stuck_count = 0
                 self._recent_results = []
-                self._mvvs_loop_count = 0  # v3.2.87: MVVS 카운터 리셋
-                # v3.5.2: PhantomGuard 타겟 동기화 + 카운터 초기화
-                if self._phantom_guard is not None:
-                    try:
-                        self._phantom_guard.update_target(new_target)
-                        self._phantom_guard.reset_counters()
-                    except Exception:
-                        pass
+
                 # ── v2.9.2: 새 타겟 전환 시 대화 히스토리에서 이전 CMS/그누보드
                 #    관련 메시지가 AI를 오염시키지 않도록 히스토리 트리밍
                 #    (마지막 4턴만 유지하여 과거 컨텍스트 제거)
@@ -2680,507 +2645,7 @@ class BingoTerminal:
 
         self.console.print(tbl)
 
-    # ── v3.2.87: MVVS — Multi-Vector Verification System ─────────────────────
-    # 고객 피드백: "bingo가 취약점을 한 번만 확인하고 끝냄, 幻觉率(환각률)이 높음"
-    # 해결: 코드 실행 결과에서 취약점 신호 감지 → 자동으로 다른 기법으로 2차 검증 강제
-
-    # ── MVVS 신호 패턴 — FP-ZERO v1.1 (v5.0.5) ─────────────────────────────────
-    # 오발(False Positive) 선제 제거 원칙:
-    #   [1] 단독 키워드 금지 → 반드시 취약점 컨텍스트 조합 필요
-    #   [2] 정상 스크립트 출력("Command output:", "shell:") 충돌 패턴 제거
-    #   [3] 일반 HTML/텍스트에서 흔히 나오는 단어 단독 사용 금지 ("internal", "root:", "syntax error")
-    _MVVS_SIGNALS: "dict[str, list[tuple[str, str]]]" = {
-        # (regex_pattern, description)
-        "sqli": [
-            # FIX[1] "syntax error" 단독 → Python/JS traceback 오발 방지.
-            #        반드시 SQL 컨텍스트 필요: "sql syntax error" 또는 DB 전용 에러코드.
-            (r"sql\s*(?:syntax|error|inject)|ORA-\d{4,}|mysql_fetch|pg_query",                  "SQL error message"),
-            (r"80040e14|80040e07|80040e01|ODBC.*SQL|OLE DB.*SQL",                                 "OLEDB/ODBC SQL error"),
-            (r"(?:WAITFOR|pg_sleep|SLEEP)\s*\([^)]+\).*?(?:\d{2,}\.?\d*\s*sec|took\s*\d+s)",    "Time-based SQLi delay"),
-            (r"size.*?(\d{4,}).*?vs.*?(\d{4,})|length.*differ|response.*differ",                 "Response size difference"),
-            # v5.0.4 fix: 1=1 패턴이 출력 텍스트 "boardNo_AND1=1: 200 458" 등에 오발 방지.
-            (r"1=1.*?(?:size|byte|len|length|differ|!=|<>).*?1=2|boolean.{0,30}differ|true.*false.*differ", "Boolean-based difference"),
-        ],
-        "xss": [
-            (r"<script[^>]*>\s*alert",                                                            "XSS script-alert reflected"),
-            (r"onerror\s*=\s*(?:alert|eval|document|window|fetch|location)",                     "XSS event handler reflected"),
-            (r"onload\s*=\s*(?:alert|eval|document|window|fetch|location)",                      "XSS onload reflected"),
-            # v5.0.4 fix: javascript: 단독 오발 방지. 위험 함수(alert/eval/document)만 허용.
-            (r"javascript\s*:\s*(?:alert|eval|document\.|window\.|location\.href|fetch\s*\(|XMLHttp)", "XSS javascript: pseudo-protocol"),
-            # FIX[2] "xss.*confirm" → bingo 자체 로그 "✅ XSS confirmed" 등에서 오발.
-            #        실제 실행 증거: alert()/confirm()/prompt() 리터럴이 HTTP 응답에 반사된 경우만.
-            (r"<(?:script|img|svg|body)[^>]*>.*?(?:alert|confirm|prompt)\s*\(\s*['\"]?[^)]{0,40}['\"]?\s*\)", "XSS execution — reflected payload"),
-            # FIX[3] v5.1.1: 이전 패턴 r"(?:<script|onerror|...)\b.{0,200}(?:<script|..." 은
-            #        정상 HTML 페이지에 <script src="a.js"></script><script src="b.js"> 처럼
-            #        외부 스크립트 2개만 있어도 200자 내에서 매칭 → 오발.
-            # 수정: src= 없는 인라인 <script>에 이벤트 핸들러(onerror= 등)가 결합된 경우만 매칭.
-            #      또는 이벤트 핸들러 속성에 실행 함수(alert/eval/document. 등)가 있는 경우.
-            (r"<script\b(?![^>]*\bsrc\s*=)[^>]*>[^<\s].{0,100}(?:onerror|onload|onfocus|alert|eval)", "Reflected inline-script injection"),
-            (r"(?:onerror|onload|onfocus|onmouseover)\s*=\s*['\"]?\s*(?:alert|eval|document\.|window\.|fetch\s*\(|location\.)", "Reflected event-handler injection"),
-        ],
-        "idor": [
-            (r"(?:user|member|account|customer)_?(?:id|no|seq)\s*[=:]\s*\d+.{0,100}(?:name|email|phone|address)", "IDOR — other user data"),
-            # FIX[4] "403 ... 200" 패턴 → 같은 출력에 403(다른 요청) + 200(정상 요청)이 있으면 오발.
-            #        "bypass" 또는 "우회" 단어가 동시에 있을 때만 인정.
-            (r"(?:unauthorized|forbidden|403)\s.{0,80}(?:bypass|우회|bypassed|circumvent).{0,80}(?:200|success|ok\b)", "Authorization bypass confirmed"),
-            (r"(?:admin|관리자|root).{0,40}(?:access|panel|dashboard).{0,40}(?:200|success|ok\b)", "Admin access"),
-        ],
-        "rce": [
-            # FIX[5] "root:" 단독 → DB 계정명("root:password"), 컨테이너 정보 등 오발.
-            #        /etc/passwd 형식(root:x:0:0)이거나 uid=\d+\( 형식일 때만 RCE 신호.
-            (r"uid=\d+\([^)]+\)|root:\w*:\d+:\d+|/etc/(?:passwd|shadow)",                       "RCE — system identity output"),
-            (r"/bin/(?:sh|bash)\s*[-#\$]|/bin/sh.*executed|shell.*\$\s*(?:id|whoami|uname)",     "RCE — shell prompt / output"),
-            # FIX[6] "command output" 단독 → 스크립트 자체 로그 오발 방지.
-            #        실제 OS 명령 실행 결과임을 나타내는 추가 증거(id/whoami/hostname 출력) 필요.
-            (r"(?:whoami|id\s*:?\s*root|hostname)\s*[=:]\s*\w+|os\.(?:popen|system)\s*\(\s*['\"]",  "RCE — command output with proof"),
-            (r"Windows\s+NT.{0,20}(?:Microsoft|System32)|whoami.*?[a-zA-Z]+\\[a-zA-Z]+",         "RCE — Windows output"),
-        ],
-        "ssrf": [
-            (r"169\.254\.169\.254|metadata\.google\.internal|100\.100\.100\.200",                "Cloud metadata access"),
-            # FIX[7] "internal" / "private" 단독 단어 → 일반 문장("internal server error") 오발.
-            #        사설 IP 범위(10./172.16-31./192.168.)가 직접 노출될 때만 SSRF 신호.
-            (r"(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}).{0,60}(?:200\b|open\b|connect)",  "SSRF — private IP accessed"),
-        ],
-        "path_traversal": [
-            (r"root:x:0:0|daemon:x:|/etc/passwd.*root",                                          "Path traversal — /etc/passwd"),
-            (r"\[boot\s+loader\]|C:\\Windows\\System32",                                          "Path traversal — system files"),
-        ],
-    }
-
-    # ── BINGO_SIGNAL 구조화 신호 시스템 (v5.0.7) ──────────────────────────────
-    # 목적: LLM이 자유 형식 텍스트 대신 구조화된 JSON으로만 취약점을 보고하게 강제.
-    #        → 정규식 오발(false positive) 구조적 원천 차단.
-    #
-    # 형식: BINGO_SIGNAL:{"type":"sqli_boolean","evidence":{"size_true":15420,...}}
-    #
-    # MVVS 우선순위:
-    #   1순위 — BINGO_SIGNAL 구조화 신호 (증거 JSON 검증 후 판정)
-    #   2순위 — 정규식 MVVS_SIGNALS (보조 백업, 구조화 신호 없을 때만)
-    #
-    # 신호 타입 및 필수 증거 필드:
-    #   sqli_boolean : size_true(int), size_false(int) — diff >= 100B
-    #   sqli_error   : db_error(str) — ORA-/mysql_fetch 등 DB 에러 문자열
-    #   sqli_time    : delay_sec(float) — 실제 응답 지연 초(>=3)
-    #   xss          : payload(str), reflected(bool)
-    #   rce          : proof(str) — uid=0(root)/etc/passwd 레코드 중 하나
-    #   ssrf         : ip_accessed(str) — 사설 IP 또는 메타데이터 IP
-    #   idor         : other_user_id(int/str), data_returned(bool)
-    #   path_traversal: content(str) — root:x:0:0 등 실제 내용 포함
-
-    _BINGO_SIGNAL_PREFIX = "BINGO_SIGNAL:"
-
-    def _parse_bingo_signals(
-        self, output: str
-    ) -> "list[tuple[str, str, str]]":
-        """출력에서 BINGO_SIGNAL: 구조화 신호 파싱 및 증거 검증.
-
-        Returns: [(vuln_type, description, evidence_summary), ...]
-        실제 측정 증거가 있는 신호만 반환.
-        """
-        import json as _json
-        found: list[tuple[str, str, str]] = []
-        if not output:
-            return found
-        for line in output.splitlines():
-            line = line.strip()
-            if not line.startswith(self._BINGO_SIGNAL_PREFIX):
-                continue
-            try:
-                raw = line[len(self._BINGO_SIGNAL_PREFIX):]
-                data = _json.loads(raw)
-            except (_json.JSONDecodeError, ValueError):
-                continue  # JSON 파싱 실패 → 무시
-
-            stype = str(data.get("type", "")).lower()
-            evidence = data.get("evidence", {})
-            ok, desc, summary = self._validate_bingo_signal(stype, evidence)
-            if ok:
-                # vuln_type 정규화: sqli_boolean→sqli, path_traversal→path_traversal
-                _type_map = {
-                    "sqli_boolean": "sqli",
-                    "sqli_error": "sqli",
-                    "sqli_time": "sqli",
-                    "xss": "xss",
-                    "rce": "rce",
-                    "ssrf": "ssrf",
-                    "idor": "idor",
-                    "path_traversal": "path_traversal",
-                }
-                vuln_type = _type_map.get(stype, stype.split("_")[0])
-                found.append((vuln_type, desc, summary))
-        return found
-
-    def _validate_bingo_signal(
-        self, stype: str, evidence: dict
-    ) -> "tuple[bool, str, str]":
-        """BINGO_SIGNAL 증거 유효성 검증.
-
-        Returns: (valid, description, evidence_summary)
-        """
-        import re as _re
-
-        # ── SQLi Boolean ──────────────────────────────────────────────────────
-        if stype == "sqli_boolean":
-            st = int(evidence.get("size_true", 0))
-            sf = int(evidence.get("size_false", 0))
-            diff = abs(st - sf)
-            if diff < 100:
-                return False, "", f"diff={diff}B (<100B threshold)"
-            pct = diff / max(st, sf, 1) * 100
-            if pct < 10:
-                return False, "", f"diff={pct:.1f}% (<10% threshold)"
-            return True, "Boolean SQLi — size diff confirmed", f"true={st}B false={sf}B diff={diff}B ({pct:.0f}%)"
-
-        # ── SQLi Error ────────────────────────────────────────────────────────
-        elif stype == "sqli_error":
-            err = str(evidence.get("db_error", ""))
-            if not _re.search(r"ORA-\d{4,}|mysql_fetch|pg_query|80040e14|ODBC.*SQL|sql\s*(syntax|error)", err, _re.I):
-                return False, "", f"no DB error pattern in: {err[:60]}"
-            return True, "SQL error message confirmed", err[:80]
-
-        # ── SQLi Time-based ───────────────────────────────────────────────────
-        elif stype == "sqli_time":
-            delay = float(evidence.get("delay_sec", 0))
-            expected = float(evidence.get("expected_sec", 5))
-            if delay < max(expected * 0.8, 3.0):
-                return False, "", f"delay={delay}s < expected={expected}s"
-            return True, "Time-based SQLi — delay confirmed", f"delay={delay:.1f}s (expected={expected:.0f}s)"
-
-        # ── XSS ───────────────────────────────────────────────────────────────
-        elif stype == "xss":
-            payload = str(evidence.get("payload", ""))
-            reflected = bool(evidence.get("reflected", False))
-            if not payload or not reflected:
-                return False, "", f"payload={repr(payload[:40])} reflected={reflected}"
-            # 페이로드에 실제 스크립트 요소가 있어야 함
-            if not _re.search(r"<script|alert\s*\(|onerror\s*=|javascript:\s*(?:alert|eval|document)", payload, _re.I):
-                return False, "", f"payload has no executable element: {payload[:60]}"
-            return True, "XSS — payload reflected confirmed", f"payload={payload[:60]}"
-
-        # ── RCE ───────────────────────────────────────────────────────────────
-        elif stype == "rce":
-            proof = str(evidence.get("proof", ""))
-            if not _re.search(
-                r"uid=\d+\([^)]+\)|root:\w*:\d+:\d+|/etc/(?:passwd|shadow)|whoami\s*=\s*\w+",
-                proof, _re.I
-            ):
-                return False, "", f"no RCE proof pattern in: {proof[:80]}"
-            return True, "RCE — OS command execution confirmed", proof[:80]
-
-        # ── SSRF ──────────────────────────────────────────────────────────────
-        elif stype == "ssrf":
-            ip = str(evidence.get("ip_accessed", ""))
-            if not _re.match(
-                r"(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
-                r"|172\.(?:1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}"
-                r"|192\.168\.\d{1,3}\.\d{1,3}"
-                r"|169\.254\.169\.254"
-                r"|metadata\.google\.internal)",
-                ip
-            ):
-                return False, "", f"not a private/metadata IP: {ip}"
-            return True, "SSRF — private/metadata IP accessed", f"ip={ip}"
-
-        # ── IDOR ──────────────────────────────────────────────────────────────
-        elif stype == "idor":
-            other_id = evidence.get("other_user_id")
-            returned = bool(evidence.get("data_returned", False))
-            if other_id is None or not returned:
-                return False, "", f"other_id={other_id} data_returned={returned}"
-            return True, "IDOR — other user data confirmed", f"user_id={other_id}"
-
-        # ── Path Traversal ────────────────────────────────────────────────────
-        elif stype == "path_traversal":
-            content = str(evidence.get("content", ""))
-            if not _re.search(r"root:x:0:0|daemon:x:|/bin/(?:sh|bash)\s*$", content, _re.M):
-                return False, "", f"no traversal content proof: {content[:60]}"
-            return True, "Path traversal — /etc/passwd confirmed", content[:60]
-
-        # ── 알 수 없는 타입 ───────────────────────────────────────────────────
-        else:
-            return False, "", f"unknown signal type: {stype}"
-
-    def _detect_vuln_signal(
-        self, combined_output: str
-    ) -> "list[tuple[str, str, str]]":
-        """코드 실행 결과에서 취약점 신호 감지.
-
-        1순위: BINGO_SIGNAL 구조화 신호 (증거 JSON 검증)
-        2순위: 정규식 MVVS_SIGNALS (구조화 신호 없을 때만)
-
-        Returns: [(vuln_type, pattern_description, matched_snippet), ...]
-        """
-        import re as _re
-        if not combined_output:
-            return []
-
-        # 1순위: 구조화 신호 — 증거가 명확하면 즉시 반환
-        structured = self._parse_bingo_signals(combined_output)
-        if structured:
-            return structured
-
-        # 2순위: 정규식 백업 — 구조화 신호가 없을 때만 사용
-        found: list[tuple[str, str, str]] = []
-        for vuln_type, patterns in self._MVVS_SIGNALS.items():
-            for regex, desc in patterns:
-                m = _re.search(regex, combined_output, _re.IGNORECASE | _re.DOTALL)
-                if m:
-                    snippet = m.group(0)[:120].replace("\n", " ")
-                    found.append((vuln_type, desc, snippet))
-                    break  # 같은 유형은 첫 번째 매칭만
-        return found
-
-    def _mvvs_trigger(
-        self,
-        vuln_signals: "list[tuple[str, str, str]]",
-        combined_output: str,
-        model_cfg,
-    ) -> "str | None":
-        """MVVS: 감지된 신호에 대해 다른 기법으로 2차 검증 프롬프트 자동 주입.
-
-        Returns: AI의 2차 검증 응답 (또는 None if skipped)
-        """
-        import re as _re
-        from ..models.registry import ModelRegistry
-
-        if not vuln_signals or not model_cfg:
-            return None
-
-        _lang = getattr(self.config, "lang", "en")
-
-        # 이미 이 루프에서 MVVS가 실행된 횟수 추적 (무한 루프 방지)
-        _mvvs_count = getattr(self, "_mvvs_loop_count", 0)
-        if _mvvs_count >= 2:
-            return None  # 동일 루프에서 최대 2회
-        self._mvvs_loop_count = _mvvs_count + 1  # type: ignore[attr-defined]
-
-        # 신호별 2차 검증 지시
-        _verify_instructions: dict[str, dict[str, str]] = {
-            "sqli": {
-                "ko": (
-                    "SQL 인젝션 신호 감지됨 → 다른 기법으로 즉시 재검증하세요:\n"
-                    "① 에러 기반 발견 → 타임 기반(SLEEP/WAITFOR)으로 재확인\n"
-                    "② 타임 기반 발견 → 불리언 기반(AND 1=1 vs AND 1=2)으로 재확인\n"
-                    "③ 크기 차이 발견 → 에러 기반으로 재확인\n"
-                    "2가지 기법이 모두 확인되어야 [CONFIRMED] 태그를 붙이세요."
-                ),
-                "zh": (
-                    "检测到SQL注入信号 → 立即用不同技术重新验证:\n"
-                    "① 错误注入发现 → 用时间盲注(SLEEP/WAITFOR)再确认\n"
-                    "② 时间盲注发现 → 用布尔盲注(AND 1=1 vs AND 1=2)再确认\n"
-                    "③ 响应大小差异 → 用错误注入再确认\n"
-                    "两种技术都确认后才能标记[CONFIRMED]。"
-                ),
-                "en": (
-                    "SQL injection signal detected → immediately reverify with different technique:\n"
-                    "① Error-based found → confirm via time-based (SLEEP/WAITFOR)\n"
-                    "② Time-based found → confirm via boolean-based (AND 1=1 vs AND 1=2)\n"
-                    "③ Size diff found → confirm via error-based\n"
-                    "Only tag [CONFIRMED] after 2 different techniques agree."
-                ),
-            },
-            "xss": {
-                "ko": (
-                    "XSS 신호 감지됨 → 다른 파라미터/컨텍스트에서 재검증하세요:\n"
-                    "① 동일 파라미터에 다른 페이로드 시도 (SVG, img onerror, iframe)\n"
-                    "② 다른 파라미터에 동일 페이로드 시도\n"
-                    "실제 스크립트 실행 또는 반사 확인 후 [CONFIRMED] 태그."
-                ),
-                "zh": (
-                    "检测到XSS信号 → 在不同参数/上下文中重新验证:\n"
-                    "① 同一参数尝试不同载荷 (SVG, img onerror, iframe)\n"
-                    "② 不同参数尝试相同载荷\n"
-                    "确认实际脚本执行或反射后才标记[CONFIRMED]。"
-                ),
-                "en": (
-                    "XSS signal detected → reverify in different param/context:\n"
-                    "① Same param with different payload (SVG, img onerror, iframe)\n"
-                    "② Different param with same payload\n"
-                    "Tag [CONFIRMED] only after actual reflection/execution confirmed."
-                ),
-            },
-            "idor": {
-                "ko": (
-                    "IDOR/미인증 접근 신호 감지됨 → 최소 3개의 다른 ID/객체로 재검증하세요:\n"
-                    "① 연속 ID 3개 이상 시도 (id=100, 101, 102)\n"
-                    "② 다른 사용자 계정으로 로그인 후 접근 시도\n"
-                    "③ 인증 헤더 제거 후 접근 시도\n"
-                    "3개 이상 확인 후 [CONFIRMED] 태그."
-                ),
-                "zh": (
-                    "检测到IDOR/未授权访问信号 → 用至少3个不同ID/对象重新验证:\n"
-                    "① 尝试连续3个以上ID (id=100, 101, 102)\n"
-                    "② 用不同账户登录后尝试访问\n"
-                    "③ 移除认证头后尝试访问\n"
-                    "确认3个以上后标记[CONFIRMED]。"
-                ),
-                "en": (
-                    "IDOR/unauthorized access signal detected → reverify with 3+ different IDs:\n"
-                    "① Try 3+ sequential IDs (id=100, 101, 102)\n"
-                    "② Try with different user account\n"
-                    "③ Try removing auth header\n"
-                    "Tag [CONFIRMED] after 3+ confirmations."
-                ),
-            },
-            "rce": {
-                "ko": (
-                    "RCE 신호 감지됨 → 다른 명령으로 즉시 재검증하세요:\n"
-                    "① id/whoami 발견 → uname -a 또는 hostname으로 재확인\n"
-                    "② /etc/passwd 발견 → /proc/version 또는 /etc/os-release 확인\n"
-                    "③ 네트워크 연결 확인: ping 또는 curl 내부 서비스\n"
-                    "다른 명령으로 재확인 후 [CONFIRMED] 태그."
-                ),
-                "zh": (
-                    "检测到RCE信号 → 立即用不同命令重新验证:\n"
-                    "① 发现id/whoami → 用uname -a或hostname再确认\n"
-                    "② 发现/etc/passwd → 检查/proc/version或/etc/os-release\n"
-                    "③ 确认网络连接: ping或curl内部服务\n"
-                    "用不同命令确认后标记[CONFIRMED]。"
-                ),
-                "en": (
-                    "RCE signal detected → immediately reverify with different command:\n"
-                    "① id/whoami found → confirm with uname -a or hostname\n"
-                    "② /etc/passwd found → check /proc/version or /etc/os-release\n"
-                    "③ Confirm network: ping or curl internal service\n"
-                    "Tag [CONFIRMED] after different command confirms."
-                ),
-            },
-            "ssrf": {
-                "ko": (
-                    "SSRF 신호 감지됨 → 다른 내부 주소로 재검증하세요:\n"
-                    "① 메타데이터 접근 → 다른 경로로 재확인 (/latest/user-data)\n"
-                    "② 내부 IP 접근 → 다른 포트/서비스 확인\n"
-                    "내부 네트워크 접근 재확인 후 [CONFIRMED] 태그."
-                ),
-                "zh": (
-                    "检测到SSRF信号 → 用不同内部地址重新验证:\n"
-                    "① 元数据访问 → 用不同路径再确认 (/latest/user-data)\n"
-                    "② 内部IP访问 → 确认不同端口/服务\n"
-                    "确认内部网络访问后标记[CONFIRMED]。"
-                ),
-                "en": (
-                    "SSRF signal detected → reverify with different internal address:\n"
-                    "① Metadata access → confirm with different path (/latest/user-data)\n"
-                    "② Internal IP access → confirm different port/service\n"
-                    "Tag [CONFIRMED] after internal network access confirmed."
-                ),
-            },
-            "path_traversal": {
-                "ko": (
-                    "경로 순회 신호 감지됨 → 다른 파일로 재검증하세요:\n"
-                    "① /etc/passwd 발견 → /etc/hosts 또는 /etc/shadow 확인\n"
-                    "② Windows 파일 발견 → C:\\Windows\\win.ini 확인\n"
-                    "다른 파일 접근 확인 후 [CONFIRMED] 태그."
-                ),
-                "zh": (
-                    "检测到路径遍历信号 → 用不同文件重新验证:\n"
-                    "① 发现/etc/passwd → 检查/etc/hosts或/etc/shadow\n"
-                    "② 发现Windows文件 → 检查C:\\Windows\\win.ini\n"
-                    "确认不同文件访问后标记[CONFIRMED]。"
-                ),
-                "en": (
-                    "Path traversal signal detected → reverify with different file:\n"
-                    "① /etc/passwd found → check /etc/hosts or /etc/shadow\n"
-                    "② Windows file found → check C:\\Windows\\win.ini\n"
-                    "Tag [CONFIRMED] after different file access confirmed."
-                ),
-            },
-        }
-
-        # 신호 요약 구성
-        signal_summary = "\n".join(
-            f"  [{vuln_type.upper()}] {desc}: {snippet!r}"
-            for vuln_type, desc, snippet in vuln_signals
-        )
-
-        # 2차 검증 지시 수집
-        verify_steps: list[str] = []
-        seen_types: set[str] = set()
-        for vuln_type, _, _ in vuln_signals:
-            if vuln_type not in seen_types and vuln_type in _verify_instructions:
-                inst = _verify_instructions[vuln_type]
-                verify_steps.append(inst.get(_lang, inst.get("en", "")))
-                seen_types.add(vuln_type)
-
-        if not verify_steps:
-            return None
-
-        verify_body = "\n\n".join(verify_steps)
-
-        _label = self.s.get("mvvs_triggered", {
-            "ko": "🔍 MVVS — 2차 검증 자동 실행 중...",
-            "zh": "🔍 MVVS — 自动执行二次验证...",
-            "en": "🔍 MVVS — Auto-triggering secondary verification...",
-        })
-        if isinstance(_label, dict):
-            _label = _label.get(_lang, "🔍 MVVS — Secondary verification...")
-
-        self.console.print(f"\n[bold cyan]{_label}[/bold cyan]")
-        self.console.print(f"[dim]  Signals: {', '.join(f'{t}({d})' for t, d, _ in vuln_signals)}[/dim]")
-
-        mvvs_prompt = (
-            "[BINGO MVVS — MULTI-VECTOR VERIFICATION REQUIRED]\n\n"
-            f"Vulnerability signals detected in last execution output:\n"
-            f"{signal_summary}\n\n"
-            f"CONFIDENCE STATUS: [SUSPECTED ⚠️] — needs 2nd vector confirmation\n\n"
-            f"MANDATORY VERIFICATION STEPS:\n{verify_body}\n\n"
-            "RULES:\n"
-            "- Write a ```bash block using curl with a DIFFERENT technique from what you just used\n"
-            "- Do NOT repeat the same payload — use a different attack vector\n"
-            "- Include curl output showing actual server response\n"
-            "- CRITICAL: DO NOT tag [CONFIRMED ✅] or [FALSE POSITIVE ❌] in THIS response\n"
-            "- CRITICAL: Write the verification bash+curl block ONLY — do NOT pre-judge the result\n"
-            "- After the bash block RUNS and you SEE the actual output: THEN tag in your NEXT message\n"
-            "- [CONFIRMED ✅] = only after you see actual proof in execution output\n"
-            "- [FALSE POSITIVE ❌] = only after you see the code ran and no evidence found\n"
-            "- Predicting [FALSE POSITIVE] before code runs = HALLUCINATION — FORBIDDEN\n\n"
-            "Write verification bash+curl block NOW (tagging comes AFTER execution):"
-        )
-        self.history.append(Message(role="user", content=mvvs_prompt))
-
-        from ..models.registry import ModelRegistry
-        model = ModelRegistry.build(model_cfg)
-        verify_response = self._stream_response(model.chat_stream(self._build_messages("")))
-        if verify_response:
-            self.history.append(Message(role="assistant", content=verify_response))
-
-            # ── v4.5.0: MVVS CONFIRMED/FALSE POSITIVE 판단 규칙 ─────────────────
-            # 핵심 원칙: 실제 실행결과(코드 출력)에 근거한 판단만 허용
-            # LLM이 코드 실행 전 텍스트에 [FALSE POSITIVE]를 예측으로 적어두는 경우 → 오탐!
-            # 코드 블록이 있는 응답 = 아직 실행 안 됨 → CONFIRMED/FALSE POSITIVE 판정 금지
-            # 코드 블록이 없는 응답 = 이미 실행된 결과를 분석한 것 → 판정 허용
-            import re as _re_mvvs
-            _mvvs_has_code = bool(
-                _re_mvvs.search(r"```(?:python|py|bash|sh)\n", verify_response, _re_mvvs.DOTALL)
-            )
-
-            if not _mvvs_has_code:
-                # 코드 없음 = LLM이 기존 결과를 분석해서 최종 판단 → 태그 신뢰
-                if _re_mvvs.search(r'\[CONFIRMED\s*✅?\]', verify_response):
-                    _conf_msg = self.s.get("mvvs_confirmed", {
-                        "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
-                        "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
-                        "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
-                    })
-                    if isinstance(_conf_msg, dict):
-                        _conf_msg = _conf_msg.get(_lang, "✅ Confirmed.")
-                    self.console.print(f"\n[bold green]{_conf_msg}[/bold green]")
-                elif _re_mvvs.search(r'\[FALSE\s*POSITIVE\s*❌?\]', verify_response):
-                    _fp_msg = self.s.get("mvvs_false_positive", {
-                        "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
-                        "zh": "❌ [FALSE POSITIVE] — 基于执行结果，误报确认",
-                        "en": "❌ [FALSE POSITIVE] — Confirmed false positive from execution",
-                    })
-                    if isinstance(_fp_msg, dict):
-                        _fp_msg = _fp_msg.get(_lang, "❌ False positive.")
-                    self.console.print(f"\n[bold red]{_fp_msg}[/bold red]")
-            # 코드 블록 있음 = 실행 전 LLM 예측 → CONFIRMED/FALSE POSITIVE 표시 억제
-            # (실행 후 다음 LLM 분석 turn에서 실제 결과로 판단)
-
-            return verify_response
-        else:
-            self.history.pop()
-            return None
+    # ── (MVVS removed in v6.2.20) ────────────────────────────────────────────
 
     def _collapse_code_blocks(self, text: str) -> str:
         """Python/bash 코드 블록을 접어서 한 줄 요약으로 교체.
@@ -6813,9 +6278,15 @@ class BingoTerminal:
                             f"(no output, exit code {proc.returncode})"
                         )
             except Exception as e:
-                with _lock:
-                    self.console.print(f"[{THEME['error']}]  exec error:[/] {_resc(str(e))}")
-                results_text[slot] = f"=== EXEC ERROR: {e} ==="
+                _err_msg = str(e)
+                # v6.2.20: I/O on closed file → console이 닫힌 후 스레드 실행 시 발생, 무시
+                if "closed file" not in _err_msg and "I/O operation" not in _err_msg:
+                    try:
+                        with _lock:
+                            self.console.print(f"[{THEME['error']}]  exec error:[/] {_resc(_err_msg)}")
+                    except Exception:
+                        pass
+                results_text[slot] = f"=== EXEC ERROR: {_err_msg} ==="
 
         # 프로세스 객체 저장 (소프트 타임아웃 시 종료용)
         procs: list = []
@@ -7235,9 +6706,15 @@ class BingoTerminal:
                         f"(no output, exit={p.returncode}){_kill_suffix}"
                     )
             except Exception as e:
-                with _lock:
-                    self.console.print(f"[{THEME['error']}]  exec error:[/] {_resc(str(e))}")
-                results_text[slot] = f"=== EXEC ERROR: {e} ==="
+                _err_msg2 = str(e)
+                # v6.2.20: I/O on closed file → 무시
+                if "closed file" not in _err_msg2 and "I/O operation" not in _err_msg2:
+                    try:
+                        with _lock:
+                            self.console.print(f"[{THEME['error']}]  exec error:[/] {_resc(_err_msg2)}")
+                    except Exception:
+                        pass
+                results_text[slot] = f"=== EXEC ERROR: {_err_msg2} ==="
 
         threads = [
             threading.Thread(target=_tracked_run_task, args=(task, i), daemon=True)
@@ -7448,55 +6925,7 @@ class BingoTerminal:
 
             _no_code_retry = 0  # 코드 있으면 카운터 리셋
 
-            # ── v4.4.0: PhantomGuard 재설계 — 코드 블록 있으면 실행 우선, PHANTOM 사전 차단 금지 ──
-            # 핵심 원칙: LLM이 Python/Bash 코드 블록을 생성했다 = 실제 실행 의도
-            # 코드가 있는데 실행 전 PHANTOM으로 차단 → 코드 영원히 실행 불가 → 무한 루프
-            # 해결책: 코드 블록 존재 시 PHANTOM 사전 차단 완전 우회, 코드 실행 후 사후 검사
-            import re as _pgre_pre
-            _has_executable_code = bool(
-                _pgre_pre.search(r"```(?:python|py|bash|sh)\n", current_response, _pgre_pre.DOTALL)
-            ) or ("TOOL_CALL:" in current_response)  # v5.2.2: TOOL_CALL도 실행 가능으로 처리
 
-            if self._phantom_guard is not None and not _has_executable_code:
-                # 코드 블록 없을 때만 PHANTOM 사전 차단 (텍스트만 있는 응답)
-                try:
-                    _pg_target = self._agent_state.get("target", "") or getattr(self.config, "target", "")
-                    if _pg_target and _pg_target != self._phantom_guard.session_target:
-                        self._phantom_guard.update_target(_pg_target)
-                    _pg_lang = getattr(self.config, "lang", "ko")
-                    self._phantom_guard.lang = _pg_lang
-                    _pg_result = self._phantom_guard.check_response(
-                        response_text=current_response,
-                        code_text="",
-                        exec_output="",
-                    )
-                    if _pg_result.inject_message and _pg_result.blocked:
-                        _pg_reason = _pg_result.block_reason
-                        # PHANTOM이면 조용히 재요청 (메시지 출력 없음)
-                        self.history.append(
-                            Message(role="user", content=_pg_result.inject_message)
-                        )
-                        if self._phantom_guard.hard_restarter.should_hard_restart:
-                            self.history = [m for m in self.history if m.role == "system"]
-                            self.history.append(
-                                Message(role="user", content=_pg_result.inject_message)
-                            )
-                            self._phantom_guard.hard_restarter.do_restart()
-                            self._phantom_guard.reset_counters()
-                        from ..models.registry import ModelRegistry as _MR_pg
-                        _mc_pg = self.config.get_active_model_config()
-                        if _mc_pg:
-                            _m_pg = _MR_pg.build(_mc_pg)
-                            current_response = self._stream_response(
-                                _m_pg.chat_stream(self._build_messages(""))
-                            )
-                            if current_response:
-                                self.history.append(
-                                    Message(role="assistant", content=current_response)
-                                )
-                        continue
-                except Exception:
-                    pass
 
             # 코드 실행 (코드 블록이 있으면 반드시 실행)
             results_text = self._run_code_blocks(current_response, _loaded_skills)
@@ -7562,30 +6991,7 @@ class BingoTerminal:
             except Exception:
                 pass  # 스캐너 오류는 무시 — 실행 차단하지 않음
 
-            # ── v4.4.0: 코드 실행 후 PhantomGuard 사후 검사 (실행결과 기반) ──
-            if self._phantom_guard is not None and _has_executable_code and results_text:
-                try:
-                    _pg_target_post = self._agent_state.get("target", "") or getattr(self.config, "target", "")
-                    if _pg_target_post and _pg_target_post != self._phantom_guard.session_target:
-                        self._phantom_guard.update_target(_pg_target_post)
-                    _pg_lang_post = getattr(self.config, "lang", "ko")
-                    self._phantom_guard.lang = _pg_lang_post
-                    _pg_exec_out = "\n".join(results_text)
-                    _pg_codes_post = "\n".join(_pgre_pre.findall(
-                        r"```(?:python|bash|sh)?\n(.*?)```", current_response, _pgre_pre.DOTALL
-                    ))
-                    _pg_post = self._phantom_guard.check_response(
-                        response_text=current_response,
-                        code_text=_pg_codes_post,
-                        exec_output=_pg_exec_out,
-                    )
-                    # 사후 검사: ZERO_HTTP_CLAIM만 경고 (차단 없음, 실행은 이미 완료)
-                    if _pg_post.inject_message and _pg_post.block_reason == "ZERO_HTTP_CLAIM":
-                        self.history.append(
-                            Message(role="user", content=_pg_post.inject_message)
-                        )
-                except Exception:
-                    pass
+
 
             # ── v3.2.71-A: 응답 크기 변화 감지 → SQLi 우선 강제 ─────────────────
             # 증상: AI가 응답 크기 차이(정상 vs 주입)를 관찰하고도 SQLi 대신 브루트포스 등 다른
@@ -7691,119 +7097,48 @@ class BingoTerminal:
             # v6.2.10: 0day Hunter 제거 — 자동 탐지가 오탐 다수 발생 (git_exposure on HTTP 400 등)
             # CVE/버전 기반 exploit은 AI가 직접 판단해 tool_call로 실행하도록 위임
 
-            # ── v3.5.22: Recon 모듈 자동 탐지 ───────────────────────────────
-            # 채팅 모드 실행 결과에서 정보수집/자산수집 컨텍스트 자동 감지 → /recon 힌트 출력
+            # ── v3.5.22: Recon 모듈 자동 탐지 (세션당 1회만 출력) ───────────
             if _combined_out:
                 try:
-                    import re as _rcre
+                    if not hasattr(self, '_recon_hints_shown'):
+                        self._recon_hints_shown: set = set()
                     _rc_lower = _combined_out.lower()
 
-                    # 1) 도메인/서브도메인 컨텍스트 감지
-                    _dom_kw = [
-                        "subdomain", "subfinder", "amass", "crt.sh",
-                        "certificate transparency", "dns", "nslookup", "dig",
-                        "서브도메인", "域名", "子域",
+                    _recon_checks = [
+                        ("dom", ["subdomain", "subfinder", "amass", "crt.sh",
+                                  "certificate transparency", "dns", "nslookup", "dig",
+                                  "서브도메인", "域名", "子域"],
+                         1, "recon_subdomain_hint",
+                         "🔍 도메인 탐지 — /recon passive <domain>", "bold cyan"),
+                        ("net", ["nmap", "masscan", "port scan", "open port", "shodan",
+                                  "80/tcp", "443/tcp", "22/tcp", "포트스캔", "端口扫描"],
+                         1, "recon_port_hint",
+                         "🗺 포트/서비스 탐지 — /recon active <target>", "bold green"),
+                        ("asset", ["asn", "bgpview", "fofa", "hunter.io", "email harvest",
+                                    "asset", "attack surface", "자산", "资产", "攻击面"],
+                         1, "recon_asset_hint",
+                         "🗄 자산 탐지 — /recon full <domain>", "bold yellow"),
+                        ("js", ["javascript", ".js", "api endpoint", "fetch(", "axios",
+                                 "webpack", "bundle", "sourcemap", "endpoint", "api key",
+                                 "apikey", "secret", "token"],
+                         2, "recon_js_hint",
+                         "📜 JS/API 탐지 — /recon js <url>", "bold magenta"),
+                        ("nuclei", ["nuclei", "template", "cve-", "severity:", "critical",
+                                     "vulnerability", "취약점", "漏洞"],
+                         2, "recon_nuclei_hint",
+                         "🧬 Nuclei 감지 — /recon nuclei <target>", "bold red"),
                     ]
-                    if sum(1 for kw in _dom_kw if kw in _rc_lower) >= 1:
-                        _rc_hint1 = self.s.get(
-                            "recon_subdomain_hint",
-                            "🔍 도메인 탐지 — /recon passive <domain> 으로 서브도메인/인증서 수집",
-                        )
-                        self.console.print(f"[bold cyan]{_rc_hint1}[/bold cyan]")
-
-                    # 2) IP/포트/네트워크 컨텍스트 감지
-                    _net_kw = [
-                        "nmap", "masscan", "port scan", "open port", "shodan",
-                        "80/tcp", "443/tcp", "22/tcp", "포트스캔", "端口扫描",
-                    ]
-                    if sum(1 for kw in _net_kw if kw in _rc_lower) >= 1:
-                        _rc_hint2 = self.s.get(
-                            "recon_port_hint",
-                            "🗺 포트/서비스 탐지 — /recon active <target> 으로 포트스캔 및 서비스 식별",
-                        )
-                        self.console.print(f"[bold green]{_rc_hint2}[/bold green]")
-
-                    # 3) 자산 수집 / ASN / FOFA / 이메일 컨텍스트 감지
-                    _asset_kw = [
-                        "asn", "bgpview", "fofa", "hunter.io", "email harvest",
-                        "asset", "attack surface", "자산", "资产", "攻击面",
-                    ]
-                    if sum(1 for kw in _asset_kw if kw in _rc_lower) >= 1:
-                        _rc_hint3 = self.s.get(
-                            "recon_asset_hint",
-                            "🗄 자산 탐지 — /recon full <domain> 으로 전체 자산 자동 수집 및 우선순위 분류",
-                        )
-                        self.console.print(f"[bold yellow]{_rc_hint3}[/bold yellow]")
-
-                    # 4) JS 엔드포인트 / API 컨텍스트 감지
-                    _js_kw = [
-                        "javascript", ".js", "api endpoint", "fetch(", "axios",
-                        "webpack", "bundle", "sourcemap", "endpoint", "api key",
-                        "apikey", "secret", "token",
-                    ]
-                    if sum(1 for kw in _js_kw if kw in _rc_lower) >= 2:
-                        _rc_hint4 = self.s.get(
-                            "recon_js_hint",
-                            "📜 JS/API 탐지 — /recon js <url> 로 JS 파일에서 숨겨진 엔드포인트/키 추출",
-                        )
-                        self.console.print(f"[bold magenta]{_rc_hint4}[/bold magenta]")
-
-                    # 5) Nuclei / 취약점 스캔 컨텍스트 감지
-                    _nuclei_kw = [
-                        "nuclei", "template", "cve-", "severity:", "critical",
-                        "vulnerability", "취약점", "漏洞",
-                    ]
-                    if sum(1 for kw in _nuclei_kw if kw in _rc_lower) >= 2:
-                        _rc_hint5 = self.s.get(
-                            "recon_nuclei_hint",
-                            "🧬 Nuclei 컨텍스트 감지 — /recon nuclei <target> 으로 자동 템플릿 스캔",
-                        )
-                        self.console.print(f"[bold red]{_rc_hint5}[/bold red]")
+                    for _rk, _kws, _min, _skey, _default, _style in _recon_checks:
+                        if _rk not in self._recon_hints_shown:
+                            if sum(1 for kw in _kws if kw in _rc_lower) >= _min:
+                                _hint = self.s.get(_skey, _default)
+                                self.console.print(f"[{_style}]{_hint}[/{_style}]")
+                                self._recon_hints_shown.add(_rk)
 
                 except Exception:
                     pass  # Recon 자동 탐지 오류는 실행 차단하지 않음
 
-            # ── v3.5.2: Phantom Guard (실행 결과 검사) — 구캐시 / 팬텀 재검사 ──
-            if self._phantom_guard is not None and results_text:
-                try:
-                    import re as _pgre2
-                    _pg_codes2 = "\n".join(_pgre2.findall(r"```(?:python|bash|sh)?\n(.*?)```", current_response, _pgre2.DOTALL))
-                    _pg_result2 = self._phantom_guard.check_response(
-                        response_text="",
-                        code_text=_pg_codes2,
-                        exec_output=_combined_out,
-                    )
-                    if _pg_result2.blocked and _pg_result2.inject_message:
-                        _pg_label2_map = {
-                            "STALE_CACHE": self.s.get("phantom_stale_cache_blocked", "⛔ 구캐시 차단"),
-                            "TARGET_MISMATCH_EXEC": self.s.get("target_mismatch_exec_blocked", "⛔ 타겟 오인 차단"),
-                            "SPA_DETECTED": self.s.get("phantom_spa_detected", "⚠️ SPA 오탐 차단"),
-                            "ZERO_HTTP_CLAIM": self.s.get("phantom_zero_http_blocked", "⛔ HTTP 0건 주장 차단"),
-                        }
-                        _pg_label2 = _pg_label2_map.get(
-                            _pg_result2.block_reason,
-                            self.s.get("phantom_mode_blocked", "⛔ PhantomGuard (실행결과)"),
-                        )
-                        self.console.print(f"\n[bold red]{_pg_label2}[/bold red]")
-                        self.history.append(
-                            Message(role="user", content=_pg_result2.inject_message)
-                        )
-                        from ..models.registry import ModelRegistry as _MR_pg2
-                        _mc_pg2 = self.config.get_active_model_config()
-                        if _mc_pg2:
-                            _m_pg2 = _MR_pg2.build(_mc_pg2)
-                            _pg_retry2 = self.s.get("phantom_retrying", "⛔ 구캐시 차단 → 신선 스캔 재요청...")
-                            self.console.print(f"\n[bold red]{_pg_retry2}[/bold red]")
-                            current_response = self._stream_response(
-                                _m_pg2.chat_stream(self._build_messages(""))
-                            )
-                            if current_response:
-                                self.history.append(
-                                    Message(role="assistant", content=current_response)
-                                )
-                        continue
-                except Exception:
-                    pass
+
 
             _size_diff_pats = [
                 # "34853 vs 34889" / "size=34853, inject=35117" 등
@@ -9131,25 +8466,6 @@ class BingoTerminal:
                     self._suggest_next_steps()
                     break
 
-            # ── v3.2.87: MVVS — Multi-Vector Verification System ─────────────
-            # 코드 실행 결과에서 취약점 신호 감지 → 다른 기법으로 2차 검증 자동 주입
-            # 근거: 고객 피드백 "bingo는 한 번만 확인하고 끝냄 / 환각률 높음"
-            self._mvvs_loop_count = 0  # 루프 시작마다 리셋
-            _mvvs_signals = self._detect_vuln_signal(_combined_out)
-            if _mvvs_signals:
-                _mvvs_verify_resp = self._mvvs_trigger(_mvvs_signals, _combined_out, model_cfg)
-                if _mvvs_verify_resp:
-                    # 2차 검증 응답이 코드 블록을 포함하면 실행 → 다음 루프에서 처리
-                    if "```" in _mvvs_verify_resp:
-                        current_response = _mvvs_verify_resp
-                        continue
-                    # 텍스트만이면 followup_response로 처리 (아래 흐름 계속)
-                    followup_response = _mvvs_verify_resp
-                    self.history.append(Message(role="assistant", content=followup_response))
-                    self._append_to_session_log("assistant", followup_response)
-                    self._notify_hashes_found(followup_response)
-                    current_response = followup_response
-                    continue
 
             # AI 피드백
             model = ModelRegistry.build(model_cfg)
@@ -9182,22 +8498,18 @@ class BingoTerminal:
             import re as _re_fp_post
             _followup_lang = getattr(self.config, "lang", "en")
             if _re_fp_post.search(r'\[CONFIRMED\s*✅?\]', followup_response):
-                _conf_post = self.s.get("mvvs_confirmed_exec", {
+                _conf_post = {
                     "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
                     "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
                     "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
-                })
-                if isinstance(_conf_post, dict):
-                    _conf_post = _conf_post.get(_followup_lang, "✅ Confirmed.")
+                }.get(_followup_lang, "✅ Confirmed.")
                 self.console.print(f"\n[bold green]{_conf_post}[/bold green]")
             elif _re_fp_post.search(r'\[FALSE\s*POSITIVE\s*❌?\]', followup_response):
-                _fp_post = self.s.get("mvvs_false_positive_exec", {
+                _fp_post = {
                     "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
-                    "zh": "❌ [FALSE POSITIVE] — 基于执行结果，误报确认",
+                    "zh": "❌ [FALSE POSITIVE] — 基于执행결果，误报확인",
                     "en": "❌ [FALSE POSITIVE] — Confirmed false positive from execution",
-                })
-                if isinstance(_fp_post, dict):
-                    _fp_post = _fp_post.get(_followup_lang, "❌ False positive.")
+                }.get(_followup_lang, "❌ False positive.")
                 self.console.print(f"\n[bold red]{_fp_post}[/bold red]")
 
             # 작업 완료

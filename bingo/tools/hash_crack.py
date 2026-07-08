@@ -565,13 +565,25 @@ def extract_hashes_from_text(text: str, strict: bool = True) -> list[str]:
                 continue
 
             # v6.2.17: 파일명 캐시 버스팅 해시 제외 (main.HASH.js, chunk.HASH.min.css 등)
-            # 해시 앞뒤 컨텍스트로 파일명 패턴 감지
             pre_char_idx = max(0, m.start() - 1)
             pre_char = text[pre_char_idx] if m.start() > 0 else ''
             post_window = text[m.end():min(len(text), m.end() + 12)]
-            # .HASH.ext 패턴: 앞에 '.' 이고 뒤에 '.확장자' 있으면 캐시 버스팅 해시
             if pre_char in './-_' and re.match(r'\.[a-zA-Z]{2,5}(?:[?&#\s"\')|]|$)', post_window):
                 continue  # 파일명 캐시 버스팅 해시 → 오탐
+
+            # v6.2.18: 쿠키 이름으로 사용되는 해시 제외
+            # 케이스A: HASH=value  (Set-Cookie, curl -b "HASH=val", bash COOKIE="HASH=val")
+            post_char = text[m.end()] if m.end() < len(text) else ''
+            if post_char == '=' and not text[m.end():m.end()+2].startswith('=='):
+                continue  # 해시가 쿠키/변수 이름 → 오탐
+            # 케이스B: cookies.set("HASH", ...) / s.cookies["HASH"] / -b "HASH=..."
+            pre_window = text[max(0, m.start() - 80):m.start()]
+            if re.search(
+                r'''(?:cookies?(?:\.set)?\s*[(\[]["']|Set-Cookie[:\s]+|'''
+                r'''-b\s+["'][^"']*$|COOKIE\s*=\s*["'][^"']*$)''',
+                pre_window, re.IGNORECASE
+            ):
+                continue  # 쿠키 이름 컨텍스트 → 오탐
 
             # OLD_PASSWORD 16-char(idx 8): passwd=/hash= 같은 컨텍스트 키워드 필수
             if idx == 8:

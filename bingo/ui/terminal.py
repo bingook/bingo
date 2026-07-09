@@ -4698,17 +4698,61 @@ class BingoTerminal:
                     if not isinstance(_tool_args, dict):
                         _tool_args = {}
                 except Exception as _je:
-                    tool_results.append(
-                        f"TOOL_RESULT:{{'name':'?','error':'JSON parse failed: {_je}','success':false}}"
-                    )
-                    # v5.2.3: debug 출력 (개발 모드)
-                    import os as _os
-                    if _os.environ.get("BINGO_DEBUG"):
-                        console.print(f"[dim red]  [TOOL_CALL DEBUG] raw={_raw_json!r}[/dim red]")
+                    # ── v6.2.34: JSON 복구 시도 ──────────────────────────────
+                    # script/code 필드의 복잡한 이스케이프 조합으로 json.loads 실패 시
+                    # regex 기반 필드 추출로 폴백
+                    _recovered = False
+                    try:
+                        import re as _re_json
+                        # name 추출
+                        _nm = _re_json.search(r'"name"\s*:\s*"([^"]+)"', _call)
+                        if _nm:
+                            _tool_name = _nm.group(1)
+                            _tool_args = {}
+                            # args 내부의 각 키:값 추출 (script/code 포함)
+                            # script/code: "script": "..." 이지만 중간에 \n, \", \' 포함
+                            # → "script" 이후 첫 " 부터 마지막 "} 직전까지 추출
+                            for _fk in ("script", "code", "url", "param",
+                                        "base_value", "method", "headers",
+                                        "post_data", "dump_table", "timeout"):
+                                _fv_m = _re_json.search(
+                                    rf'"{_fk}"\s*:\s*"((?:[^"\\]|\\.)*)\"',
+                                    _call, _re_json.DOTALL
+                                )
+                                if _fv_m:
+                                    # JSON 이스케이프 해제
+                                    import codecs as _cod
+                                    try:
+                                        _fv = _cod.decode(
+                                            _fv_m.group(1).encode(), "unicode_escape"
+                                        )
+                                    except Exception:
+                                        _fv = _fv_m.group(1)
+                                    _tool_args[_fk] = _fv
+                            # timeout 숫자 변환
+                            if "timeout" in _tool_args:
+                                try:
+                                    _tool_args["timeout"] = int(str(_tool_args["timeout"]))
+                                except Exception:
+                                    _tool_args.pop("timeout", None)
+                            _recovered = bool(_tool_args or _tool_name)
+                    except Exception:
+                        pass
+                    if not _recovered:
+                        tool_results.append(
+                            f"TOOL_RESULT:{{'name':'?','error':'JSON parse failed: {_je}','success':false}}"
+                        )
+                        import os as _os
+                        if _os.environ.get("BINGO_DEBUG"):
+                            console.print(f"[dim red]  [TOOL_CALL DEBUG] raw={_raw_json!r}[/dim red]")
+                        self.console.print(
+                            f"[{THEME['error']}]⚠ TOOL_CALL JSON parse error: {_je}[/]"
+                        )
+                        continue
+                    # 복구 성공
                     self.console.print(
-                        f"[{THEME['error']}]⚠ TOOL_CALL JSON parse error: {_je}[/]"
+                        f"[{THEME['warn']}]⚠ TOOL_CALL JSON 자동복구 성공 ({_tool_name})[/]"
                     )
-                    continue
 
                 if execute_tool is None:
                     tool_results.append(

@@ -9844,13 +9844,12 @@ class BingoTerminal:
     def _notify_hashes_found(self, text: str) -> None:
         """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행
         (컨텍스트 필터: 오류코드/추적ID/파일명 캐시버스팅 해시 자동 제외 + 세션 중복 방지)
+        v6.2.50: 세션 추가를 즉시 수행 → 빠른 연속 호출 시 중복 크랙 완전 차단
         """
         import re as _re_hf
         from ..tools.hash_crack import extract_hashes_from_text
 
         # ── 1단계: 파일명/URL 컨텍스트 해시 → 세션 블록리스트에 추가 (오탐 영구 제외)
-        # 예: backoffice_5095f1f36c80ce7d975f5b303bba3b1e.js 의 해시가
-        # 이후 본문에서 단독으로 언급될 때도 크랙 건너뜀
         _fname_hash_re = _re_hf.compile(
             r"""(?<=[._\-/])([0-9a-fA-F]{32,64})(?=\.[a-zA-Z]{2,5}(?:[?&#\s"')|]|$))"""
         )
@@ -9858,54 +9857,67 @@ class BingoTerminal:
             self._session_cracked_hashes.add(_fhm.group(1).lower())
 
         # ── 2단계: 해시 추출
-        raw_hashes = extract_hashes_from_text(text, strict=False)   # 필터 전
-        hashes     = extract_hashes_from_text(text, strict=True)    # 필터 후
+        raw_hashes    = extract_hashes_from_text(text, strict=False)   # 필터 전
+        hashes_strict = extract_hashes_from_text(text, strict=True)    # strict 필터 후
 
-        # ── 3단계: 세션 중복 제거 (이미 크랙 시도한 해시 제외)
-        hashes = [h for h in hashes if h.lower() not in self._session_cracked_hashes]
+        # ── 3단계: 오탐(strict 필터 제거) vs 세션 중복 명확히 분리
+        _strict_set  = {h.lower() for h in hashes_strict}
+        fp_filtered  = [h for h in raw_hashes    if h.lower() not in _strict_set]
+        sess_deduped = [h for h in hashes_strict if h.lower() in self._session_cracked_hashes]
+        new_hashes   = [h for h in hashes_strict if h.lower() not in self._session_cracked_hashes]
 
-        # 필터링된 항목이 있으면 사용자에게 알림
-        filtered_out = [h for h in raw_hashes if h not in hashes]
-        if filtered_out:
-            _lang = getattr(self.config, "lang", "en")
-            _msg = {
-                "ko": f"[dim]🔍 오탐 제외: {len(filtered_out)}개 hex 문자열이 오류코드/추적ID로 판단되어 크랙 건너뜀[/dim]",
-                "zh": f"[dim]🔍 误报过滤: {len(filtered_out)}个十六进制字符串被识别为错误码/追踪ID，已跳过破解[/dim]",
-                "en": f"[dim]🔍 False-positive filter: {len(filtered_out)} hex string(s) skipped (error code / tracking ID detected)[/dim]",
-            }.get(_lang, f"[dim]🔍 Filtered {len(filtered_out)} non-hash hex string(s)[/dim]")
-            self.console.print(_msg)
-        if not hashes:
-            # 크레덴셜 발견 키워드 감지 → 크리티컬 알림
+        # ── 4단계: 신규 해시를 세션에 즉시 추가 (스레드 시작 전)
+        # Bug 1 핵심 수정: 크랙 스레드 시작 전에 등록 → 연속 호출 중복 차단
+        for _h in new_hashes:
+            self._session_cracked_hashes.add(_h.lower())
+
+        _lang = getattr(self.config, "lang", "en")
+
+        # ── 5단계: 오탐 메시지 (strict 필터로 제거된 경우만)
+        if fp_filtered:
+            _msg_fp = {
+                "ko": f"[dim]🔍 오탐 제외: {len(fp_filtered)}개 hex 문자열이 오류코드/추적ID로 판단되어 크랙 건너뜀[/dim]",
+                "zh": f"[dim]🔍 误报过滤: {len(fp_filtered)}个十六进制字符串被识别为错误码/追踪ID，已跳过破解[/dim]",
+                "en": f"[dim]🔍 False-positive filter: {len(fp_filtered)} hex string(s) skipped (error code / tracking ID)[/dim]",
+            }.get(_lang, f"[dim]🔍 Filtered {len(fp_filtered)} non-hash hex string(s)[/dim]")
+            self.console.print(_msg_fp)
+
+        # ── Bug 2 핵심 수정: 세션 중복은 별도 메시지 (오탐과 혼동 방지)
+        if sess_deduped:
+            _msg_sd = {
+                "ko": f"[dim]🔁 중복 방지: {len(sess_deduped)}개 해시는 이미 크랙 시도됨 — 건너뜀[/dim]",
+                "zh": f"[dim]🔁 去重保护: {len(sess_deduped)}个哈希已在本次会话中尝试过 — 已跳过[/dim]",
+                "en": f"[dim]🔁 Dedup: {len(sess_deduped)} hash(es) already attempted this session — skipped[/dim]",
+            }.get(_lang, f"[dim]🔁 Dedup: {len(sess_deduped)} hash(es) skipped[/dim]")
+            self.console.print(_msg_sd)
+
+        if not new_hashes:
+            # 크레덴셜 발견 키워드 감지 → 크리티컬 알림 (해시 없음, 평문 발견)
             _cred_signals = [
                 "password:", "username:", "admin:", "passwd=", "pw=",
                 "크레덴셜", "비밀번호 발견", "credential found", "凭据", "密码"
             ]
             if any(s in text.lower() for s in _cred_signals):
-                _lang = getattr(self.config, "lang", "en")
                 _t = {"ko": "🚨 BINGO — 크레덴셜 발견!", "zh": "🚨 BINGO — 发现凭据!", "en": "🚨 BINGO — Credential Found!"}.get(_lang, "🚨 BINGO — Critical!")
-                _b = {"ko": "관리자 자격증명이 발견되었습니다.", "zh": "发现了管理员凭据。", "en": "Admin credentials have been found."}.get(_lang, "Credential found.")
+                _b = {"ko": "관리자 자격증명이 발견되었습니다.", "zh": "发现了管리员凭据。", "en": "Admin credentials have been found."}.get(_lang, "Credential found.")
                 self._send_notification(_t, _b, critical=True)
             return
+
         self.console.print(
-            f"\n[{THEME['warn']}]{self.s['hash_found'].format(n=len(hashes))}[/]"
+            f"\n[{THEME['warn']}]{self.s['hash_found'].format(n=len(new_hashes))}[/]"
         )
-        # 해시 발견 → 크리티컬 알림
-        _lang = getattr(self.config, "lang", "en")
-        _ht = {"ko": f"🔑 BINGO — 해시 {len(hashes)}개 발견!", "zh": f"🔑 BINGO — 发现 {len(hashes)} 个哈希!", "en": f"🔑 BINGO — {len(hashes)} hash(es) found!"}.get(_lang, f"🔑 {len(hashes)} hashes found")
+        _ht = {"ko": f"🔑 BINGO — 해시 {len(new_hashes)}개 발견!", "zh": f"🔑 BINGO — 发现 {len(new_hashes)} 个哈希!", "en": f"🔑 BINGO — {len(new_hashes)} hash(es) found!"}.get(_lang, f"🔑 {len(new_hashes)} hashes found")
         _hb = {"ko": "자동 크랙 시작됨", "zh": "自动破解已启动", "en": "Auto-crack started"}.get(_lang, "Auto-crack started")
         self._send_notification(_ht, _hb, critical=True)
-        # 세션 블록리스트에 추가 (중복 크랙 방지)
-        for _h in hashes:
-            self._session_cracked_hashes.add(_h.lower())
+
         # 별도 스레드에서 실행 (채팅 블로킹 방지)
         self._stop_crack_flag.clear()
         t = threading.Thread(
             target=self._auto_crack_pipeline,
-            args=(hashes,),
+            args=(new_hashes,),
             daemon=True,
         )
         t.start()
-
     def _auto_crack_pipeline(self, hashes: list[str]) -> None:
         """
         자동 크랙 파이프라인 (백그라운드 스레드)

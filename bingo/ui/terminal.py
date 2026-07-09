@@ -4690,8 +4690,12 @@ class BingoTerminal:
 
             for _raw_json in _tool_matches:
                 # JSON 파싱
+                # v6.2.40 FIX: re.sub(r'\s+', ' ') 제거 — 이것이 Python 코드의 들여쓰기를
+                # 파괴하여 SyntaxError: expected 'except' or 'finally' block 의 근본 원인이었음.
+                # JSON 표준은 토큰 사이 공백을 허용하므로 json.loads()는 그대로 처리 가능.
+                # 리터럴 개행이 포함된 경우(비표준 LLM 출력)만 복구 메커니즘이 처리함.
+                _call = _raw_json.strip()  # 원본 보존 (공백 정규화 없음)
                 try:
-                    _call = re.sub(r'\s+', ' ', _raw_json.strip())
                     _parsed = __import__("json").loads(_call)
                     _tool_name = str(_parsed.get("name", ""))
                     _tool_args = _parsed.get("args", {})
@@ -4701,6 +4705,7 @@ class BingoTerminal:
                     # ── v6.2.34: JSON 복구 시도 ──────────────────────────────
                     # script/code 필드의 복잡한 이스케이프 조합으로 json.loads 실패 시
                     # regex 기반 필드 추출로 폴백
+                    # v6.2.40: _call 이 이제 원본 보존 버전이므로 Python 코드 들여쓰기 유지
                     _recovered = False
                     try:
                         import re as _re_json

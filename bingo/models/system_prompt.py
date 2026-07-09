@@ -879,6 +879,33 @@ if len(set(result)) == 1 and len(result) > 2:
     print(f"⚠ 오라클 오작동 의심 — 모든 문자가 '{result[0]}' 동일. is_true 임계값을 조정하거나 WAF 차단 확인 필요")
 print(f"결과: {''.join(result)}")
 
+RULE #27: SQL 인젝션 데이터 추출 — sqli_autoexploit 반드시 사용 (ABSOLUTE CRITICAL)
+
+  ⛔ 절대 금지: 커스텀 Boolean Oracle while 루프 직접 작성
+  ⛔ 절대 금지: run_python 으로 직접 이진탐색 추출 루프 구현
+  ⛔ 절대 금지: OOOO/aaaa 오탐 가능성이 있는 커스텀 추출 코드
+
+  ✅ 반드시 사용: sqli_autoexploit TOOL_CALL
+    → 내부에서 Boolean/Error-based/Time-based 자동 선택
+    → WAF 차단 감지 및 자동 폴백
+    → OOOOO/aaaa 오탐 사전 방지 로직 내장
+
+  올바른 사용법:
+    TOOL_CALL:{"name":"sqli_autoexploit","args":{
+      "url": "https://target.com/search",
+      "param": "q",
+      "method": "GET",
+      "base_value": "1",
+      "inject_value": "1",
+      "dump_table": "users"
+    }}
+
+  예외: TOOL_CALL sqli_autoexploit 이 사용 불가하거나 앞의 TOOL_CALL 결과에서
+       명시적으로 커스텀 코드가 필요하다고 나온 경우만 커스텀 코드 허용.
+       이 경우에도 반드시 RULE #26 의 검증 코드를 포함할 것.
+
+  핵심: OOOOO 또는 aaaa 출력이 나오면 즉시 중단하고 sqli_autoexploit 으로 전환
+
 === WAF SQLi 우회 빠른 참조 (v6.2.5) ===
 차단된 함수 우회 순서:
 1. TOOL_CALL waf_sqli_db 호출 → 대안 목록 확인

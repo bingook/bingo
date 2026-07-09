@@ -222,6 +222,8 @@ class BingoTerminal:
         }
         # 자동 크랙 중단 플래그
         self._stop_crack_flag = threading.Event()
+        # 세션 내 해시 중복 크랙 방지 (파일명 캐시 버스팅 해시 포함)
+        self._session_cracked_hashes: set = set()
         # Agent 루프 중단 플래그 (Ctrl+C)
         self._agent_stop_flag = threading.Event()
         # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
@@ -9841,12 +9843,27 @@ class BingoTerminal:
 
     def _notify_hashes_found(self, text: str) -> None:
         """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행
-        (컨텍스트 필터: 오류코드/추적ID 등 비밀번호 해시가 아닌 hex 문자열 자동 제외)
+        (컨텍스트 필터: 오류코드/추적ID/파일명 캐시버스팅 해시 자동 제외 + 세션 중복 방지)
         """
+        import re as _re_hf
         from ..tools.hash_crack import extract_hashes_from_text
-        # strict=True: 오류코드/추적ID/HTTP에러페이지 hex 자동 필터링
+
+        # ── 1단계: 파일명/URL 컨텍스트 해시 → 세션 블록리스트에 추가 (오탐 영구 제외)
+        # 예: backoffice_5095f1f36c80ce7d975f5b303bba3b1e.js 의 해시가
+        # 이후 본문에서 단독으로 언급될 때도 크랙 건너뜀
+        _fname_hash_re = _re_hf.compile(
+            r"""(?<=[._\-/])([0-9a-fA-F]{32,64})(?=\.[a-zA-Z]{2,5}(?:[?&#\s"')|]|$))"""
+        )
+        for _fhm in _fname_hash_re.finditer(text):
+            self._session_cracked_hashes.add(_fhm.group(1).lower())
+
+        # ── 2단계: 해시 추출
         raw_hashes = extract_hashes_from_text(text, strict=False)   # 필터 전
         hashes     = extract_hashes_from_text(text, strict=True)    # 필터 후
+
+        # ── 3단계: 세션 중복 제거 (이미 크랙 시도한 해시 제외)
+        hashes = [h for h in hashes if h.lower() not in self._session_cracked_hashes]
+
         # 필터링된 항목이 있으면 사용자에게 알림
         filtered_out = [h for h in raw_hashes if h not in hashes]
         if filtered_out:
@@ -9877,6 +9894,9 @@ class BingoTerminal:
         _ht = {"ko": f"🔑 BINGO — 해시 {len(hashes)}개 발견!", "zh": f"🔑 BINGO — 发现 {len(hashes)} 个哈希!", "en": f"🔑 BINGO — {len(hashes)} hash(es) found!"}.get(_lang, f"🔑 {len(hashes)} hashes found")
         _hb = {"ko": "자동 크랙 시작됨", "zh": "自动破解已启动", "en": "Auto-crack started"}.get(_lang, "Auto-crack started")
         self._send_notification(_ht, _hb, critical=True)
+        # 세션 블록리스트에 추가 (중복 크랙 방지)
+        for _h in hashes:
+            self._session_cracked_hashes.add(_h.lower())
         # 별도 스레드에서 실행 (채팅 블로킹 방지)
         self._stop_crack_flag.clear()
         t = threading.Thread(

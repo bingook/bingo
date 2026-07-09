@@ -7456,6 +7456,16 @@ _STRINGS.update({
             "Stop all custom extraction loops immediately. Use sqli_autoexploit TOOL_CALL instead."
         ),
     },
+    "autocorrect_runtime_pattern": {
+        "ko": "[런타임 패턴 자동 교정 적용]",
+        "zh": "[运行时模式自动修正已应用]",
+        "en": "[Runtime pattern auto-correction applied]",
+    },
+    "autocorrect_pre_pattern": {
+        "ko": "[사전 정적 패턴 교정 적용]",
+        "zh": "[预执行静态模式修正已应用]",
+        "en": "[Pre-execution static pattern correction applied]",
+    },
 })
 
 

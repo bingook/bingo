@@ -7110,6 +7110,298 @@ _STRINGS.update({
         "zh": "目标: {target}\n尝试上传 Webshell。包含 Gnuboard5 漏洞及通用 GIF polyglot webshell 技术，执行从查找可上传路径到确认执行的全过程。",
         "en": "Target: {target}\nAttempt webshell upload. Include Gnuboard5 vulnerabilities and GIF polyglot webshell techniques. Perform the full process from finding uploadable paths to confirming execution.",
     },
+
+    # ── sqli_autoexploit 출력 메시지 ─────────────────────────────────────────
+    "sqli_stage1": {
+        "ko": "=== STAGE 1: Boolean Oracle 탐지 ===",
+        "zh": "=== STAGE 1: Boolean Oracle 检测 ===",
+        "en": "=== STAGE 1: Boolean Oracle Detection ===",
+    },
+    "sqli_oracle_confirmed": {
+        "ko": "  ✅ Oracle 확인: {op}  diff={diff}",
+        "zh": "  ✅ Oracle 已确认: {op}  diff={diff}",
+        "en": "  ✅ Oracle confirmed: {op}  diff={diff}",
+    },
+    "sqli_no_oracle": {
+        "ko": "❌ Boolean oracle 없음 → 시간기반 시도",
+        "zh": "❌ 无 Boolean Oracle → 尝试时间盲注",
+        "en": "❌ No boolean oracle → trying time-based",
+    },
+    "sqli_oracle_verify": {
+        "ko": "  Oracle 검증: 1=1→{t},  1=2→{f}",
+        "zh": "  Oracle 验证: 1=1→{t},  1=2→{f}",
+        "en": "  Oracle verify: 1=1→{t},  1=2→{f}",
+    },
+    "sqli_oracle_bad": {
+        "ko": "  ⚠ Boolean oracle 불안정(BAD) — boolean 비활성화, error/time-based 전환",
+        "zh": "  ⚠ Boolean Oracle 不可靠(BAD) — 禁用布尔注入，切换至错误/时间盲注",
+        "en": "  ⚠ Boolean oracle unreliable (BAD) — disabling boolean, trying error/time-based only",
+    },
+    "sqli_stage2": {
+        "ko": "\n=== STAGE 2: 문자 추출 함수 탐지 ===",
+        "zh": "\n=== STAGE 2: 字符提取函数检测 ===",
+        "en": "\n=== STAGE 2: Char Extraction Function Detection ===",
+    },
+    "sqli_stage2_funcs": {
+        "ko": "  SUBSTRING: {sub}  MID: {mid}  HEX: {hex}",
+        "zh": "  SUBSTRING: {sub}  MID: {mid}  HEX: {hex}",
+        "en": "  SUBSTRING: {sub}  MID: {mid}  HEX: {hex}",
+    },
+    "sqli_stage25": {
+        "ko": "\n=== STAGE 2.5: Error-Based 인젝션 탐지 ===",
+        "zh": "\n=== STAGE 2.5: 基于错误注入检测 ===",
+        "en": "\n=== STAGE 2.5: Error-Based Injection Detection ===",
+    },
+    "sqli_eb_ok": {
+        "ko": "  Error-based 인젝션: ✅ {type} 동작 확인 — 샘플: '{sample}'",
+        "zh": "  基于错误注入: ✅ {type} 可用 — 样例: '{sample}'",
+        "en": "  Error-based injection: ✅ {type} confirmed — sample: '{sample}'",
+    },
+    "sqli_eb_fail": {
+        "ko": "  Error-based 인젝션: ❌ (EXTRACTVALUE/UPDATEXML 차단 또는 미지원)",
+        "zh": "  基于错误注入: ❌ (EXTRACTVALUE/UPDATEXML 被拦截或不支持)",
+        "en": "  Error-based injection: ❌ (EXTRACTVALUE/UPDATEXML blocked or unsupported)",
+    },
+    "sqli_stage26": {
+        "ko": "\n=== STAGE 2.6: Time-Based 인젝션 탐지 ===",
+        "zh": "\n=== STAGE 2.6: 时间盲注检测 ===",
+        "en": "\n=== STAGE 2.6: Time-Based Injection Detection ===",
+    },
+    "sqli_tb_base": {
+        "ko": "  기준 응답 시간: {t:.2f}s",
+        "zh": "  基准响应时间: {t:.2f}s",
+        "en": "  Base response time: {t:.2f}s",
+    },
+    "sqli_tb_resp": {
+        "ko": "  [{type}] 응답시간: {elapsed:.2f}s (임계값: {thresh:.2f}s)",
+        "zh": "  [{type}] 响应时间: {elapsed:.2f}s (阈值: {thresh:.2f}s)",
+        "en": "  [{type}] response_time: {elapsed:.2f}s (threshold: {thresh:.2f}s)",
+    },
+    "sqli_tb_ok": {
+        "ko": "  ✅ Time-based 인젝션 확인: {type} (delay={elapsed:.2f}s)",
+        "zh": "  ✅ 时间盲注已确认: {type} (delay={elapsed:.2f}s)",
+        "en": "  ✅ Time-based injection confirmed: {type} (delay={elapsed:.2f}s)",
+    },
+    "sqli_tb_fail": {
+        "ko": "  Time-based 인젝션: ❌",
+        "zh": "  时间盲注: ❌",
+        "en": "  Time-based injection: ❌",
+    },
+    "sqli_tb_false_delay": {
+        "ko": "  FALSE 확인: {t:.2f}s (< {thresh:.2f}s 이어야 정상)",
+        "zh": "  FALSE 验证: {t:.2f}s (应 < {thresh:.2f}s)",
+        "en": "  FALSE confirm: {t:.2f}s (should be < {thresh:.2f}s)",
+    },
+    "sqli_tb_unreliable": {
+        "ko": "  ⚠ FALSE도 지연됨 — time-based 불안정",
+        "zh": "  ⚠ FALSE 也有延迟 — 时间盲注不可靠",
+        "en": "  ⚠ FALSE also delayed — time-based unreliable",
+    },
+    "sqli_tb_len_unstable": {
+        "ko": "  {tag}⚠ [time-based] length={max_l} 인데 >{max_l}도 True — 신뢰도 낮음",
+        "zh": "  {tag}⚠ [time-based] length={max_l} 但 >{max_l} 也为 True — 可靠性低",
+        "en": "  {tag}⚠ [time-based] length={max_l} but >{max_l} also True — low reliability",
+    },
+    "sqli_tb_len_zero": {
+        "ko": "  {tag}[time-based] length=0 또는 차단됨",
+        "zh": "  {tag}[time-based] length=0 或已被拦截",
+        "en": "  {tag}[time-based] length=0 or blocked",
+    },
+    "sqli_tb_len": {
+        "ko": "  {tag}[time-based] length={length}",
+        "zh": "  {tag}[time-based] length={length}",
+        "en": "  {tag}[time-based] length={length}",
+    },
+    "sqli_tb_substr_blocked": {
+        "ko": "  {tag}[time-based] 모든 문자 '?' — SUBSTRING도 차단됨",
+        "zh": "  {tag}[time-based] 所有字符均为 '?' — SUBSTRING 也被拦截",
+        "en": "  {tag}[time-based] all chars '?' — SUBSTRING also blocked",
+    },
+    "sqli_tb_result": {
+        "ko": "  {tag}[time-based] 결과: '{out}'",
+        "zh": "  {tag}[time-based] 结果: '{out}'",
+        "en": "  {tag}[time-based] result: '{out}'",
+    },
+    "sqli_len_fn_blocked": {
+        "ko": "  {tag}길이함수 {fn} 차단됨, 다음 시도...",
+        "zh": "  {tag}长度函数 {fn} 被拦截, 尝试下一个...",
+        "en": "  {tag}length-fn {fn} blocked, trying next...",
+    },
+    "sqli_len_unstable": {
+        "ko": "  {tag}⚠ length={max_l} 인데 >{max_l}도 True — oracle 불안정, 스킵",
+        "zh": "  {tag}⚠ length={max_l} 但 >{max_l} 也为 True — Oracle 不稳定, 跳过",
+        "en": "  {tag}⚠ length={max_l} but >{max_l} also True — oracle unstable, skipping",
+    },
+    "sqli_len_result": {
+        "ko": "  {tag}length={length} (fn:{fn}, 이진탐색)",
+        "zh": "  {tag}length={length} (fn:{fn}, 二分搜索)",
+        "en": "  {tag}length={length} (fn:{fn}, binary-search)",
+    },
+    "sqli_len_like": {
+        "ko": "  {tag}length={length} (LIKE 폴백)",
+        "zh": "  {tag}length={length} (LIKE 回退)",
+        "en": "  {tag}length={length} (LIKE fallback)",
+    },
+    "sqli_len_zero": {
+        "ko": "  {tag}length=0 또는 추출 실패",
+        "zh": "  {tag}length=0 或提取失败",
+        "en": "  {tag}length=0 or extraction failed",
+    },
+    "sqli_char_ord_used": {
+        "ko": "  {tag}문자 추출: ORD({fn}) 사용",
+        "zh": "  {tag}字符提取: 使用 ORD({fn})",
+        "en": "  {tag}char-extract: ORD({fn}) used",
+    },
+    "sqli_char_ord_blocked": {
+        "ko": "  {tag}ORD({fn}) 차단됨 → LIKE/HEX 폴백",
+        "zh": "  {tag}ORD({fn}) 被拦截 → LIKE/HEX 回退",
+        "en": "  {tag}ORD({fn}) blocked → LIKE/HEX fallback",
+    },
+    "sqli_char_hex_used": {
+        "ko": "  {tag}문자 추출: {fn} 사용",
+        "zh": "  {tag}字符提取: 使用 {fn}",
+        "en": "  {tag}char-extract: {fn} used",
+    },
+    "sqli_char_hex_blocked": {
+        "ko": "  {tag}HEX 계열 전부 차단됨 → LIKE 폴백",
+        "zh": "  {tag}所有 HEX 函数均被拦截 → LIKE 回退",
+        "en": "  {tag}all HEX variants blocked → LIKE fallback",
+    },
+    "sqli_char_waf": {
+        "ko": "  {tag}⚠ 모든 문자 '?' — WAF 차단 가능성 높음",
+        "zh": "  {tag}⚠ 所有字符均为 '?' — 可能被 WAF 拦截",
+        "en": "  {tag}⚠ all chars '?' — likely WAF blocking",
+    },
+    "sqli_char_result": {
+        "ko": "  {tag}결과: '{out}'",
+        "zh": "  {tag}结果: '{out}'",
+        "en": "  {tag}result: '{out}'",
+    },
+    "sqli_stage3": {
+        "ko": "\n=== STAGE 3: DB 정보 추출 ===",
+        "zh": "\n=== STAGE 3: 数据库信息提取 ===",
+        "en": "\n=== STAGE 3: DB Info Extraction ===",
+    },
+    "sqli_from_bypass": {
+        "ko": "  FROM bypass: '{fv}' 사용",
+        "zh": "  FROM bypass: 使用 '{fv}'",
+        "en": "  FROM bypass: '{fv}' used",
+    },
+    "sqli_eb_extract_ok": {
+        "ko": "  [{label}] Error-based 추출 성공: '{val}'",
+        "zh": "  [{label}] 基于错误提取成功: '{val}'",
+        "en": "  [{label}] Error-based extraction OK: '{val}'",
+    },
+    "sqli_len_blocked_next": {
+        "ko": "  [{label}] {expr} → LENGTH 차단됨, 다음 시도...",
+        "zh": "  [{label}] {expr} → LENGTH 被拦截, 尝试下一个...",
+        "en": "  [{label}] {expr} → LENGTH blocked, trying next...",
+    },
+    "sqli_extract_fail": {
+        "ko": "  [{label}] {expr} → 추출 실패, 다음 시도...",
+        "zh": "  [{label}] {expr} → 提取失败, 尝试下一个...",
+        "en": "  [{label}] {expr} → extraction failed, trying next...",
+    },
+    "sqli_try_timebased": {
+        "ko": "  [{label}] → Time-based 추출 시도 (SLEEP)",
+        "zh": "  [{label}] → 尝试时间盲注提取 (SLEEP)",
+        "en": "  [{label}] → Trying time-based extraction (SLEEP)",
+    },
+    "sqli_stage4": {
+        "ko": "\n=== STAGE 4: 테이블 목록 추출 ===",
+        "zh": "\n=== STAGE 4: 表名提取 ===",
+        "en": "\n=== STAGE 4: Table List Extraction ===",
+    },
+    "sqli_isch_tbl_variant": {
+        "ko": "  information_schema.tables 변형: '{v}'",
+        "zh": "  information_schema.tables 变体: '{v}'",
+        "en": "  information_schema.tables variant: '{v}'",
+    },
+    "sqli_isch_col_variant": {
+        "ko": "  information_schema.columns 변형: '{v}'",
+        "zh": "  information_schema.columns 变体: '{v}'",
+        "en": "  information_schema.columns variant: '{v}'",
+    },
+    "sqli_isch_fail": {
+        "ko": "  ⚠ information_schema 접근 불가 — 테이블 추출 실패 (WAF 차단 의심)",
+        "zh": "  ⚠ information_schema 无法访问 — 表提取失败 (疑似 WAF 拦截)",
+        "en": "  ⚠ information_schema inaccessible — table extraction failed (WAF block suspected)",
+    },
+    "sqli_tables": {
+        "ko": "  테이블: {tables}",
+        "zh": "  数据表: {tables}",
+        "en": "  Tables: {tables}",
+    },
+    "sqli_dump_target": {
+        "ko": "  → 덤프 대상: {table}",
+        "zh": "  → 转储目标: {table}",
+        "en": "  → dump target: {table}",
+    },
+    "sqli_stage5": {
+        "ko": "\n=== STAGE 5: {table} 컬럼 목록 ===",
+        "zh": "\n=== STAGE 5: {table} 列名提取 ===",
+        "en": "\n=== STAGE 5: {table} Column List ===",
+    },
+    "sqli_columns": {
+        "ko": "  컬럼: {columns}",
+        "zh": "  列名: {columns}",
+        "en": "  Columns: {columns}",
+    },
+    "sqli_selected_cols": {
+        "ko": "  → 선택 컬럼: {cols}",
+        "zh": "  → 已选列: {cols}",
+        "en": "  → selected columns: {cols}",
+    },
+    "sqli_stage6": {
+        "ko": "\n=== STAGE 6: {table} 데이터 덤프 (최대 {rows}행) ===",
+        "zh": "\n=== STAGE 6: {table} 数据转储 (最多 {rows} 行) ===",
+        "en": "\n=== STAGE 6: {table} Data Dump (max {rows} rows) ===",
+    },
+    "sqli_done": {
+        "ko": "[AUTOEXPLOIT 완료] {url}?{param}=...",
+        "zh": "[AUTOEXPLOIT 完成] {url}?{param}=...",
+        "en": "[AUTOEXPLOIT DONE] {url}?{param}=...",
+    },
+    "sqli_summary_oracle": {
+        "ko": "  oracle   : {op}",
+        "zh": "  oracle   : {op}",
+        "en": "  oracle   : {op}",
+    },
+    "sqli_oracle_diff": {
+        "ko": "  [{op}] TRUE={t} FALSE={f} diff={diff}",
+        "zh": "  [{op}] TRUE={t} FALSE={f} diff={diff}",
+        "en": "  [{op}] TRUE={t} FALSE={f} diff={diff}",
+    },
+    "sqli_db_version": {
+        "ko": "  VERSION : {v}",
+        "zh": "  VERSION : {v}",
+        "en": "  VERSION : {v}",
+    },
+    "sqli_db_name": {
+        "ko": "  DATABASE: {v}",
+        "zh": "  DATABASE: {v}",
+        "en": "  DATABASE: {v}",
+    },
+    "sqli_db_user": {
+        "ko": "  USER    : {v}",
+        "zh": "  USER    : {v}",
+        "en": "  USER    : {v}",
+    },
+    "sqli_row": {
+        "ko": "  행[{i}]: {row}",
+        "zh": "  行[{i}]: {row}",
+        "en": "  row[{i}]: {row}",
+    },
+    "sqli_pip_install": {
+        "ko": "⚙  pip install -e . 실행 중...",
+        "zh": "⚙  正在执行 pip install -e . ...",
+        "en": "⚙  Running pip install -e . ...",
+    },
+    "sqli_pip_fail": {
+        "ko": "⚠  pip install 실패 — 수동 실행:",
+        "zh": "⚠  pip install 失败 — 手动运行:",
+        "en": "⚠  pip install failed — run manually:",
+    },
 })
 
 

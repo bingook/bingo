@@ -7147,6 +7147,26 @@ _STRINGS.update({
         "zh": "  SUBSTRING: {sub}  MID: {mid}  HEX: {hex}",
         "en": "  SUBSTRING: {sub}  MID: {mid}  HEX: {hex}",
     },
+    "sqli_stage2_db_blocked": {
+        "ko": "  ⚠ WAF가 DB 함수 호출을 모두 차단 — 불가능 조건이 True 반환!",
+        "zh": "  ⚠ WAF 屏蔽所有 DB 函数调用 — 不可能的条件返回 True！",
+        "en": "  ⚠ DB function calls blocked by WAF — impossible condition returned True!",
+    },
+    "sqli_stage2_db_blocked2": {
+        "ko": "  Boolean 문자 추출 비활성화 — error/time-based 폴백으로 전환.",
+        "zh": "  Boolean 字符提取已禁用 — 切换到 error/time-based 备选方案。",
+        "en": "  Boolean char extraction disabled — falling back to error/time-based only.",
+    },
+    "sqli_stage2_db_ok": {
+        "ko": "  DB 함수 오라클: ✅ (불가능 조건 = False)",
+        "zh": "  DB 函数 Oracle: ✅ (不可能的条件 = False)",
+        "en": "  DB function oracle: ✅ (provably-false condition = False)",
+    },
+    "sqli_expr_blocked": {
+        "ko": "  {tag}⚠ WAF가 식 '{expr}' 차단 — 불가능 조건이 True, 건너뜀",
+        "zh": "  {tag}⚠ WAF 屏蔽表达式 '{expr}' — 不可能条件为 True，跳过",
+        "en": "  {tag}⚠ WAF blocks expression '{expr}' — impossible-false returned True, skip",
+    },
     "sqli_stage25": {
         "ko": "\n=== STAGE 2.5: Error-Based 인젝션 탐지 ===",
         "zh": "\n=== STAGE 2.5: 基于错误注入检测 ===",

@@ -64,7 +64,10 @@ class Finding:
 
 _SQLI_PATTERNS = [
     # DB명 / 테이블명 추출 결과
-    re.compile(r'\b(master|tempdb|model|msdb|information_schema|mysql|postgres|public)\b', re.I),
+    # v6.2.39: 'public' 제거 — <!DOCTYPE HTML PUBLIC> 에서 오탐 발생. public 은 DB context 별도 패턴으로.
+    re.compile(r'\b(master|tempdb|model|msdb|information_schema|mysql|postgres)\b', re.I),
+    # v6.2.39: public은 PostgreSQL schema 패턴으로만 인식 (단독 public 금지 — DOCTYPE 오탐)
+    re.compile(r'\bpublic\b.*?\b(?:schema|table|column|pg_tables|pg_class)\b', re.I),
     re.compile(r'\b(dbo|sysobjects|syscolumns|sys\.tables|sys\.columns)\b', re.I),
     # 자격 증명 추출
     re.compile(r'\b(admin|administrator|root|sa|dba|superuser)\b.*?(password|passwd|pwd|hash)', re.I),
@@ -79,8 +82,15 @@ _SQLI_PATTERNS = [
 _XSS_PATTERNS = [
     # v5.1.1 FIX: <script src="x.js"></script> 는 정상 외부 스크립트 — XSS 아님.
     # src= 속성 없는 인라인 스크립트(내용 있음)만 매칭.
-    # 이전: re.compile(r'<script[^>]*>.*?</script>', re.I | re.DOTALL)  ← src 태그 오발
-    re.compile(r'<script\b(?![^>]*\bsrc\s*=)[^>]*>[^<\s]', re.I),
+    # v6.2.39 FIX: location.replace/href/assign 만 있는 스크립트는 서버 리다이렉트 — XSS 아님.
+    # 예: <script>location.replace('../../');</script> — WAF 리다이렉트 응답이므로 오탐.
+    # 반드시 실제 공격용 JS (alert/eval/document/fetch 등) 포함 시에만 XSS 인정.
+    re.compile(
+        r'<script\b(?![^>]*\bsrc\s*=)[^>]*>'
+        r'(?![^<]*\blocation\.(?:replace|href|assign|reload)\b[^<]*</script>)'
+        r'[^<\s]',
+        re.I
+    ),
     re.compile(r'alert\s*\(\s*["\']?[^)]{0,50}["\']?\s*\)', re.I),
     # v5.1.1 FIX: onerror= 단독(이벤트 핸들러 속성 이름만)도 오발.
     # 실행 함수(alert/eval/document/fetch 등)가 포함된 경우만 매칭.

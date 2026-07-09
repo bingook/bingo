@@ -4883,6 +4883,37 @@ class BingoTerminal:
             if tool_results:
                 return tool_results
         # ══════════════════════════════════════════════════════════════════════
+        # v6.2.39 Bug 1 FIX: AI가 잘못된 dict 형식으로 tool call 시도 감지 + 경고
+        # 패턴: {"tool": "http_get", ...} 또는 {"tool": "waf_detect", ...}
+        # 이 형식은 실행되지 않으므로 TOOL_CALL 형식으로 변환하여 경고 출력
+        # ══════════════════════════════════════════════════════════════════════
+        _wrong_tc_pattern = re.compile(
+            r'[\{,\s]\s*["\']tool["\']\s*:\s*["\']([^"\']+)["\']',
+            re.DOTALL
+        )
+        _wrong_tc_matches = _wrong_tc_pattern.findall(response)
+        if _wrong_tc_matches:
+            try:
+                from ..tools_ext.pentest_tools import TOOL_REGISTRY as _TR
+                _known_tools = set(_TR.keys()) if _TR else set()
+            except Exception:
+                _known_tools = set()
+            _known_tools |= {
+                "http_get","run_python","run_bash","waf_detect","web_tech_detect",
+                "dir_fuzz","sqli_autoexploit","bool_oracle_extract","detect_waf",
+                "waf_sqli_db","sqli_timebased","analyze_response_lang",
+            }
+            _bad_tool_names = [t for t in _wrong_tc_matches if t in _known_tools]
+            if _bad_tool_names:
+                console.print(
+                    f"[{THEME['error']}]⚠ [WRONG_TOOL_FORMAT] AI used Python dict format "
+                    f"for tool call: {_bad_tool_names}\n"
+                    f"  Correct format: TOOL_CALL:{{\"name\":\"{_bad_tool_names[0]}\","
+                    f"\"args\":{{...}}}}\n"
+                    f"  Dict format {{'tool': '...'}} is NOT executed![/]"
+                )
+
+        # ══════════════════════════════════════════════════════════════════════
         # TOOL_CALL 없음 → 기존 bash 블록 처리로 진행 (하위 호환)
         # ══════════════════════════════════════════════════════════════════════
 

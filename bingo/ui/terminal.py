@@ -874,10 +874,17 @@ class BingoTerminal:
                 _orig_stdin = _sys.stdin
                 _sys.stdin = _tty_fd
                 try:
-                    hint = self._session.prompt(
-                        HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
-                        style=PT_STYLE,
-                    )
+                    import warnings as _warn_mod
+                    with _warn_mod.catch_warnings():
+                        _warn_mod.filterwarnings(
+                            "ignore",
+                            message="coroutine.*was never awaited",
+                            category=RuntimeWarning,
+                        )
+                        hint = self._session.prompt(
+                            HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
+                            style=PT_STYLE,
+                        )
                     return hint.strip() if hint.strip() else None
                 except (EOFError, KeyboardInterrupt):
                     return None
@@ -910,10 +917,17 @@ class BingoTerminal:
         #   이 상태에서 RuntimeError가 발생 → 기존에 EOFError/KeyboardInterrupt만 잡아
         #   크래시됐던 버그를 input() fallback으로 완전 방어.
         try:
-            hint = self._session.prompt(
-                HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
-                style=PT_STYLE,
-            )
+            import warnings as _warn_mod2
+            with _warn_mod2.catch_warnings():
+                _warn_mod2.filterwarnings(
+                    "ignore",
+                    message="coroutine.*was never awaited",
+                    category=RuntimeWarning,
+                )
+                hint = self._session.prompt(
+                    HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
+                    style=PT_STYLE,
+                )
             return hint.strip() if hint.strip() else None
         except (EOFError, KeyboardInterrupt):
             return None

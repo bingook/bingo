@@ -6338,7 +6338,7 @@ class BingoTerminal:
                 _last_stripped = None
                 _killed_reason: str | None = None
                 _start_ts = __import__("time").time()
-                _SCRIPT_TIMEOUT = 300   # 스크립트당 최대 300초 (5분) [v5.1.6: 1800s→300s 단축, 고아 curl 방지]
+                _SCRIPT_TIMEOUT = 86400  # 24시간 (사실상 무제한) [v6.2.30: 타임아웃 제거]
                 _MAX_CONSEC_DUP = 100   # 동일 줄 100회 연속 → 루프 감지 [v3.2.54: 오탐 방지 강화]
                 _MAX_CONSEC_SCAN = 500  # 스캔 결과 줄은 500회까지 허용 (XSS 반사 등)
                 # 합법적 반복이 발생하는 스캔 결과 prefix — 더 높은 임계값 적용
@@ -6745,7 +6745,8 @@ class BingoTerminal:
         _heartbeat_print_interval = 30  # 화면 출력은 30초에 한 번
         # v5.1.6: wall-clock 안전 타임아웃 — 워치독이 bash만 kill하고 자식 curl이 살아남아
         # 스레드가 종료되지 않는 경우에 대한 2차 방어선 (_SCRIPT_TIMEOUT + 60s)
-        _WALL_CLOCK_MAX = 360  # _SCRIPT_TIMEOUT(300) + 60s 버퍼
+        # v6.2.30: 사실상 무제한 (24h + 60s)
+        _WALL_CLOCK_MAX = 86460  # _SCRIPT_TIMEOUT(86400) + 60s 버퍼
         while any(_th.is_alive() for _th in threads):
             for _th in threads:
                 _th.join(timeout=HEARTBEAT)

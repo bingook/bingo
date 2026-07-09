@@ -494,6 +494,67 @@ RULE #14: Python에서 HTTP 상태 코드 비교 — int에 'in' 금지
     ✅ if r.status_code == 200: print("ok")
     ✅ if r.status_code in (200, 201): print("ok")
 
+RULE #17: Python 코드 — 타이밍 측정·집계 시 None 처리 필수 (CRITICAL)
+  배경: requests 가 타임아웃/오류로 None 반환 시 sum()/평균 계산에서 TypeError 발생
+  ❌ 절대 금지:
+    baselines = [measure_time(payload) for payload in test_payloads]
+    avg = sum(baselines) / len(baselines)   # → TypeError: 'NoneType' 포함 시 크래시
+
+  ✅ 올바른 패턴:
+    # None 필터링 방법 1 (권장)
+    baselines = [measure_time(p) for p in test_payloads]
+    valid_bl = [b for b in baselines if b is not None]
+    avg = sum(valid_bl) / len(valid_bl) if valid_bl else 5.0  # 폴백 값
+
+    # None 필터링 방법 2
+    def safe_avg(lst):
+        valid = [x for x in lst if x is not None and isinstance(x, (int, float))]
+        return sum(valid) / len(valid) if valid else 0.0
+
+  ✅ 타임아웃 측정 함수 안전 패턴:
+    def measure_time(payload):
+        try:
+            t0 = time.time()
+            r = s.get(url, params={param: payload}, timeout=15, verify=False)
+            return time.time() - t0
+        except Exception:
+            return None   # 실패 시 None 반환 (위의 필터링으로 처리됨)
+
+RULE #18: Python 코드 — requests.Response 객체에 len() 직접 호출 금지 (CRITICAL)
+  배경: requests.Response 는 __len__ 미구현 → TypeError: object of type 'Response' has no len()
+  ❌ 절대 금지:
+    r = requests.get(url)
+    size = len(r)         → TypeError
+    if len(r) > 1000:     → TypeError
+
+  ✅ 올바른 방법:
+    size = len(r.text)         → 응답 텍스트 길이 (str)
+    size = len(r.content)      → 응답 바이트 길이 (bytes)
+    size = int(r.headers.get("Content-Length", 0))   → Content-Length 헤더
+
+  예시:
+    ❌ threshold = len(r) > 500
+    ✅ threshold = len(r.text) > 500
+    ✅ threshold = len(r.content) > 500
+
+RULE #19: Python 코드 — 백슬래시 라인 연속 뒤에 공백 금지 (CRITICAL)
+  배경: 백슬래시(\\) 뒤에 공백이 오면 SyntaxError: unexpected character after line continuation character
+  ❌ 절대 금지: (백슬래시 뒤 공백)
+    payload = "SELECT * FROM users \\ 
+               WHERE id=1"        → SyntaxError
+    x = value1 + \\ 
+        value2                    → SyntaxError
+
+  ✅ 올바른 방법:
+    # 방법 1: 괄호로 줄 연속 (권장)
+    payload = ("SELECT * FROM users "
+               "WHERE id=1")
+    x = (value1 +
+         value2)
+    # 방법 2: 백슬래시 직후 즉시 줄바꿈 (공백 없음)
+    x = value1 + \\
+        value2
+
 
   ❌ 절대 금지: grep -P (Perl regex) — macOS 기본 grep에서 "invalid option -- P" 에러
   ✅ 대신 사용:
@@ -506,6 +567,63 @@ RULE #14: Python에서 HTTP 상태 코드 비교 — int에 'in' 금지
     ❌ grep -oP "href=\"([^\"]+)\"" index.html
     ✅ grep -oE 'href="[^"]+"' index.html | grep -oE '"[^"]+"' | tr -d '"'
     ✅ python3 -c "import re,sys; [print(m) for m in re.findall(r'href=\"([^\"]+)\"', sys.stdin.read())]" < index.html
+
+RULE #20: Python 코드 — dict 슬라이싱 금지 (CRITICAL)
+  배경: dict.fromkeys()는 dict를 반환하며 dict는 슬라이싱 불가 → KeyError: slice(None, 15, None)
+  ❌ 절대 금지:
+    dict.fromkeys(scripts)[:15]          → KeyError
+    dict.fromkeys(items)[0:5]            → KeyError
+
+  ✅ 올바른 방법:
+    list(dict.fromkeys(scripts))[:15]    → 중복 제거 후 슬라이싱
+    list(dict.fromkeys(items))[0:5]      → OK
+
+RULE #21: Python 코드 — 함수 반환값 누락 금지 + None f-string 포맷 금지 (CRITICAL)
+  배경1: 튜플을 반환해야 하는 함수가 except 블록에서 암묵적으로 None 반환 →
+         TypeError: cannot unpack non-iterable NoneType object
+  배경2: None 값에 f-string 포맷 지정자 사용 → TypeError: unsupported format string passed to NoneType
+
+  ❌ 절대 금지:
+    def test_raw(cond):
+        try:
+            ...
+            return (sz, is_true, blocked)
+        except Exception:
+            pass              # ← 암묵적 None 반환 → unpack 에러
+
+    t = None
+    print(f"{t:.3f}s")       # ← None에 :.3f 포맷 → TypeError
+
+  ✅ 올바른 방법:
+    def test_raw(cond):
+        try:
+            ...
+            return (sz, is_true, blocked)
+        except Exception:
+            return (0, False, True)    # ← 반드시 기본 튜플 반환
+
+    t = result if result is not None else 0.0
+    print(f"{t:.3f}s")                # ← None 확인 후 포맷
+
+RULE #22: Python 코드 — break/continue 는 반드시 루프 안에서만 사용 (CRITICAL)
+  배경: break/continue 가 for/while 루프 밖에 있으면 SyntaxError: 'break' outside loop
+  ❌ 절대 금지:
+    def check():
+        result = test()
+        if result:
+            break           # ← 루프 없음 → SyntaxError
+
+  ✅ 올바른 방법:
+    # break 대신 return 사용 (함수 내부):
+    def check():
+        result = test()
+        if result:
+            return result   # ← return 사용
+
+    # 루프 내에서만 break 사용:
+    for i in range(10):
+        if condition:
+            break           # ← OK, 루프 안에 있음
 
 === BOOLEAN ORACLE 필수 캘리브레이션 템플릿 (run_python 사용 시 복붙 필수) ===
 import requests, time, urllib3

@@ -6278,8 +6278,18 @@ class BingoTerminal:
                     _el4 = _ln4 - 1
                     if not (0 <= _el4 < len(_ls4)):
                         break
-                    _tl4 = _ls4[_el4]
-                    _ind4 = len(_tl4) - len(_tl4.lstrip()) if _tl4.strip() else 0
+                    # v6.2.41 FIX: 에러 라인 대신 가장 가까운 try: 의 들여쓰기 사용
+                    _try_i4 = -1
+                    for _k4 in range(_el4 - 1, max(-1, _el4 - 200), -1):
+                        if _k4 < len(_ls4) and _re.search(r'^\s*try\s*:', _ls4[_k4]):
+                            _try_i4 = _k4
+                            break
+                    if _try_i4 >= 0:
+                        _ts4 = _ls4[_try_i4]
+                        _ind4 = len(_ts4) - len(_ts4.lstrip())
+                    else:
+                        _tl4 = _ls4[_el4]
+                        _ind4 = len(_tl4) - len(_tl4.lstrip()) if _tl4.strip() else 0
                     _ls4.insert(_el4, ' ' * _ind4 + 'except Exception:')
                     _ls4.insert(_el4 + 1, ' ' * (_ind4 + 4) + 'pass')
                     _s4 = '\n'.join(_ls4)

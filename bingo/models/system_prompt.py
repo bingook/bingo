@@ -896,7 +896,6 @@ RULE #27: SQL 인젝션 데이터 추출 — sqli_autoexploit 반드시 사용 (
       "param": "q",
       "method": "GET",
       "base_value": "1",
-      "inject_value": "1",
       "dump_table": "users"
     }}
 

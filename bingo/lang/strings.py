@@ -7466,6 +7466,98 @@ _STRINGS.update({
         "zh": "[预执行静态模式修正已应用]",
         "en": "[Pre-execution static pattern correction applied]",
     },
+
+    # ── v6.2.53: 자동화 공격 모듈 다국어 키 ──────────────────────────────────────
+    "ae_lfi_found": {
+        "ko": "🗂  LFI 취약점 발견! {n}개 페이로드 성공",
+        "zh": "🗂  发现 LFI 漏洞！{n} 个载荷成功",
+        "en": "🗂  LFI vulnerability found! {n} payload(s) succeeded",
+    },
+    "ae_lfi_not_found": {
+        "ko": "🗂  LFI 취약점 미발견",
+        "zh": "🗂  未发现 LFI 漏洞",
+        "en": "🗂  No LFI vulnerability found",
+    },
+    "ae_jwt_cracked": {
+        "ko": "🔑 JWT 비밀키 크랙 성공: {secret}",
+        "zh": "🔑 JWT 密钥破解成功: {secret}",
+        "en": "🔑 JWT secret cracked: {secret}",
+    },
+    "ae_jwt_alg_none": {
+        "ko": "🔑 JWT alg:none 공격 성공!",
+        "zh": "🔑 JWT alg:none 攻击成功！",
+        "en": "🔑 JWT alg:none attack succeeded!",
+    },
+    "ae_jwt_not_found": {
+        "ko": "🔑 JWT 취약점 미발견",
+        "zh": "🔑 未发现 JWT 漏洞",
+        "en": "🔑 No JWT vulnerability found",
+    },
+    "ae_ssrf_found": {
+        "ko": "🌐 SSRF 취약점 발견! {n}개",
+        "zh": "🌐 发现 SSRF 漏洞！{n} 个",
+        "en": "🌐 SSRF vulnerability found! {n} endpoint(s)",
+    },
+    "ae_ssrf_not_found": {
+        "ko": "🌐 SSRF 직접 탐지 없음 — DNS callback 방식 수동 시도 권장",
+        "zh": "🌐 未直接检测到 SSRF — 建议手动尝试 DNS callback 方式",
+        "en": "🌐 No direct SSRF detected — DNS callback method recommended",
+    },
+    "ae_xss_found": {
+        "ko": "💉 XSS 취약점 발견! {n}개 페이로드 미이스케이프 반사",
+        "zh": "💉 发现 XSS 漏洞！{n} 个载荷未转义反射",
+        "en": "💉 XSS vulnerability found! {n} payload(s) reflected unescaped",
+    },
+    "ae_xss_not_found": {
+        "ko": "💉 XSS 취약점 미발견 (모든 페이로드 이스케이프 또는 미반사)",
+        "zh": "💉 未发现 XSS 漏洞（所有载荷均已转义或未反射）",
+        "en": "💉 No XSS found (all payloads escaped or not reflected)",
+    },
+    "ae_csrf_poc_saved": {
+        "ko": "🎭 CSRF PoC HTML 저장됨: {path}",
+        "zh": "🎭 CSRF PoC HTML 已保存: {path}",
+        "en": "🎭 CSRF PoC HTML saved: {path}",
+    },
+    "ae_csrf_protected": {
+        "ko": "🎭 CSRF 방어 탐지됨: {protections}",
+        "zh": "🎭 检测到 CSRF 防护: {protections}",
+        "en": "🎭 CSRF protection detected: {protections}",
+    },
+    "ae_deser_found": {
+        "ko": "💣 역직렬화 취약점 발견! ({lang})",
+        "zh": "💣 发现反序列化漏洞！({lang})",
+        "en": "💣 Deserialization vulnerability found! ({lang})",
+    },
+    "ae_deser_not_found": {
+        "ko": "💣 역직렬화 취약점 미발견",
+        "zh": "💣 未发现反序列化漏洞",
+        "en": "💣 No deserialization vulnerability found",
+    },
+    "ae_smuggling_found": {
+        "ko": "🚢 HTTP Smuggling 취약 의심! {type} 타이밍 차이={diff}s",
+        "zh": "🚢 疑似 HTTP 走私漏洞！{type} 时序差异={diff}s",
+        "en": "🚢 HTTP Smuggling suspected! {type} timing diff={diff}s",
+    },
+    "ae_smuggling_not_found": {
+        "ko": "🚢 HTTP Smuggling 미탐지",
+        "zh": "🚢 未检测到 HTTP 走私",
+        "en": "🚢 No HTTP Smuggling detected",
+    },
+    "ae_pp_found": {
+        "ko": "🧬 Prototype Pollution 취약점 발견!",
+        "zh": "🧬 发现 Prototype Pollution 漏洞！",
+        "en": "🧬 Prototype Pollution vulnerability found!",
+    },
+    "ae_pp_not_found": {
+        "ko": "🧬 Prototype Pollution 미탐지 (Node.js 앱에서만 유효)",
+        "zh": "🧬 未检测到 Prototype Pollution（仅适用于 Node.js 应用）",
+        "en": "🧬 No Prototype Pollution detected (only applicable for Node.js apps)",
+    },
+    "ae_saved": {
+        "ko": "💾 결과 저장됨: {path}",
+        "zh": "💾 结果已保存: {path}",
+        "en": "💾 Results saved: {path}",
+    },
 })
 
 

@@ -7182,6 +7182,21 @@ _STRINGS.update({
         "zh": "  基于错误注入: ❌ (EXTRACTVALUE/UPDATEXML 被拦截或不支持)",
         "en": "  Error-based injection: ❌ (EXTRACTVALUE/UPDATEXML blocked or unsupported)",
     },
+    "sqli_eb_fp": {
+        "ko": "  ⚠ 베이스라인 응답에 동일 패턴 존재 — 페이지 고유 구분자(오탐). 건너뜀.",
+        "zh": "  ⚠ 基准响应中已存在相同模式 — 页面固有分隔符(误报). 跳过.",
+        "en": "  ⚠ Error-based pattern found in baseline — page noise, not MySQL error. Skipping.",
+    },
+    "sqli_eb_verif_fail": {
+        "ko": "  ⚠ Error-based 검증 토큰 미탐지 — WAF가 실제로 차단 중. 건너뜀.",
+        "zh": "  ⚠ 错误注入验证令牌未被检测到 — WAF可能正在拦截. 跳过.",
+        "en": "  ⚠ Error-based verification token not found — WAF likely blocking. Skipping.",
+    },
+    "sqli_eb_sanity_fail": {
+        "ko": "  ⚠ Error-based 추출 결과 검증 실패 — DB 데이터가 아닌 페이지 내용 추출됨. Error-based 비활성화.",
+        "zh": "  ⚠ Error-based提取结果验证失败 — 提取的是页面内容而非数据库数据. 禁用Error-based.",
+        "en": "  ⚠ Error-based extraction sanity FAILED — results look like page content, not DB data. Disabling error-based method.",
+    },
     "sqli_stage26": {
         "ko": "\n=== STAGE 2.6: Time-Based 인젝션 탐지 ===",
         "zh": "\n=== STAGE 2.6: 时间盲注检测 ===",

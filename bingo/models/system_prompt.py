@@ -939,6 +939,29 @@ RULE #28: 변수명 충돌 방지 — requests.Session() 변수명 보호 (CRITI
         ...
     r = sess.post(url, data=data)  # sess 는 여전히 Session 객체
 
+RULE #29: requests.get()/post() 반환값 — 절대 unpack 금지 (CRITICAL)
+
+  ⛔ 절대 금지: sz, _ = sess.get(url, ...)      ← requests 는 Response 객체 1개만 반환
+  ⛔ 절대 금지: code, body = sess.post(url, ...) ← 동일
+  ⛔ 절대 금지: val, ok = requests.get(url, ...) ← 동일
+  ⛔ 절대 금지: a, b, c = sess.get(url, ...)    ← 동일
+  ──────────────────────────────────────────────────────────────
+  위 코드는 반드시 ValueError: too many values to unpack 를 발생시킨다.
+  requests.get()/post()/put()/delete()는 항상 Response 객체 단 1개를 반환한다.
+
+  ✅ 올바른 방법:
+    r = sess.get(url, ...)
+    sz = len(r.text)
+    ok = r.status_code == 200
+    body = r.text
+
+  ✅ 헬퍼 함수에서 튜플을 반환하는 경우는 헬퍼를 명시적으로 호출:
+    def req(val):
+        r = sess.get(url, params={param: val})
+        return len(r.text), r.status_code != 200
+    sz, blocked = req(payload)   # OK — 헬퍼 함수 호출
+    # sz, _ = sess.get(...)      # NG — 이렇게 쓰면 안 됨
+
 === WAF SQLi 우회 빠른 참조 (v6.2.5) ===
 차단된 함수 우회 순서:
 1. TOOL_CALL waf_sqli_db 호출 → 대안 목록 확인

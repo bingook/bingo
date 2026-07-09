@@ -7422,6 +7422,25 @@ _STRINGS.update({
         "zh": "⚠  pip install 失败 — 手动运行:",
         "en": "⚠  pip install failed — run manually:",
     },
+    # ── v6.2.43: aaaa/OOOO 반복 문자 감지 경고 ──────────────────────────────────
+    "sqli_repeat_char_warning": {
+        "ko": (
+            "⛔ [SQLI_EXTRACTION_FAILURE] 반복 문자 '{char}' 감지 — "
+            "커스텀 Boolean Oracle 추출 루프 오작동 (WAF가 SQL 함수 차단 또는 oracle 오보정). "
+            "커스텀 추출 루프를 즉시 중단하고 sqli_autoexploit TOOL_CALL 로 전환하라."
+        ),
+        "zh": (
+            "⛔ [SQLI_EXTRACTION_FAILURE] 检测到重复字符 '{char}' — "
+            "自定义 Boolean Oracle 提取循环故障 (WAF 屏蔽 SQL 函数或 Oracle 校准错误). "
+            "立即停止自定义提取循环，改用 sqli_autoexploit TOOL_CALL."
+        ),
+        "en": (
+            "⛔ [SQLI_EXTRACTION_FAILURE] Repeating char '{char}' detected — "
+            "Custom Boolean Oracle extraction loop is malfunctioning "
+            "(WAF blocking SQL functions or oracle miscalibration). "
+            "Stop all custom extraction loops immediately. Use sqli_autoexploit TOOL_CALL instead."
+        ),
+    },
 })
 
 

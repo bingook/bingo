@@ -4883,6 +4883,24 @@ class BingoTerminal:
                     f"--- output ---\n{_out}\n"
                     f"=== END TOOL_RESULT ==="
                 )
+
+                # ── v6.2.43: aaaa/OOOO 패턴 감지 — 커스텀 SQLi 추출 실패 안전망 ──────────
+                # run_python 출력에서 8자 이상 동일 문자 반복 감지
+                # → 커스텀 Boolean Oracle 루프가 오작동 중임을 의미
+                # → 모델 무관하게 강제 경고 주입 → sqli_autoexploit 전환 강제
+                if _tool_name == "run_python" and _out:
+                    import re as _re_aaaa
+                    _REPEAT_PAT = _re_aaaa.compile(r'([a-zA-Z?])\1{7,}')
+                    _repeat_found = _REPEAT_PAT.search(_out)
+                    if _repeat_found:
+                        _rep_char = _repeat_found.group(1)
+                        _warn_repeat = self.s.get("sqli_repeat_char_warning").format(char=_rep_char)
+                        self.console.print(f"[{THEME['error']}]{_warn_repeat}[/]")
+                        _result_str += (
+                            f"\n\n{_warn_repeat}"
+                        )
+                # ── 감지 끝 ────────────────────────────────────────────────────────────────
+
                 tool_results.append(_result_str)
 
             if tool_results:

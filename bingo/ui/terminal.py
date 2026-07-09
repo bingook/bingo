@@ -1,4 +1,17 @@
 from __future__ import annotations
+import warnings as _warnings_global
+# v6.2.52: prompt_toolkit sync prompt()가 asyncio 이벤트루프 충돌 시
+# coroutine 객체가 GC 시점에 RuntimeWarning을 발생시킴 — 전역 억제
+_warnings_global.filterwarnings(
+    "ignore",
+    message=r"coroutine.*was never awaited",
+    category=RuntimeWarning,
+)
+_warnings_global.filterwarnings(
+    "ignore",
+    message=r"Enable tracemalloc",
+    category=RuntimeWarning,
+)
 import os
 import sys
 import time

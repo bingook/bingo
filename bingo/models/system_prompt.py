@@ -625,6 +625,18 @@ RULE #22: Python 코드 — break/continue 는 반드시 루프 안에서만 사
         if condition:
             break           # ← OK, 루프 안에 있음
 
+RULE #23: sqli_autoexploit — Boolean/Error 모두 '?' 반환 시 time-based 자동 전환
+  배경: WAF가 SUBSTRING, HEX, EXTRACTVALUE 등 추출 함수를 모두 차단하면 Boolean/Error
+        방식은 모두 '?'를 반환한다. 이 경우 sqli_autoexploit v6.2.32는 자동으로
+        SLEEP 기반 시간 기반 추출로 전환한다.
+  ✅ 올바른 호출 (Boolean 실패해도 time-based가 자동 동작):
+    result = sqli_autoexploit(url=TARGET, param="id", base_value="1")
+    # STAGE 2.6에서 SLEEP 탐지 → Boolean/Error 실패 시 자동 time-based 사용
+  참고:
+    - 시간 기반 추출은 문자당 약 15~20초 소요 (이진탐색 적용)
+    - 도중에 중단하지 말 것 — 길어도 완료될 때까지 대기
+    - SLEEP(2) 차단 시 BENCHMARK(5000000,SHA1(1)) 자동 폴백
+
 === BOOLEAN ORACLE 필수 캘리브레이션 템플릿 (run_python 사용 시 복붙 필수) ===
 import requests, time, urllib3
 urllib3.disable_warnings()

@@ -5435,8 +5435,7 @@ class BingoTerminal:
                         fixed = ''.join(_ilr_new)
                     _applied_fix_names.append("ilr_override_guard_injected")
                     # fall-through: 나머지 검사 계속 진행 후 수정된 코드 반환
-                else:
-                    return ("__BLOCKED__:INFINITE_LOOP_RISK: for/range loop with TOP 1 query and no seen=set() will repeat same result forever", [])
+                # v6.2.44: __BLOCKED__ 제거 — 루프 차단 비활성화 (사용자 요청)
 
             # ── 0-B. 무한루프: while True + break 없음 ─────────────────────
             if _pre_re.search(r'\bwhile\s+True\s*:', fixed):
@@ -5447,8 +5446,7 @@ class BingoTerminal:
                     _after = fixed[_wt.end():]
                     _has_break = bool(_pre_re.search(r'\bbreak\b', _after))
                     _has_exit = bool(_pre_re.search(r'\b(sys\.exit|raise\s+\w+Error|return)\b', _after))
-                    if not _has_break and not _has_exit:
-                        return ("__BLOCKED__:INFINITE_LOOP_RISK: while True loop has no break/return/raise — will run forever", [])
+                    # v6.2.44: while True 차단 비활성화 (사용자 요청)
 
             # ── 0-C. UNION SQLi 커서 hex 폭발 방지 — _bingo_sqli_guard 주입 (v3.2.70) ─
             # 증상: UNION 반사 위치 오인으로 SQL 페이로드 문자열 자체를 추출 결과로 착각.
@@ -6742,21 +6740,7 @@ class BingoTerminal:
                     if _cur and _cur == _last_stripped:
                         _consec_count += 1
                         _loop_threshold = _MAX_CONSEC_SCAN if _is_scan_result_line(_cur) else _MAX_CONSEC_DUP
-                        if _consec_count >= _loop_threshold:
-                            _killed_reason = f"INFINITE_LOOP:{_cur[:60]}"
-                            with _lock:
-                                _lang_lp = getattr(self.config, "lang", "en")
-                                _lp_msg = {
-                                    "ko": f"🔁 무한루프 감지: '{_cur[:40]}' {_consec_count}회 반복 → 강제 종료",
-                                    "zh": f"🔁 检测到无限循环: '{_cur[:40]}' 重复{_consec_count}次 → 强制终止",
-                                    "en": f"🔁 Infinite loop: '{_cur[:40]}' repeated {_consec_count}x → KILLED",
-                                }.get(_lang_lp, f"🔁 Loop killed: '{_cur[:40]}'")
-                                self.console.print(f"[bold red]{_lp_msg}[/]")
-                            try:
-                                p.terminate()
-                            except Exception:
-                                pass
-                            break
+                        # v6.2.44: 반복 감지 시 강제 종료 비활성화 — 사용자 Ctrl+C 로 중단
                     else:
                         _consec_count = 0
                         _last_stripped = _cur
@@ -8376,28 +8360,7 @@ class BingoTerminal:
                             "⚡ Loop false-positive skipped: repeated '{name}' is WAF block response — not SQL data loop."
                         ).replace("{name}", _dup_val[:60])
                         self.console.print(f"[dim]{_waf_loop_fp_msg}[/]")
-                    else:
-                        _dup_msg = t("infinite_loop_warning", "⚠️  Infinite loop detected — '{name}' repeated {n}+ times.").replace("{name}", _dup_val).replace("{n}", "5")
-                        self.console.print(f"[bold red]{_dup_msg}[/]")
-                        _ip_block_hint += (
-                            f"\n[INFINITE_LOOP_DETECTED: same result '{_dup_val}' repeating]\n"
-                            "CRITICAL BUG IN YOUR SCRIPT: You are getting the same result in a loop!\n"
-                            "ROOT CAUSE: SELECT TOP 1 without pagination cursor always returns first row.\n"
-                            "MANDATORY FIX — Use cursor pagination:\n"
-                            "  seen = set()\n"
-                            "  last_hex = ''\n"
-                            "  while True:\n"
-                            "      if last_hex:\n"
-                            "          payload = f'AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55 AND name > {last_hex})'\n"
-                            "      else:\n"
-                            "          payload = 'AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55)'\n"
-                            "      result = extract(payload)\n"
-                            "      if not result or result in seen: break\n"
-                            "      seen.add(result)\n"
-                            "      last_hex = '0x' + result.encode().hex().upper()\n"
-                            "      print(result)\n"
-                            "STOP the current loop immediately and rewrite with this pattern.\n"
-                        )
+                    # v6.2.44: 반복 경고 메시지 비활성화 (사용자 요청)
 
             if _detected_blocks:
                 _wait_secs = 15

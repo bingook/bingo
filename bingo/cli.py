@@ -283,6 +283,8 @@ def _run_update(sl: dict, lang: str = "en") -> None:
             "fail_git":      "❌ git pull 실패 — 아래 명령어를 직접 실행하세요:",
             "fail_pip":      "❌ pip 업그레이드 실패 — 아래 명령어를 직접 실행하세요:",
             "fail_pypi":     "⚠  PyPI 버전 확인 실패 — 수동으로 업그레이드하세요:",
+            "pip_install":   "⚙  pip install -e . 실행 중...",
+            "pip_fail":      "⚠  pip install 실패 — 수동 실행:",
         },
         "zh": {
             "checking":      "📡 正在检查最新版本...",
@@ -296,6 +298,8 @@ def _run_update(sl: dict, lang: str = "en") -> None:
             "fail_git":      "❌ git pull 失败 — 请手动运行:",
             "fail_pip":      "❌ pip 升级失败 — 请手动运行:",
             "fail_pypi":     "⚠  无法检查 PyPI 版本 — 请手动升级:",
+            "pip_install":   "⚙  正在执行 pip install -e . ...",
+            "pip_fail":      "⚠  pip install 失败 — 手动运行:",
         },
         "en": {
             "checking":      "📡 Checking for latest version...",
@@ -309,6 +313,8 @@ def _run_update(sl: dict, lang: str = "en") -> None:
             "fail_git":      "❌ git pull failed — run manually:",
             "fail_pip":      "❌ pip upgrade failed — run manually:",
             "fail_pypi":     "⚠  Could not reach PyPI — upgrade manually:",
+            "pip_install":   "⚙  Running pip install -e . ...",
+            "pip_fail":      "⚠  pip install failed — run manually:",
         },
     }
     lb = _labels.get(lang, _labels["en"])
@@ -335,7 +341,7 @@ def _run_update(sl: dict, lang: str = "en") -> None:
                 check=True,
             )
             # git pull 후 editable install 재실행 — 실행 파일에 최신 코드 반영
-            console.print(f"[#4a4a4a]⚙  pip install -e . 실행 중...[/]")
+            console.print(f"[#4a4a4a]{lb['pip_install']}[/]")
             _pip_result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-e", ".", "-q"],
                 cwd=str(git_root),
@@ -343,7 +349,7 @@ def _run_update(sl: dict, lang: str = "en") -> None:
                 text=True,
             )
             if _pip_result.returncode != 0:
-                console.print(f"[#ff8800]⚠  pip install 실패 — 수동 실행:[/]")
+                console.print(f"[#ff8800]{lb['pip_fail']}[/]")
                 console.print(f"[#4a4a4a]  cd {git_root} && pip install -e .[/]")
             console.print(f"\n[#00ff41]{lb['done']}[/]")
         except subprocess.CalledProcessError:

@@ -9035,6 +9035,157 @@ class BingoTerminal:
                 if isinstance(_unconf_msg, dict) else str(_unconf_msg)
             self.console.print(f"[#ffaa00]{_unconf_str}[/]")
 
+    def _render_hacker_report(self, md_text: str, target: str) -> None:
+        """마크다운 보고서를 해커 스타일 터미널 UI로 렌더링한다."""
+        import re
+        from rich.markup import escape as _esc
+        from rich.rule import Rule
+
+        _W = 66   # 전체 너비
+
+        # ── 심각도 색상 맵 ─────────────────────────────────────────────
+        _sev_colors = {
+            "CRITICAL":  "#ff1744",
+            "Critical":  "#ff1744",
+            "HIGH":      "#ffd600",
+            "High":      "#ffd600",
+            "MEDIUM":    "#ff8f00",
+            "Medium":    "#ff8f00",
+            "LOW":       "#00e5ff",
+            "Low":       "#00e5ff",
+            "INFO":      "#ce93d8",
+            "Info":      "#ce93d8",
+        }
+
+        def _sev_color(line: str) -> str:
+            """심각도 키워드에 색상을 입힌 Rich markup 라인 반환."""
+            for kw, col in _sev_colors.items():
+                if kw in line:
+                    line = line.replace(kw, f"[{col}]{kw}[/]")
+            return line
+
+        def _section_header(title: str, color: str) -> None:
+            self.console.print(
+                f"\n[{color}]┌─ {title} {'─'*max(1, _W-4-len(title))}┐[/]"
+            )
+
+        def _section_footer(color: str) -> None:
+            self.console.print(f"[{color}]└{'─'*(_W-1)}┘[/]")
+
+        def _body_line(line: str, color: str) -> None:
+            safe = _esc(line)
+            safe = _sev_color(safe)
+            _pad = max(0, _W - 4 - len(line))
+            self.console.print(f"[{color}]│[/]  {safe}")
+
+        # ── 보고서 상단 배너 ───────────────────────────────────────────
+        _now = __import__("datetime").datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
+        _safe_target = _esc(target[:_W - 20])
+        self.console.print(
+            f"\n[{THEME['primary']}]╔{'═'*_W}╗[/]\n"
+            f"[{THEME['primary']}]║[/]"
+            f"  [{THEME['primary']}] ████████╗ ██████╗ ██████╗ ████████╗[/]"
+            + " " * max(0, _W - 42)
+            + f"[{THEME['primary']}]║[/]\n"
+            f"[{THEME['primary']}]║[/]"
+            f"  [{THEME['primary']}]    ██   ██      ██    ██    ██     [/]"
+            + " " * max(0, _W - 42)
+            + f"[{THEME['primary']}]║[/]\n"
+            f"[{THEME['primary']}]║[/]"
+            f"  [{THEME['primary']}]    ██   ██████  ██████     ██     [/]"
+            + " " * max(0, _W - 42)
+            + f"[{THEME['primary']}]║[/]\n"
+            f"[{THEME['primary']}]║[/]"
+            f"  [{THEME['secondary']}]  BINGO PENETRATION TEST REPORT  [/]"
+            + " " * max(0, _W - 42)
+            + f"[{THEME['primary']}]║[/]\n"
+            f"[{THEME['primary']}]╠{'═'*_W}╣[/]\n"
+            f"[{THEME['primary']}]║[/]  [{THEME['dim']}]TARGET : [/][{THEME['accent']}]{_safe_target}[/]\n"
+            f"[{THEME['primary']}]║[/]  [{THEME['dim']}]DATE   : {_now}[/]\n"
+            f"[{THEME['primary']}]╚{'═'*_W}╝[/]"
+        )
+
+        # ── 섹션별 파싱 & 출력 ─────────────────────────────────────────
+        _section_re = re.compile(r'^#{1,3}\s+(.+)$')
+        _bullet_re  = re.compile(r'^[-*]\s+(.+)$')
+
+        lines = md_text.splitlines()
+        cur_section = None
+        cur_color   = THEME["primary"]
+        section_buf: list[str] = []
+
+        _section_colors: dict[str, str] = {
+            # 영어
+            "summary":              THEME["secondary"],
+            "vulnerabilities":      "#ffd600",
+            "vuln":                 "#ffd600",
+            "evidence":             "#ff8f00",
+            "payload":              "#ff8f00",
+            "credentials":          "#ff1744",
+            "credential":           "#ff1744",
+            "recommended":          "#00e5ff",
+            "fix":                  "#00e5ff",
+            "remediation":          "#00e5ff",
+            # 한국어
+            "요약":                 THEME["secondary"],
+            "발견된 취약점":         "#ffd600",
+            "취약점":               "#ffd600",
+            "증거":                 "#ff8f00",
+            "페이로드":             "#ff8f00",
+            "자격증명":             "#ff1744",
+            "권고":                 "#00e5ff",
+            "조치":                 "#00e5ff",
+            # 중국어
+            "摘要":                 THEME["secondary"],
+            "漏洞":                 "#ffd600",
+            "证据":                 "#ff8f00",
+            "凭据":                 "#ff1744",
+            "修复":                 "#00e5ff",
+        }
+
+        def _flush_section() -> None:
+            if not section_buf:
+                return
+            for ln in section_buf:
+                _body_line(ln, cur_color)
+            _section_footer(cur_color)
+
+        for raw_line in lines:
+            line = raw_line.rstrip()
+            m_sec = _section_re.match(line)
+            if m_sec:
+                _flush_section()
+                section_buf = []
+                cur_section = m_sec.group(1)
+                # 색상 결정
+                _lc = cur_section.lower()
+                cur_color = THEME["dim"]
+                for _kw, _col in _section_colors.items():
+                    if _kw in _lc:
+                        cur_color = _col
+                        break
+                _section_header(cur_section, cur_color)
+            elif line.startswith("---") or line.startswith("==="):
+                # Markdown 구분선 → 시각적 Rule
+                self.console.print(f"[{THEME['dim']}]{'─'*_W}[/]")
+            elif not line.strip():
+                if section_buf:
+                    section_buf.append("")
+            else:
+                # 불릿 처리
+                m_bul = _bullet_re.match(line)
+                display = f"  ▸ {m_bul.group(1)}" if m_bul else line
+                section_buf.append(display)
+
+        _flush_section()
+
+        # ── 보고서 푸터 ────────────────────────────────────────────────
+        self.console.print(
+            f"\n[{THEME['dim']}]{'═'*_W}[/]\n"
+            f"[{THEME['dim']}]  END OF REPORT  ·  generated by bingo[/]\n"
+            f"[{THEME['dim']}]{'═'*_W}[/]"
+        )
+
     def _auto_generate_report(self) -> None:
         """작업 완료/중단 시 지금까지 발견한 내용을 자동으로 마크다운 보고서로 저장."""
         from ..models.registry import ModelRegistry
@@ -9164,15 +9315,26 @@ class BingoTerminal:
 
         temp_messages = [self._get_system_message("")] + self.history[-8:] + [prompt_msg]
 
-        self.console.print(Rule(
-            f"[bold green]📋 {self.s.get('report_generating', 'Generating report')}[/bold green]",
-            style="green"
-        ))
+        # ── v6.2.74: 해커 스타일 보고서 생성 헤더 ──────────────────────
+        _gen_label = self.s.get('report_generating', 'Generating Report')
+        _rpt_header = (
+            f"\n[{THEME['dim']}]╔{'═'*60}╗[/]\n"
+            f"[{THEME['dim']}]║[/]  [{THEME['primary']}]▌ BINGO PENTEST REPORT GENERATOR[/]"
+            + " " * 22 + f"[{THEME['dim']}]║[/]\n"
+            f"[{THEME['dim']}]║[/]  [{THEME['dim']}]target : {target[:52]}[/]"
+            + " " * max(0, 52 - len(target)) + f"[{THEME['dim']}]║[/]\n"
+            f"[{THEME['dim']}]╚{'═'*60}╝[/]"
+        )
+        self.console.print(_rpt_header)
 
         try:
             model = ModelRegistry.build(model_cfg)
             full = ""
-            self.console.print(f"\n[{THEME['secondary']}]bingo[/] [{THEME['dim']}]▸[/]", end=" ")
+            _now_r = datetime.now().strftime("%H:%M:%S")
+            self.console.print(
+                f"\n[{THEME['dim']}]╔═[/][{THEME['secondary']}][REPORT GEN][/]"
+                f"[{THEME['dim']}]══ {_now_r} ══▶[/]"
+            )
 
             with Live(console=self.console, refresh_per_second=15, transient=True) as live:
                 from rich.text import Text as _Text
@@ -9187,39 +9349,24 @@ class BingoTerminal:
 
             if full.strip():
                 self.console.print()
-                from rich.markup import escape as _esc
-                from rich.panel import Panel as _Panel
-                self.console.print(_Panel(
-                    _esc(full.strip()),
-                    title=f"[bold green]📋 {self.s.get('report_saved', 'Report')}[/bold green]",
-                    border_style="green",
-                    padding=(1, 2),
-                ))
+                # ── 해커 스타일 보고서 본문 출력 ─────────────────────────
+                self._render_hacker_report(full.strip(), target)
+
                 # 파일로 저장
                 report_path.write_text(full.strip(), encoding="utf-8")
                 _rp_str   = str(report_path.absolute())
-                _ok_label = self.s.get("report_save_ok",   "💾 REPORT SAVED SUCCESSFULLY")
-                _pt_label = self.s.get("report_save_path", "PATH")
-                _title_text = f"  {_ok_label}"
-                _path_text  = f"  {_pt_label}: {_rp_str}"
-                _box_w  = max(len(_title_text), len(_path_text)) + 4
-                _inner  = _box_w - 2
-                _top    = "╔" + "═" * _inner + "╗"
-                _mid    = "╠" + "═" * _inner + "╣"
-                _bot    = "╚" + "═" * _inner + "╝"
-                _pad_t  = _inner - len(_title_text)
-                _title_row = "║" + _title_text + " " * _pad_t + "║"
+                _ok_label = self.s.get("report_save_ok",   "REPORT SAVED SUCCESSFULLY")
+                _now_ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                _w = 64
                 self.console.print(
-                    f"\n[{THEME['success']}]"
-                    f"{_top}\n"
-                    f"{_title_row}\n"
-                    f"{_mid}\n"
-                    f"║  {_pt_label}: [bold]{_rp_str}[/bold]\n"
-                    f"{_bot}"
-                    f"[/]\n"
-                )
-                self.console.print(
-                    f"[{THEME['success']}]  Full path: [bold white]{report_path.absolute()}[/bold white][/]\n"
+                    f"\n[{THEME['success']}]╔{'═'*_w}╗[/]\n"
+                    f"[{THEME['success']}]║[/]  [{THEME['success']}]✔ {_ok_label}[/]"
+                    + " " * max(0, _w - len(f"  ✔ {_ok_label}") - 1)
+                    + f"[{THEME['success']}]║[/]\n"
+                    f"[{THEME['success']}]╠{'═'*_w}╣[/]\n"
+                    f"[{THEME['success']}]║[/]  [{THEME['dim']}]PATH : [/][bold white]{_rp_str}[/bold white]\n"
+                    f"[{THEME['success']}]║[/]  [{THEME['dim']}]TIME : {_now_ts}[/]\n"
+                    f"[{THEME['success']}]╚{'═'*_w}╝[/]\n"
                 )
                 # ── 보고서 직후 인터랙티브 다음 단계 선택지 표시 ────
                 self._suggest_next_steps()
@@ -9240,9 +9387,10 @@ class BingoTerminal:
                 _fe_done_str = _fe_done.get(_lang_fe, _fe_done.get("en", "📊 Findings JSON Saved")) \
                     if isinstance(_fe_done, dict) else str(_fe_done)
                 self.console.print(
-                    f"\n[#00d4aa]{_fe_done_str}:[/]\n"
-                    f"[bold white]  {_fe_path.absolute()}[/bold white]\n"
-                    f"[#4a4a4a]  {_fe_sum}[/]"
+                    f"\n[{THEME['secondary']}]┌─ {_fe_done_str} {'─'*max(1,44-len(_fe_done_str))}┐[/]\n"
+                    f"[{THEME['secondary']}]│[/]  [{THEME['dim']}]{_fe_sum}[/]\n"
+                    f"[{THEME['secondary']}]│[/]  [bold white]{_fe_path.absolute()}[/bold white]\n"
+                    f"[{THEME['secondary']}]└{'─'*50}┘[/]"
                 )
         except Exception:
             pass
@@ -9398,30 +9546,29 @@ class BingoTerminal:
             # ── 출력 ──────────────────────────────────────────────────
             from rich.markup import escape as _esc
 
-            # 요약 출력
+            # ── 요약 출력 (해커 스타일) ────────────────────────────────
             if summary_lines:
                 summary_text = " ".join(summary_lines[:3])
-                self.console.print(_Panel(
-                    _esc(summary_text),
-                    title=f"[{THEME['dim']}]{_summary_label}[/]",
-                    border_style=THEME["dim"],
-                    padding=(0, 2),
-                ))
+                self.console.print(
+                    f"\n[{THEME['dim']}]┌─ {_summary_label} {'─'*max(1,50-len(_summary_label))}┐[/]"
+                )
+                for _sl in summary_text.split(". ")[:3]:
+                    if _sl.strip():
+                        self.console.print(f"[{THEME['dim']}]│[/]  {_esc(_sl.strip())}")
+                self.console.print(f"[{THEME['dim']}]└{'─'*54}┘[/]")
 
             if options:
-                # 선택지 테이블
-                tbl = _Table(
-                    title=f"[bold cyan]{_options_label}[/bold cyan]",
-                    border_style="cyan",
-                    show_header=False,
-                    padding=(0, 1),
+                # ── 선택지 해커 스타일 박스 ──────────────────────────
+                _W2 = 58
+                self.console.print(
+                    f"\n[{THEME['accent']}]╔═ {_options_label} {'═'*max(1,_W2-4-len(_options_label))}╗[/]"
                 )
-                tbl.add_column("No", style="bold cyan", width=4, justify="right")
-                tbl.add_column("Action", style="white")
                 for i, opt in enumerate(options, 1):
-                    tbl.add_row(str(i), _esc(opt))
-                self.console.print(tbl)
-                self.console.print()
+                    _opt_str = _esc(opt[:_W2-10])
+                    self.console.print(
+                        f"[{THEME['accent']}]║[/]  [{THEME['primary']}][{i}][/]  {_opt_str}"
+                    )
+                self.console.print(f"[{THEME['accent']}]╚{'═'*_W2}╝[/]")
 
                 # ── 번호 입력 대기 ────────────────────────────────────
                 _prompt_txt = _s.get(
@@ -9429,7 +9576,7 @@ class BingoTerminal:
                     "Enter number + Enter (0 = exit, other = type freely)"
                 )
                 self.console.print(
-                    f"[bold cyan]▶[/bold cyan] [{THEME['dim']}]{_prompt_txt}[/]"
+                    f"\n[{THEME['accent']}]┌─▶[/] [{THEME['dim']}]{_prompt_txt}[/]"
                 )
                 self.console.print()
 
@@ -9476,10 +9623,11 @@ class BingoTerminal:
                     # 숫자가 아니면 그대로 입력으로 처리 (메뉴에서 온 입력 → 침투테스트 강제)
                     self._send_message(raw, _force_pentest=True)
             else:
-                # 파싱 실패 — 원문 그대로 패널로 표시
-                self.console.print(_Panel(
+                # 파싱 실패 — 원문 그대로 해커 스타일 박스로 표시
+                from rich.panel import Panel as _FallbackPanel
+                self.console.print(_FallbackPanel(
                     _esc(full.strip()),
-                    border_style="cyan",
+                    border_style=THEME["accent"],
                     padding=(1, 2),
                 ))
                 self.console.print()

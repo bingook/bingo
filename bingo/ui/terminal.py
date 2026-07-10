@@ -599,17 +599,33 @@ class BingoTerminal:
         except Exception:
             _db_count = 0
         _total = _hs_count + 6 + 5 + _db_count
-        # ── v6.2.74: 해커 스타일 상태 박스 ──────────────────────────
-        _w = 54
+        # ── v6.2.76: 해커 스타일 상태 박스 (패딩 버그 수정) ─────────
+        # Rich 마크업을 포함한 문자열에 :<N 포맷을 쓰면 마크업 태그 길이까지
+        # 포함해서 패딩을 계산하므로 우측 테두리가 밀린다.
+        # → 시각적 길이(plain text)로 패딩을 별도 계산한다.
+        _CONTENT_W = 42          # │ 안쪽 콘텐츠 최대 폭 (시각적 문자 수)
+        _w = _CONTENT_W + 12     # ┌─ 전체 박스 너비 = 내용(42) + 레이블(10) + 여백(2)
         _border_c = THEME["dim"]
         _k = THEME["dim"]
-        _v_model  = f"[{THEME['secondary']}]{_model_name}[/]"
-        _v_lang   = f"[{THEME['accent']}]{lang_label}[/]"
-        _v_skills = f"[{THEME['success']}]{_total} ready[/]"
+
+        def _status_row(label: str, value_plain: str, value_color: str) -> None:
+            """│  label : [color]value[/]  패딩  │  — 우측 테두리 정렬 보장."""
+            _prefix = f"  {label} : "          # 시각적 앞부분 (공백 포함)
+            _val_display = value_plain[:_CONTENT_W]
+            _pad = " " * max(0, _CONTENT_W - len(_val_display))
+            self.console.print(
+                f"  [{_border_c}]│[/]"
+                f"[{_k}]{_prefix}[/]"
+                f"[{value_color}]{_val_display}[/]"
+                f"{_pad}"
+                f"[{_border_c}]│[/]"
+            )
+
+        _skills_str = f"{_total} ready"
         self.console.print(f"  [{_border_c}]┌{'─'*_w}┐[/]")
-        self.console.print(f"  [{_border_c}]│[/]  [{_k}]model  :[/] {_v_model:<40}[{_border_c}]│[/]")
-        self.console.print(f"  [{_border_c}]│[/]  [{_k}]lang   :[/] {_v_lang:<40}[{_border_c}]│[/]")
-        self.console.print(f"  [{_border_c}]│[/]  [{_k}]skills :[/] {_v_skills:<40}[{_border_c}]│[/]")
+        _status_row("model ", _model_name,     THEME["secondary"])
+        _status_row("lang  ", lang_label,       THEME["accent"])
+        _status_row("skills", _skills_str,      THEME["success"])
         self.console.print(f"  [{_border_c}]└{'─'*_w}┘[/]\n")
         # 네트워크 환경 표시
         import time as _t
@@ -8913,13 +8929,16 @@ class BingoTerminal:
         if not finding:
             return
 
-        # ── v6.2.74: 취약점 알림 박스 (해커 스타일) ────────────────────
+        # ── v6.2.76: 취약점 알림 박스 (Rich Panel — 자동 너비 정렬) ──
+        # len() 패딩 대신 Rich Panel을 사용해 이모지/한자 폭 오계산 방지
+        from rich.panel import Panel as _AlertPanel
+        from rich.markup import escape as _alert_esc
         _sev_map = {
-            "CRITICAL": ("#ff1744", "▓▓▓", "██ CRITICAL ██"),
-            "HIGH":     ("#ffd600", "▒▒▒", "▲▲ HIGH ▲▲"),
+            "CRITICAL": ("#ff1744", "CRITICAL"),
+            "HIGH":     ("#ffd600", "HIGH"),
         }
-        _sev_color, _sev_fill, _sev_label = _sev_map.get(
-            finding.severity, ("#ffd600", "░░░", finding.severity)
+        _sev_color, _sev_label = _sev_map.get(
+            finding.severity, ("#ffd600", finding.severity)
         )
         _fe_title = self.s.get(
             "fe_finding_detected",
@@ -8928,19 +8947,18 @@ class BingoTerminal:
         _fe_title_str = _fe_title.get(_lang, _fe_title.get("en", "Finding Detected")) \
             if isinstance(_fe_title, dict) else str(_fe_title)
 
-        _w = 58
-        self.console.print(f"\n[{_sev_color}]╔{'═'*_w}╗[/]")
-        self.console.print(
-            f"[{_sev_color}]║[/]  [{_sev_color}]⚡ {_sev_label}  —  {_fe_title_str}[/]"
-            + " " * max(0, _w - len(f"  ⚡ {_sev_label}  —  {_fe_title_str}") - 1)
-            + f"[{_sev_color}]║[/]"
+        _vuln_body = (
+            f"[{_sev_color}]! {_sev_label}[/]  —  {_fe_title_str}\n"
+            f"[{THEME['dim']}]ID   :[/] {_alert_esc(finding.id)}\n"
+            f"[{THEME['dim']}]Type :[/] [{_sev_color}]{_alert_esc(finding.vuln_type)}[/]"
         )
-        self.console.print(
-            f"[{_sev_color}]║[/]  [{THEME['dim']}]ID: {finding.id}  │  Type: {finding.vuln_type}[/]"
-            + " " * max(0, _w - len(f"  ID: {finding.id}  │  Type: {finding.vuln_type}") - 1)
-            + f"[{_sev_color}]║[/]"
-        )
-        self.console.print(f"[{_sev_color}]╚{'═'*_w}╝[/]")
+        self.console.print()
+        self.console.print(_AlertPanel(
+            _vuln_body,
+            border_style=_sev_color,
+            padding=(0, 2),
+            width=62,
+        ))
 
         # ── XSS URL 탐지 → Playwright 자동 검증 ──────────────────────
         if finding.vuln_type == "xss":
@@ -9078,32 +9096,23 @@ class BingoTerminal:
             _pad = max(0, _W - 4 - len(line))
             self.console.print(f"[{color}]│[/]  {safe}")
 
-        # ── 보고서 상단 배너 ───────────────────────────────────────────
+        # ── 보고서 상단 배너 (v6.2.76: Rich Panel로 자동 정렬) ────────
+        from rich.panel import Panel as _RptPanel
         _now = __import__("datetime").datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-        _safe_target = _esc(target[:_W - 20])
-        self.console.print(
-            f"\n[{THEME['primary']}]╔{'═'*_W}╗[/]\n"
-            f"[{THEME['primary']}]║[/]"
-            f"  [{THEME['primary']}] ████████╗ ██████╗ ██████╗ ████████╗[/]"
-            + " " * max(0, _W - 42)
-            + f"[{THEME['primary']}]║[/]\n"
-            f"[{THEME['primary']}]║[/]"
-            f"  [{THEME['primary']}]    ██   ██      ██    ██    ██     [/]"
-            + " " * max(0, _W - 42)
-            + f"[{THEME['primary']}]║[/]\n"
-            f"[{THEME['primary']}]║[/]"
-            f"  [{THEME['primary']}]    ██   ██████  ██████     ██     [/]"
-            + " " * max(0, _W - 42)
-            + f"[{THEME['primary']}]║[/]\n"
-            f"[{THEME['primary']}]║[/]"
-            f"  [{THEME['secondary']}]  BINGO PENETRATION TEST REPORT  [/]"
-            + " " * max(0, _W - 42)
-            + f"[{THEME['primary']}]║[/]\n"
-            f"[{THEME['primary']}]╠{'═'*_W}╣[/]\n"
-            f"[{THEME['primary']}]║[/]  [{THEME['dim']}]TARGET : [/][{THEME['accent']}]{_safe_target}[/]\n"
-            f"[{THEME['primary']}]║[/]  [{THEME['dim']}]DATE   : {_now}[/]\n"
-            f"[{THEME['primary']}]╚{'═'*_W}╝[/]"
+        _safe_target = _esc(target[:55])
+        _banner_body = (
+            f"[{THEME['primary']}]BINGO PENETRATION TEST REPORT[/]\n"
+            f"[{THEME['dim']}]{'─'*52}[/]\n"
+            f"[{THEME['dim']}]TARGET :[/] [{THEME['accent']}]{_safe_target}[/]\n"
+            f"[{THEME['dim']}]DATE   :[/] {_now}"
         )
+        self.console.print()
+        self.console.print(_RptPanel(
+            _banner_body,
+            border_style=THEME["primary"],
+            padding=(0, 2),
+            width=_W + 4,
+        ))
 
         # ── 섹션별 파싱 & 출력 ─────────────────────────────────────────
         _section_re = re.compile(r'^#{1,3}\s+(.+)$')

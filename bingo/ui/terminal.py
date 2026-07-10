@@ -108,18 +108,22 @@ def _decode_response(resp) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-# ── 색상 팔레트 (해커 그린 테마) ──────────────────────────────────
+# ── 색상 팔레트 (해커 그린 테마 v6.2.74) ─────────────────────────
 THEME = {
-    "primary":   "#00ff41",   # 매트릭스 그린
-    "secondary": "#00d4aa",   # 시안
-    "accent":    "#ff6b35",   # 오렌지 (강조)
-    "dim":       "#4a4a4a",
+    "primary":   "#00ff41",   # 매트릭스 그린 (메인 텍스트)
+    "secondary": "#00d4aa",   # 민트/틸 (서브타이틀, 보조)
+    "accent":    "#00e5ff",   # 사이버 시안 (강조, 툴 이름)
+    "dim":       "#546e7a",   # 다크 그레이 (흐린 텍스트)
+    "border":    "#1b3a1b",   # 다크 그린 보더
     "user_bg":   "#0d1117",
     "ai_bg":     "#0d1117",
-    "border":    "#00ff41",
-    "error":     "#ff3333",
-    "warn":      "#ffcc00",
-    "success":   "#00ff41",
+    "error":     "#ff1744",   # 크리티컬 레드
+    "warn":      "#ffd600",   # 네온 옐로우
+    "success":   "#00ff41",   # 성공 그린
+    "info":      "#ce93d8",   # 라이트 퍼플 (정보)
+    "critical":  "#ff1744",   # CRITICAL 취약점
+    "high":      "#ffd600",   # HIGH 취약점
+    "low":       "#00e5ff",   # LOW 취약점
 }
 
 BANNER = r"""
@@ -134,8 +138,11 @@ BANNER = r"""
 """
 
 PT_STYLE = PTStyle.from_dict({
-    "": "#00ff41",
-    "prompt": "#00ff41 bold",
+    "":              "#00ff41",
+    "prompt":        "#00ff41 bold",
+    "prompt.corner": "#546e7a",   # ┌─ 꺾쇠
+    "prompt.target": "#00e5ff",   # 타겟 URL (시안)
+    "prompt.arrow":  "#00ff41 bold",  # └─▶
 })
 
 
@@ -582,9 +589,8 @@ class BingoTerminal:
         from bingo import __version__ as _bingo_ver
         self.console.print(BANNER.replace("{ver}", _bingo_ver))
         model_cfg = self.config.get_active_model_config()
-        status = f"[{THEME['secondary']}]{model_cfg.display_name()}[/]" if model_cfg else f"[{THEME['warn']}]no model[/]"
+        _model_name = model_cfg.display_name() if model_cfg else "no model"
         lang_label = SUPPORTED_LANGS.get(self.config.lang, self.config.lang)
-        # 전체 스킬 수 (hack-skills 102 + 내장 6 + local 5 + DB 235)
         _hs_dir = Path(__file__).parent.parent / "skills" / "hack-skills"
         _hs_count = sum(1 for d in _hs_dir.iterdir() if d.is_dir() and (d / "SKILL.md").exists()) if _hs_dir.exists() else 0
         try:
@@ -593,12 +599,19 @@ class BingoTerminal:
         except Exception:
             _db_count = 0
         _total = _hs_count + 6 + 5 + _db_count
-        self.console.print(
-            f"  [{THEME['dim']}]lang:[/] {lang_label}   "
-            f"[{THEME['dim']}]model:[/] {status}   "
-            f"[{THEME['dim']}]skills:[/] [{THEME['success']}]{_total} ready[/]\n"
-        )
-        # 네트워크 환경 표시 (VPN 감지 결과 — 백그라운드 조회 완료 대기 최대 2s)
+        # ── v6.2.74: 해커 스타일 상태 박스 ──────────────────────────
+        _w = 54
+        _border_c = THEME["dim"]
+        _k = THEME["dim"]
+        _v_model  = f"[{THEME['secondary']}]{_model_name}[/]"
+        _v_lang   = f"[{THEME['accent']}]{lang_label}[/]"
+        _v_skills = f"[{THEME['success']}]{_total} ready[/]"
+        self.console.print(f"  [{_border_c}]┌{'─'*_w}┐[/]")
+        self.console.print(f"  [{_border_c}]│[/]  [{_k}]model  :[/] {_v_model:<40}[{_border_c}]│[/]")
+        self.console.print(f"  [{_border_c}]│[/]  [{_k}]lang   :[/] {_v_lang:<40}[{_border_c}]│[/]")
+        self.console.print(f"  [{_border_c}]│[/]  [{_k}]skills :[/] {_v_skills:<40}[{_border_c}]│[/]")
+        self.console.print(f"  [{_border_c}]└{'─'*_w}┘[/]\n")
+        # 네트워크 환경 표시
         import time as _t
         for _ in range(20):
             if self._net_env:
@@ -611,11 +624,14 @@ class BingoTerminal:
     def _print_status_bar(self) -> None:
         model_cfg = self.config.get_active_model_config()
         name = model_cfg.display_name() if model_cfg else "—"
-        now = datetime.now().strftime("%H:%M")
+        now = datetime.now().strftime("%H:%M:%S")
+        _target = self._agent_state.get("target", "") if hasattr(self, "_agent_state") else ""
+        _target_str = f" ◈ [{THEME['accent']}]{_target}[/]" if _target else ""
         self.console.print(
             Rule(
-                f"[{THEME['dim']}]{name}  ·  {now}[/]",
+                f"[{THEME['dim']}]⬡ {name}[/]{_target_str}[{THEME['dim']}]  {now}[/]",
                 style=THEME["dim"],
+                characters="─",
             )
         )
 
@@ -809,19 +825,34 @@ class BingoTerminal:
                 self._agent_stop_flag.clear()
 
     def _get_input(self) -> str:
-        model_cfg = self.config.get_active_model_config()
-        model_name = model_cfg.display_name() if model_cfg else "no-model"
+        # ── v6.2.74: 해커 스타일 프롬프트 ──────────────────────────
+        _target = ""
+        if hasattr(self, "_agent_state"):
+            _t = self._agent_state.get("target", "")
+            if _t:
+                # URL에서 도메인만 추출
+                import re as _rp
+                _m = _rp.match(r"https?://([^/]+)", _t)
+                _target = _m.group(1) if _m else _t
+        _target_part = (
+            f'<style bg="#0d1f2d" fg="#00e5ff">─[{_target}]</style>'
+            if _target else ""
+        )
+        _prompt_html = HTML(
+            f'<style fg="#546e7a">┌─</style>'
+            f'<style fg="#00ff41" bg="#0a1a0a"><b>[bingo]</b></style>'
+            f'{_target_part}'
+            f'<style fg="#546e7a">─▶</style> '
+        )
         try:
             return self._session.prompt(
-                HTML(f'<ansigreen><b>❯</b></ansigreen> '),
+                _prompt_html,
                 style=PT_STYLE,
             )
         except RuntimeError:
             # v6.0.3: Python 3.12 + prompt_toolkit asyncio 충돌
-            # 장시간 에이전트 루프 후 asyncio.run() cannot be called from a running event loop
-            # → input() 폴백으로 크래시 방지
             import sys as _sys
-            _sys.stdout.write("❯ ")
+            _sys.stdout.write("┌─[bingo]─▶ ")
             _sys.stdout.flush()
             return input()
 
@@ -2759,7 +2790,12 @@ class BingoTerminal:
         full = ""
         _interrupted = False  # Ctrl+C로 스트림이 중단됐는지 여부
 
-        self.console.print(f"\n[{THEME['secondary']}]bingo[/] [{THEME['dim']}]▸[/]", end=" ")
+        # ── v6.2.74: 해커 스타일 AI 응답 헤더 ──────────────────────
+        _now_str = datetime.now().strftime("%H:%M:%S")
+        self.console.print(
+            f"\n[{THEME['dim']}]╔═[/][{THEME['secondary']}][BINGO][/]"
+            f"[{THEME['dim']}]══ {_now_str} ══▶[/]"
+        )
 
         # 스트리밍 중: 코드 블록 접힌 상태로 실시간 표시
         with Live(console=self.console, refresh_per_second=20, transient=True) as live:
@@ -4793,11 +4829,14 @@ class BingoTerminal:
                     )
                     continue
 
-                # 도구 실행
+                # ── v6.2.74: 도구 실행 해커 스타일 헤더 ───────────────
+                _args_preview = str(_tool_args)[:100]
                 self.console.print(
-                    f"\n[{THEME['secondary']}]🔧 TOOL_CALL:[/] "
-                    f"[{THEME['primary']}]{_tool_name}[/] "
-                    f"[{THEME['dim']}]{str(_tool_args)[:120]}[/]"
+                    f"\n[{THEME['dim']}]┌─[/][{THEME['accent']}]⚙ {_tool_name}[/]"
+                    f"[{THEME['dim']}]──────────────────────────────[/]"
+                )
+                self.console.print(
+                    f"[{THEME['dim']}]│  {_args_preview}[/]"
                 )
 
                 _t0 = __import__("time").time()
@@ -4810,9 +4849,10 @@ class BingoTerminal:
 
                 # 화면에 결과 미리보기 출력 (v5.2.7: 스마트 필터 적용)
                 _color = THEME["success"] if _ok else THEME["warn"]
+                _status_icon = "✔" if _ok else "✘"
                 self.console.print(
-                    f"[{_color}]{'✅' if _ok else '⚠'} TOOL_RESULT  "
-                    f"exit={_ec} elapsed={_elapsed}s[/]"
+                    f"[{THEME['dim']}]└─[/][{_color}]{_status_icon} exit={_ec}[/]"
+                    f"[{THEME['dim']}]  elapsed={_elapsed}s[/]"
                 )
                 if _out:
                     import re as _re_tr
@@ -8873,21 +8913,34 @@ class BingoTerminal:
         if not finding:
             return
 
-        # ── 발견 UI 알림 ──────────────────────────────────────────────
-        _sev_color = {"CRITICAL": "#ff4444", "HIGH": "#ff8c00"}.get(
-            finding.severity, "#ffaa00"
+        # ── v6.2.74: 취약점 알림 박스 (해커 스타일) ────────────────────
+        _sev_map = {
+            "CRITICAL": ("#ff1744", "▓▓▓", "██ CRITICAL ██"),
+            "HIGH":     ("#ffd600", "▒▒▒", "▲▲ HIGH ▲▲"),
+        }
+        _sev_color, _sev_fill, _sev_label = _sev_map.get(
+            finding.severity, ("#ffd600", "░░░", finding.severity)
         )
         _fe_title = self.s.get(
             "fe_finding_detected",
-            {"ko": "⚡ 취약점 발견 감지", "zh": "⚡ 检测到漏洞发现", "en": "⚡ Finding Detected"},
+            {"ko": "취약점 발견", "zh": "漏洞发现", "en": "Finding Detected"},
         )
-        _fe_title_str = _fe_title.get(_lang, _fe_title.get("en", "⚡ Finding Detected")) \
+        _fe_title_str = _fe_title.get(_lang, _fe_title.get("en", "Finding Detected")) \
             if isinstance(_fe_title, dict) else str(_fe_title)
 
+        _w = 58
+        self.console.print(f"\n[{_sev_color}]╔{'═'*_w}╗[/]")
         self.console.print(
-            f"\n[{_sev_color}][{finding.severity}] {_fe_title_str}[/]\n"
-            f"[#4a4a4a]  ID: {finding.id}  |  Type: {finding.vuln_type}[/]"
+            f"[{_sev_color}]║[/]  [{_sev_color}]⚡ {_sev_label}  —  {_fe_title_str}[/]"
+            + " " * max(0, _w - len(f"  ⚡ {_sev_label}  —  {_fe_title_str}") - 1)
+            + f"[{_sev_color}]║[/]"
         )
+        self.console.print(
+            f"[{_sev_color}]║[/]  [{THEME['dim']}]ID: {finding.id}  │  Type: {finding.vuln_type}[/]"
+            + " " * max(0, _w - len(f"  ID: {finding.id}  │  Type: {finding.vuln_type}") - 1)
+            + f"[{_sev_color}]║[/]"
+        )
+        self.console.print(f"[{_sev_color}]╚{'═'*_w}╝[/]")
 
         # ── XSS URL 탐지 → Playwright 자동 검증 ──────────────────────
         if finding.vuln_type == "xss":

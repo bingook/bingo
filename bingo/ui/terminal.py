@@ -10805,27 +10805,29 @@ class BingoTerminal:
         cmd = sub[0].lower() if sub else "show"
 
         if cmd == "show" or not arg.strip():
-            data = bb.all()
-            if not data:
+            # bb.list() → [(key, value, ts), ...]
+            rows = bb.list()
+            if not rows:
                 self._info(f"Board for [{target}] is empty. Use /board set <key> <value>")
                 return
             t = _T(title=f"[bold cyan]Blackboard — {target}[/]", border_style=THEME["primary"])
             t.add_column("Key", style="cyan", width=20)
             t.add_column("Value", overflow="fold")
-            for k, v in data.items():
-                t.add_row(k, str(v))
+            t.add_column("Time", width=12, style="dim")
+            for k, v, ts in rows:
+                t.add_row(k, str(v), str(ts))
             self.console.print(t)
         elif cmd == "set":
             if len(sub) < 3:
                 self._warn("Usage: /board set <key> <value>")
                 return
-            bb.set(sub[1], sub[2])
+            bb.upsert(sub[1], sub[2])
             self._success(f"Set [{sub[1]}] = {sub[2]}")
         elif cmd == "del":
             if len(sub) < 2:
                 self._warn("Usage: /board del <key>")
                 return
-            bb.delete(sub[1])
+            bb.remove(sub[1])
             self._success(f"Deleted [{sub[1]}]")
         elif cmd == "clear":
             bb.clear()
@@ -10924,51 +10926,80 @@ class BingoTerminal:
     # ── /batch ────────────────────────────────────────────────────
     def _cmd_batch(self, arg: str = "") -> None:
         """/batch [list|add <url>|run|status|clear]  — 멀티타겟 배치"""
-        from ..batch.runner import BatchRunner
+        from ..batch.runner import BatchRunner, BatchQueue
         from rich.table import Table as _T
-        br = BatchRunner()
+
+        # 세션 레벨 BatchRunner & BatchQueue 유지
+        if not hasattr(self, "_batch_runner"):
+            self._batch_runner = BatchRunner()
+            self._batch_queue: "BatchQueue | None" = None
+
+        br = self._batch_runner
         sub = arg.strip().split(None, 1)
         cmd = sub[0].lower() if sub else "list"
         param = sub[1].strip() if len(sub) > 1 else ""
 
+        def _ensure_queue() -> BatchQueue:
+            if self._batch_queue is None:
+                self._batch_queue = br.create("bingo_batch")
+            return self._batch_queue
+
         if cmd == "list" or not arg.strip():
-            targets = br.list_targets()
-            if not targets:
+            q = self._batch_queue
+            if not q or not q.tasks:
                 self._info("Batch queue is empty. Use /batch add <url>")
                 return
             t = _T(title="[bold cyan]Batch Queue[/]", border_style=THEME["primary"])
             t.add_column("#", width=4, style="dim")
-            t.add_column("URL", overflow="fold")
+            t.add_column("URL / Target", overflow="fold")
             t.add_column("Status", width=12)
-            for i, tgt in enumerate(targets, 1):
-                status_color = {"done": "green", "running": "yellow", "error": "red"}.get(tgt.get("status", ""), "dim")
-                t.add_row(str(i), tgt["url"], f"[{status_color}]{tgt.get('status', 'pending')}[/]")
+            for i, task in enumerate(q.tasks, 1):
+                color = {"done": "green", "running": "yellow", "failed": "red",
+                         "cancelled": "dim"}.get(task.status, "dim")
+                t.add_row(str(i), task.target, f"[{color}]{task.status}[/]")
             self.console.print(t)
+
         elif cmd == "add":
             if not param:
                 self._warn("Usage: /batch add <url>")
                 return
-            br.add_target(param)
-            self._success(f"Added → {param}")
+            q = _ensure_queue()
+            q.add(param, "이 타겟을 전체 점검해줘")
+            self._success(f"Added → {param}  (total: {len(q.tasks)})")
+
         elif cmd == "run":
-            count = len(br.list_targets())
-            if count == 0:
-                self._warn("Batch queue is empty. Use /batch add <url> first.")
+            q = self._batch_queue
+            if not q or not q.pending_tasks():
+                self._warn("Batch queue is empty or all tasks already done. Use /batch add <url> first.")
                 return
+            count = len(q.pending_tasks())
             self.console.print(f"[{THEME['primary']}]🚀 Starting batch scan for {count} targets...[/]")
-            results = br.run_all(
-                scan_fn=lambda url: self._send_message(f"이 타겟을 전체 점검해줘: {url}")
-            )
-            self._success(f"Batch complete — {len(results)} targets processed.")
+
+            def _executor(target_url: str, instruction: str) -> str:
+                self._send_message(f"{instruction}: {target_url}")
+                return "sent"
+
+            br.run(q, executor=_executor,
+                   on_progress=lambda t: self.console.print(
+                       f"  [{('green' if t.status == 'done' else 'red')}]{t.status}[/] {t.target}"))
+            stats = q.stats()
+            self._success(f"Batch complete — {stats}")
+
         elif cmd == "status":
-            results = br.get_results()
-            for r in results:
-                status = r.get("status", "?")
-                color = {"done": "green", "error": "red"}.get(status, "yellow")
-                self.console.print(f"  [{color}]{status}[/] {r['url']}")
+            q = self._batch_queue
+            if not q or not q.tasks:
+                self._info("No batch tasks yet.")
+                return
+            for task in q.tasks:
+                color = {"done": "green", "failed": "red"}.get(task.status, "yellow")
+                dur = f"  ({task.duration():.1f}s)" if task.duration() else ""
+                self.console.print(f"  [{color}]{task.status}[/] {task.target}{dur}")
+
         elif cmd == "clear":
-            br.clear()
+            self._batch_queue = None
+            self._batch_runner = BatchRunner()
             self._success("Batch queue cleared.")
+
         else:
             self._warn("Usage: /batch [list|add <url>|run|status|clear]")
 

@@ -9042,145 +9042,109 @@ class BingoTerminal:
             self.console.print(f"[#ffaa00]{_unconf_str}[/]")
 
     def _render_hacker_report(self, md_text: str, target: str) -> None:
-        """마크다운 보고서를 해커 스타일 터미널 UI로 렌더링한다."""
+        """마크다운 보고서를 해커 스타일 터미널 UI로 렌더링한다.
+        v6.2.80: 모든 박스를 Rich Panel로 교체 — CJK/이모지 폭 오계산 완전 해결.
+        """
         import re
+        from rich.panel import Panel as _P
+        from rich.text import Text as _T
         from rich.markup import escape as _esc
-        from rich.rule import Rule
-
-        _W = 66   # 전체 너비
+        from datetime import datetime as _dt
 
         # ── 심각도 색상 맵 ─────────────────────────────────────────────
-        _sev_colors = {
-            "CRITICAL":  "#ff1744",
-            "Critical":  "#ff1744",
-            "HIGH":      "#ffd600",
-            "High":      "#ffd600",
-            "MEDIUM":    "#ff8f00",
-            "Medium":    "#ff8f00",
-            "LOW":       "#00e5ff",
-            "Low":       "#00e5ff",
-            "INFO":      "#ce93d8",
-            "Info":      "#ce93d8",
+        _sev_map = {
+            "CRITICAL": "#ff1744", "Critical": "#ff1744",
+            "HIGH":     "#ffd600", "High":     "#ffd600",
+            "MEDIUM":   "#ff8f00", "Medium":   "#ff8f00",
+            "LOW":      "#00e5ff", "Low":      "#00e5ff",
+            "INFO":     "#ce93d8", "Info":     "#ce93d8",
         }
 
-        def _sev_color(line: str) -> str:
-            """심각도 키워드에 색상을 입힌 Rich markup 라인 반환."""
-            for kw, col in _sev_colors.items():
-                if kw in line:
-                    line = line.replace(kw, f"[{col}]{kw}[/]")
-            return line
+        def _apply_sev(txt: str) -> str:
+            for kw, col in _sev_map.items():
+                if kw in txt:
+                    txt = txt.replace(kw, f"[{col}]{kw}[/]")
+            return txt
 
-        def _section_header(title: str, color: str) -> None:
-            self.console.print(
-                f"\n[{color}]┌─ {title} {'─'*max(1, _W-4-len(title))}┐[/]"
-            )
-
-        def _section_footer(color: str) -> None:
-            self.console.print(f"[{color}]└{'─'*(_W-1)}┘[/]")
-
-        def _body_line(line: str, color: str) -> None:
-            safe = _esc(line)
-            safe = _sev_color(safe)
-            _pad = max(0, _W - 4 - len(line))
-            self.console.print(f"[{color}]│[/]  {safe}")
-
-        # ── 보고서 상단 배너 (v6.2.76: Rich Panel로 자동 정렬) ────────
-        from rich.panel import Panel as _RptPanel
-        _now = __import__("datetime").datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-        _safe_target = _esc(target[:55])
-        _banner_body = (
-            f"[{THEME['primary']}]BINGO PENETRATION TEST REPORT[/]\n"
-            f"[{THEME['dim']}]{'─'*52}[/]\n"
-            f"[{THEME['dim']}]TARGET :[/] [{THEME['accent']}]{_safe_target}[/]\n"
-            f"[{THEME['dim']}]DATE   :[/] {_now}"
-        )
+        # ── 보고서 상단 배너 (Rich Panel) ─────────────────────────────
+        _now = _dt.now().strftime("%Y-%m-%d  %H:%M:%S")
+        _bt = _T()
+        _bt.append("BINGO PENETRATION TEST REPORT\n", style=THEME["primary"])
+        _bt.append("─" * 48 + "\n", style=THEME["dim"])
+        _bt.append("TARGET : ", style=THEME["dim"])
+        _bt.append(_esc(target) + "\n", style=THEME["accent"])
+        _bt.append("DATE   : ", style=THEME["dim"])
+        _bt.append(_now, style=THEME["dim"])
         self.console.print()
-        self.console.print(_RptPanel(
-            _banner_body,
-            border_style=THEME["primary"],
-            padding=(0, 2),
-            width=_W + 4,
-        ))
+        self.console.print(_P(_bt, border_style=THEME["primary"], padding=(0, 2)))
 
-        # ── 섹션별 파싱 & 출력 ─────────────────────────────────────────
+        # ── 섹션 색상 맵 ──────────────────────────────────────────────
+        _section_colors = {
+            "summary": THEME["secondary"], "요약": THEME["secondary"], "摘要": THEME["secondary"],
+            "vulnerabilities": "#ffd600",  "취약점": "#ffd600",        "漏洞": "#ffd600",
+            "vuln": "#ffd600",
+            "evidence": "#ff8f00",         "증거": "#ff8f00",          "证据": "#ff8f00",
+            "payload": "#ff8f00",
+            "credentials": "#ff1744",      "자격증명": "#ff1744",      "凭据": "#ff1744",
+            "credential": "#ff1744",
+            "recommended": "#00e5ff",      "권고": "#00e5ff",          "修复": "#00e5ff",
+            "fix": "#00e5ff", "remediation": "#00e5ff", "조치": "#00e5ff",
+        }
+
+        def _get_color(title: str) -> str:
+            lc = title.lower()
+            for kw, col in _section_colors.items():
+                if kw in lc or kw in title:
+                    return col
+            return THEME["dim"]
+
+        # ── 섹션별 파싱 → 각 섹션을 Rich Panel로 출력 ─────────────────
         _section_re = re.compile(r'^#{1,3}\s+(.+)$')
         _bullet_re  = re.compile(r'^[-*]\s+(.+)$')
 
         lines = md_text.splitlines()
-        cur_section = None
-        cur_color   = THEME["primary"]
-        section_buf: list[str] = []
+        cur_title: str | None = None
+        cur_color = THEME["dim"]
+        sec_lines: list[str] = []
 
-        _section_colors: dict[str, str] = {
-            # 영어
-            "summary":              THEME["secondary"],
-            "vulnerabilities":      "#ffd600",
-            "vuln":                 "#ffd600",
-            "evidence":             "#ff8f00",
-            "payload":              "#ff8f00",
-            "credentials":          "#ff1744",
-            "credential":           "#ff1744",
-            "recommended":          "#00e5ff",
-            "fix":                  "#00e5ff",
-            "remediation":          "#00e5ff",
-            # 한국어
-            "요약":                 THEME["secondary"],
-            "발견된 취약점":         "#ffd600",
-            "취약점":               "#ffd600",
-            "증거":                 "#ff8f00",
-            "페이로드":             "#ff8f00",
-            "자격증명":             "#ff1744",
-            "권고":                 "#00e5ff",
-            "조치":                 "#00e5ff",
-            # 중국어
-            "摘要":                 THEME["secondary"],
-            "漏洞":                 "#ffd600",
-            "证据":                 "#ff8f00",
-            "凭据":                 "#ff1744",
-            "修复":                 "#00e5ff",
-        }
-
-        def _flush_section() -> None:
-            if not section_buf:
+        def _flush(title: str | None, color: str, body: list[str]) -> None:
+            """섹션 내용을 Rich Panel로 출력."""
+            if not body:
                 return
-            for ln in section_buf:
-                _body_line(ln, cur_color)
-            _section_footer(cur_color)
+            ct = _T()
+            for ln in body:
+                if not ln.strip():
+                    ct.append("\n")
+                    continue
+                m = _bullet_re.match(ln)
+                display = f"  ▸ {m.group(1)}" if m else ln
+                ct.append(_apply_sev(_esc(display)) + "\n")
+            if ct.plain.strip():
+                self.console.print(_P(
+                    ct,
+                    title=f"[{color}] {_esc(title)} [/]" if title else None,
+                    border_style=color,
+                    padding=(0, 2),
+                ))
 
-        for raw_line in lines:
-            line = raw_line.rstrip()
+        for raw in lines:
+            line = raw.rstrip()
             m_sec = _section_re.match(line)
             if m_sec:
-                _flush_section()
-                section_buf = []
-                cur_section = m_sec.group(1)
-                # 색상 결정
-                _lc = cur_section.lower()
-                cur_color = THEME["dim"]
-                for _kw, _col in _section_colors.items():
-                    if _kw in _lc:
-                        cur_color = _col
-                        break
-                _section_header(cur_section, cur_color)
+                _flush(cur_title, cur_color, sec_lines)
+                sec_lines = []
+                cur_title = m_sec.group(1)
+                cur_color = _get_color(cur_title)
             elif line.startswith("---") or line.startswith("==="):
-                # Markdown 구분선 → 시각적 Rule
-                self.console.print(f"[{THEME['dim']}]{'─'*_W}[/]")
-            elif not line.strip():
-                if section_buf:
-                    section_buf.append("")
+                pass
             else:
-                # 불릿 처리
-                m_bul = _bullet_re.match(line)
-                display = f"  ▸ {m_bul.group(1)}" if m_bul else line
-                section_buf.append(display)
+                sec_lines.append(line)
 
-        _flush_section()
+        _flush(cur_title, cur_color, sec_lines)
 
         # ── 보고서 푸터 ────────────────────────────────────────────────
         self.console.print(
-            f"\n[{THEME['dim']}]{'═'*_W}[/]\n"
-            f"[{THEME['dim']}]  END OF REPORT  ·  generated by bingo[/]\n"
-            f"[{THEME['dim']}]{'═'*_W}[/]"
+            f"\n[{THEME['dim']}]  END OF REPORT  ·  generated by bingo[/]\n"
         )
 
     def _auto_generate_report(self) -> None:
@@ -9316,15 +9280,14 @@ class BingoTerminal:
 
         # ── v6.2.74: 해커 스타일 보고서 생성 헤더 ──────────────────────
         _gen_label = self.s.get('report_generating', 'Generating Report')
-        _rpt_header = (
-            f"\n[{THEME['dim']}]╔{'═'*60}╗[/]\n"
-            f"[{THEME['dim']}]║[/]  [{THEME['primary']}]▌ BINGO PENTEST REPORT GENERATOR[/]"
-            + " " * 22 + f"[{THEME['dim']}]║[/]\n"
-            f"[{THEME['dim']}]║[/]  [{THEME['dim']}]target : {target[:52]}[/]"
-            + " " * max(0, 52 - len(target)) + f"[{THEME['dim']}]║[/]\n"
-            f"[{THEME['dim']}]╚{'═'*60}╝[/]"
-        )
-        self.console.print(_rpt_header)
+        # ── v6.2.80: Rich Panel로 교체 ──────────────────────────────
+        from rich.panel import Panel as _HdrPanel
+        from rich.text import Text as _HdrText
+        _ht = _HdrText()
+        _ht.append("▌ BINGO PENTEST REPORT GENERATOR\n", style=THEME["primary"])
+        _ht.append("target : ", style=THEME["dim"])
+        _ht.append(target, style=THEME["accent"])
+        self.console.print(_HdrPanel(_ht, border_style=THEME["dim"], padding=(0, 2)))
 
         try:
             model = ModelRegistry.build(model_cfg)
@@ -9354,19 +9317,18 @@ class BingoTerminal:
                 # 파일로 저장
                 report_path.write_text(full.strip(), encoding="utf-8")
                 _rp_str   = str(report_path.absolute())
-                _ok_label = self.s.get("report_save_ok",   "REPORT SAVED SUCCESSFULLY")
+                _ok_label = self.s.get("report_save_ok", "REPORT SAVED SUCCESSFULLY")
                 _now_ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                _w = 64
-                self.console.print(
-                    f"\n[{THEME['success']}]╔{'═'*_w}╗[/]\n"
-                    f"[{THEME['success']}]║[/]  [{THEME['success']}]✔ {_ok_label}[/]"
-                    + " " * max(0, _w - len(f"  ✔ {_ok_label}") - 1)
-                    + f"[{THEME['success']}]║[/]\n"
-                    f"[{THEME['success']}]╠{'═'*_w}╣[/]\n"
-                    f"[{THEME['success']}]║[/]  [{THEME['dim']}]PATH : [/][bold white]{_rp_str}[/bold white]\n"
-                    f"[{THEME['success']}]║[/]  [{THEME['dim']}]TIME : {_now_ts}[/]\n"
-                    f"[{THEME['success']}]╚{'═'*_w}╝[/]\n"
-                )
+                # ── v6.2.80: Rich Panel로 교체 ───────────────────────────
+                from rich.text import Text as _OkText
+                _ot = _OkText()
+                _ot.append(f"✔ {_ok_label}\n", style=THEME["success"])
+                _ot.append("PATH : ", style=THEME["dim"])
+                _ot.append(_rp_str + "\n", style="bold white")
+                _ot.append("TIME : ", style=THEME["dim"])
+                _ot.append(_now_ts, style=THEME["dim"])
+                from rich.panel import Panel as _OkPanel
+                self.console.print(_OkPanel(_ot, border_style=THEME["success"], padding=(0, 2)))
                 # ── 보고서 직후 인터랙티브 다음 단계 선택지 표시 ────
                 self._suggest_next_steps()
 
@@ -9385,12 +9347,18 @@ class BingoTerminal:
                 )
                 _fe_done_str = _fe_done.get(_lang_fe, _fe_done.get("en", "📊 Findings JSON Saved")) \
                     if isinstance(_fe_done, dict) else str(_fe_done)
-                self.console.print(
-                    f"\n[{THEME['secondary']}]┌─ {_fe_done_str} {'─'*max(1,44-len(_fe_done_str))}┐[/]\n"
-                    f"[{THEME['secondary']}]│[/]  [{THEME['dim']}]{_fe_sum}[/]\n"
-                    f"[{THEME['secondary']}]│[/]  [bold white]{_fe_path.absolute()}[/bold white]\n"
-                    f"[{THEME['secondary']}]└{'─'*50}┘[/]"
-                )
+                # ── v6.2.80: Rich Panel로 교체 ───────────────────────────
+                from rich.text import Text as _FeText
+                from rich.panel import Panel as _FePanel
+                _ft = _FeText()
+                _ft.append(_fe_sum + "\n", style=THEME["dim"])
+                _ft.append(str(_fe_path.absolute()), style="bold white")
+                self.console.print(_FePanel(
+                    _ft,
+                    title=f"[{THEME['secondary']}] {_fe_done_str} [/]",
+                    border_style=THEME["secondary"],
+                    padding=(0, 2),
+                ))
         except Exception:
             pass
 
@@ -9545,29 +9513,36 @@ class BingoTerminal:
             # ── 출력 ──────────────────────────────────────────────────
             from rich.markup import escape as _esc
 
-            # ── 요약 출력 (해커 스타일) ────────────────────────────────
+            # ── 요약 출력 (v6.2.80: Rich Panel) ─────────────────────────
             if summary_lines:
+                from rich.panel import Panel as _SumPanel
+                from rich.text import Text as _SumText
                 summary_text = " ".join(summary_lines[:3])
-                self.console.print(
-                    f"\n[{THEME['dim']}]┌─ {_summary_label} {'─'*max(1,50-len(_summary_label))}┐[/]"
-                )
+                _st = _SumText()
                 for _sl in summary_text.split(". ")[:3]:
                     if _sl.strip():
-                        self.console.print(f"[{THEME['dim']}]│[/]  {_esc(_sl.strip())}")
-                self.console.print(f"[{THEME['dim']}]└{'─'*54}┘[/]")
+                        _st.append(_sl.strip() + "\n")
+                self.console.print(_SumPanel(
+                    _st,
+                    title=f"[{THEME['dim']}] {_esc(_summary_label)} [/]",
+                    border_style=THEME["dim"],
+                    padding=(0, 2),
+                ))
 
             if options:
-                # ── 선택지 해커 스타일 박스 ──────────────────────────
-                _W2 = 58
-                self.console.print(
-                    f"\n[{THEME['accent']}]╔═ {_options_label} {'═'*max(1,_W2-4-len(_options_label))}╗[/]"
-                )
+                # ── 선택지 (v6.2.80: Rich Panel) ─────────────────────
+                from rich.panel import Panel as _OptPanel
+                from rich.text import Text as _OptText
+                _ot = _OptText()
                 for i, opt in enumerate(options, 1):
-                    _opt_str = _esc(opt[:_W2-10])
-                    self.console.print(
-                        f"[{THEME['accent']}]║[/]  [{THEME['primary']}][{i}][/]  {_opt_str}"
-                    )
-                self.console.print(f"[{THEME['accent']}]╚{'═'*_W2}╝[/]")
+                    _ot.append(f"[{i}] ", style=THEME["primary"])
+                    _ot.append(_esc(opt) + "\n")
+                self.console.print(_OptPanel(
+                    _ot,
+                    title=f"[{THEME['accent']}] {_esc(_options_label)} [/]",
+                    border_style=THEME["accent"],
+                    padding=(0, 2),
+                ))
 
                 # ── 번호 입력 대기 ────────────────────────────────────
                 _prompt_txt = _s.get(
@@ -9575,7 +9550,7 @@ class BingoTerminal:
                     "Enter number + Enter (0 = exit, other = type freely)"
                 )
                 self.console.print(
-                    f"\n[{THEME['accent']}]┌─▶[/] [{THEME['dim']}]{_prompt_txt}[/]"
+                    f"[{THEME['accent']}]▶[/] [{THEME['dim']}]{_prompt_txt}[/]"
                 )
                 self.console.print()
 

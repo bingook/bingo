@@ -7863,6 +7863,31 @@ _STRINGS.update({
         "zh": "  [5/5] 检查 robots.txt / sitemap...",
         "en": "  [5/5] Checking robots.txt / sitemap...",
     },
+    "ae_nextjs_routes_found": {
+        "ko": "    발견: {n}개 /_next/data/ 라우트",
+        "zh": "    发现: {n} 个 /_next/data/ 路由",
+        "en": "    Found: {n} /_next/data/ route(s)",
+    },
+    "ae_nextjs_sqli_count": {
+        "ko": "    SQLi 후보: {n}개",
+        "zh": "    SQLi 候选: {n} 个",
+        "en": "    SQLi candidates: {n}",
+    },
+    "ae_nextjs_cookie_count": {
+        "ko": "    쿠키 우회: {n}개",
+        "zh": "    Cookie 绕过: {n} 个",
+        "en": "    Cookie bypass: {n}",
+    },
+    "ae_found_count": {
+        "ko": "\n  발견: {n}개",
+        "zh": "\n  发现: {n} 个",
+        "en": "\n  Found: {n}",
+    },
+    "ae_nextjs_disco_found": {
+        "ko": "    ✅ {url} → {n}개 경로",
+        "zh": "    ✅ {url} → {n} 条路径",
+        "en": "    ✅ {url} → {n} path(s)",
+    },
 })
 
 

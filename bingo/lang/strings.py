@@ -7888,6 +7888,102 @@ _STRINGS.update({
         "zh": "    ✅ {url} → {n} 条路径",
         "en": "    ✅ {url} → {n} path(s)",
     },
+    # ── v6.2.71 신규 모듈 ─────────────────────────────────────────────────────
+    "ae_xxe_banner": {
+        "ko": "🔗 XXE 자동 탐지",
+        "zh": "🔗 XXE 自动检测",
+        "en": "🔗 XXE Auto-Test",
+    },
+    "ae_ssti_banner": {
+        "ko": "🧪 SSTI 자동 탐지",
+        "zh": "🧪 SSTI 自动检测",
+        "en": "🧪 SSTI Auto-Test",
+    },
+    "ae_nosql_banner": {
+        "ko": "🗄️ NoSQL 인젝션 자동 탐지",
+        "zh": "🗄️ NoSQL 注入自动检测",
+        "en": "🗄️ NoSQL Injection Auto-Test",
+    },
+    "ae_ldap_banner": {
+        "ko": "📂 LDAP 인젝션 자동 탐지",
+        "zh": "📂 LDAP 注入自动检测",
+        "en": "📂 LDAP Injection Auto-Test",
+    },
+    "ae_cmdi_banner": {
+        "ko": "💥 커맨드 인젝션 자동 탐지",
+        "zh": "💥 命令注入自动检测",
+        "en": "💥 Command Injection Auto-Test",
+    },
+    "ae_idor_banner": {
+        "ko": "🔑 IDOR/BOLA 자동 탐지",
+        "zh": "🔑 IDOR/BOLA 自动检测",
+        "en": "🔑 IDOR/BOLA Auto-Test",
+    },
+    "ae_cors_banner": {
+        "ko": "🌐 CORS 자동 탐지",
+        "zh": "🌐 CORS 自动检测",
+        "en": "🌐 CORS Auto-Test",
+    },
+    "ae_redirect_banner": {
+        "ko": "↪️  Open Redirect 자동 탐지",
+        "zh": "↪️  开放重定向自动检测",
+        "en": "↪️  Open Redirect Auto-Test",
+    },
+    "ae_clickjack_banner": {
+        "ko": "🖱️  클릭재킹 자동 탐지",
+        "zh": "🖱️  点击劫持自动检测",
+        "en": "🖱️  Clickjacking Auto-Test",
+    },
+    "ae_crlf_banner": {
+        "ko": "↵  CRLF 인젝션 자동 탐지",
+        "zh": "↵  CRLF 注入自动检测",
+        "en": "↵  CRLF Injection Auto-Test",
+    },
+    "ae_upload_banner": {
+        "ko": "📤 파일 업로드 우회 자동 탐지",
+        "zh": "📤 文件上传绕过自动检测",
+        "en": "📤 File Upload Bypass Auto-Test",
+    },
+    "ae_graphql_banner": {
+        "ko": "📊 GraphQL 자동 탐지",
+        "zh": "📊 GraphQL 自动检测",
+        "en": "📊 GraphQL Auto-Test",
+    },
+    "ae_race_banner": {
+        "ko": "⚡ 레이스 컨디션 자동 탐지",
+        "zh": "⚡ 竞争条件自动检测",
+        "en": "⚡ Race Condition Auto-Test",
+    },
+    "ae_jssec_banner": {
+        "ko": "🔍 JS 시크릿 추출기",
+        "zh": "🔍 JS 密钥提取器",
+        "en": "🔍 JS Secrets Extractor",
+    },
+    "ae_jssec_count": {
+        "ko": "총 발견된 시크릿: {n}개",
+        "zh": "共发现密钥: {n} 个",
+        "en": "Total secrets found: {n}",
+    },
+    "ae_subdomain_banner": {
+        "ko": "🌐 서브도메인 탈취 점검",
+        "zh": "🌐 子域名接管检查",
+        "en": "🌐 Subdomain Takeover Check",
+    },
+    "ae_oauth_banner": {
+        "ko": "🔐 OAuth 자동 탐지",
+        "zh": "🔐 OAuth 自动检测",
+        "en": "🔐 OAuth Auto-Test",
+    },
+    "ae_ws_banner": {
+        "ko": "🔌 WebSocket 자동 탐지",
+        "zh": "🔌 WebSocket 自动检测",
+        "en": "🔌 WebSocket Auto-Test",
+    },
+    "ae_not_found": {
+        "ko": "  ℹ 취약점 없음",
+        "zh": "  ℹ 未发现漏洞",
+        "en": "  ℹ Not vulnerable",
+    },
 })
 
 

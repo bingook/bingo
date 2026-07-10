@@ -7827,6 +7827,42 @@ _STRINGS.update({
         "zh": "⚡ RULE #30: 侦察结束 — 立即开始数据提取",
         "en": "⚡ RULE #30: Recon complete — starting data extraction immediately",
     },
+    # ── Next.js SPA Attack Module (v6.2.67) ──────────────────────────────────
+    "ae_nextjs_banner": {
+        "ko": "⚡ Next.js SPA 공격 모듈",
+        "zh": "⚡ Next.js SPA 攻击模块",
+        "en": "⚡ Next.js SPA Attack Module",
+    },
+    "ae_nextjs_step1": {
+        "ko": "  [1/5] Next.js buildId 추출 중...",
+        "zh": "  [1/5] 提取 Next.js buildId...",
+        "en": "  [1/5] Extracting Next.js buildId...",
+    },
+    "ae_nextjs_no_buildid": {
+        "ko": "    ⚠ buildId 없음 — /_next/data/ 단계 건너뜀",
+        "zh": "    ⚠ 未找到 buildId — 跳过 /_next/data/ 步骤",
+        "en": "    ⚠ buildId not found — skipping /_next/data/ step",
+    },
+    "ae_nextjs_step2": {
+        "ko": "  [2/5] /_next/data/ 라우트 열거 중...",
+        "zh": "  [2/5] 枚举 /_next/data/ 路由...",
+        "en": "  [2/5] Enumerating /_next/data/ routes...",
+    },
+    "ae_nextjs_step3": {
+        "ko": "  [3/5] GET 파라미터 SQLi 퍼징 중...",
+        "zh": "  [3/5] GET 参数 SQLi 模糊测试...",
+        "en": "  [3/5] SQLi fuzzing on GET parameters...",
+    },
+    "ae_nextjs_step4": {
+        "ko": "  [4/5] 쿠키 조작 테스트 중...",
+        "zh": "  [4/5] Cookie 操作测试...",
+        "en": "  [4/5] Cookie manipulation test...",
+    },
+    "ae_nextjs_step5": {
+        "ko": "  [5/5] robots.txt / sitemap 확인 중...",
+        "zh": "  [5/5] 检查 robots.txt / sitemap...",
+        "en": "  [5/5] Checking robots.txt / sitemap...",
+    },
 })
 
 

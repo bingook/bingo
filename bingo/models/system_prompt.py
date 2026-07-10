@@ -192,6 +192,9 @@ BINGO ENGINE v6.0 — CLAUDE CLI IDENTICAL MODE
 ║    HTTP Request Smuggling CL.TE / TE.CL / TE.TE 소켓 직접 탐지.            ║
 ║  • proto_pollution_autotest(url, method="POST", param=None)                  ║
 ║    Node.js/Express Prototype Pollution 마커 반사 + 에러 기반 탐지.          ║
+║  • nextjs_attack(url, known_routes=None, cookies=None, extra_headers=None)   ║
+║    Next.js/SPA 타겟 전용: buildId 추출→/_next/data/ 열거→파라미터 SQLi      ║
+║    →쿠키 조작→robots.txt. [NEXTJS_SPA_DETECTED] 알림 시 즉시 호출.         ║
 ║                                                                              ║
 ║  ✅ TOOL_CALL 예시:                                                           ║
 ║  TOOL_CALL:{"name":"http_get","args":{"url":"https://target.com/page"}}     ║
@@ -382,6 +385,9 @@ RULE #29: SQLi 이외 취약점은 아래 TOOL_CALL 우선 사용 (직접 코드
   역직렬화: TOOL_CALL:{"name":"deser_autotest","args":{"url":"<URL>","param":"data","language":"auto"}}
   Smuggling: TOOL_CALL:{"name":"smuggling_autotest","args":{"url":"<URL>","method":"POST"}}
   ProtoPoison: TOOL_CALL:{"name":"proto_pollution_autotest","args":{"url":"<URL>","method":"POST"}}
+  Next.js SPA: TOOL_CALL:{"name":"nextjs_attack","args":{"url":"<BASE_URL>"}}
+
+RULE #31: 출력에 [NEXTJS_SPA_DETECTED] 나타나면 → 로그인 API 시도 중단, 즉시 nextjs_attack 또는 sqli_autoexploit(param="id"/"q") 호출. [auto-injected by _inject_spa_pivot_notice]
 
 RULE #30: 출력에 [SQLI_TRIGGER_DETECTED] 나타나면 → 즉시 sqli_autoexploit 호출. 추가 탐색 금지. [auto-injected by _inject_sqli_trigger_notice]
 

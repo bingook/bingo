@@ -10665,7 +10665,7 @@ class BingoTerminal:
         """/role [list|set <name>|info|clear]  — 역할 기반 테스트 모드"""
         from ..roles.manager import RoleManager
         from rich.table import Table as _T
-        rm = RoleManager()
+        rm = RoleManager.instance()   # singleton — 상태 유지
         sub = arg.strip().split(None, 1)
         cmd = sub[0].lower() if sub else "list"
         param = sub[1].strip() if len(sub) > 1 else ""
@@ -10676,33 +10676,32 @@ class BingoTerminal:
             t.add_column("Name", style="cyan", width=20)
             t.add_column("Description", overflow="fold")
             for r in roles:
-                name_v = r.name if hasattr(r, "name") else r.get("name", "")
-                desc_v = r.description if hasattr(r, "description") else r.get("description", "")
+                name_v = r.name if hasattr(r, "name") else str(r)
+                desc_v = r.description if hasattr(r, "description") else ""
                 t.add_row(name_v, desc_v)
             self.console.print(t)
-            active = rm.active  # property (not method)
+            active = rm.active()   # 메서드 호출 — 괄호 필수
             if active:
                 active_name = active.name if hasattr(active, "name") else str(active)
                 self.console.print(f"\n[{THEME['success']}]Active role: {active_name}[/]")
+            else:
+                self.console.print(f"\n[dim]Active role: none[/]")
         elif cmd == "set":
             if not param:
                 self._warn("Usage: /role set <name>")
                 return
-            try:
-                result = rm.switch(param)  # switch() not set_role()
-                if result:
-                    self._success(f"Role set → {param}")
-                else:
-                    self._error(f"Role '{param}' not found.")
-            except ValueError as e:
-                self._error(str(e))
+            result = rm.switch(param)
+            if result:
+                self._success(f"Role set → {param}")
+            else:
+                self._error(f"Role '{param}' not found. Use /role list to see available roles.")
         elif cmd == "info":
-            active = rm.active
+            active = rm.active()   # 메서드 호출
             name = param or (active.name if active and hasattr(active, "name") else "")
             if not name:
                 self._warn("No active role. Use /role set <name> first.")
                 return
-            role = rm.get(name)  # get() not get_role_info()
+            role = rm.get(name)
             if role:
                 self.console.print(f"[{THEME['primary']}]Role: {name}[/]")
                 for k, v in (role.__dict__ if hasattr(role, "__dict__") else {}).items():
@@ -10710,7 +10709,7 @@ class BingoTerminal:
             else:
                 self._error(f"Role '{name}' not found.")
         elif cmd == "clear":
-            rm.clear()  # clear() not clear_role()
+            rm.clear()
             self._success("Role cleared.")
         else:
             self._warn("Usage: /role [list|set <name>|info|clear]")

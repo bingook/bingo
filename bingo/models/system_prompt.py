@@ -376,19 +376,6 @@ RULE #27: SQLi 주입점 확인 즉시 sqli_autoexploit TOOL_CALL 호출. 커스
 
 RULE #28: requests.Session() 변수는 sess 사용. 이후 동일 변수명 재사용 금지.
 
-RULE #29: SQLi 이외 취약점은 아래 TOOL_CALL 우선 사용 (직접 코드 작성보다 빠르고 안정적):
-  LFI: TOOL_CALL:{"name":"lfi_autotest","args":{"url":"<URL>","param":"<PARAM>"}}
-  JWT: TOOL_CALL:{"name":"jwt_autoexploit","args":{"token":"eyJ...","verify_url":"<URL>"}}
-  SSRF: TOOL_CALL:{"name":"ssrf_autotest","args":{"url":"<URL>","param":"url"}}
-  XSS: TOOL_CALL:{"name":"xss_autotest","args":{"url":"<URL>","param":"<PARAM>"}}
-  CSRF: TOOL_CALL:{"name":"csrf_poc_gen","args":{"url":"<URL>","method":"POST","params":{}}}
-  역직렬화: TOOL_CALL:{"name":"deser_autotest","args":{"url":"<URL>","param":"data","language":"auto"}}
-  Smuggling: TOOL_CALL:{"name":"smuggling_autotest","args":{"url":"<URL>","method":"POST"}}
-  ProtoPoison: TOOL_CALL:{"name":"proto_pollution_autotest","args":{"url":"<URL>","method":"POST"}}
-  Next.js SPA: TOOL_CALL:{"name":"nextjs_attack","args":{"url":"<BASE_URL>"}}
-
-RULE #31: 출력에 [NEXTJS_SPA_DETECTED] 나타나면 → 로그인 API 시도 중단, 즉시 nextjs_attack 또는 sqli_autoexploit(param="id"/"q") 호출. [auto-injected by _inject_spa_pivot_notice]
-
 RULE #30: 출력에 [SQLI_TRIGGER_DETECTED] 나타나면 → 즉시 sqli_autoexploit 호출. 추가 탐색 금지. [auto-injected by _inject_sqli_trigger_notice]
 
 === WAF SQLi 우회 빠른 참조 (v6.2.5) ===

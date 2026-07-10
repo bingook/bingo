@@ -2863,6 +2863,11 @@ class BingoTerminal:
             self.console.print()
             return final
 
+        # ── v6.2.81: 필터링 후 display가 비었으면 원본(full) 사용 ──────────────
+        # _filter_ai_monologue 가 중국어 응답을 독백으로 오인해 전부 제거하는 버그 방지.
+        if not display.strip() and full.strip():
+            display = full  # 원본 그대로 표시 (필터 우회)
+
         try:
             _has_rich = "[dim]" in display or "[bold" in display
             _has_md   = "**" in display or "\n# " in display or "\n## " in display
@@ -2909,7 +2914,9 @@ class BingoTerminal:
         # 단락의 첫 줄이 아래 패턴으로 시작하면 단락 전체를 버림
         _PARA_START_PATTERNS = (
             # ── 중국어 자기참조 (deepseek reasoning) ──
-            r"^我需要",                      # 我需要在当前环境...
+            # ⚠ v6.2.81: ^我需要 만으로는 너무 광범위 — 모의/가상/대화 컨텍스트만 필터
+            r"^我需要.*(?:模拟|假设|假装|假冒|生成假|在对话中|假想|虚构|伪造)",
+            r"^我需要在当前",                 # 我需要在当前环境...
             r"^真正的执行是模拟的",
             r"^实际上在对话中",
             r"^实际上我无法真正",

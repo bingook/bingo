@@ -7795,6 +7795,17 @@ _STRINGS.update({
         "zh": "发现 CSRF token 字段",
         "en": "CSRF token field found",
     },
+    # ── v6.2.57: terminal.py 하드코딩 한국어 다국어화 ─────────────────────────
+    "tool_call_json_recovered": {
+        "ko": "⚠ TOOL_CALL JSON 자동복구 성공 ({name})",
+        "zh": "⚠ TOOL_CALL JSON 自动恢复成功 ({name})",
+        "en": "⚠ TOOL_CALL JSON auto-recovered ({name})",
+    },
+    "scan_summary_prompt": {
+        "ko": "위 스캔 결과를 분석하고 발견된 취약점을 요약해줘. 가장 심각한 것부터 정리하고, 다음 공격 단계를 추천해줘.",
+        "zh": "请分析上述扫描结果，总结发现的漏洞。从最严重的开始整理，并推荐下一步攻击步骤。",
+        "en": "Analyze the scan results above and summarize the vulnerabilities found. List the most critical ones first and recommend the next attack steps.",
+    },
 })
 
 

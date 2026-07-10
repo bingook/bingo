@@ -4560,8 +4560,7 @@ class BingoTerminal:
                 f"=== MULTI-AGENT SCAN RESULTS for {url} ===\n"
                 f"{summary}\n"
                 f"=== END SCAN RESULTS ===\n"
-                f"위 스캔 결과를 분석하고 발견된 취약점을 한국어로 요약해줘. "
-                f"가장 심각한 것부터 정리하고, 다음 공격 단계를 추천해줘."
+                + self.s.get("scan_summary_prompt", "Analyze the scan results above and summarize vulnerabilities found.")
             )
         ))
         self._send_message("")
@@ -4785,7 +4784,7 @@ class BingoTerminal:
                         continue
                     # 복구 성공
                     self.console.print(
-                        f"[{THEME['warn']}]⚠ TOOL_CALL JSON 자동복구 성공 ({_tool_name})[/]"
+                        f"[{THEME['warn']}]{self.s.get('tool_call_json_recovered', '⚠ TOOL_CALL JSON auto-recovered ({name})').format(name=_tool_name)}[/]"
                     )
 
                 if execute_tool is None:

@@ -9200,7 +9200,9 @@ class BingoTerminal:
         from ..models.registry import ModelRegistry
         from rich.rule import Rule
         from pathlib import Path
-        import datetime
+        # datetime 클래스는 파일 최상단 'from datetime import datetime'으로 이미 임포트됨.
+        # 여기서 'import datetime' (모듈)을 하면 클래스를 덮어써서
+        # datetime.now() → AttributeError 발생 → 제거
 
         model_cfg = self.config.get_active_model_config()
         if not model_cfg:
@@ -9213,7 +9215,7 @@ class BingoTerminal:
 
         # 보고서 저장 경로 — BINGO_REPORTS_DIR 환경변수 우선, 없으면 Desktop/dump/타겟명/
         import os as _os_report
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_target = (target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:30]
         _env_dir = _os_report.environ.get("BINGO_REPORTS_DIR", "").strip()
         if _env_dir:

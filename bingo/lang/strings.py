@@ -7806,6 +7806,27 @@ _STRINGS.update({
         "zh": "请分析上述扫描结果，总结发现的漏洞。从最严重的开始整理，并推荐下一步攻击步骤。",
         "en": "Analyze the scan results above and summarize the vulnerabilities found. List the most critical ones first and recommend the next attack steps.",
     },
+    # ── v6.2.58: 주입점 트리거 / 실제 IP 탐지 알림 ──────────────────────────────
+    "sqli_trigger_detected": {
+        "ko": "💉 SQLi 주입점 확인 — sqli_autoexploit 즉시 호출 중",
+        "zh": "💉 SQL注入触发点确认 — 立即调用 sqli_autoexploit",
+        "en": "💉 SQLi injection point confirmed — calling sqli_autoexploit immediately",
+    },
+    "real_ip_in_html": {
+        "ko": "🔍 HTML 소스에서 실제 IP 발견 → curl --resolve 자동 적용",
+        "zh": "🔍 在HTML源码中发现真实IP → 自动应用 curl --resolve",
+        "en": "🔍 Real IP found in HTML source → applying curl --resolve automatically",
+    },
+    "sqli_loop_wasted": {
+        "ko": "⚠ 주입점 확인 후 추가 탐색 감지 — sqli_autoexploit 으로 전환 필요",
+        "zh": "⚠ 注入点确认后检测到额外探测 — 需切换至 sqli_autoexploit",
+        "en": "⚠ Extra exploration detected after injection confirmed — switch to sqli_autoexploit",
+    },
+    "rule30_exploit_now": {
+        "ko": "⚡ RULE #30: 탐색 종료 — 즉시 데이터 추출 시작",
+        "zh": "⚡ RULE #30: 侦察结束 — 立即开始数据提取",
+        "en": "⚡ RULE #30: Recon complete — starting data extraction immediately",
+    },
 })
 
 

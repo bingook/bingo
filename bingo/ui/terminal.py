@@ -11055,22 +11055,24 @@ class BingoTerminal:
     def _cmd_hitl(self, arg: str = "") -> None:
         """/hitl [on|off|status]  — Human-in-the-loop 확인 게이트"""
         from ..hitl.gate import HitlGate
-        gate = HitlGate()
+        # 세션 전체에서 동일 인스턴스 유지 (매번 새 인스턴스 생성 방지)
+        if not hasattr(self, "_hitl_gate"):
+            self._hitl_gate = HitlGate()
+        gate = self._hitl_gate
         sub = arg.strip().split(None, 1)
         cmd = sub[0].lower() if sub else "status"
 
         if cmd == "on":
-            gate.enabled = True   # enable() 메서드 없음 — 속성 직접 설정
+            gate.enabled = True
             self._success("HITL gate ENABLED — dangerous actions will require confirmation.")
         elif cmd == "off":
-            gate.enabled = False  # disable() 메서드 없음 — 속성 직접 설정
+            gate.enabled = False
             self._success("HITL gate DISABLED.")
         elif cmd == "status" or not arg.strip():
             state = "ENABLED" if gate.enabled else "DISABLED"
             color = "red" if gate.enabled else "dim"
             self.console.print(f"  HITL gate: [{color}]{state}[/]")
         elif cmd == "log":
-            # get_log() 메서드 없음 — 기능 미지원 안내
             self._info("HITL decision log is not available in this version.")
         else:
             self._warn("Usage: /hitl [on|off|status]")

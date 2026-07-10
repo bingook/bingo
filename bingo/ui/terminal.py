@@ -599,34 +599,22 @@ class BingoTerminal:
         except Exception:
             _db_count = 0
         _total = _hs_count + 6 + 5 + _db_count
-        # ── v6.2.76: 해커 스타일 상태 박스 (패딩 버그 수정) ─────────
-        # Rich 마크업을 포함한 문자열에 :<N 포맷을 쓰면 마크업 태그 길이까지
-        # 포함해서 패딩을 계산하므로 우측 테두리가 밀린다.
-        # → 시각적 길이(plain text)로 패딩을 별도 계산한다.
-        _CONTENT_W = 42          # │ 안쪽 콘텐츠 최대 폭 (시각적 문자 수)
-        _w = _CONTENT_W + 12     # ┌─ 전체 박스 너비 = 내용(42) + 레이블(10) + 여백(2)
-        _border_c = THEME["dim"]
-        _k = THEME["dim"]
+        # ── v6.2.78: Rich Panel로 상태 박스 교체 ──────────────────────
+        # 수동 패딩 계산은 Rich 마크업 태그 길이/이모지/한자 폭으로 인해
+        # 우측 테두리가 항상 어긋난다 → Panel에 위임하면 자동 정렬.
+        from rich.panel import Panel as _StPanel
+        from rich.text import Text as _StText
 
-        def _status_row(label: str, value_plain: str, value_color: str) -> None:
-            """│  label : [color]value[/]  패딩  │  — 우측 테두리 정렬 보장."""
-            _prefix = f"  {label} : "          # 시각적 앞부분 (공백 포함)
-            _val_display = value_plain[:_CONTENT_W]
-            _pad = " " * max(0, _CONTENT_W - len(_val_display))
-            self.console.print(
-                f"  [{_border_c}]│[/]"
-                f"[{_k}]{_prefix}[/]"
-                f"[{value_color}]{_val_display}[/]"
-                f"{_pad}"
-                f"[{_border_c}]│[/]"
-            )
+        _st = _StText()
+        _st.append("model  : ", style=THEME["dim"])
+        _st.append(_model_name + "\n", style=THEME["secondary"])
+        _st.append("lang   : ", style=THEME["dim"])
+        _st.append(lang_label + "\n", style=THEME["accent"])
+        _st.append("skills : ", style=THEME["dim"])
+        _st.append(f"{_total} ready", style=THEME["success"])
 
-        _skills_str = f"{_total} ready"
-        self.console.print(f"  [{_border_c}]┌{'─'*_w}┐[/]")
-        _status_row("model ", _model_name,     THEME["secondary"])
-        _status_row("lang  ", lang_label,       THEME["accent"])
-        _status_row("skills", _skills_str,      THEME["success"])
-        self.console.print(f"  [{_border_c}]└{'─'*_w}┘[/]\n")
+        self.console.print(_StPanel(_st, border_style=THEME["dim"], padding=(0, 2)))
+        self.console.print()
         # 네트워크 환경 표시
         import time as _t
         for _ in range(20):

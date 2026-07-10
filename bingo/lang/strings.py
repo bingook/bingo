@@ -7558,6 +7558,243 @@ _STRINGS.update({
         "zh": "💾 结果已保存: {path}",
         "en": "💾 Results saved: {path}",
     },
+
+    # ── v6.2.56: autoexploit 배너 / 진행 메시지 ───────────────────────────────
+    "ae_banner_lfi": {
+        "ko": "🗂  LFI / Path Traversal 자동 탐지",
+        "zh": "🗂  LFI / 路径遍历自动检测",
+        "en": "🗂  LFI / Path Traversal Auto-Detection",
+    },
+    "ae_lfi_size_change": {
+        "ko": "🟡 크기 변화 {diff}B — payload={payload}",
+        "zh": "🟡 响应大小变化 {diff}B — payload={payload}",
+        "en": "🟡 Size change {diff}B — payload={payload}",
+    },
+    "ae_stats": {
+        "ko": "테스트: {tested}개 | 발견: {found}개",
+        "zh": "测试: {tested}个 | 发现: {found}个",
+        "en": "Tested: {tested} | Found: {found}",
+    },
+    "ae_save_result": {
+        "ko": "💾 결과 저장: {path}",
+        "zh": "💾 结果已保存: {path}",
+        "en": "💾 Result saved: {path}",
+    },
+    "ae_banner_jwt": {
+        "ko": "🔑 JWT 취약점 자동 분석",
+        "zh": "🔑 JWT 漏洞自动分析",
+        "en": "🔑 JWT Vulnerability Auto-Analysis",
+    },
+    "ae_jwt_attack_ok": {
+        "ko": "✅ {name} — HTTP {code} (성공!)",
+        "zh": "✅ {name} — HTTP {code} (成功！)",
+        "en": "✅ {name} — HTTP {code} (Success!)",
+    },
+    "ae_jwt_attack_fail": {
+        "ko": "❌ {name} — HTTP {code}",
+        "zh": "❌ {name} — HTTP {code}",
+        "en": "❌ {name} — HTTP {code}",
+    },
+    "ae_jwt_alg_none_start": {
+        "ko": "[1] alg:none 공격 시도...",
+        "zh": "[1] 尝试 alg:none 攻击...",
+        "en": "[1] Attempting alg:none attack...",
+    },
+    "ae_jwt_brute_start": {
+        "ko": "[2] 약한 비밀키 브루트포스 ({n}개)...",
+        "zh": "[2] 弱密钥爆破中 ({n}个)...",
+        "en": "[2] Weak secret brute-force ({n} candidates)...",
+    },
+    "ae_jwt_secret_found": {
+        "ko": "✅ 비밀키 발견: {secret}",
+        "zh": "✅ 发现密钥: {secret}",
+        "en": "✅ Secret found: {secret}",
+    },
+    "ae_jwt_no_secret": {
+        "ko": "❌ 약한 비밀키 없음",
+        "zh": "❌ 未发现弱密钥",
+        "en": "❌ No weak secret found",
+    },
+    "ae_jwt_alg_confusion": {
+        "ko": "[3] RS256→HS256 알고리즘 혼동 공격...",
+        "zh": "[3] RS256→HS256 算法混淆攻击...",
+        "en": "[3] RS256→HS256 algorithm confusion attack...",
+    },
+    "ae_jwt_pubkey_hint": {
+        "ko": "ℹ️  공개키를 수동으로 입력해야 합니다: jwt_autoexploit(token, pubkey='...')",
+        "zh": "ℹ️  需要手动提供公钥: jwt_autoexploit(token, pubkey='...')",
+        "en": "ℹ️  Public key required manually: jwt_autoexploit(token, pubkey='...')",
+    },
+    "ae_jwt_kid_inject": {
+        "ko": "[4] kid 파라미터 인젝션 시도 (kid={kid})...",
+        "zh": "[4] kid 参数注入尝试 (kid={kid})...",
+        "en": "[4] kid parameter injection (kid={kid})...",
+    },
+    "ae_jwt_total": {
+        "ko": "총 공격: {total}개 | 성공: {success}개",
+        "zh": "总攻击: {total}个 | 成功: {success}个",
+        "en": "Total attacks: {total} | Succeeded: {success}",
+    },
+    "ae_banner_ssrf": {
+        "ko": "🌐 SSRF 자동 탐지",
+        "zh": "🌐 SSRF 自动检测",
+        "en": "🌐 SSRF Auto-Detection",
+    },
+    "ae_ssrf_baseline": {
+        "ko": "Baseline: {size}B",
+        "zh": "基线响应: {size}B",
+        "en": "Baseline: {size}B",
+    },
+    "ae_ssrf_confirmed": {
+        "ko": "🔴 SSRF 확인! payload={payload}",
+        "zh": "🔴 SSRF 确认！payload={payload}",
+        "en": "🔴 SSRF confirmed! payload={payload}",
+    },
+    "ae_ssrf_suspect": {
+        "ko": "🟡 의심 — size_diff={diff}B  payload={payload}",
+        "zh": "🟡 疑似 — 大小差异={diff}B  payload={payload}",
+        "en": "🟡 Suspected — size_diff={diff}B  payload={payload}",
+    },
+    "ae_banner_xss": {
+        "ko": "💉 XSS 자동 탐지",
+        "zh": "💉 XSS 自动检测",
+        "en": "💉 XSS Auto-Detection",
+    },
+    "ae_xss_type_both": {
+        "ko": "반사형+저장형",
+        "zh": "反射型+存储型",
+        "en": "Reflected+Stored",
+    },
+    "ae_xss_type_reflect": {
+        "ko": "반사형",
+        "zh": "反射型",
+        "en": "Reflected",
+    },
+    "ae_xss_check_stored": {
+        "ko": "[저장형 확인] {url}",
+        "zh": "[存储型验证] {url}",
+        "en": "[Stored XSS check] {url}",
+    },
+    "ae_xss_stored_found": {
+        "ko": "🔴 저장형 XSS 확인!",
+        "zh": "🔴 存储型 XSS 已确认！",
+        "en": "🔴 Stored XSS confirmed!",
+    },
+    "ae_banner_csrf": {
+        "ko": "🎭 CSRF PoC HTML 생성",
+        "zh": "🎭 CSRF PoC HTML 生成",
+        "en": "🎭 CSRF PoC HTML Generation",
+    },
+    "ae_csrf_defense_detected": {
+        "ko": "⚠️  방어 탐지: {protections}",
+        "zh": "⚠️  检测到防护: {protections}",
+        "en": "⚠️  Defense detected: {protections}",
+    },
+    "ae_csrf_no_defense": {
+        "ko": "✅ CSRF 방어 미탐지 — PoC 생성",
+        "zh": "✅ 未检测到 CSRF 防护 — 生成 PoC",
+        "en": "✅ No CSRF defense detected — generating PoC",
+    },
+    "ae_csrf_poc_hint": {
+        "ko": "📌 브라우저에서 열어 피해자가 클릭 시 요청 전송",
+        "zh": "📌 用浏览器打开，受害者点击后发送请求",
+        "en": "📌 Open in browser — victim click triggers request",
+    },
+    "ae_banner_deser": {
+        "ko": "💣 역직렬화 취약점 탐지",
+        "zh": "💣 反序列化漏洞检测",
+        "en": "💣 Deserialization Vulnerability Detection",
+    },
+    "ae_deser_testing_lang": {
+        "ko": "[{lang}] 테스트 중...",
+        "zh": "[{lang}] 测试中...",
+        "en": "[{lang}] Testing...",
+    },
+    "ae_deser_req_fail": {
+        "ko": "❌ {lang} — 요청 실패",
+        "zh": "❌ {lang} — 请求失败",
+        "en": "❌ {lang} — Request failed",
+    },
+    "ae_found_count": {
+        "ko": "발견: {n}개",
+        "zh": "发现: {n}个",
+        "en": "Found: {n}",
+    },
+    "ae_banner_smuggling": {
+        "ko": "🚢 HTTP Request Smuggling 탐지",
+        "zh": "🚢 HTTP 请求走私检测",
+        "en": "🚢 HTTP Request Smuggling Detection",
+    },
+    "ae_smug_cl_te_start": {
+        "ko": "[1] CL.TE 탐지 중...",
+        "zh": "[1] CL.TE 检测中...",
+        "en": "[1] Detecting CL.TE...",
+    },
+    "ae_smug_timing": {
+        "ko": "정상 요청: {normal}s  스머글링 요청: {smuggle}s  차이: {diff}s",
+        "zh": "正常请求: {normal}s  走私请求: {smuggle}s  差值: {diff}s",
+        "en": "Normal: {normal}s  Smuggling: {smuggle}s  Diff: {diff}s",
+    },
+    "ae_smug_cl_te_found": {
+        "ko": "🔴 CL.TE 스머글링 취약 의심! (타이밍 차이 5초 이상)",
+        "zh": "🔴 疑似 CL.TE 走私漏洞！（时序差异超过5秒）",
+        "en": "🔴 CL.TE smuggling suspected! (timing diff > 5s)",
+    },
+    "ae_smug_cl_te_not_found": {
+        "ko": "❌ CL.TE 스머글링 미탐지",
+        "zh": "❌ 未检测到 CL.TE 走私",
+        "en": "❌ CL.TE smuggling not detected",
+    },
+    "ae_smug_te_cl_start": {
+        "ko": "[2] TE.CL 탐지 중...",
+        "zh": "[2] TE.CL 检测中...",
+        "en": "[2] Detecting TE.CL...",
+    },
+    "ae_smug_te_cl_found": {
+        "ko": "🟡 TE.CL 잠재적 취약점 — HTTP {status}",
+        "zh": "🟡 潜在 TE.CL 漏洞 — HTTP {status}",
+        "en": "🟡 Potential TE.CL vulnerability — HTTP {status}",
+    },
+    "ae_smug_te_cl_not_found": {
+        "ko": "❌ TE.CL 미탐지 — HTTP {status}",
+        "zh": "❌ 未检测到 TE.CL — HTTP {status}",
+        "en": "❌ TE.CL not detected — HTTP {status}",
+    },
+    "ae_smug_te_te_start": {
+        "ko": "[3] TE.TE (헤더 난독화) 탐지 중...",
+        "zh": "[3] TE.TE（请求头混淆）检测中...",
+        "en": "[3] Detecting TE.TE (header obfuscation)...",
+    },
+    "ae_smug_te_te_found": {
+        "ko": "🟡 TE.TE — {header}  status={status}",
+        "zh": "🟡 TE.TE — {header}  状态={status}",
+        "en": "🟡 TE.TE — {header}  status={status}",
+    },
+    "ae_banner_proto": {
+        "ko": "🧬 Prototype Pollution 탐지",
+        "zh": "🧬 原型链污染检测",
+        "en": "🧬 Prototype Pollution Detection",
+    },
+    "ae_proto_confirmed": {
+        "ko": "🔴 Prototype Pollution 확인! payload={payload}",
+        "zh": "🔴 原型链污染已确认！payload={payload}",
+        "en": "🔴 Prototype Pollution confirmed! payload={payload}",
+    },
+    "ae_proto_suspect": {
+        "ko": "🟡 PP 의심 — 에러 발생: {error}  payload={payload}",
+        "zh": "🟡 疑似 PP — 出现错误: {error}  payload={payload}",
+        "en": "🟡 PP suspected — error triggered: {error}  payload={payload}",
+    },
+    "ae_xss_stored_found_url": {
+        "ko": "⚠️  저장형 XSS 확인: {url}",
+        "zh": "⚠️  存储型 XSS 已确认: {url}",
+        "en": "⚠️  Stored XSS confirmed: {url}",
+    },
+    "ae_csrf_token_found": {
+        "ko": "CSRF 토큰 필드 발견",
+        "zh": "发现 CSRF token 字段",
+        "en": "CSRF token field found",
+    },
 })
 
 

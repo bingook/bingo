@@ -7984,6 +7984,37 @@ _STRINGS.update({
         "zh": "  ℹ 未发现漏洞",
         "en": "  ℹ Not vulnerable",
     },
+    # ── v6.2.72 신규 ──────────────────────────────────────────────────────────
+    "ae_mfa_banner": {
+        "ko": "🔐 2FA/MFA 우회 자동 탐지",
+        "zh": "🔐 2FA/MFA绕过自动检测",
+        "en": "🔐 2FA/MFA Bypass Auto-Test",
+    },
+    "ae_session_banner": {
+        "ko": "🍪 세션 고정 자동 탐지",
+        "zh": "🍪 会话固定自动检测",
+        "en": "🍪 Session Fixation Auto-Test",
+    },
+    "ae_webdav_banner": {
+        "ko": "📁 WebDAV 자동 탐지",
+        "zh": "📁 WebDAV自动检测",
+        "en": "📁 WebDAV Auto-Test",
+    },
+    "ae_dns_banner": {
+        "ko": "🌐 DNS Zone Transfer 점검",
+        "zh": "🌐 DNS区域传输检查",
+        "en": "🌐 DNS Zone Transfer Check",
+    },
+    "ae_cms_banner": {
+        "ko": "🖥️  CMS 자동 탐지 (WordPress/Joomla/Drupal)",
+        "zh": "🖥️  CMS自动检测 (WordPress/Joomla/Drupal)",
+        "en": "🖥️  CMS Auto-Test (WordPress/Joomla/Drupal)",
+    },
+    "ae_price_banner": {
+        "ko": "💰 가격·쿠폰 조작 자동 탐지",
+        "zh": "💰 价格/优惠券篡改自动检测",
+        "en": "💰 Price/Coupon Manipulation Auto-Test",
+    },
 })
 
 

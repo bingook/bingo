@@ -3622,26 +3622,9 @@ def get_pentest_system_prompt(provider: str) -> str:
     except Exception:
         _lang = "en"
 
-    _lang_names = {"ko": "Korean", "zh": "Chinese (Simplified, 简体中文)", "en": "English"}
-    _lang_label = _lang_names.get(_lang, "English")
-
-    _lang_forbidden = {
-        "ko": "English or Chinese",
-        "zh": "English or Korean",
-        "en": "Korean or Chinese",
-    }.get(_lang, "Korean or Chinese")
-
-    LANG_RULE = (
-        f"\n\n[CRITICAL — OUTPUT LANGUAGE — HIGHEST PRIORITY]\n"
-        f"User language: {_lang_label} (code: {_lang})\n"
-        f"▶ YOU MUST write EVERY word of your output EXCLUSIVELY in {_lang_label}.\n"
-        f"▶ DO NOT use {_lang_forbidden} — not even one word.\n"
-        f"▶ This applies to: responses, analysis, tool call text, explanations, comments, status messages.\n"
-        f"▶ This also applies inside Python/Bash scripts you write:\n"
-        f"  - All print() outputs MUST be in {_lang_label}\n"
-        f"  - Example (lang={_lang}): print('{'状态: 成功' if _lang=='zh' else ('상태: 성공' if _lang=='ko' else 'Status: Success')}')  ✅\n"
-        f"▶ VIOLATION = outputting any text in a language other than {_lang_label}.\n"
-    )
+    # v6.2.82: LANG_RULE 완전 제거 — 언어 강제 지시문 불필요
+    # 사용자가 중국어로 말하면 모델이 알아서 중국어로 답한다.
+    # 강제 언어 지시문이 오히려 모델 응답을 간섭하고 버그를 유발함.
 
     # v5.2.0: TOOL_CALL 동적 스키마 주입
     try:
@@ -3656,18 +3639,16 @@ def get_pentest_system_prompt(provider: str) -> str:
     except Exception:
         _tool_schema_block = ""
 
-    # LANG_RULE을 맨 끝에 배치 — 모델별 EXTRA가 영어로 작성되어 있어
-    # 그 앞에 두면 마지막 영어 지시문에 덮여 무시된다.
     p = provider.lower()
     if "deepseek" in p:
-        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + DEEPSEEK_EXTRA + LANG_RULE
+        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + DEEPSEEK_EXTRA
     if "glm" in p or "zhipu" in p:
-        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + GLM_EXTRA + LANG_RULE
+        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + GLM_EXTRA
     if "claude" in p or "anthropic" in p:
-        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA + LANG_RULE
+        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA
     if "gpt" in p or "openai" in p:
-        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA + LANG_RULE
-    return UNIVERSAL_PENTEST_CORE + _tool_schema_block + LANG_RULE
+        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA
+    return UNIVERSAL_PENTEST_CORE + _tool_schema_block
 
 
 def get_warmup_history(provider: str = "deepseek") -> list[dict]:

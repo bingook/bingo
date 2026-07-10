@@ -10663,7 +10663,7 @@ class BingoTerminal:
 
     # ── /role ─────────────────────────────────────────────────────
     def _cmd_role(self, arg: str = "") -> None:
-        """/role [list|set <name>|info]  — 역할 기반 테스트 모드"""
+        """/role [list|set <name>|info|clear]  — 역할 기반 테스트 모드"""
         from ..roles.manager import RoleManager
         from rich.table import Table as _T
         rm = RoleManager()
@@ -10677,34 +10677,41 @@ class BingoTerminal:
             t.add_column("Name", style="cyan", width=20)
             t.add_column("Description", overflow="fold")
             for r in roles:
-                t.add_row(r["name"], r.get("description", ""))
+                name_v = r.name if hasattr(r, "name") else r.get("name", "")
+                desc_v = r.description if hasattr(r, "description") else r.get("description", "")
+                t.add_row(name_v, desc_v)
             self.console.print(t)
-            active = rm.get_active()
+            active = rm.active  # property (not method)
             if active:
-                self.console.print(f"\n[{THEME['success']}]Active role: {active}[/]")
+                active_name = active.name if hasattr(active, "name") else str(active)
+                self.console.print(f"\n[{THEME['success']}]Active role: {active_name}[/]")
         elif cmd == "set":
             if not param:
                 self._warn("Usage: /role set <name>")
                 return
             try:
-                rm.set_role(param)
-                self._success(f"Role set → {param}")
+                result = rm.switch(param)  # switch() not set_role()
+                if result:
+                    self._success(f"Role set → {param}")
+                else:
+                    self._error(f"Role '{param}' not found.")
             except ValueError as e:
                 self._error(str(e))
         elif cmd == "info":
-            name = param or rm.get_active()
+            active = rm.active
+            name = param or (active.name if active and hasattr(active, "name") else "")
             if not name:
                 self._warn("No active role. Use /role set <name> first.")
                 return
-            info = rm.get_role_info(name)
-            if info:
+            role = rm.get(name)  # get() not get_role_info()
+            if role:
                 self.console.print(f"[{THEME['primary']}]Role: {name}[/]")
-                for k, v in info.items():
+                for k, v in (role.__dict__ if hasattr(role, "__dict__") else {}).items():
                     self.console.print(f"  [dim]{k}:[/] {v}")
             else:
                 self._error(f"Role '{name}' not found.")
         elif cmd == "clear":
-            rm.clear_role()
+            rm.clear()  # clear() not clear_role()
             self._success("Role cleared.")
         else:
             self._warn("Usage: /role [list|set <name>|info|clear]")
@@ -10720,57 +10727,70 @@ class BingoTerminal:
         param = sub[1].strip() if len(sub) > 1 else ""
 
         if cmd == "list" or not arg.strip():
-            vulns = vm.list_vulns()
+            vulns = vm.list()  # list_vulns() → list()
             if not vulns:
                 self._info("No vulnerabilities recorded yet. Use /vulns add")
                 return
             t = _T(title="[bold red]Vulnerability Database[/]", border_style=THEME["primary"], show_lines=True)
-            t.add_column("ID", width=4, style="dim")
-            t.add_column("Type", width=12, style="red")
+            t.add_column("ID", width=8, style="dim")
+            t.add_column("Title", width=20, style="red")
             t.add_column("Severity", width=8)
             t.add_column("Target", width=30, overflow="fold")
-            t.add_column("Summary", overflow="fold")
+            t.add_column("Status", width=8)
             for v in vulns:
-                sev = v.get("severity", "medium").upper()
+                sev = (v.severity if hasattr(v, "severity") else "medium").upper()
                 sev_color = {"HIGH": "red", "CRITICAL": "bold red", "MEDIUM": "yellow", "LOW": "green"}.get(sev, "white")
+                vid = v.id if hasattr(v, "id") else "?"
+                title = v.title if hasattr(v, "title") else "?"
+                target = v.target if hasattr(v, "target") else ""
+                status = v.status if hasattr(v, "status") else ""
                 t.add_row(
-                    str(v["id"]), v.get("vuln_type", "?"),
+                    str(vid)[:8], title,
                     f"[{sev_color}]{sev}[/]",
-                    v.get("target", ""), v.get("summary", "")
+                    target, status
                 )
             self.console.print(t)
         elif cmd == "add":
             self.console.print(f"[{THEME['primary']}]New vulnerability entry (Ctrl+C to cancel)[/]")
             try:
-                vuln_type = self._session.prompt("  Type (e.g. SQLi, XSS, RCE): ").strip()
+                title = self._session.prompt("  Title (e.g. SQLi in login): ").strip()
                 severity = self._session.prompt("  Severity [critical/high/medium/low]: ").strip() or "medium"
                 target = self._session.prompt("  Target URL/endpoint: ").strip()
-                summary = self._session.prompt("  Summary: ").strip()
-                notes = self._session.prompt("  Notes (optional): ").strip()
-                vid = vm.add_vuln(vuln_type=vuln_type, severity=severity,
-                                  target=target, summary=summary, notes=notes)
-                self._success(f"Vulnerability #{vid} recorded.")
+                description = self._session.prompt("  Description: ").strip()
+                poc = self._session.prompt("  PoC (optional): ").strip()
+                vid = vm.add(title=title, severity=severity,  # add() not add_vuln()
+                             target=target, description=description, poc=poc)
+                self._success(f"Vulnerability recorded: {vid}")
             except (KeyboardInterrupt, EOFError):
                 self._info("Cancelled.")
         elif cmd == "show":
-            if not param.isdigit():
+            if not param:
                 self._warn("Usage: /vulns show <id>")
                 return
-            v = vm.get_vuln(int(param))
+            v = vm.get(param)  # get() not get_vuln(), accepts str id
             if not v:
-                self._error(f"Vuln #{param} not found.")
+                self._error(f"Vuln '{param}' not found.")
                 return
-            for k, val in v.items():
+            for k, val in (v.__dict__ if hasattr(v, "__dict__") else {}).items():
                 self.console.print(f"  [cyan]{k}:[/] {val}")
         elif cmd == "del":
-            if not param.isdigit():
+            if not param:
                 self._warn("Usage: /vulns del <id>")
                 return
-            vm.delete_vuln(int(param))
-            self._success(f"Vuln #{param} deleted.")
+            ok = vm.remove(param)  # remove() not delete_vuln()
+            if ok:
+                self._success(f"Vuln '{param}' deleted.")
+            else:
+                self._error(f"Vuln '{param}' not found.")
         elif cmd == "export":
-            path = vm.export_json()
-            self._success(f"Exported → {path}")
+            # export_json() 없음 — 직접 JSON 저장
+            import json, os
+            vulns = vm.list()
+            data = [v.__dict__ if hasattr(v, "__dict__") else {} for v in vulns]
+            path = os.path.join(str(Path.home() / "Desktop"), "bingo_vulns.json")
+            with open(path, "w", encoding="utf-8") as _f:
+                json.dump(data, _f, ensure_ascii=False, indent=2)
+            self._success(f"Exported {len(data)} vulns → {path}")
         else:
             self._warn("Usage: /vulns [list|add|show <id>|del <id>|export]")
 
@@ -10954,77 +10974,77 @@ class BingoTerminal:
 
     # ── /chain ────────────────────────────────────────────────────
     def _cmd_chain(self, arg: str = "") -> None:
-        """/chain [show|add <step>|clear|export]  — 공격 체인 트래커"""
-        from ..chain.tracker import AttackChain
+        """/chain [show|add <step>|clear]  — 공격 체인 트래커"""
+        from ..chain.tracker import AttackChain, ChainRegistry
         from rich.table import Table as _T
-        target = self._agent_state.get("target") or "global"
-        chain = AttackChain(target)
+        # ChainRegistry.get() 로 세션 기반 체인 가져오기
+        sess_id = getattr(self, "_session_id", None) or "global"
+        chain = ChainRegistry.get(sess_id)
         sub = arg.strip().split(None, 1)
         cmd = sub[0].lower() if sub else "show"
         param = sub[1].strip() if len(sub) > 1 else ""
 
         if cmd == "show" or not arg.strip():
-            steps = chain.get_steps()
+            steps = chain.steps()  # steps() not get_steps()
             if not steps:
-                self._info(f"No attack chain steps for [{target}]. Use /chain add <step>")
+                self._info(f"No attack chain steps yet. Use /chain add <step>")
                 return
-            t = _T(title=f"[bold red]Attack Chain — {target}[/]", border_style=THEME["primary"], show_lines=True)
+            t = _T(title="[bold red]Attack Chain[/]", border_style=THEME["primary"], show_lines=True)
             t.add_column("#", width=4, style="dim")
+            t.add_column("Type", width=10, style="yellow")
             t.add_column("Step", overflow="fold")
-            t.add_column("Time", width=20, style="dim")
-            for i, s in enumerate(steps, 1):
-                t.add_row(str(i), s["step"], s.get("timestamp", ""))
+            for s in steps:
+                t.add_row(str(s.seq), s.step_type, s.title)
             self.console.print(t)
+            self.console.print(f"\n[dim]{chain.summary()}[/]")
         elif cmd == "add":
             if not param:
                 self._warn("Usage: /chain add <step description>")
                 return
-            chain.add_step(param)
-            self._success(f"Step added: {param}")
+            # add_from_text() 로 자동 분류 후 추가
+            result = chain.add_from_text(param)
+            if result:
+                self._success(f"Step added [{result.step_type}]: {param}")
+            else:
+                # 분류 실패 시 tool 타입으로 직접 추가
+                chain.add("tool", param[:60], detail=param)
+                self._success(f"Step added: {param}")
         elif cmd == "clear":
-            chain.clear()
-            self._success("Attack chain cleared.")
+            n = chain.clear()  # clear() returns count
+            self._success(f"Attack chain cleared ({n} steps removed).")
         elif cmd == "export":
-            path = chain.export_md()
+            # export_md() 없음 — summary 텍스트로 저장
+            import os
+            path = os.path.join(str(Path.home() / "Desktop"), "attack_chain.txt")
+            with open(path, "w", encoding="utf-8") as _f:
+                _f.write(chain.summary())
             self._success(f"Exported → {path}")
         else:
             self._warn("Usage: /chain [show|add <step>|clear|export]")
 
     # ── /hitl ─────────────────────────────────────────────────────
     def _cmd_hitl(self, arg: str = "") -> None:
-        """/hitl [on|off|status|log]  — Human-in-the-loop 확인 게이트"""
+        """/hitl [on|off|status]  — Human-in-the-loop 확인 게이트"""
         from ..hitl.gate import HitlGate
         gate = HitlGate()
         sub = arg.strip().split(None, 1)
         cmd = sub[0].lower() if sub else "status"
 
         if cmd == "on":
-            gate.enable()
+            gate.enabled = True   # enable() 메서드 없음 — 속성 직접 설정
             self._success("HITL gate ENABLED — dangerous actions will require confirmation.")
         elif cmd == "off":
-            gate.disable()
+            gate.enabled = False  # disable() 메서드 없음 — 속성 직접 설정
             self._success("HITL gate DISABLED.")
         elif cmd == "status" or not arg.strip():
-            state = "ENABLED" if gate.is_enabled() else "DISABLED"
-            color = "red" if gate.is_enabled() else "dim"
+            state = "ENABLED" if gate.enabled else "DISABLED"
+            color = "red" if gate.enabled else "dim"
             self.console.print(f"  HITL gate: [{color}]{state}[/]")
         elif cmd == "log":
-            entries = gate.get_log()
-            if not entries:
-                self._info("No HITL decisions logged yet.")
-                return
-            from rich.table import Table as _T
-            t = _T(title="[bold]HITL Decision Log[/]", border_style=THEME["primary"])
-            t.add_column("Time", width=20, style="dim")
-            t.add_column("Action", overflow="fold")
-            t.add_column("Decision", width=10)
-            for e in entries[-20:]:
-                dec_color = "green" if e.get("approved") else "red"
-                t.add_row(e.get("timestamp", ""), e.get("action", ""),
-                          f"[{dec_color}]{'ALLOW' if e.get('approved') else 'DENY'}[/]")
-            self.console.print(t)
+            # get_log() 메서드 없음 — 기능 미지원 안내
+            self._info("HITL decision log is not available in this version.")
         else:
-            self._warn("Usage: /hitl [on|off|status|log]")
+            self._warn("Usage: /hitl [on|off|status]")
 
     # ── /orch ─────────────────────────────────────────────────────────
     def _cmd_orch(self, arg: str = "") -> None:

@@ -149,10 +149,11 @@ _RCE_PATTERNS = [
 ]
 
 _CRED_PATTERNS = [
+    # v6.2.83: (?<!\.) 추가 — JS 객체 속성 접근(e.password=Authorization+...) 오탐 방지
+    # 이전: 단순 password= 매칭 → e.password=Authorization+(o.password||) 에서 오탐 발생
     # v6.2.66: JS 미니파이 오탐 방지 — 값에 JS 구문 문자({}()[]) 포함 시 매칭 제외, 최소 6자
-    # 이전: [^\s\'"]{4,} → JS 미니파이 password:t}}if(d=... 에서 오탐 발생
-    re.compile(r'(?:password|passwd|pwd)\s*[=:]\s*[\'"]([^\'"]{6,})[\'"]', re.I),   # 따옴표 감싼 값
-    re.compile(r'(?:password|passwd|pwd)\s*=\s*([a-zA-Z0-9@._\-!$%^&*+]{6,})', re.I),  # = 할당만
+    re.compile(r'(?<!\.)(?:password|passwd|pwd)\s*[=:]\s*[\'"]([^\'"]{6,})[\'"]', re.I),   # 따옴표 감싼 값
+    re.compile(r'(?<!\.)(?:password|passwd|pwd)\s*=\s*([a-zA-Z0-9@._\-!$%^&*+]{6,})(?!\s*[+|&(;])', re.I),  # = 할당만 (JS 연산자 후속 제외)
     re.compile(r'(?:admin|root|sa)\s*[/|:]\s*([a-zA-Z0-9@._\-!$%^&*+]{6,})', re.I),
     re.compile(r'\$2[aby]\$\d+\$[./A-Za-z0-9]{53}'),          # bcrypt hash (very specific)
     # v6.2.10: MD5/SHA 해시 — 세션쿠키 오탐 억제를 위해 "password" 또는 "hash" 컨텍스트 필요
@@ -160,7 +161,7 @@ _CRED_PATTERNS = [
 ]
 
 # v6.2.66: 미니파이 JS 출력 감지 — JS chunk 다운로드 출력에서 credential 오탐 방지
-# Next.js chunk, webpack, JS 다운로드 출력임을 감지
+# v6.2.83: JS 코드 분석 결과 출력(다운로드 컨텍스트 없이도 JS 코드 내용 자체)도 감지
 _MINIFIED_JS_CONTEXT = re.compile(
     r'(?:'
     r'下载:\s*\S+\.js\s*\('          # 중국어: "下载: xxx.js (xxxB)"
@@ -172,6 +173,10 @@ _MINIFIED_JS_CONTEXT = re.compile(
     r'|webpackChunk|webpackBootstrap'
     r'|_next/static/chunks/'
     r'|statics\.\w+\.com.*\.js'      # CDN에서 JS 다운로드
+    # v6.2.83: JS 코드 자체에서 credential 오탐 방지
+    r'|withXsrfToken|withCredentials'        # JS XHR 속성명 — 코드 내 JS 구조
+    r'|\w\.\w{1,4}=\w{2,}\+\('              # e.b=Func+( 패턴 — JS 미니파이 연산
+    r'|\|\|[a-zA-Z_$]\)|=[a-zA-Z_$]+\+\('  # ||t) 또는 =Auth+( — JS 논리연산자
     r')',
     re.I
 )

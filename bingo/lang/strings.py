@@ -408,6 +408,22 @@ _STRINGS = {
         "ko": "SSRF → file:// 프로토콜로 서버 파일 읽기",
         "zh": "SSRF → 使用file://协议读取服务器文件",
         "en": "SSRF → file:// protocol for server file read"},
+    "ssl_eof_detected": {
+        "ko": "SSL EOF 감지 — User-Agent 교체 + 레거시 TLS 자동 재시도",
+        "zh": "检测到SSL EOF — 自动切换User-Agent并启用旧版TLS重试",
+        "en": "SSL EOF detected — auto-retry with UA spoof + legacy TLS"},
+    "ssl_retry_ua_ok": {
+        "ko": "✅ User-Agent 브라우저 위장으로 SSL 우회 성공",
+        "zh": "✅ 通过User-Agent伪装成功绕过SSL",
+        "en": "✅ SSL bypass success via User-Agent browser spoof"},
+    "ssl_retry_tls_ok": {
+        "ko": "✅ 레거시 TLS 컨텍스트로 SSL 우회 성공",
+        "zh": "✅ 通过旧版TLS上下文成功绕过SSL",
+        "en": "✅ SSL bypass success via legacy TLS context"},
+    "ssl_retry_failed": {
+        "ko": "❌ SSL EOF 우회 실패 — 서버가 연결을 강제 종료함",
+        "zh": "❌ SSL EOF绕过失败 — 服务器强制关闭连接",
+        "en": "❌ SSL EOF bypass failed — server forcibly closed connection"},
     "waf_stage6_adv": {
         "ko": "STAGE6: 최고급 우회 시도 (파라미터 폭탄/경로 정규화/HTTP3/JSON 배열/XML/Tor)...",
         "zh": "STAGE6: 正在尝试高级绕过 (参数炸弹/路径规范化/HTTP3/JSON数组/XML/Tor)...",

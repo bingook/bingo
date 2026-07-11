@@ -8507,7 +8507,7 @@ class BingoTerminal:
                         # 헤더 우회 적용 안내 출력
                         _sd_msg = {
                             "ko": "🔀 Silent drop 감지 → HTTP 헤더 우회 자동 적용 (프록시 없음)",
-                            "zh": "🔀 检测到静默丢弃 → 自동应用HTTP头部绕过 (无代理)",
+                            "zh": "🔀 检测到静默丢弃 → 自动应用HTTP头部绕过 (无代理)",
                             "en": "🔀 Silent drop detected → applying HTTP header bypass (no proxy)",
                         }.get(_lang, "🔀 Silent drop → applying header bypass")
                         self.console.print(f"[{THEME['warn']}]{_sd_msg}[/]")

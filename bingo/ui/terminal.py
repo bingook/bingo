@@ -226,6 +226,12 @@ class BingoTerminal:
             set_lang(getattr(config, "lang", "en"))
         except Exception:
             pass
+        # v6.2.101: 자동 교정기 공지 언어 동기화
+        try:
+            from ..tools_ext.pentest_tools import set_notice_lang
+            set_notice_lang(getattr(config, "lang", "ko"))
+        except Exception:
+            pass
         self.console = Console(highlight=False)
         self.history: list[Message] = []
         self._session: PromptSession | None = None
@@ -1272,9 +1278,12 @@ class BingoTerminal:
                         f"DO NOT keep testing injection on 307 responses — oracle is always invalid on redirects.\n"
                         f"GET A VALID SESSION FIRST, then retry injection with that session cookie."
                     )
-                    self.console.print(
-                        f"[{THEME['error']}]  ⛔ 전체 307 감지 — IP 차단 또는 인증 필요. AI에게 세션 먼저 확보 지시.[/]"
-                    )
+                    _307_msg = {
+                        "ko": "⛔ 전체 307 감지 — IP 차단 또는 인증 필요. AI에게 세션 먼저 확보 지시.",
+                        "zh": "⛔ 全站307检测 — IP被封锁或需要认证。指示AI先获取会话。",
+                        "en": "⛔ All 307 detected — IP block or auth required. Instruct AI to get session first.",
+                    }.get(getattr(self.config, "lang", "en"), "⛔ All 307 — get session first.")
+                    self.console.print(f"[{THEME['error']}]  {_307_msg}[/]")
                 else:
                     # 특정 URL만 307 → 인증 필요
                     ip_block_note = (
@@ -1636,9 +1645,12 @@ class BingoTerminal:
                         f"  → HIGH VALUE TARGET: This form collects PII/financial data\n"
                         f"  → Priority: SQLi on these fields, check for missing auth, IDOR on user data"
                     )
-                    self.console.print(
-                        f"[{THEME['warn']}]  ⚠ 민감 필드 감지: {list(set(all_sensitive_found))}[/]"
-                    )
+                    _sens_msg = {
+                        "ko": f"⚠ 민감 필드 감지: {list(set(all_sensitive_found))}",
+                        "zh": f"⚠ 检测到敏感字段: {list(set(all_sensitive_found))}",
+                        "en": f"⚠ Sensitive fields detected: {list(set(all_sensitive_found))}",
+                    }.get(getattr(self.config, "lang", "en"), f"⚠ Sensitive: {list(set(all_sensitive_found))}")
+                    self.console.print(f"[{THEME['warn']}]  {_sens_msg}[/]")
 
             # ── 4b. CAPTCHA 분석 (파일명=정답 패턴 감지) ───────────────
             _captcha_imgs = _re.findall(

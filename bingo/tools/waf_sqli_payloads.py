@@ -509,6 +509,48 @@ GLOBAL_WAF_PROFILES: dict[str, dict] = {
         "notes": "세션/추적 쿠키를 DB 조회에 사용하는 앱에서 효과적",
     },
 
+    # ── IP 로테이션 / Tor ─────────────────────────────────────────
+    "ip_rotation": {
+        "vendor": "IP Rotation / Tor / Proxy",
+        "detection": ["429 Too Many Requests", "Rate Limit", "IP blocked"],
+        "bypass_strategy": [
+            "Tor: brew install tor && tor (포트 9050) — _detect_tor() 자동 감지",
+            "sqli_with_ip_rotation(url, param, ...) — Tor/프록시 자동 로테이션",
+            "_inject_ip_blocked_notice — 429/403 반복 감지 시 자동 안내",
+            "프록시 풀: proxy_list=['socks5://...', 'http://...'] 지정",
+        ],
+        "tampers": [],
+        "notes": "모든 기술적 우회 성공해도 IP 차단되면 무용지물 — 가장 중요한 방어선",
+    },
+
+    # ── 파라미터 폭탄 ─────────────────────────────────────────────
+    "param_flood": {
+        "vendor": "Parameter Flooding (WAF Parser Overload)",
+        "detection": [],
+        "bypass_strategy": [
+            "500개 더미 파라미터 + 실제 페이로드 동시 전송",
+            "WAF가 파라미터 수 제한 초과 시 분석 포기하고 통과",
+            "_sqli_make_param_flood_cmd(url, param, payload) 함수 사용",
+            "sqli_boolean STAGE 6a에서 자동 시도",
+        ],
+        "tampers": [],
+        "notes": "일부 WAF(Imperva, ModSecurity)에서 효과적. 서버 부하 증가 주의",
+    },
+
+    # ── 경로 정규화 우회 ──────────────────────────────────────────
+    "path_normalization": {
+        "vendor": "URL Path Normalization Bypass",
+        "detection": [],
+        "bypass_strategy": [
+            "이중 슬래시: //page.php → WAF 룰셋 미매칭",
+            "도트 삽입: /./page.php",
+            "인코딩: /%2e/page.php",
+            "_sqli_make_path_normalize_cmd 함수 사용",
+        ],
+        "tampers": [],
+        "notes": "Nginx/Apache 설정에 따라 효과 다름",
+    },
+
     # ── HPP / JSON / Multipart / HTTP2 / Chunked 프로토콜 우회 ──
     "protocol_bypass": {
         "vendor": "Protocol-Level WAF Bypass (범용)",

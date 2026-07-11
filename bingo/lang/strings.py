@@ -328,6 +328,46 @@ _STRINGS = {
         "ko": "다중 인라인 주석 노이즈 우회: /**/AND/**/",
         "zh": "多重内联注释噪声绕过: /**/AND/**/",
         "en": "Multi inline comment noise bypass: /**/AND/**/"},
+    "waf_param_flood": {
+        "ko": "파라미터 폭탄 시도: 500개 더미 파라미터로 WAF 파서 과부하",
+        "zh": "参数炸弹尝试: 500个虚假参数使WAF解析器过载",
+        "en": "Parameter flood attempt: 500 dummy params to overload WAF parser"},
+    "waf_path_normalize": {
+        "ko": "경로 정규화 우회: //page.php / /./page.php",
+        "zh": "路径规范化绕过: //page.php / /./page.php",
+        "en": "Path normalization bypass: //page.php / /./page.php"},
+    "waf_http3_bypass": {
+        "ko": "HTTP/3 QUIC 프로토콜 우회 시도 (WAF 미검사)",
+        "zh": "HTTP/3 QUIC协议绕过尝试 (WAF未检查)",
+        "en": "HTTP/3 QUIC protocol bypass attempt (WAF unchecked)"},
+    "waf_json_array_bypass": {
+        "ko": "JSON 배열 인젝션: {\"id\":[1,\"payload\"]}",
+        "zh": "JSON数组注入: {\"id\":[1,\"payload\"]}",
+        "en": "JSON array injection: {\"id\":[1,\"payload\"]}"},
+    "waf_xml_soap_bypass": {
+        "ko": "XML/SOAP 바디 인젝션: <param>payload</param>",
+        "zh": "XML/SOAP主体注入: <param>payload</param>",
+        "en": "XML/SOAP body injection: <param>payload</param>"},
+    "waf_ip_blocked": {
+        "ko": "⚠ IP 차단/속도 제한 감지 — Tor/프록시 로테이션 필요",
+        "zh": "⚠ 检测到IP封锁/速率限制 — 需要Tor/代理轮换",
+        "en": "⚠ IP block/rate limit detected — Tor/proxy rotation needed"},
+    "waf_tor_detected": {
+        "ko": "✅ Tor 감지됨 — IP 로테이션 자동 적용",
+        "zh": "✅ 检测到Tor — 自动应用IP轮换",
+        "en": "✅ Tor detected — applying IP rotation automatically"},
+    "waf_tor_not_running": {
+        "ko": "❌ Tor 미실행 — brew install tor && tor 실행 필요",
+        "zh": "❌ Tor未运行 — 需要运行: brew install tor && tor",
+        "en": "❌ Tor not running — run: brew install tor && tor"},
+    "waf_ip_rotation_ok": {
+        "ko": "✅ IP 로테이션으로 WAF 우회 성공!",
+        "zh": "✅ IP轮换成功绕过WAF！",
+        "en": "✅ WAF bypassed via IP rotation!"},
+    "waf_stage6_adv": {
+        "ko": "STAGE6: 최고급 우회 시도 (파라미터 폭탄/경로 정규화/HTTP3/JSON 배열/XML/Tor)...",
+        "zh": "STAGE6: 正在尝试高级绕过 (参数炸弹/路径规范化/HTTP3/JSON数组/XML/Tor)...",
+        "en": "STAGE6: Attempting advanced bypass (ParamFlood/PathNorm/HTTP3/JSON-array/XML/Tor)..."},
     "waf_analyzing":        {"ko": "WAF 분석",                  "zh": "WAF 分析",                "en": "WAF analysis"},
     "waf_detecting":        {"ko": "WAF 탐지 중...",             "zh": "WAF 检测中...",            "en": "Detecting WAF..."},
     "waf_priority":         {"ko": "우선 우회 전략",             "zh": "优先绕过策略",             "en": "Priority bypass strategies"},

@@ -8778,6 +8778,58 @@ class BingoTerminal:
                     self.history.append(Message(role="user", content=_vpn_hint))
                     continue  # TARGET_FAILED 중단 없이 루프 재개
 
+                # ── v6.2.97: 일시적 WAF 행동 차단 감지 — TARGET_FAILED 전에 체크 ──
+                # 이전에 STATUS:200 성공한 타겟이 STATUS:000으로 변한 경우 = 일시적 차단
+                import re as _re_wtb
+                _full_hist = " ".join(
+                    m.content for m in self.history[-30:]  # 최근 30개 메시지
+                    if hasattr(m, "content") and m.content
+                )
+                _had_200 = bool(_re_wtb.search(r"---HTTP_STATUS:200---", _full_hist))
+                _has_000_now = bool(_re_wtb.search(r"---HTTP_STATUS:000---", followup_response))
+                _http_direct_fail = bool(_re_wtb.search(
+                    r"http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.*STATUS:000",
+                    followup_response + _full_hist
+                ))
+                if (_had_200 and _has_000_now) or _http_direct_fail:
+                    _url_m3 = _re_wtb.search(r"https?://[a-zA-Z0-9._/-]+", followup_response)
+                    _target_url = _url_m3.group(0).rstrip(".,") if _url_m3 else "<URL>"
+                    _domain3 = _re_wtb.search(r"https?://([a-zA-Z0-9._-]+)", _target_url)
+                    _dn3 = _domain3.group(1) if _domain3 else "<domain>"
+                    _wtb_warn = {
+                        "ko": (
+                            "[WAF_TEMP_BLOCK 자동 교정] "
+                            "이전에 STATUS:200 성공 기록 있음 → 서버는 살아있습니다. "
+                            "현재 STATUS:000은 WAF 스캐닝 감지 후 일시적 차단입니다. "
+                            "서버가 다운되거나 IP가 영구 차단된 게 아닙니다. "
+                            "45초 대기 후 다시 시도하고, HTTP가 아닌 HTTPS로 접근하세요. "
+                            "TARGET_FAILED 결론 내리지 말고 계속 침투 시도하세요."
+                        ),
+                        "zh": (
+                            "[WAF_TEMP_BLOCK自动校正] "
+                            "之前STATUS:200成功记录存在 → 服务器是活的。"
+                            "当前STATUS:000是WAF检测到扫描行为后的临时封锁，不是服务器下线或IP永久封禁。"
+                            "等待45秒后重试，使用HTTPS而非HTTP访问。"
+                            "不要得出TARGET_FAILED结论——继续渗透测试。"
+                        ),
+                        "en": (
+                            "[WAF_TEMP_BLOCK auto-corrector] "
+                            "Previous STATUS:200 success record exists → server is alive. "
+                            "Current STATUS:000 is temporary WAF behavioral blocking after scan detection, "
+                            "NOT server down or permanent IP ban. "
+                            "Wait 45 seconds and retry with HTTPS (not HTTP). "
+                            "Do NOT conclude TARGET_FAILED — continue penetration testing."
+                        ),
+                    }.get(_lang, "[WAF_TEMP_BLOCK] Server alive, temporary WAF block. Retry with HTTPS after 45s.")
+                    from rich.panel import Panel as _PanelW
+                    self.console.print(_PanelW(
+                        _wtb_warn,
+                        title="[bold yellow]WAF_TEMP_BLOCK — 일시적 차단[/bold yellow]",
+                        border_style="yellow",
+                    ))
+                    self.history.append(Message(role="user", content=_wtb_warn))
+                    continue  # TARGET_FAILED 중단 없이 루프 재개
+
                 _fail_msg = {
                     "ko": "❌ 타겟 공략 실패 — 이 타겟에서는 취약점을 확인할 수 없습니다.",
                     "zh": "❌ 目标攻击失败 — 无法在此目标上确认漏洞。",

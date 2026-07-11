@@ -1253,10 +1253,14 @@ class HardSessionRestarter:
 # ══════════════════════════════════════════════════════════════════════════════
 import re as _re_vpn
 
-_VPN_VIRTUAL_IP_RE = _re_vpn.compile(r'\b198\.1[89]\.\d{1,3}\.\d{1,3}\b')
+# v6.2.94 수정: 198.18/19.x.x + 100.64.x.x (CGNAT) 전부 포함
+_VPN_VIRTUAL_IP_RE = _re_vpn.compile(
+    r'\b(?:198\.1[89]|100\.(?:6[4-9]|[7-9]\d|1(?:0\d|1[0-9]|2[0-7])))\.\d{1,3}\.\d{1,3}\b'
+)
 
-# 임계값: 실행 결과에 이 개수 이상의 고유 198.18/19.x.x 가 있으면 스푸핑으로 판정
-_VPN_VIRTUAL_IP_THRESHOLD = 4
+# 임계값: 1개만 나와도 감지 (기존 4 → 1으로 수정)
+# 이유: VPN 환경에서는 단 1개의 가상 IP만 나와도 DNS 스푸핑 상태
+_VPN_VIRTUAL_IP_THRESHOLD = 1
 
 
 def check_vpn_virtual_ip_contamination(
@@ -1285,37 +1289,37 @@ def check_vpn_virtual_ip_contamination(
 
     msgs = {
         "zh": (
-            f"⚠️  [VPN DNS欺骗] 检测到 {len(unique_ips)} 个 198.18.x.x 虚拟IP\n\n"
-            "【根本原因】macOS VPN 将所有 DNS 查询解析为 198.18.0.0/15 虚拟IP段，\n"
-            "这些不是真实服务器IP，而是VPN代理的本地虚拟地址。\n\n"
-            "【结果影响】端口扫描实际上是在扫描VPN代理本身，\n"
-            "所有端口显示为'开放'属于误报，扫描结果完全无效。\n\n"
-            "【解决方案】\n"
-            "  1. 关闭VPN后重新执行DNS解析和端口扫描\n"
-            "  2. 或使用 dig @8.8.8.8 <域名> 获取真实IP后手动扫描\n"
-            "  3. 或通过真实IP直接访问（需先通过其他途径获取）"
+            f"⚠️  [VPN虚拟IP] 检测到 {len(unique_ips)} 个VPN虚拟IP ({', '.join(sorted(unique_ips))})\n\n"
+            "【根本原因】macOS VPN(Clash/Surge等)将所有DNS查询劫持为198.18.0.0/15虚拟IP段，\n"
+            "这些不是真实服务器IP，而是VPN隧道的本地路由地址。\n\n"
+            "【重要】这不是IP封锁！VPN保持开启状态即可正常访问目标。\n\n"
+            "【正确处理方式】\n"
+            "  1. 使用外部DNS查询真实IP: dig @8.8.8.8 +short <域名>\n"
+            "  2. 用真实IP + Host头直接访问 (无需关闭VPN)\n"
+            "  3. 直接用域名访问——VPN隧道会自动路由到真实服务器\n"
+            "  ❌ 不要关闭VPN——VPN开启状态可以正常访问"
         ),
         "ko": (
-            f"⚠️  [VPN DNS 스푸핑] {len(unique_ips)}개 198.18.x.x 가상 IP 감지\n\n"
-            "【근본 원인】macOS VPN이 모든 DNS 쿼리를 198.18.0.0/15 가상 IP로 반환합니다.\n"
-            "이 IP들은 실제 서버 IP가 아닌 VPN 프록시의 가상 주소입니다.\n\n"
-            "【영향】포트 스캔이 실제로는 VPN 프록시를 스캔한 것이며,\n"
-            "모든 포트가 'open'으로 나오는 것은 전부 오탐입니다. 결과 무효.\n\n"
-            "【해결책】\n"
-            "  1. VPN을 끄고 DNS 조회 + 포트 스캔 재실행\n"
-            "  2. 또는 dig @8.8.8.8 <도메인> 으로 실제 IP 직접 조회\n"
-            "  3. 또는 실제 IP를 다른 방법으로 확인 후 직접 접근"
+            f"⚠️  [VPN 가상 IP] {len(unique_ips)}개 VPN 가상 IP 감지 ({', '.join(sorted(unique_ips))})\n\n"
+            "【근본 원인】macOS VPN(Clash/Surge 등)이 모든 DNS 쿼리를 198.18.0.0/15\n"
+            "가상 IP로 반환합니다. 실제 서버 IP가 아닌 VPN 터널 내부 라우팅 주소입니다.\n\n"
+            "【중요】IP 차단이 아닙니다! VPN 켠 채로 정상 접속 가능합니다.\n\n"
+            "【올바른 처리 방법】\n"
+            "  1. 외부 DNS로 실제 IP 조회: dig @8.8.8.8 +short <도메인>\n"
+            "  2. 실제 IP + Host 헤더로 직접 접근 (VPN 끌 필요 없음)\n"
+            "  3. 도메인으로 직접 접근 — VPN 터널이 자동 라우팅\n"
+            "  ❌ VPN 끄지 말 것 — VPN 켠 상태에서도 정상 접속 가능"
         ),
         "en": (
-            f"⚠️  [VPN DNS Spoofing] {len(unique_ips)} virtual IPs (198.18.x.x) detected\n\n"
-            "ROOT CAUSE: macOS VPN resolves all DNS queries to 198.18.0.0/15 virtual IPs.\n"
-            "These are NOT real server IPs — they are the VPN proxy's virtual addresses.\n\n"
-            "IMPACT: Port scan actually scanned the VPN proxy itself.\n"
-            "All ports showing 'open' are false positives. Results are INVALID.\n\n"
-            "FIX:\n"
-            "  1. Disable VPN and re-run DNS resolution + port scan\n"
-            "  2. Or use: dig @8.8.8.8 <domain> to get real IPs\n"
-            "  3. Or obtain real IPs through other means (Shodan, crt.sh, etc.)"
+            f"⚠️  [VPN Virtual IP] {len(unique_ips)} VPN virtual IP(s) detected ({', '.join(sorted(unique_ips))})\n\n"
+            "ROOT CAUSE: macOS VPN (Clash/Surge etc.) hijacks all DNS queries to return\n"
+            "198.18.0.0/15 virtual IPs. These are VPN tunnel routing addresses, NOT real server IPs.\n\n"
+            "IMPORTANT: This is NOT an IP block! Target is accessible with VPN ON.\n\n"
+            "CORRECT APPROACH:\n"
+            "  1. Get real IP via external DNS: dig @8.8.8.8 +short <domain>\n"
+            "  2. Access with real IP + Host header (no need to disable VPN)\n"
+            "  3. Access via domain directly — VPN tunnel auto-routes to real server\n"
+            "  ❌ Do NOT disable VPN — target is reachable with VPN enabled"
         ),
     }
     return msgs.get(lang, msgs["en"])

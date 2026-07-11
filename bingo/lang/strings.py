@@ -216,6 +216,46 @@ _STRINGS = {
     "waf_bypass_fail":      {"ko": "우회 실패 — /waf 결과를 AI에게 물어보세요",
                              "zh": "绕过失败 — 请将 /waf 结果发给 AI",
                              "en": "Bypass failed — ask AI with /waf results"},
+    "waf_400_block_detected": {
+        "ko": "⚠ WAF 400 차단 감지 — 고급 우회 기법 자동 적용 중",
+        "zh": "⚠ 检测到WAF 400封锁 — 正在自动应用高级绕过技术",
+        "en": "⚠ WAF 400 block detected — applying advanced bypass techniques"},
+    "waf_versioned_comment": {
+        "ko": "버전 인라인 주석 우회: /*!12345AND*/",
+        "zh": "版本内联注释绕过: /*!12345AND*/",
+        "en": "Versioned inline comment bypass: /*!12345AND*/"},
+    "waf_tab_bypass": {
+        "ko": "탭(0x09) 공백 치환 우회: %09AND%09",
+        "zh": "Tab(0x09)空格替换绕过: %09AND%09",
+        "en": "Tab(0x09) space substitution bypass: %09AND%09"},
+    "waf_case_when_bypass": {
+        "ko": "CASE WHEN 조건문 우회 (AND/OR 없이 조건 표현)",
+        "zh": "CASE WHEN条件语句绕过 (无AND/OR表达条件)",
+        "en": "CASE WHEN condition bypass (express condition without AND/OR)"},
+    "waf_null_byte_bypass": {
+        "ko": "NULL 바이트(%00) 삽입 우회: %00AND%00",
+        "zh": "NULL字节(%00)插入绕过: %00AND%00",
+        "en": "NULL byte(%00) insertion bypass: %00AND%00"},
+    "waf_double_urlencode": {
+        "ko": "이중 URL 인코딩 우회: %2526%2526 (&&)",
+        "zh": "双重URL编码绕过: %2526%2526 (&&)",
+        "en": "Double URL encoding bypass: %2526%2526 (&&)"},
+    "waf_header_inject": {
+        "ko": "HTTP 헤더 인젝션 시도: X-Forwarded-For / Referer / User-Agent",
+        "zh": "HTTP头注入尝试: X-Forwarded-For / Referer / User-Agent",
+        "en": "HTTP header injection attempt: X-Forwarded-For / Referer / User-Agent"},
+    "waf_header_inject_ok": {
+        "ko": "✅ HTTP 헤더 인젝션으로 WAF 우회 성공!",
+        "zh": "✅ HTTP头注入成功绕过WAF！",
+        "en": "✅ WAF bypassed via HTTP header injection!"},
+    "waf_stage3_header": {
+        "ko": "STAGE3: HTTP 헤더 인젝션으로 WAF 우회 시도 중...",
+        "zh": "STAGE3: 正在通过HTTP头注入尝试绕过WAF...",
+        "en": "STAGE3: Attempting WAF bypass via HTTP header injection..."},
+    "waf_kisa_detected": {
+        "ko": "한국 공공기관 WAF(KISA) 감지 — 특화 우회 기법 적용",
+        "zh": "检测到韩国公共机构WAF(KISA) — 应用专用绕过技术",
+        "en": "Korean public sector WAF (KISA) detected — applying specialized bypass"},
     "waf_analyzing":        {"ko": "WAF 분석",                  "zh": "WAF 分析",                "en": "WAF analysis"},
     "waf_detecting":        {"ko": "WAF 탐지 중...",             "zh": "WAF 检测中...",            "en": "Detecting WAF..."},
     "waf_priority":         {"ko": "우선 우회 전략",             "zh": "优先绕过策略",             "en": "Priority bypass strategies"},

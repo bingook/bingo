@@ -296,6 +296,38 @@ _STRINGS = {
         "ko": "OOB DNS 페이로드 전송 — DNS 수신 서버에서 결과 확인",
         "zh": "OOB DNS载荷已发送 — 在DNS接收服务器确认结果",
         "en": "OOB DNS payloads sent — check results on DNS receiver"},
+    "waf_unicode_bypass": {
+        "ko": "유니코드 전각문자 우회: ＡＮＤ / ＯＲ / ＳＥＬＥＣＴ",
+        "zh": "Unicode全角字符绕过: ＡＮＤ / ＯＲ / ＳＥＬＥＣＴ",
+        "en": "Unicode fullwidth character bypass: ＡＮＤ / ＯＲ / ＳＥＬＥＣＴ"},
+    "waf_scientific_notation": {
+        "ko": "MySQL 과학적 표기법 우회: 1e0=1e0 → TRUE",
+        "zh": "MySQL科学记数法绕过: 1e0=1e0 → TRUE",
+        "en": "MySQL scientific notation bypass: 1e0=1e0 → TRUE"},
+    "waf_cookie_inject": {
+        "ko": "쿠키 인젝션 시도: Cookie: param=payload",
+        "zh": "Cookie注入尝试: Cookie: param=payload",
+        "en": "Cookie injection attempt: Cookie: param=payload"},
+    "waf_gzip_encoding": {
+        "ko": "gzip 압축 요청 우회: Content-Encoding: gzip",
+        "zh": "gzip压缩请求绕过: Content-Encoding: gzip",
+        "en": "gzip compressed request bypass: Content-Encoding: gzip"},
+    "waf_smuggling": {
+        "ko": "HTTP Request Smuggling CL.TE 우회 시도",
+        "zh": "HTTP请求走私CL.TE绕过尝试",
+        "en": "HTTP Request Smuggling CL.TE bypass attempt"},
+    "waf_second_order_detected": {
+        "ko": "⚠ 데이터 저장 패턴 감지 — Second-order SQLi 시도 가능",
+        "zh": "⚠ 检测到数据存储模式 — 可尝试二阶SQL注入",
+        "en": "⚠ Data store pattern detected — Second-order SQLi possible"},
+    "waf_websocket_detected": {
+        "ko": "⚠ WebSocket 감지 — WAF 미검사 채널! 인젝션 시도",
+        "zh": "⚠ 检测到WebSocket — WAF未检查通道！可尝试注入",
+        "en": "⚠ WebSocket detected — WAF unchecked channel! Injection possible"},
+    "waf_multi_comment_noise": {
+        "ko": "다중 인라인 주석 노이즈 우회: /**/AND/**/",
+        "zh": "多重内联注释噪声绕过: /**/AND/**/",
+        "en": "Multi inline comment noise bypass: /**/AND/**/"},
     "waf_analyzing":        {"ko": "WAF 분석",                  "zh": "WAF 分析",                "en": "WAF analysis"},
     "waf_detecting":        {"ko": "WAF 탐지 중...",             "zh": "WAF 检测中...",            "en": "Detecting WAF..."},
     "waf_priority":         {"ko": "우선 우회 전략",             "zh": "优先绕过策略",             "en": "Priority bypass strategies"},

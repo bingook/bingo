@@ -8707,6 +8707,77 @@ class BingoTerminal:
             # 타겟 실패 감지 — 더 이상 진행 불가
             if "TARGET_FAILED" in followup_response:
                 _lang = getattr(self.config, "lang", "en")
+
+                # ── v6.2.94: VPN 가상 IP 오판 감지 — TARGET_FAILED 전에 체크 ──
+                import re as _re_vpn
+                from bingo.tools_ext.pentest_tools import (
+                    _is_vpn_virtual_ip, _get_real_ip_via_external_dns
+                )
+                _resp_ips = _re_vpn.findall(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", followup_response)
+                _vpn_ips_found = [ip for ip in _resp_ips if _is_vpn_virtual_ip(ip)]
+                if _vpn_ips_found:
+                    _url_m2 = _re_vpn.search(r"https?://([a-zA-Z0-9._-]+)", followup_response)
+                    _hn2 = _url_m2.group(1) if _url_m2 else None
+                    _real_ip2 = None
+                    if _hn2:
+                        try:
+                            _real_ip2 = _get_real_ip_via_external_dns(_hn2)
+                        except Exception:
+                            pass
+                    _vpn_warn = {
+                        "ko": (
+                            f"⚠️  VPN 가상 IP 감지: {', '.join(set(_vpn_ips_found))}\n"
+                            f"이 IP는 VPN(Clash/Surge)이 만든 가상 라우팅 주소입니다.\n"
+                            f"실제 서버 IP가 아니므로 'IP 차단' 결론은 오판일 수 있습니다.\n"
+                            + (f"외부 DNS 조회 실제 IP: {_real_ip2}" if _real_ip2 else "")
+                        ),
+                        "zh": (
+                            f"⚠️  检测到VPN虚拟IP: {', '.join(set(_vpn_ips_found))}\n"
+                            f"此IP是VPN(Clash/Surge)创建的虚拟路由地址，并非真实服务器IP。\n"
+                            f"因此'IP被封锁'的结论可能是误判。\n"
+                            + (f"外部DNS查询真实IP: {_real_ip2}" if _real_ip2 else "")
+                        ),
+                        "en": (
+                            f"⚠️  VPN virtual IP detected: {', '.join(set(_vpn_ips_found))}\n"
+                            f"This IP is a virtual routing address created by VPN (Clash/Surge), not the real server IP.\n"
+                            f"The 'IP blocked' conclusion may be incorrect.\n"
+                            + (f"Real IP via external DNS: {_real_ip2}" if _real_ip2 else "")
+                        ),
+                    }.get(_lang, f"⚠️  VPN virtual IP: {', '.join(set(_vpn_ips_found))}")
+                    from rich.panel import Panel as _PanelV
+                    self.console.print(_PanelV(
+                        _vpn_warn,
+                        title="[bold yellow]VPN_VIRTUAL_IP — 오판 경고[/bold yellow]",
+                        border_style="yellow",
+                    ))
+                    # VPN 가상 IP 오판이면 TARGET_FAILED로 중단하지 않고 루프 계속
+                    _vpn_hint = {
+                        "ko": (
+                            "[VPN_VIRTUAL_IP 자동 교정] "
+                            f"감지된 IP {', '.join(set(_vpn_ips_found))}는 VPN 가상 IP입니다. "
+                            f"실제 서버 IP: {_real_ip2 or '외부 DNS로 dig @8.8.8.8 확인 필요'}. "
+                            f"도메인 {_hn2 or ''}로 직접 접근하거나 "
+                            f"Host 헤더를 지정해 실제 IP로 접근하세요. "
+                            "IP 차단이 아닙니다 — 계속 침투 시도하세요."
+                        ),
+                        "zh": (
+                            "[VPN_VIRTUAL_IP自动校正] "
+                            f"检测到IP {', '.join(set(_vpn_ips_found))}为VPN虚拟IP。"
+                            f"真实服务器IP: {_real_ip2 or '需通过dig @8.8.8.8查询'}。"
+                            f"请直接使用域名{_hn2 or ''}访问，或指定Host头使用真实IP访问。"
+                            "这不是IP封锁——请继续渗透测试。"
+                        ),
+                        "en": (
+                            "[VPN_VIRTUAL_IP auto-corrector] "
+                            f"Detected IP {', '.join(set(_vpn_ips_found))} is a VPN virtual IP. "
+                            f"Real server IP: {_real_ip2 or 'check with dig @8.8.8.8'}. "
+                            f"Access directly via domain {_hn2 or ''} or use Host header with real IP. "
+                            "This is NOT an IP block — continue penetration testing."
+                        ),
+                    }.get(_lang, f"[VPN_VIRTUAL_IP] Not IP blocked. Real IP: {_real_ip2}")
+                    self.history.append(Message(role="user", content=_vpn_hint))
+                    continue  # TARGET_FAILED 중단 없이 루프 재개
+
                 _fail_msg = {
                     "ko": "❌ 타겟 공략 실패 — 이 타겟에서는 취약점을 확인할 수 없습니다.",
                     "zh": "❌ 目标攻击失败 — 无法在此目标上确认漏洞。",

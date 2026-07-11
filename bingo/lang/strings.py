@@ -256,6 +256,46 @@ _STRINGS = {
         "ko": "한국 공공기관 WAF(KISA) 감지 — 특화 우회 기법 적용",
         "zh": "检测到韩国公共机构WAF(KISA) — 应用专用绕过技术",
         "en": "Korean public sector WAF (KISA) detected — applying specialized bypass"},
+    "waf_hpp_bypass": {
+        "ko": "HPP(파라미터 오염) 우회 시도: ?id=1&id=payload",
+        "zh": "HPP(参数污染)绕过尝试: ?id=1&id=payload",
+        "en": "HPP (HTTP Parameter Pollution) bypass: ?id=1&id=payload"},
+    "waf_json_bypass": {
+        "ko": "JSON 바디 인젝션 시도: Content-Type: application/json",
+        "zh": "JSON主体注入尝试: Content-Type: application/json",
+        "en": "JSON body injection attempt: Content-Type: application/json"},
+    "waf_multipart_bypass": {
+        "ko": "Multipart/form-data 인젝션 시도",
+        "zh": "Multipart/form-data注入尝试",
+        "en": "Multipart/form-data injection attempt"},
+    "waf_http2_bypass": {
+        "ko": "HTTP/2 프로토콜 우회 시도",
+        "zh": "HTTP/2协议绕过尝试",
+        "en": "HTTP/2 protocol bypass attempt"},
+    "waf_chunked_bypass": {
+        "ko": "청크 분할 전송(Transfer-Encoding: chunked) 우회 시도",
+        "zh": "分块传输(Transfer-Encoding: chunked)绕过尝试",
+        "en": "Chunked transfer encoding bypass attempt"},
+    "waf_stage4_proto": {
+        "ko": "STAGE4: 프로토콜 레벨 우회 시도 중 (HPP/JSON/Multipart/HTTP2/Chunked)...",
+        "zh": "STAGE4: 正在尝试协议级别绕过 (HPP/JSON/Multipart/HTTP2/Chunked)...",
+        "en": "STAGE4: Attempting protocol-level bypass (HPP/JSON/Multipart/HTTP2/Chunked)..."},
+    "waf_all_failed_timebased": {
+        "ko": "⚠ Boolean 우회 전부 실패 → Time-based SQLi로 전환",
+        "zh": "⚠ 布尔绕过全部失败 → 切换到时间盲注",
+        "en": "⚠ All boolean bypasses failed → switching to time-based SQLi"},
+    "waf_oob_dns_hint": {
+        "ko": "OOB DNS 채널 사용: sqli_oob_dns(dns_domain='<interactsh도메인>')",
+        "zh": "使用OOB DNS通道: sqli_oob_dns(dns_domain='<interactsh域名>')",
+        "en": "Use OOB DNS channel: sqli_oob_dns(dns_domain='<interactsh-domain>')"},
+    "sqli_timebased_sleep_bypass": {
+        "ko": "SLEEP 키워드 차단 → 대체 방법 자동 시도: GET_LOCK / BENCHMARK / pg_sleep / WAITFOR DELAY",
+        "zh": "SLEEP关键字被拦截 → 自动尝试替代方法: GET_LOCK / BENCHMARK / pg_sleep / WAITFOR DELAY",
+        "en": "SLEEP keyword blocked → auto-trying alternatives: GET_LOCK / BENCHMARK / pg_sleep / WAITFOR DELAY"},
+    "sqli_oob_dns_send": {
+        "ko": "OOB DNS 페이로드 전송 — DNS 수신 서버에서 결과 확인",
+        "zh": "OOB DNS载荷已发送 — 在DNS接收服务器确认结果",
+        "en": "OOB DNS payloads sent — check results on DNS receiver"},
     "waf_analyzing":        {"ko": "WAF 분석",                  "zh": "WAF 分析",                "en": "WAF analysis"},
     "waf_detecting":        {"ko": "WAF 탐지 중...",             "zh": "WAF 检测中...",            "en": "Detecting WAF..."},
     "waf_priority":         {"ko": "우선 우회 전략",             "zh": "优先绕过策略",             "en": "Priority bypass strategies"},

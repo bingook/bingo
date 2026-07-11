@@ -364,6 +364,50 @@ _STRINGS = {
         "ko": "✅ IP 로테이션으로 WAF 우회 성공!",
         "zh": "✅ IP轮换成功绕过WAF！",
         "en": "✅ WAF bypassed via IP rotation!"},
+    "xss_advanced_test": {
+        "ko": "고급 XSS 테스트 — WAF 우회 페이로드 22종 (DOM/Mutation/CSP/SVG/Angular)",
+        "zh": "高级XSS测试 — 22种WAF绕过载荷 (DOM/Mutation/CSP/SVG/Angular)",
+        "en": "Advanced XSS test — 22 WAF bypass payloads (DOM/Mutation/CSP/SVG/Angular)"},
+    "xss_reflected_found": {
+        "ko": "✅ XSS 반사 페이로드 발견",
+        "zh": "✅ 发现XSS反射载荷",
+        "en": "✅ XSS reflected payload found"},
+    "xss_cookie_steal": {
+        "ko": "쿠키 탈취 XSS: document.cookie → attacker_url 전송",
+        "zh": "Cookie窃取XSS: document.cookie → 发送到attacker_url",
+        "en": "Cookie steal XSS: document.cookie → send to attacker_url"},
+    "post_exploit_chain": {
+        "ko": "웹쉘 후속 공격 체인: SUID→권한상승→크리덴셜→리버스쉘",
+        "zh": "Webshell后续攻击链: SUID→权限提升→凭证→反弹Shell",
+        "en": "Webshell post-exploit chain: SUID→priv-esc→credentials→revshell"},
+    "post_exploit_suid": {
+        "ko": "SUID 바이너리 발견 → GTFOBins 권한 상승 시도",
+        "zh": "发现SUID二进制文件 → 尝试GTFOBins权限提升",
+        "en": "SUID binary found → GTFOBins privilege escalation attempt"},
+    "post_exploit_creds": {
+        "ko": "DB 접속 정보 발견: wp-config.php / .env / 설정 파일",
+        "zh": "发现数据库凭证: wp-config.php / .env / 配置文件",
+        "en": "DB credentials found: wp-config.php / .env / config files"},
+    "jwt_confusion_attack": {
+        "ko": "JWT 알고리즘 혼동 공격: RS256→HS256 관리자 토큰 위조",
+        "zh": "JWT算法混淆攻击: RS256→HS256 伪造管理员令牌",
+        "en": "JWT algorithm confusion attack: RS256→HS256 admin token forgery"},
+    "jwt_forged_token": {
+        "ko": "✅ JWT 위조 토큰 생성 완료",
+        "zh": "✅ JWT伪造令牌生成完成",
+        "en": "✅ JWT forged token generated"},
+    "ssrf_chain_cloud": {
+        "ko": "SSRF → 클라우드 메타데이터(169.254.169.254) IAM 키 탈취",
+        "zh": "SSRF → 云元数据(169.254.169.254) IAM密钥窃取",
+        "en": "SSRF → cloud metadata (169.254.169.254) IAM key theft"},
+    "ssrf_chain_internal": {
+        "ko": "SSRF → 내부 서비스 스캔 (Redis/Elasticsearch/내부API)",
+        "zh": "SSRF → 内部服务扫描 (Redis/Elasticsearch/内部API)",
+        "en": "SSRF → internal service scan (Redis/Elasticsearch/internal API)"},
+    "ssrf_chain_file": {
+        "ko": "SSRF → file:// 프로토콜로 서버 파일 읽기",
+        "zh": "SSRF → 使用file://协议读取服务器文件",
+        "en": "SSRF → file:// protocol for server file read"},
     "waf_stage6_adv": {
         "ko": "STAGE6: 최고급 우회 시도 (파라미터 폭탄/경로 정규화/HTTP3/JSON 배열/XML/Tor)...",
         "zh": "STAGE6: 正在尝试高级绕过 (参数炸弹/路径规范化/HTTP3/JSON数组/XML/Tor)...",

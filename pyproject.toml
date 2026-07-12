@@ -68,3 +68,17 @@ path = "bingo/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["bingo"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "lahyl_coordinates.json",
+    "jwt_response.txt",
+    "bingo-github-profile.png",
+    "README_ko.md",
+    "README_zh.md",
+    "*.png",
+    "*.log",
+    ".github",
+    "push.sh",
+    "AGENTS.md",
+]

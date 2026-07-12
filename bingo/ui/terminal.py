@@ -2141,6 +2141,12 @@ class BingoTerminal:
                 self._exec_loop_count = 0
                 self._stuck_count = 0
                 self._recent_results = []
+                # v6.2.102: 타겟 이탈 자동 차단기에 현재 타겟 동기화
+                try:
+                    from ..tools_ext.pentest_tools import set_target_domain
+                    set_target_domain(new_target)
+                except Exception:
+                    pass
 
                 # ── v2.9.2: 새 타겟 전환 시 대화 히스토리에서 이전 CMS/그누보드
                 #    관련 메시지가 AI를 오염시키지 않도록 히스토리 트리밍
@@ -9856,6 +9862,12 @@ class BingoTerminal:
                 "en": f"✅ Session restored — target: {target}",
             }.get(_lang, f"✅ Session restored: {target}")
             self.console.print(f"[bold green]{_resumed}[/bold green]\n")
+            # v6.2.102: 복원된 타겟 동기화
+            try:
+                from ..tools_ext.pentest_tools import set_target_domain
+                set_target_domain(target)
+            except Exception:
+                pass
             return True   # 복원 성공 — 자동 재개 신호
         else:
             # 새 세션 시작 — 기존 히스토리 파일 삭제

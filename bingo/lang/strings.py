@@ -7771,6 +7771,138 @@ _STRINGS.update({
         "en": "💾 Results saved: {path}",
     },
 
+    # ── v6.2.102: autoexploit 하드코딩 한국어 다국어화 ──────────────────────────
+    "ae_no_requests_lib": {
+        "ko": "requests 라이브러리 없음",
+        "zh": "缺少 requests 库",
+        "en": "requests library not installed",
+    },
+    "ae_lfi_confirmed": {
+        "ko": "🔴 LFI 확인!",
+        "zh": "🔴 LFI 已确认！",
+        "en": "🔴 LFI Confirmed!",
+    },
+    "ae_lfi_suspected": {
+        "ko": "🟡 의심",
+        "zh": "🟡 疑似",
+        "en": "🟡 Suspected",
+    },
+    "ae_jwt_invalid": {
+        "ko": "유효한 JWT 토큰이 아님 (파트 3개 필요)",
+        "zh": "无效的 JWT Token（需要 3 部分）",
+        "en": "Invalid JWT token (3 parts required)",
+    },
+    "ae_jwt_parse_error": {
+        "ko": "JWT 파싱 오류: {e}",
+        "zh": "JWT 解析错误: {e}",
+        "en": "JWT parse error: {e}",
+    },
+    "ae_jwt_alg_success": {
+        "ko": "⚠️  alg:{alg} 공격 성공!",
+        "zh": "⚠️  alg:{alg} 攻击成功！",
+        "en": "⚠️  alg:{alg} attack succeeded!",
+    },
+    "ae_jwt_secret_cracked": {
+        "ko": "⚠️  비밀키 크랙: {secret}",
+        "zh": "⚠️  密钥破解: {secret}",
+        "en": "⚠️  Secret key cracked: {secret}",
+    },
+    "ae_jwt_admin_token": {
+        "ko": "   관리자 토큰: {token}",
+        "zh": "   管理员令牌: {token}",
+        "en": "   Admin token: {token}",
+    },
+    "ae_jwt_kid_success": {
+        "ko": "⚠️  kid 인젝션 성공: {kid}",
+        "zh": "⚠️  kid 注入成功: {kid}",
+        "en": "⚠️  kid injection succeeded: {kid}",
+    },
+    "ae_ssrf_no_direct": {
+        "ko": "SSRF 직접 탐지 없음 — DNS callback 방식 수동 시도 권장",
+        "zh": "未直接检测到 SSRF — 建议手动尝试 DNS callback 方式",
+        "en": "No direct SSRF detected — DNS callback method recommended",
+    },
+    "ae_csrf_no_protections": {
+        "ko": "없음",
+        "zh": "无",
+        "en": "none",
+    },
+    "ae_csrf_defense_uncertain": {
+        "ko": "⚠️  방어 메커니즘 탐지 — CSRF 성공 불확실",
+        "zh": "⚠️  检测到防护机制 — CSRF 成功不确定",
+        "en": "⚠️  Defense mechanism detected — CSRF success uncertain",
+    },
+    "ae_csrf_no_defense": {
+        "ko": "✅ CSRF 방어 없음 — PoC 신뢰도 높음",
+        "zh": "✅ 无 CSRF 防护 — PoC 可信度高",
+        "en": "✅ No CSRF defense — PoC reliability high",
+    },
+    "ae_deser_vuln_tag": {
+        "ko": "🔴 역직렬화 취약!",
+        "zh": "🔴 反序列化漏洞！",
+        "en": "🔴 Deserialization Vulnerable!",
+    },
+    "ae_deser_timing_tag": {
+        "ko": "🟡 시간지연 — 취약 의심",
+        "zh": "🟡 时序延迟 — 疑似漏洞",
+        "en": "🟡 Timing delay — suspected",
+    },
+    "ae_deser_finding": {
+        "ko": "⚠️  역직렬화 취약점 ({lang}): {detail}",
+        "zh": "⚠️  反序列化漏洞 ({lang}): {detail}",
+        "en": "⚠️  Deserialization vulnerability ({lang}): {detail}",
+    },
+    "ae_deser_manual": {
+        "ko": "⚠️  ysoserial / PHPGGC / marshmallow-exploit 으로 RCE 시도 권장",
+        "zh": "⚠️  建议使用 ysoserial / PHPGGC / marshmallow-exploit 尝试 RCE",
+        "en": "⚠️  Recommend trying RCE with ysoserial / PHPGGC / marshmallow-exploit",
+    },
+    "ae_smuggling_clte": {
+        "ko": "⚠️  CL.TE 스머글링 의심: 타이밍 차이={diff}s",
+        "zh": "⚠️  疑似 CL.TE 走私: 时序差异={diff}s",
+        "en": "⚠️  CL.TE smuggling suspected: timing diff={diff}s",
+    },
+    "ae_smuggling_tecl": {
+        "ko": "🟡 TE.CL 의심: status={status}",
+        "zh": "🟡 疑似 TE.CL: status={status}",
+        "en": "🟡 TE.CL suspected: status={status}",
+    },
+    "ae_smuggling_tete": {
+        "ko": "🟡 TE.TE 의심: {hdr}",
+        "zh": "🟡 疑似 TE.TE: {hdr}",
+        "en": "🟡 TE.TE suspected: {hdr}",
+    },
+    "ae_smuggling_burp": {
+        "ko": "⚠️  Burp Suite HTTP Request Smuggler 확장으로 정밀 확인 권장",
+        "zh": "⚠️  建议使用 Burp Suite HTTP Request Smuggler 扩展进行精确验证",
+        "en": "⚠️  Recommend Burp Suite HTTP Request Smuggler extension for precise confirmation",
+    },
+    "ae_pp_finding": {
+        "ko": "⚠️  PP 취약점: {payload}",
+        "zh": "⚠️  PP 漏洞: {payload}",
+        "en": "⚠️  PP vulnerability: {payload}",
+    },
+    "ae_pp_suspected": {
+        "ko": "🟡 PP 의심: errors={errors}",
+        "zh": "🟡 疑似 PP: errors={errors}",
+        "en": "🟡 PP suspected: errors={errors}",
+    },
+    "ae_pp_no_detect": {
+        "ko": "Prototype Pollution 미탐지",
+        "zh": "未检测到 Prototype Pollution",
+        "en": "Prototype Pollution not detected",
+    },
+    "ae_pp_nodejs_only": {
+        "ko": "ℹ️  Node.js/Express 앱에서만 유효 — 기술스택 확인 필요",
+        "zh": "ℹ️  仅适用于 Node.js/Express 应用 — 需确认技术栈",
+        "en": "ℹ️  Only applicable for Node.js/Express — verify tech stack",
+    },
+    "ae_pp_client_side": {
+        "ko": "ℹ️  클라이언트사이드 PP는 브라우저 콘솔에서 직접 테스트 필요",
+        "zh": "ℹ️  客户端 PP 需在浏览器控制台直接测试",
+        "en": "ℹ️  Client-side PP requires direct testing in browser console",
+    },
+
     # ── v6.2.56: autoexploit 배너 / 진행 메시지 ───────────────────────────────
     "ae_banner_lfi": {
         "ko": "🗂  LFI / Path Traversal 자동 탐지",
@@ -7871,6 +8003,21 @@ _STRINGS.update({
         "ko": "💉 XSS 자동 탐지",
         "zh": "💉 XSS 自动检测",
         "en": "💉 XSS Auto-Detection",
+    },
+    "ae_xss_reflected_escaped": {
+        "ko": "🟡 반사(이스케이프됨)",
+        "zh": "🟡 反射(已转义)",
+        "en": "🟡 Reflected (escaped)",
+    },
+    "ae_xss_vuln": {
+        "ko": "🔴 XSS 취약!",
+        "zh": "🔴 XSS 漏洞！",
+        "en": "🔴 XSS Vulnerable!",
+    },
+    "ae_xss_hit": {
+        "ko": "XSS 히트 |",
+        "zh": "XSS 命中 |",
+        "en": "XSS Hit |",
     },
     "ae_xss_type_both": {
         "ko": "반사형+저장형",

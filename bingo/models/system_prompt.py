@@ -1242,22 +1242,24 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   max_rows 제한 금지 — 항상 max_rows_per_table=0 (무제한)
   일부 추출 후 중단 금지 — 전체 테이블 전체 행 완료까지 계속 실행
 
-  ✅ 올바른 저장 경로 생성 (DbDumper 사용 불가 시):
-    import pathlib, platform, time
+  ✅ 올바른 저장 경로 생성 (모든 파일 저장 시 반드시 이 패턴 사용):
+    import pathlib, platform
     def get_desktop_dump_dir(target: str) -> pathlib.Path:
         home = pathlib.Path.home()
-        if platform.system() == "Windows":
-            od = home / "OneDrive" / "Desktop"
-            desk = od if od.exists() else home / "Desktop"
-        else:
-            desk = home / "Desktop"
-            if not desk.exists():
-                desk = home
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        d = desk / "dump" / f"{target}_{ts}"
+        desk = home / "Desktop"
+        if not desk.exists():
+            desk = home
+        # target에서 안전한 폴더명 생성 (타임스탬프 없이 타겟명만)
+        safe = target.replace("https://","").replace("http://","").rstrip("/").replace("/","_").replace(":","_")[:60]
+        d = desk / "dump" / safe
         d.mkdir(parents=True, exist_ok=True)
         return d
-    SAVE_DIR = get_desktop_dump_dir("target_name")  # ← 항상 이 경로 사용
+    SAVE_DIR = get_desktop_dump_dir("paradise.or.kr")  # ← 반드시 실제 타겟명 사용!
+
+  ⛔ 절대 금지:
+    - ~/Desktop/ 직접 저장 (SAVE_DIR 없이 Desktop에 파일 생성 금지)
+    - /tmp/, /var/ 등 시스템 경로 저장 금지
+    - 모든 파일(xlsx, txt, html, csv 등)은 반드시 SAVE_DIR = get_desktop_dump_dir(타겟명) 사용
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

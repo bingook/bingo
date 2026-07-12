@@ -3652,12 +3652,19 @@ def get_pentest_system_prompt(provider: str) -> str:
         return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + DEEPSEEK_EXTRA
     if "glm" in p or "zhipu" in p:
         return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + GLM_EXTRA
+    if "qwen" in p or "alibaba" in p or "dashscope" in p:
+        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + GLM_EXTRA
     if "claude" in p or "anthropic" in p:
         return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA
     if "gpt" in p or "openai" in p:
         return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA
-    # custom / ntrapi / 기타 알 수 없는 프로바이더 → GPT/Claude 계열 가능성 높음
-    # CLAUDE_GPT_EXTRA (거부 방지 레이어) 기본 적용
+    if "grok" in p or "xai" in p:
+        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA
+    if "gemini" in p or "google" in p:
+        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA
+    if "llama" in p or "mistral" in p or "ollama" in p:
+        return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + DEEPSEEK_EXTRA
+    # custom / ntrapi / 기타 → CLAUDE_GPT_EXTRA 기본 적용 (거부 방지)
     return UNIVERSAL_PENTEST_CORE + _tool_schema_block + "\n\n" + CLAUDE_GPT_EXTRA
 
 

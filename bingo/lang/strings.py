@@ -2209,12 +2209,12 @@ _STRINGS.update({
                                          "bingo will auto-fix the loop guard.")},
 
     # ── v3.2.91: Ctrl+C 힌트 프롬프트 / Stream Interrupted Messages ─────────
-    "hint_loop_paused":         {"ko": ("⚡ [bold]루프 일시정지[/bold] — 힌트를 입력하면 중단 없이 계속 진행\n"
-                                        "   (그냥 Enter 또는 Ctrl+C 한 번 더 → 완전 중단)"),
-                                  "zh": ("⚡ [bold]循环暂停[/bold] — 输入提示则继续执行\n"
-                                         "   (直接回车或再按Ctrl+C → 完全停止)"),
-                                  "en": ("⚡ [bold]Loop paused[/bold] — type a hint to keep going\n"
-                                         "   (press Enter or Ctrl+C again → stop completely)")},
+    "hint_loop_paused":         {"ko": "⚡ [bold]루프 일시정지[/bold] — 힌트를 입력하면 중단 없이 계속 진행",
+                                  "zh": "⚡ [bold]循环暂停[/bold] — 输入提示则继续执行",
+                                  "en": "⚡ [bold]Loop paused[/bold] — type a hint to keep going"},
+    "hint_loop_continue":       {"ko": "(그냥 Enter 또는 Ctrl+C 한 번 더 → 완전 중단)",
+                                  "zh": "(直接回车或再按Ctrl+C → 完全停止)",
+                                  "en": "(press Enter or Ctrl+C again → stop completely)"},
 
     "stream_interrupted":       {"ko": "⏸ 응답 중단됨",
                                   "zh": "⏸ 已中断",

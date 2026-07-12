@@ -873,23 +873,18 @@ class BingoTerminal:
         """Ctrl+C 눌렀을 때 힌트를 입력받고 반환.
         빈 입력 → None (루프 중단), 텍스트 입력 → 힌트 주입 후 루프 계속.
 
-        v3.2.91: Ctrl+C 후 터미널 상태 dirty 문제 — 플러시 + 개행 삽입으로 복구
-        v3.2.99: WSL/VM 호환 강화 — tty 리셋 + signal.SIG_DFL 임시 복원 후 재등록
-        v3.3.3: 근본 수정 — Windows+VM+Kali Linux 환경에서 Ctrl+C 이후 stdin이
-                EOFError 상태로 빠지는 문제를 /dev/tty 직접 읽기 + termios 복원으로 해결.
-                stdin 오염에 무관하게 항상 제어 터미널에서 입력 수신.
-                macOS 직접 사용 환경에서도 동일 코드 경로 사용 — 동작 차이 없음.
+        v6.2.104: 근본 수정 — /dev/tty + input() 직접 읽기 방식으로 통일.
+                prompt_toolkit PromptSession은 asyncio 이벤트 루프가 활성일 때
+                완전 동결되는 문제가 있어 제거. 붙여넣기/입력 안 되는 버그 해결.
         """
         import sys as _sys
         import signal as _signal
         import os as _os
 
-        # ★ v3.3.3: hint 프롬프트 동안 SIGINT를 SIG_DFL로 복원
-        # (prompt_toolkit 내부에서 KeyboardInterrupt가 올바르게 raise되도록)
         _orig_sigint = _signal.getsignal(_signal.SIGINT)
         _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
 
-        # ★ v3.3.3: \r\n 강제 삽입 — 커서가 줄 중간에 걸려 있을 때 복구
+        # 터미널 상태 복구 (커서가 줄 중간에 걸려 있을 때)
         _sys.stdout.write("\r\n")
         _sys.stdout.flush()
         _sys.stderr.write("\r\n")
@@ -898,65 +893,52 @@ class BingoTerminal:
         _lang = getattr(self.config, "lang", "en")
         _s_hint = get_strings(_lang)
         _pause_msg = _s_hint.get("hint_loop_paused", "⚡ Loop paused — type hint or Enter to stop")
-        self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]\n")
+        _continue_msg = _s_hint.get("hint_loop_continue", "(Press Enter directly or Ctrl+C again to stop)")
+        self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]")
+        self.console.print(f"[{THEME['dim']}]{_continue_msg}[/]\n")
         self.console.file.flush()
 
-        # ★ v3.3.3: /dev/tty 가용성 확인 (Unix 전용 — Windows native는 미해당)
-        # Windows+VM+Kali 환경: Kali 쪽(Linux)에서 실행되므로 /dev/tty 사용 가능
-        # macOS 직접 사용: 마찬가지로 /dev/tty 사용 가능
-        _tty_available = _os.path.exists("/dev/tty")
-
-        # ★ v3.3.3: termios 임포트 시도 (Linux/macOS 전용 — 없으면 fallback)
-        _termios = None
-        _tty_mod = None
+        # ── v6.2.104: /dev/tty 직접 읽기 — prompt_toolkit 완전 우회 ─────────────
+        # prompt_toolkit PromptSession은 asyncio 이벤트루프가 살아 있을 때 완전 동결됨.
+        # /dev/tty로 제어 터미널에서 직접 한 줄 읽으면 stdin 오염/asyncio 상태에 무관.
         try:
-            import termios as _termios_mod
-            import tty as _tty_mod
-            _termios = _termios_mod
+            import termios as _termios, tty as _tty_mod
+            _tty_ok = _os.path.exists("/dev/tty")
         except ImportError:
-            pass
+            _tty_ok = False
+            _termios = None  # type: ignore[assignment]
 
-        # ★ v3.3.3: /dev/tty 기반 입력 시도
-        # stdin이 EOF 상태여도 제어 터미널(실제 키보드)에서 직접 읽음
-        if _tty_available and _termios is not None:
+        if _tty_ok and _termios is not None:
             _tty_fd = None
-            _old_settings = None
+            _old_attr = None
             try:
-                _tty_fd = open("/dev/tty", "r")  # noqa: WPS515
-                # 현재 터미널 설정 저장
-                _old_settings = _termios.tcgetattr(_tty_fd)
+                _tty_fd = open("/dev/tty", "r+")
+                _old_attr = _termios.tcgetattr(_tty_fd)
 
-                # prompt_toolkit이 /dev/tty에서 직접 읽도록 stdin을 일시 교체
-                _orig_stdin = _sys.stdin
-                _sys.stdin = _tty_fd
+                # cooked(canonical) 모드 강제 복원 — Ctrl+C 이후 raw 모드 잔존 방지
                 try:
-                    import warnings as _warn_mod
-                    with _warn_mod.catch_warnings():
-                        _warn_mod.filterwarnings(
-                            "ignore",
-                            message="coroutine.*was never awaited",
-                            category=RuntimeWarning,
-                        )
-                        hint = self._session.prompt(
-                            HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
-                            style=PT_STYLE,
-                        )
-                    return hint.strip() if hint.strip() else None
-                except (EOFError, KeyboardInterrupt):
-                    return None
-                except RuntimeError:
-                    # v5.1.2: asyncio.run() in running loop — fallback으로 진행
+                    _tty_mod.setcbreak(_tty_fd)
+                    _termios.tcsetattr(
+                        _tty_fd, _termios.TCSADRAIN,
+                        _old_attr,  # 저장된 원본 설정으로 복원
+                    )
+                except Exception:
                     pass
-                finally:
-                    _sys.stdin = _orig_stdin
+
+                # hint 프롬프트 직접 출력 후 한 줄 읽기
+                _tty_fd.write("💬 hint ❯ ")
+                _tty_fd.flush()
+                _line = _tty_fd.readline()
+                _h = _line.strip() if _line else ""
+                return _h if _h else None
+            except KeyboardInterrupt:
+                return None
             except Exception:
-                # /dev/tty 열기/읽기 실패 시 fallback으로 진행
-                pass
+                pass  # fallback으로 진행
             finally:
-                # ★ v3.3.3: termios 복원 — Ctrl+C 이후 터미널이 raw 모드로 남는 현상 방지
-                if _old_settings is not None and _tty_fd is not None:
+                if _old_attr is not None and _tty_fd is not None:
                     try:
-                        _termios.tcsetattr(_tty_fd, _termios.TCSADRAIN, _old_settings)
+                        _termios.tcsetattr(_tty_fd, _termios.TCSADRAIN, _old_attr)
                     except Exception:
                         pass
                 if _tty_fd is not None:
@@ -965,41 +947,15 @@ class BingoTerminal:
                     except Exception:
                         pass
 
-        # Fallback: /dev/tty 없거나 termios 없는 환경 (Windows native 등)
-        # v5.1.2: RuntimeError(asyncio.run in running loop) 방어 추가.
-        #   Python 3.12 + prompt_toolkit: bash 병렬 스레드 완료 직후 메인 스레드에서
-        #   asyncio 이벤트 루프가 여전히 "running" 상태로 감지되는 경우가 있음.
-        #   prompt_toolkit PromptSession.prompt()는 내부적으로 asyncio.run()을 호출하므로
-        #   이 상태에서 RuntimeError가 발생 → 기존에 EOFError/KeyboardInterrupt만 잡아
-        #   크래시됐던 버그를 input() fallback으로 완전 방어.
+        # ── 최종 fallback: 표준 input() ─────────────────────────────────────────
         try:
-            import warnings as _warn_mod2
-            with _warn_mod2.catch_warnings():
-                _warn_mod2.filterwarnings(
-                    "ignore",
-                    message="coroutine.*was never awaited",
-                    category=RuntimeWarning,
-                )
-                hint = self._session.prompt(
-                    HTML('<ansiyellow><b>💬 hint ❯</b></ansiyellow> '),
-                    style=PT_STYLE,
-                )
-            return hint.strip() if hint.strip() else None
-        except (EOFError, KeyboardInterrupt):
+            _sys.stdout.write("💬 hint ❯ ")
+            _sys.stdout.flush()
+            _h2 = input()
+            return _h2.strip() if _h2.strip() else None
+        except (EOFError, KeyboardInterrupt, Exception):
             return None
-        except RuntimeError:
-            # asyncio.run() cannot be called from a running event loop
-            # → input() 로 최종 fallback
-            try:
-                import sys as _sys2
-                _sys2.stdout.write("💬 hint ❯ ")
-                _sys2.stdout.flush()
-                _h = input()
-                return _h.strip() if _h.strip() else None
-            except (EOFError, KeyboardInterrupt, Exception):
-                return None
         finally:
-            # ★ v3.3.3: 원래 SIGINT 핸들러 복원 + stop_flag 클리어
             _signal.signal(_signal.SIGINT, _orig_sigint)
             self._agent_stop_flag.clear()
 

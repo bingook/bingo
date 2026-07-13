@@ -8436,6 +8436,20 @@ _STRINGS.update({
         "en": "⚠️ High-value endpoint: {path}",
     },
     # ── v6.2.128 Tor 자동 설치 + 프록시 자동 수집 ────────────────────────────
+    "tor_ready_notice": {
+        "ko": (
+            "✅ [TOR_READY] 백그라운드 Tor 설치 완료! 이제 Tor 프록시(socks5://127.0.0.1:9050) 사용 가능.\n"
+            "   다음 요청부터 /proxy tor 또는 sqli_with_ip_rotation에 Tor 프록시를 우선 사용하세요."
+        ),
+        "zh": (
+            "✅ [TOR_READY] 后台Tor安装完成！现在可使用Tor代理(socks5://127.0.0.1:9050)。\n"
+            "   下次请求请优先使用 /proxy tor 或在 sqli_with_ip_rotation 中使用Tor代理。"
+        ),
+        "en": (
+            "✅ [TOR_READY] Background Tor install complete! Tor proxy (socks5://127.0.0.1:9050) now available.\n"
+            "   Use /proxy tor or sqli_with_ip_rotation with Tor proxy from next request."
+        ),
+    },
     "tor_auto_already":    {"ko": "✅ Tor 이미 실행 중", "zh": "✅ Tor 已在运行", "en": "✅ Tor already running"},
     "tor_auto_installed":  {"ko": "✅ Tor 자동 설치 및 시작 완료 (포트 9050)", "zh": "✅ Tor 自动安装并启动成功 (端口 9050)", "en": "✅ Tor auto-installed and started (port 9050)"},
     "tor_auto_timeout":    {"ko": "⚠️ Tor 시작 대기 시간 초과 — 수동 실행 필요", "zh": "⚠️ 等待Tor启动超时 — 请手动运行", "en": "⚠️ Tor start timeout — manual run required"},

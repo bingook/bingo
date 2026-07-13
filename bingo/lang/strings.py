@@ -357,9 +357,9 @@ _STRINGS = {
         "zh": "✅ 检测到Tor — 自动应用IP轮换",
         "en": "✅ Tor detected — applying IP rotation automatically"},
     "waf_tor_not_running": {
-        "ko": "❌ Tor 미실행 — brew install tor && tor 실행 필요",
-        "zh": "❌ Tor未运行 — 需要运行: brew install tor && tor",
-        "en": "❌ Tor not running — run: brew install tor && tor"},
+        "ko": "❌ Tor 미실행 — {cmd} 실행 필요",
+        "zh": "❌ Tor未运行 — 需要运行: {cmd}",
+        "en": "❌ Tor not running — run: {cmd}"},
     "waf_ip_rotation_ok": {
         "ko": "✅ IP 로테이션으로 WAF 우회 성공!",
         "zh": "✅ IP轮换成功绕过WAF！",

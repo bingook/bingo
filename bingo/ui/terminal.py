@@ -7824,7 +7824,7 @@ class BingoTerminal:
                 self.console.print(_loop_stop_msg)
                 # 루프 카운터 리셋 후 중단 (다음 세션에서 새로운 전략으로 시작 가능)
                 self._exec_loop_count = 0
-                self._agent_interrupted = True
+                self._agent_stop_flag.set()  # 실제 루프 중단 트리거
             # ─────────────────────────────────────────────────────────────────
 
             # 루프마다 세션 자동 저장 (이어하기용)

@@ -26,6 +26,8 @@ try:
 except ImportError:
     pass
 
+from ..i18n import t, get_lang
+
 
 # ── 파라미터 패턴 정규화 ─────────────────────────────────────────────
 _PARAM_RE = re.compile(r"/\d{1,12}(?=/|$)")          # /123/ → /{id}/
@@ -328,58 +330,47 @@ class ApiDynamicCapture:
     # ── 포맷터 ───────────────────────────────────────────────────────
 
     @staticmethod
-    def format_result(result: DynamicCaptureResult, lang: str = "ko") -> str:
+    def format_result(result: DynamicCaptureResult, lang: str = "") -> str:
+        _lang = lang or get_lang()
+
         if not result.playwright_available:
-            msgs = {
-                "ko": f"[동적 API 캡처] Playwright 미설치 → 설치 후 재시도\n  {result.error}",
-                "zh": f"[动态API捕获] Playwright未安装 → 安装后重试\n  {result.error}",
-                "en": f"[Dynamic API Capture] Playwright not installed → install and retry\n  {result.error}",
-            }
-            return msgs.get(lang, msgs["en"])
+            return (
+                t("api_dyn_playwright_missing",
+                  "Playwright not installed — run: pip install playwright && playwright install chromium")
+                + f"\n  {result.error}"
+            )
 
-        headers = {
-            "ko": (
-                f"[동적 API 캡처 완료] {result.target}\n"
-                f"  ├ 캡처된 요청: {len(result.captured)}개\n"
-                f"  ├ 고유 템플릿: {len(result.unique_templates)}개\n"
-                f"  ├ 흥미 경로:  {len(result.interesting)}개\n"
-                f"  └ 소요시간:   {result.elapsed_sec}s"
-            ),
-            "zh": (
-                f"[动态API捕获完成] {result.target}\n"
-                f"  ├ 捕获请求数: {len(result.captured)}\n"
-                f"  ├ 唯一模板数: {len(result.unique_templates)}\n"
-                f"  ├ 高价值路径: {len(result.interesting)}\n"
-                f"  └ 耗时:      {result.elapsed_sec}s"
-            ),
-            "en": (
-                f"[Dynamic API Capture Done] {result.target}\n"
-                f"  ├ Captured requests: {len(result.captured)}\n"
-                f"  ├ Unique templates:  {len(result.unique_templates)}\n"
-                f"  ├ Interesting paths: {len(result.interesting)}\n"
-                f"  └ Elapsed:           {result.elapsed_sec}s"
-            ),
-        }
+        done_msg = t(
+            "api_dyn_done",
+            f"Dynamic capture done — {len(result.captured)} requests / {len(result.unique_templates)} templates",
+        ).format(count=len(result.captured), uniq=len(result.unique_templates))
 
-        lines = [headers.get(lang, headers["en"]), ""]
+        header = f"[{done_msg}] {result.target}  ({result.elapsed_sec}s)"
+        lines = [header, ""]
 
         # 흥미 경로 우선 출력
         if result.interesting:
-            section = {"ko": "★ 흥미 엔드포인트", "zh": "★ 高价值端点", "en": "★ Interesting Endpoints"}
-            lines.append(f"  {section.get(lang, section['en'])}")
+            lines.append(f"  {t('api_interesting', '★ High-Value Endpoints')}")
             for cr in result.interesting[:20]:
                 flag = " [UNAUTH]" if cr.is_unauth else ""
                 qs_str = ""
                 if cr.query_params:
                     qs_str = "?" + "&".join(f"{k}={v[0]}" for k, v in list(cr.query_params.items())[:4])
-                lines.append(f"    {cr.method:6s} {cr.template}{qs_str}  [{cr.status}]{flag}")
+                if cr.is_unauth:
+                    lines.append(
+                        "    " + t(
+                            "api_dyn_unauth",
+                            f"Unauthenticated API: {cr.template} [{cr.status}]",
+                        ).format(path=cr.template, status=cr.status)
+                    )
+                else:
+                    lines.append(f"    {cr.method:6s} {cr.template}{qs_str}  [{cr.status}]{flag}")
             lines.append("")
 
         # 전체 API 엔드포인트 목록
         api_only = [cr for cr in result.captured if cr.is_api]
         if api_only:
-            section = {"ko": "API 엔드포인트 목록", "zh": "API端点列表", "en": "API Endpoints"}
-            lines.append(f"  {section.get(lang, section['en'])}")
+            lines.append(f"  API Endpoints ({len(api_only)})")
             for cr in api_only[:50]:
                 flag = " [UNAUTH]" if cr.is_unauth else ""
                 lines.append(f"    {cr.method:6s} {cr.template}  [{cr.status}]{flag}")

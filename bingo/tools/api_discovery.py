@@ -18,6 +18,8 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 
+from ..i18n import t, get_lang
+
 # ── Discovery document paths to probe ──────────────────────────────────────
 _DISCOVERY_PATHS = [
     # OpenAPI / Swagger
@@ -531,99 +533,70 @@ def run_full_discovery(
     return result, report
 
 
-def _format_full_result(result: FullDiscoveryResult, lang: str = "ko") -> str:
-    _labels = {
-        "ko": {
-            "title":   "API 탐지 통합 보고서",
-            "target":  "타겟",
-            "l1":      "LAYER1 (Swagger/OpenAPI)",
-            "l2":      "LAYER2 (JS 정적 분석)",
-            "l3":      "LAYER3 (동적 브라우저 캡처)",
-            "param":   "파라미터 추론 테스트",
-            "interesting": "★ 고가치 엔드포인트",
-            "total":   "총 고유 엔드포인트",
-            "secrets": "하드코딩 시크릿",
-            "admin":   "관리자 경로",
-            "unauth":  "미인증 접근 가능",
-            "errors":  "오류",
-        },
-        "zh": {
-            "title":   "API探测综合报告",
-            "target":  "目标",
-            "l1":      "LAYER1 (Swagger/OpenAPI)",
-            "l2":      "LAYER2 (JS静态分析)",
-            "l3":      "LAYER3 (动态浏览器捕获)",
-            "param":   "参数推断测试",
-            "interesting": "★ 高价值端点",
-            "total":   "总唯一端点数",
-            "secrets": "硬编码密钥",
-            "admin":   "管理员路径",
-            "unauth":  "未授权可访问",
-            "errors":  "错误",
-        },
-        "en": {
-            "title":   "API Discovery Full Report",
-            "target":  "Target",
-            "l1":      "LAYER1 (Swagger/OpenAPI)",
-            "l2":      "LAYER2 (JS Static Analysis)",
-            "l3":      "LAYER3 (Dynamic Browser Capture)",
-            "param":   "Parameter Inference Tests",
-            "interesting": "★ High-Value Endpoints",
-            "total":   "Total Unique Endpoints",
-            "secrets": "Hardcoded Secrets",
-            "admin":   "Admin Paths",
-            "unauth":  "Unauthenticated Access",
-            "errors":  "Errors",
-        },
-    }
-    lb = _labels.get(lang, _labels["en"])
+def _format_full_result(result: FullDiscoveryResult, lang: str = "") -> str:
+    _lang = lang or get_lang()
+
+    title      = t("api_full_scan_done", "API Discovery Full Report").format(count=result.total_unique)
+    l1_label   = "LAYER1 (Swagger/OpenAPI)"
+    l2_label   = "LAYER2 JS  " + t("api_js_found", "JS analysis").format(
+                     ep=len(result.js_endpoints),
+                     sec=len(result.js_secrets),
+                     adm=len(result.js_admin_paths))
+    l3_label   = "LAYER3 DYN " + t("api_dyn_done", "Dynamic capture done").format(
+                     count=len(result.dynamic_templates),
+                     uniq=len(result.dynamic_templates))
+    param_lbl  = t("api_param_test_start", "Parameter inference").format(count=len(result.param_tests))
+    inter_lbl  = t("api_interesting", "★ High-Value Endpoints")
+    secret_lbl = t("api_js_found", "Secrets").format(ep=0, sec=len(result.js_secrets), adm=0)
+    unauth_lbl = t("api_dyn_unauth", "Unauthenticated").format(path="", status="")
+
     lines: list[str] = [
-        f"╔══ {lb['title']} {'═' * 30}",
-        f"║ {lb['target']}: {result.target}",
-        f"║ {lb['total']}: {result.total_unique}",
+        f"╔══ {title} {'═' * 20}",
+        f"║ Target: {result.target}",
         "╠" + "═" * 50,
     ]
 
     # LAYER 1
     if result.swagger_result and result.swagger_result.docs_found:
-        lines.append(f"║ [{lb['l1']}]")
+        lines.append(f"║ [{l1_label}]")
         for doc in result.swagger_result.docs_found:
-            lines.append(f"║   {doc.doc_type.upper()} — {doc.url}  ({len(doc.endpoints)} endpoints)")
+            sw_msg = t("api_swagger_found", f"API doc: {doc.doc_type} {doc.url}").format(
+                type=doc.doc_type.upper(), url=doc.url, count=len(doc.endpoints))
+            lines.append(f"║   {sw_msg}")
     else:
-        lines.append(f"║ [{lb['l1']}] — not found")
+        lines.append(f"║ [{l1_label}] {t('api_no_doc', 'No Swagger/OpenAPI docs found')}")
 
     # LAYER 2
-    js_count = len(result.js_endpoints)
-    sec_count = len(result.js_secrets)
-    adm_count = len(result.js_admin_paths)
-    lines.append(f"║ [{lb['l2']}] endpoints={js_count}  secrets={sec_count}  admin={adm_count}")
+    lines.append(f"║ [{l2_label}]")
     for adm in result.js_admin_paths[:10]:
-        lines.append(f"║   [{lb['admin']}] {adm}")
+        lines.append(f"║   [ADMIN] {adm}")
     for st, k, v in result.js_secrets[:5]:
-        lines.append(f"║   [{lb['secrets']}:{st}] {k}={v[:40]}")
+        lines.append(f"║   [SECRET:{st}] {k}={v[:40]}")
 
     # LAYER 3
-    dyn_count = len(result.dynamic_templates)
-    unauth_count = len(result.dynamic_unauth)
-    lines.append(f"║ [{lb['l3']}] templates={dyn_count}  unauth={unauth_count}")
+    lines.append(f"║ [{l3_label}]")
     for u in result.dynamic_unauth[:10]:
-        lines.append(f"║   [{lb['unauth']}] {u}")
+        ua_msg = t("api_dyn_unauth", f"Unauth: {u}").format(
+            path=u.split()[1] if len(u.split()) > 1 else u,
+            status=u.split("[")[1].rstrip("]") if "[" in u else "200",
+        )
+        lines.append(f"║   {ua_msg}")
 
     # 파라미터 추론 결과
     if result.param_tests:
-        lines.append(f"║ [{lb['param']}]")
+        lines.append(f"║ [{param_lbl}]")
         for pt in result.param_tests[:15]:
-            flag = f" ← {lb['unauth'].upper()}" if pt.is_unauth else ""
+            flag = " ← UNAUTH" if pt.is_unauth else ""
             lines.append(f"║   {pt.tested_url}  [{pt.status}]  {pt.response_size}B{flag}")
 
     # 고가치 통합 목록
     if result.all_interesting:
-        lines.append(f"║ {lb['interesting']}")
+        lines.append(f"║ {inter_lbl}")
         for p in result.all_interesting[:30]:
             lines.append(f"║   {p}")
 
     if result.errors:
-        lines.append(f"║ [{lb['errors']}]")
+        lines.append("║ [ERRORS]")
         for e in result.errors:
             lines.append(f"║   {e}")
 

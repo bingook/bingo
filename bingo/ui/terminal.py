@@ -556,18 +556,6 @@ class BingoTerminal:
             }.get(_lang, f"🔁 Restored {_proxy_count} proxies from last session")
             self.console.print(f"[dim]{_proxy_restore_msg}[/dim]")
 
-        # ── v6.2.128: Tor + 무료 프록시 자동 설치/수집 (백그라운드) ───────────────
-        def _bg_tor_proxy_setup():
-            try:
-                from ..tools_ext.pentest_tools import tor_auto_setup_and_proxy_hunt as _tsetup
-                _lang_bg = getattr(self.config, "lang", "ko")
-                _res = _tsetup(proxy_manager=self._proxy, lang=_lang_bg)
-                _icon = "✅" if _res.get("tor") else "⚠️"
-                self.console.print(f"[dim]{_icon} {_res.get('msg', '')}[/dim]")
-            except Exception:
-                pass
-        import threading as _thr
-        _thr.Thread(target=_bg_tor_proxy_setup, daemon=True, name="tor-proxy-setup").start()
 
         if not self.config.get_active_model_config():
             self._warn(self.s["no_model_configured"])

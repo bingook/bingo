@@ -8435,6 +8435,14 @@ _STRINGS.update({
         "zh": "⚠️ 高价值端点: {path}",
         "en": "⚠️ High-value endpoint: {path}",
     },
+    # ── v6.2.128 Tor 자동 설치 + 프록시 자동 수집 ────────────────────────────
+    "tor_auto_already":    {"ko": "✅ Tor 이미 실행 중", "zh": "✅ Tor 已在运行", "en": "✅ Tor already running"},
+    "tor_auto_installed":  {"ko": "✅ Tor 자동 설치 및 시작 완료 (포트 9050)", "zh": "✅ Tor 自动安装并启动成功 (端口 9050)", "en": "✅ Tor auto-installed and started (port 9050)"},
+    "tor_auto_timeout":    {"ko": "⚠️ Tor 시작 대기 시간 초과 — 수동 실행 필요", "zh": "⚠️ 等待Tor启动超时 — 请手动运行", "en": "⚠️ Tor start timeout — manual run required"},
+    "tor_auto_fail":       {"ko": "❌ Tor 설치 실패: {err}", "zh": "❌ Tor安装失败: {err}", "en": "❌ Tor install failed: {err}"},
+    "tor_auto_win":        {"ko": "⚠️ Windows 자동 설치 미지원 — 수동 설치 필요", "zh": "⚠️ Windows 不支持自动安装 — 请手动安装", "en": "⚠️ Windows auto-install not supported — manual install required"},
+    "proxy_hunt_done":     {"ko": "🌐 무료 프록시 {n}개 자동 수집됨", "zh": "🌐 自动收集 {n} 个免费代理", "en": "🌐 {n} free proxies auto-collected"},
+    "proxy_hunt_fail":     {"ko": "⚠️ 프록시 수집 실패: {err}", "zh": "⚠️ 代理收集失败: {err}", "en": "⚠️ Proxy hunt failed: {err}"},
     # ── v6.2.125 루프/추출 자동교정기 ─────────────────────────────────────────
     "tilde_loop_stop": {
         "ko": (

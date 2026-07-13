@@ -7821,7 +7821,7 @@ class BingoTerminal:
                     "loop_limit_stop",
                     f"⛔ [LOOP_LIMIT_STOP] Loop #{self._exec_loop_count} — auto-stopping.",
                 ).format(count=self._exec_loop_count)
-                self._print(_loop_stop_msg)
+                self.console.print(_loop_stop_msg)
                 # 루프 카운터 리셋 후 중단 (다음 세션에서 새로운 전략으로 시작 가능)
                 self._exec_loop_count = 0
                 self._agent_interrupted = True

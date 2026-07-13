@@ -8435,6 +8435,44 @@ _STRINGS.update({
         "zh": "⚠️ 高价值端点: {path}",
         "en": "⚠️ High-value endpoint: {path}",
     },
+    # ── v6.2.125 루프/추출 자동교정기 ─────────────────────────────────────────
+    "tilde_loop_stop": {
+        "ko": (
+            "⛔ [TILDE_LOOP_STOP] 틸드(~) 이진 추출 무한루프 감지 — 즉시 중단!\n"
+            "원인: WAF가 모든 비교 쿼리 차단 → TRUE/FALSE 동일 → 항상 '~'(chr 126)으로 수렴.\n"
+            "⛔ run_python/run_bash 커스텀 이진 탐색 즉시 종료.\n"
+            "✅ Time-based 맹주입 또는 OOB DNS 또는 다른 공격면으로 전환."
+        ),
+        "zh": (
+            "⛔ [TILDE_LOOP_STOP] 检测到波浪号(~)二分搜索无限循环 — 立即停止！\n"
+            "原因：WAF拦截所有比较查询 → TRUE/FALSE相同 → 始终收敛到'~'(chr 126)。\n"
+            "⛔ 立即终止 run_python/run_bash 自定义二分搜索。\n"
+            "✅ 切换到时间盲注、OOB DNS 或其他攻击面。"
+        ),
+        "en": (
+            "⛔ [TILDE_LOOP_STOP] Tilde (~) binary extraction infinite loop detected — STOP!\n"
+            "Cause: WAF blocks all comparisons → TRUE/FALSE identical → always converges to '~' (chr 126).\n"
+            "⛔ Stop custom binary search in run_python/run_bash immediately.\n"
+            "✅ Switch to time-based blind injection, OOB DNS, or other attack surface."
+        ),
+    },
+    "loop_limit_stop": {
+        "ko": (
+            "⛔ [LOOP_LIMIT_STOP] 루프 {count}회 도달 — 동일 접근 반복 감지, 자동 중단.\n"
+            "✅ 지금까지 발견한 내용을 정리하고 TASK_COMPLETE 후 보고서를 생성하세요.\n"
+            "   또는 완전히 다른 공격 벡터(Actuator/JS분석/IDOR)로 전환하세요."
+        ),
+        "zh": (
+            "⛔ [LOOP_LIMIT_STOP] 已达第 {count} 次循环 — 检测到重复相同操作，自动停止。\n"
+            "✅ 请汇总已发现内容，执行 TASK_COMPLETE 并生成报告。\n"
+            "   或切换到完全不同的攻击向量（Actuator/JS分析/IDOR）。"
+        ),
+        "en": (
+            "⛔ [LOOP_LIMIT_STOP] Loop #{count} reached — repeated approach detected, auto-stopping.\n"
+            "✅ Summarize findings so far, then TASK_COMPLETE and generate report.\n"
+            "   Or switch to a completely different attack vector (Actuator/JS/IDOR)."
+        ),
+    },
 })
 
 

@@ -954,8 +954,35 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
 
 === v2.5.0 EXPANDED AUTO-ENGINE DECISION RULES ===
 
+[API 3-LAYER FULL DISCOVERY — bingo.tools.api_discovery.run_full_discovery]
+  MANDATORY — run at START of every web/API assessment (replaces standalone JS/Swagger calls):
+  from bingo.tools.api_discovery import run_full_discovery
+  result, report = run_full_discovery(target, run_dynamic=True, lang=LANG)
+  # LAYER 1: Swagger/OpenAPI doc probing (30+ paths)
+  # LAYER 2: JS static analysis — fetch/axios/route patterns, hardcoded secrets, admin paths
+  # LAYER 3: Playwright browser — intercepts XHR/fetch in real-time, clicks links/forms
+  Priority order:
+    1. result.dynamic_unauth     → unauthenticated API access (CRITICAL)
+    2. result.js_secrets         → hardcoded API keys/DB passwords (CRITICAL)
+    3. result.js_admin_paths     → hidden admin paths (HIGH)
+    4. result.param_tests        → parameterized endpoint tests (MEDIUM-HIGH)
+    5. result.all_interesting    → consolidated high-value list (all layers)
+  After discovery: feed result.js_endpoints + result.dynamic_templates into IDOR/SQLi scanners.
+
+[API DYNAMIC CAPTURE — bingo.tools.api_dynamic_capture.capture_dynamic_apis]
+  OPTIONAL (standalone) — run when site uses heavy JS / SPA framework (React/Vue/Angular):
+  from bingo.tools.api_dynamic_capture import capture_dynamic_apis
+  dyn_result, text = capture_dynamic_apis(target, timeout_sec=30, max_clicks=20)
+  # Playwright navigates the site, clicks buttons/tabs, submits forms
+  # Intercepts all XHR/fetch/WebSocket requests in real-time
+  # Returns CapturedRequest list with: method, path, template, query_params, post_body, status
+  Key outputs:
+    dyn_result.unique_templates  → deduplicated endpoint templates (/{id} placeholders)
+    dyn_result.dynamic_unauth    → endpoints returning JSON without auth (immediate test)
+    dyn_result.interesting       → admin/auth/token paths discovered
+
 [JS AUTO-ANALYZER — bingo.tools.js_analyzer]
-  OPTIONAL — run if SQLi/IDOR test on visible params fails:
+  OPTIONAL — run standalone only if run_full_discovery was NOT run yet:
   1. Fetch main page HTML
   2. JsAutoAnalyzer(get_fn, base_url).run(html) → SiteJsReport
   3. Use report.all_endpoints as input for IDOR/SQLi scanning

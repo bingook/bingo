@@ -8374,6 +8374,67 @@ _STRINGS.update({
         "zh": "💰 价格/优惠券篡改自动检测",
         "en": "💰 Price/Coupon Manipulation Auto-Test",
     },
+    # ── v6.2.122 API 동적 탐지 ────────────────────────────────────────────────
+    "api_full_scan_start": {
+        "ko": "🔍 API 3-레이어 탐지 시작 (정적문서 → JS분석 → 동적캡처)",
+        "zh": "🔍 API 三层探测启动（静态文档→JS分析→动态捕获）",
+        "en": "🔍 API 3-Layer Discovery starting (docs → JS → dynamic)",
+    },
+    "api_full_scan_done": {
+        "ko": "✅ API 탐지 완료 — 총 {count}개 고유 엔드포인트 발견",
+        "zh": "✅ API探测完成 — 共发现 {count} 个唯一端点",
+        "en": "✅ API discovery done — {count} unique endpoints found",
+    },
+    "api_dyn_start": {
+        "ko": "🌐 Playwright 동적 API 캡처 시작",
+        "zh": "🌐 Playwright动态API捕获启动",
+        "en": "🌐 Playwright dynamic API capture starting",
+    },
+    "api_dyn_done": {
+        "ko": "✅ 동적 캡처 완료 — {count}개 요청 / {uniq}개 템플릿 캡처",
+        "zh": "✅ 动态捕获完成 — 捕获 {count} 个请求 / {uniq} 个模板",
+        "en": "✅ Dynamic capture done — {count} requests / {uniq} templates",
+    },
+    "api_dyn_playwright_missing": {
+        "ko": "⚠️ Playwright 미설치 — 동적 캡처 건너뜀 (pip install playwright && playwright install chromium)",
+        "zh": "⚠️ Playwright未安装 — 跳过动态捕获（pip install playwright && playwright install chromium）",
+        "en": "⚠️ Playwright not installed — skipping dynamic capture (pip install playwright && playwright install chromium)",
+    },
+    "api_dyn_unauth": {
+        "ko": "🔓 미인증 API 접근 확인: {path} → HTTP {status} (JSON 데이터 노출)",
+        "zh": "🔓 未授权API访问确认: {path} → HTTP {status}（JSON数据泄露）",
+        "en": "🔓 Unauthenticated API access: {path} → HTTP {status} (JSON data exposed)",
+    },
+    "api_param_test_start": {
+        "ko": "🔧 파라미터 추론 테스트 — {count}개 템플릿 테스트 중",
+        "zh": "🔧 参数推断测试 — 测试 {count} 个模板",
+        "en": "🔧 Parameter inference testing — {count} templates",
+    },
+    "api_param_found": {
+        "ko": "  ✓ {method} {path} [{status}] {size}B{flag}",
+        "zh": "  ✓ {method} {path} [{status}] {size}B{flag}",
+        "en": "  ✓ {method} {path} [{status}] {size}B{flag}",
+    },
+    "api_js_found": {
+        "ko": "📦 JS 분석 결과 — 엔드포인트 {ep}개 / 시크릿 {sec}개 / 관리자경로 {adm}개",
+        "zh": "📦 JS分析结果 — 端点 {ep} 个 / 密钥 {sec} 个 / 管理路径 {adm} 个",
+        "en": "📦 JS analysis — endpoints {ep} / secrets {sec} / admin paths {adm}",
+    },
+    "api_swagger_found": {
+        "ko": "📄 API 문서 발견: {type} — {url} ({count}개 엔드포인트)",
+        "zh": "📄 发现API文档: {type} — {url} （{count} 个端点）",
+        "en": "📄 API doc found: {type} — {url} ({count} endpoints)",
+    },
+    "api_no_doc": {
+        "ko": "  ℹ Swagger/OpenAPI 문서 없음",
+        "zh": "  ℹ 未发现Swagger/OpenAPI文档",
+        "en": "  ℹ No Swagger/OpenAPI docs found",
+    },
+    "api_interesting": {
+        "ko": "⚠️ 고가치 엔드포인트: {path}",
+        "zh": "⚠️ 高价值端点: {path}",
+        "en": "⚠️ High-value endpoint: {path}",
+    },
 })
 
 

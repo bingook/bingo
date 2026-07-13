@@ -7810,6 +7810,38 @@ class BingoTerminal:
                     )
             self._show_token_usage()
             self._exec_loop_count += 1
+
+            # ── v6.2.125: 루프 과다 자동 차단 (Type A) ───────────────────────
+            # 동일 세션에서 60루프 이상 돌면 AI가 루프에 갇힌 것으로 판단 → 강제 중단
+            _MAX_LOOP = 60
+            if self._exec_loop_count >= _MAX_LOOP:
+                _lang_lc = getattr(getattr(self, "config", None), "lang", "ko")
+                _loop_stop_msg = {
+                    "ko": (
+                        f"\n⛔ [LOOP_LIMIT_STOP] 루프 #{self._exec_loop_count} 도달 — "
+                        f"동일 접근 반복 감지. 자동 중단.\n"
+                        "✅ 지금까지 발견한 내용을 정리하고 TASK_COMPLETE 후 보고서를 생성하세요.\n"
+                        "   또는 완전히 다른 공격 벡터(Actuator/JS분석/IDOR)로 전환하세요.\n"
+                    ),
+                    "zh": (
+                        f"\n⛔ [LOOP_LIMIT_STOP] 已达第 #{self._exec_loop_count} 次循环 — "
+                        f"检测到重复相同操作，自动停止。\n"
+                        "✅ 请汇总已发现内容，执行 TASK_COMPLETE 并生成报告。\n"
+                        "   或切换到完全不同的攻击向量（Actuator/JS分析/IDOR）。\n"
+                    ),
+                    "en": (
+                        f"\n⛔ [LOOP_LIMIT_STOP] Loop #{self._exec_loop_count} reached — "
+                        f"repeated approach detected, auto-stopping.\n"
+                        "✅ Summarize findings so far, then TASK_COMPLETE and generate report.\n"
+                        "   Or switch to a completely different attack vector (Actuator/JS/IDOR).\n"
+                    ),
+                }.get(_lang_lc, "")
+                self._print(_loop_stop_msg)
+                # 루프 카운터 리셋 후 중단 (다음 세션에서 새로운 전략으로 시작 가능)
+                self._exec_loop_count = 0
+                self._agent_interrupted = True
+            # ─────────────────────────────────────────────────────────────────
+
             # 루프마다 세션 자동 저장 (이어하기용)
             self._save_history()
             # ── v3.2.71: target memory 자동 업데이트 ──────────────────────────

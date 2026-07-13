@@ -4819,7 +4819,7 @@ class BingoTerminal:
                         )
                         import os as _os
                         if _os.environ.get("BINGO_DEBUG"):
-                            console.print(f"[dim red]  [TOOL_CALL DEBUG] raw={_raw_json!r}[/dim red]")
+                            self.console.print(f"[dim red]  [TOOL_CALL DEBUG] raw={_raw_json!r}[/dim red]")
                         self.console.print(
                             f"[{THEME['error']}]⚠ TOOL_CALL JSON parse error: {_je}[/]"
                         )
@@ -5002,7 +5002,7 @@ class BingoTerminal:
             }
             _bad_tool_names = [t for t in _wrong_tc_matches if t in _known_tools]
             if _bad_tool_names:
-                console.print(
+                self.console.print(
                     f"[{THEME['error']}]⚠ [WRONG_TOOL_FORMAT] AI used Python dict format "
                     f"for tool call: {_bad_tool_names}\n"
                     f"  Correct format: TOOL_CALL:{{\"name\":\"{_bad_tool_names[0]}\","

@@ -8633,6 +8633,102 @@ _STRINGS.update({
         "zh": "✅ [FULL_SCAN_V2] 完成 — 确认漏洞 {count} 个 (已删除FP {fp} 个)",
         "en": "✅ [FULL_SCAN_V2] Done — {count} confirmed vulnerability(s) ({fp} FP removed)",
     },
+    # ── v6.2.141: 고급 스캐너 다국어 키 ────────────────────────────────────
+    "tech_fp_start": {
+        "ko": "🔬 [TECH_FP] {url} 기술 스택 탐지 시작",
+        "zh": "🔬 [TECH_FP] 开始识别 {url} 技术栈",
+        "en": "🔬 [TECH_FP] Detecting tech stack for {url}",
+    },
+    "tech_fp_done": {
+        "ko": "✅ [TECH_FP] 감지됨: {techs}",
+        "zh": "✅ [TECH_FP] 已识别: {techs}",
+        "en": "✅ [TECH_FP] Detected: {techs}",
+    },
+    "cve_scan_start": {
+        "ko": "🔎 [CVE_SCAN] {url} CVE 자동 스캔 시작 (Log4Shell/Spring4Shell/Shellshock...)",
+        "zh": "🔎 [CVE_SCAN] 开始CVE自动扫描 {url}",
+        "en": "🔎 [CVE_SCAN] Starting CVE auto-scan for {url}",
+    },
+    "cve_scan_found": {
+        "ko": "🔴 [CVE_FOUND] {cve} 확인! {note}",
+        "zh": "🔴 [CVE_FOUND] {cve} 确认! {note}",
+        "en": "🔴 [CVE_FOUND] {cve} confirmed! {note}",
+    },
+    "cve_scan_done": {
+        "ko": "✅ [CVE_SCAN] 완료 — {count}개 CVE 발견",
+        "zh": "✅ [CVE_SCAN] 完成 — 发现 {count} 个CVE",
+        "en": "✅ [CVE_SCAN] Done — {count} CVE(s) found",
+    },
+    "dom_xss_start": {
+        "ko": "🎭 [DOM_XSS] {url} [{param}] DOM XSS 스캔 시작 (Playwright)",
+        "zh": "🎭 [DOM_XSS] 开始DOM XSS扫描 {url} [{param}]",
+        "en": "🎭 [DOM_XSS] Starting DOM XSS scan for {url} [{param}]",
+    },
+    "dom_xss_found": {
+        "ko": "🔴 [DOM_XSS] DOM XSS 확인! {payload}",
+        "zh": "🔴 [DOM_XSS] DOM XSS确认! {payload}",
+        "en": "🔴 [DOM_XSS] DOM XSS confirmed! {payload}",
+    },
+    "param_fuzz_start": {
+        "ko": "🔍 [PARAM_FUZZ] {url} 파라미터 퍼징 시작 ({count}개 워드)",
+        "zh": "🔍 [PARAM_FUZZ] 开始参数Fuzz {url} ({count}个参数)",
+        "en": "🔍 [PARAM_FUZZ] Starting parameter fuzzing for {url} ({count} words)",
+    },
+    "param_fuzz_found": {
+        "ko": "🟡 [PARAM_FUZZ] 파라미터 발견: {param} (diff={diff}B)",
+        "zh": "🟡 [PARAM_FUZZ] 发现参数: {param} (diff={diff}B)",
+        "en": "🟡 [PARAM_FUZZ] Parameter found: {param} (diff={diff}B)",
+    },
+    "sqli_plus_start": {
+        "ko": "💉 [SQLI_PLUS] {url} [{param}] SQLi 강화 스캔 시작 (600+ 페이로드)",
+        "zh": "💉 [SQLI_PLUS] 开始SQLi增强扫描 {url} [{param}]",
+        "en": "💉 [SQLI_PLUS] Starting SQLi enhanced scan for {url} [{param}]",
+    },
+    "sqli_plus_found": {
+        "ko": "🔴 [SQLI_PLUS] SQLi 확인! type={type} db={db}",
+        "zh": "🔴 [SQLI_PLUS] SQLi确认! type={type} db={db}",
+        "en": "🔴 [SQLI_PLUS] SQLi confirmed! type={type} db={db}",
+    },
+    "wp_scan_start": {
+        "ko": "🔌 [WP_SCAN] {url} WordPress 특화 스캔 시작",
+        "zh": "🔌 [WP_SCAN] 开始WordPress专项扫描 {url}",
+        "en": "🔌 [WP_SCAN] Starting WordPress scan for {url}",
+    },
+    "wp_scan_found": {
+        "ko": "🔴 [WP_FOUND] [{severity}] {desc}: {path}",
+        "zh": "🔴 [WP_FOUND] [{severity}] {desc}: {path}",
+        "en": "🔴 [WP_FOUND] [{severity}] {desc}: {path}",
+    },
+    "http_method_scan_start": {
+        "ko": "📡 [HTTP_METHOD] {url} HTTP 메서드 권한 스캔 시작",
+        "zh": "📡 [HTTP_METHOD] 开始HTTP方法扫描 {url}",
+        "en": "📡 [HTTP_METHOD] Starting HTTP method scan for {url}",
+    },
+    "http_method_found": {
+        "ko": "🔴 [HTTP_METHOD] 위험 메서드 허용: {method} ({note})",
+        "zh": "🔴 [HTTP_METHOD] 危险方法已允许: {method} ({note})",
+        "en": "🔴 [HTTP_METHOD] Dangerous method allowed: {method} ({note})",
+    },
+    "api_scan_start": {
+        "ko": "🔑 [API_SCAN] {url} API 보안 스캔 시작",
+        "zh": "🔑 [API_SCAN] 开始API安全扫描 {url}",
+        "en": "🔑 [API_SCAN] Starting API security scan for {url}",
+    },
+    "api_scan_found": {
+        "ko": "🔴 [API_FOUND] [{severity}] {path}: {note}",
+        "zh": "🔴 [API_FOUND] [{severity}] {path}: {note}",
+        "en": "🔴 [API_FOUND] [{severity}] {path}: {note}",
+    },
+    "full_deep_scan_start": {
+        "ko": "🚀 [FULL_DEEP_SCAN] {url} 완전 딥 스캔 시작 (Acunetix 95% 레벨)",
+        "zh": "🚀 [FULL_DEEP_SCAN] 开始全面深度扫描 {url} (Acunetix 95%级别)",
+        "en": "🚀 [FULL_DEEP_SCAN] Starting full deep scan for {url} (Acunetix 95% level)",
+    },
+    "full_deep_scan_done": {
+        "ko": "✅ [FULL_DEEP_SCAN] 완료 — 취약점 {count}개 (CRITICAL={critical} HIGH={high} MEDIUM={medium})",
+        "zh": "✅ [FULL_DEEP_SCAN] 完成 — 漏洞 {count} 个 (CRITICAL={critical} HIGH={high} MEDIUM={medium})",
+        "en": "✅ [FULL_DEEP_SCAN] Done — {count} vulnerability(s) (CRITICAL={critical} HIGH={high} MEDIUM={medium})",
+    },
 })
 
 

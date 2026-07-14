@@ -77,7 +77,7 @@ _TECH_SIGNATURES: Dict[str, List[str]] = {
     "laravel":   ["laravel_session", "X-CSRF-TOKEN", "laravel", "XSRF-TOKEN"],
     "rails":     ["X-Powered-By: Phusion Passenger", "_rails_", "authenticity_token", "rack.session"],
     "spring":    ["X-Application-Context", "Spring", "Whitelabel Error Page", "org.springframework"],
-    "express":   ["X-Powered-By: Express", "Connect", "connect.sid"],
+    "express":   ["X-Powered-By: Express", "connect.sid", "expressjs"],
     "asp.net":   ["ASP.NET", "__VIEWSTATE", "X-AspNet-Version", ".aspx", "x-aspnetmvc-version"],
     "php":       ["X-Powered-By: PHP", ".php", "PHPSESSID", "<?php"],
     "java":      ["JSESSIONID", "javax.servlet", "Tomcat", "GlassFish", "JBoss"],

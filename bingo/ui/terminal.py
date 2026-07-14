@@ -7822,9 +7822,10 @@ class BingoTerminal:
                     f"⛔ [LOOP_LIMIT_STOP] Loop #{self._exec_loop_count} — auto-stopping.",
                 ).format(count=self._exec_loop_count)
                 self.console.print(_loop_stop_msg)
-                # 루프 카운터 리셋 후 중단 (다음 세션에서 새로운 전략으로 시작 가능)
+                # v6.2.137: hint 프롬프트 없이 완전 종료 — _loop_limit_hit 플래그로 구분
                 self._exec_loop_count = 0
-                self._agent_stop_flag.set()  # 실제 루프 중단 트리거
+                self._loop_limit_hit = True   # hint 없이 break하도록 표시
+                self._agent_stop_flag.set()
             # ─────────────────────────────────────────────────────────────────
 
             # 루프마다 세션 자동 저장 (이어하기용)
@@ -8603,8 +8604,12 @@ class BingoTerminal:
             _s = self.s
 
             # Ctrl+C 체크 — 힌트 주입 후 계속 가능
+            # v6.2.137: LOOP_LIMIT_STOP은 hint 없이 즉시 break
             if self._agent_stop_flag.is_set():
                 self._agent_stop_flag.clear()
+                if getattr(self, "_loop_limit_hit", False):
+                    self._loop_limit_hit = False
+                    break
                 _hint = self._prompt_mid_task_hint()
                 if _hint:
                     # 힌트를 히스토리에 주입하고 루프 계속
@@ -8841,8 +8846,12 @@ class BingoTerminal:
                 break
 
             # Ctrl+C (응답 후) — 힌트 주입 후 계속 가능
+            # v6.2.137: LOOP_LIMIT_STOP은 hint 없이 즉시 break
             if self._agent_stop_flag.is_set():
                 self._agent_stop_flag.clear()
+                if getattr(self, "_loop_limit_hit", False):
+                    self._loop_limit_hit = False
+                    break
                 _hint2 = self._prompt_mid_task_hint()
                 if _hint2:
                     _lang = getattr(self.config, "lang", "en")

@@ -8865,6 +8865,52 @@ _STRINGS.update({
         "zh": "🔐 [OAUTH] 开始OAuth/OIDC配置扫描 {url}",
         "en": "🔐 [OAUTH] Starting OAuth/OIDC misconfiguration scan for {url}",
     },
+    # ── v6.2.143: 미션 오케스트레이터 다국어 키 ─────────────────────────────
+    "mission_start": {
+        "ko": "🎯 [MISSION] {url} 미션 시작: {mission}",
+        "zh": "🎯 [MISSION] 开始任务 {url}: {mission}",
+        "en": "🎯 [MISSION] Starting mission for {url}: {mission}",
+    },
+    "mission_chain_detected": {
+        "ko": "⚡ [MISSION_CHAIN] 다중 미션 감지 → mission_execute 자동 실행",
+        "zh": "⚡ [MISSION_CHAIN] 检测到多个任务 → 自动执行mission_execute",
+        "en": "⚡ [MISSION_CHAIN] Multi-mission detected → auto-running mission_execute",
+    },
+    "mission_step": {
+        "ko": "  ▶ [{step}/{total}] {label}...",
+        "zh": "  ▶ [{step}/{total}] {label}...",
+        "en": "  ▶ [{step}/{total}] {label}...",
+    },
+    "mission_creds_found": {
+        "ko": "🔴 [MISSION] 관리자 자격증명 탈취: {cred}",
+        "zh": "🔴 [MISSION] 获取管理员凭据: {cred}",
+        "en": "🔴 [MISSION] Admin credentials obtained: {cred}",
+    },
+    "mission_admin_login": {
+        "ko": "🔴 [MISSION] 관리자 패널 로그인 성공: {url} ({user}:{pw})",
+        "zh": "🔴 [MISSION] 管理员面板登录成功: {url} ({user}:{pw})",
+        "en": "🔴 [MISSION] Admin panel login success: {url} ({user}:{pw})",
+    },
+    "mission_webshell": {
+        "ko": "🔴 [MISSION] 웹쉘 업로드 성공: {shell_url}",
+        "zh": "🔴 [MISSION] Webshell上传成功: {shell_url}",
+        "en": "🔴 [MISSION] Webshell upload success: {shell_url}",
+    },
+    "mission_report": {
+        "ko": "📊 [MISSION_REPORT] 취약점 {count}개 | CRITICAL={critical} HIGH={high}",
+        "zh": "📊 [MISSION_REPORT] 漏洞 {count} 个 | CRITICAL={critical} HIGH={high}",
+        "en": "📊 [MISSION_REPORT] {count} finding(s) | CRITICAL={critical} HIGH={high}",
+    },
+    "mission_done": {
+        "ko": "✅ [MISSION_DONE] {url} 미션 완료",
+        "zh": "✅ [MISSION_DONE] {url} 任务完成",
+        "en": "✅ [MISSION_DONE] {url} Mission complete",
+    },
+    "mission_hint_usage": {
+        "ko": "💡 사용법: 채팅창에 'URL + 미션설명' 입력만으로 전체 공격 체인이 자동 실행됩니다.\n   예: https://target.com/ 绕过waf，sql渗透，管理员账号密码，webshell权限",
+        "zh": "💡 用法: 只需在聊天框输入'URL + 任务描述'即可自动执行完整攻击链。\n   例: https://target.com/ 绕过waf，sql渗透，管理员账号密码，webshell权限",
+        "en": "💡 Usage: Just type 'URL + mission description' in chat to auto-run the full attack chain.\n   e.g: https://target.com/ bypass waf, sql injection, admin credentials, webshell",
+    },
 })
 
 

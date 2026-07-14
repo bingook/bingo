@@ -8587,6 +8587,52 @@ _STRINGS.update({
         "zh": "📋 [AUTO_CRAWL] 在 {url} 发现 {count} 个参数",
         "en": "📋 [AUTO_CRAWL] Found {count} parameter(s) at {url}",
     },
+    # ── v6.2.140 ────────────────────────────────────────────────────────────
+    "js_crawl_start": {
+        "ko": "🎭 [JS_CRAWL] Playwright JS 렌더링 크롤 시작: {url}",
+        "zh": "🎭 [JS_CRAWL] 开始 Playwright JS 渲染爬取: {url}",
+        "en": "🎭 [JS_CRAWL] Starting Playwright JS render crawl: {url}",
+    },
+    "js_crawl_done": {
+        "ko": "✅ [JS_CRAWL] {url} — 폼 {forms}개, XHR {xhr}개, 타겟 {targets}개",
+        "zh": "✅ [JS_CRAWL] {url} — 表单 {forms}个, XHR {xhr}个, 目标 {targets}个",
+        "en": "✅ [JS_CRAWL] {url} — {forms} form(s), {xhr} XHR(s), {targets} target(s)",
+    },
+    "auth_scan_start": {
+        "ko": "🔐 [AUTH_SCAN] {url} 인증 세션 스캔 시작 (user={user})",
+        "zh": "🔐 [AUTH_SCAN] 开始认证会话扫描 {url} (user={user})",
+        "en": "🔐 [AUTH_SCAN] Starting authenticated scan for {url} (user={user})",
+    },
+    "auth_login_ok": {
+        "ko": "✅ [AUTH_SCAN] 로그인 성공 — 세션 쿠키 {count}개 획득",
+        "zh": "✅ [AUTH_SCAN] 登录成功 — 获取 {count} 个会话Cookie",
+        "en": "✅ [AUTH_SCAN] Login successful — {count} session cookie(s) obtained",
+    },
+    "auth_login_fail": {
+        "ko": "❌ [AUTH_SCAN] 로그인 실패 — 세션 쿠키 없음",
+        "zh": "❌ [AUTH_SCAN] 登录失败 — 无会话Cookie",
+        "en": "❌ [AUTH_SCAN] Login failed — no session cookies",
+    },
+    "fp_verify_confirmed": {
+        "ko": "✅ [FP_VERIFY] 확인됨 [{vuln}] {param}@{url} (확신도 {conf}%)",
+        "zh": "✅ [FP_VERIFY] 已确认 [{vuln}] {param}@{url} (置信度 {conf}%)",
+        "en": "✅ [FP_VERIFY] Confirmed [{vuln}] {param}@{url} (confidence {conf}%)",
+    },
+    "fp_verify_removed": {
+        "ko": "❌ [FP_VERIFY] False Positive 제거 [{vuln}] {param}@{url} (확신도 {conf}%)",
+        "zh": "❌ [FP_VERIFY] 误报已删除 [{vuln}] {param}@{url} (置信度 {conf}%)",
+        "en": "❌ [FP_VERIFY] False positive removed [{vuln}] {param}@{url} (confidence {conf}%)",
+    },
+    "full_scan_v2_start": {
+        "ko": "🚀 [FULL_SCAN_V2] {url} 전체 스캔 v2 시작 (Playwright+FP재검증)",
+        "zh": "🚀 [FULL_SCAN_V2] 开始全站扫描v2 {url} (Playwright+FP验证)",
+        "en": "🚀 [FULL_SCAN_V2] Starting full scan v2 for {url} (Playwright+FP verify)",
+    },
+    "full_scan_v2_done": {
+        "ko": "✅ [FULL_SCAN_V2] 완료 — 확인된 취약점 {count}개 (FP {fp}개 제거)",
+        "zh": "✅ [FULL_SCAN_V2] 完成 — 确认漏洞 {count} 个 (已删除FP {fp} 个)",
+        "en": "✅ [FULL_SCAN_V2] Done — {count} confirmed vulnerability(s) ({fp} FP removed)",
+    },
 })
 
 

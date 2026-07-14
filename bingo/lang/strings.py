@@ -8531,6 +8531,62 @@ _STRINGS.update({
             "   Or switch to a completely different attack vector (Actuator/JS/IDOR)."
         ),
     },
+    # ── v6.2.139: 취약점 강화 스캐너 ──────────────────────────────────────────
+    "full_scan_start": {
+        "ko": "🔍 [FULL_SCAN] {url} 전체 취약점 자동 스캔 시작...",
+        "zh": "🔍 [FULL_SCAN] 开始对 {url} 进行全站漏洞自动扫描...",
+        "en": "🔍 [FULL_SCAN] Starting full vulnerability scan for {url}...",
+    },
+    "full_scan_done": {
+        "ko": "✅ [FULL_SCAN] 완료 — {count}개 취약점 발견 ({types})",
+        "zh": "✅ [FULL_SCAN] 完成 — 发现 {count} 个漏洞 ({types})",
+        "en": "✅ [FULL_SCAN] Done — {count} vulnerability(s) found ({types})",
+    },
+    "full_scan_no_params": {
+        "ko": "⚠️ [FULL_SCAN] 테스트 가능한 파라미터를 찾지 못했습니다: {url}",
+        "zh": "⚠️ [FULL_SCAN] 未发现可测试参数: {url}",
+        "en": "⚠️ [FULL_SCAN] No testable parameters found: {url}",
+    },
+    "header_inject_found": {
+        "ko": "🔴 [HEADER_INJECT] {header} 헤더 주입 취약점 발견! payload={payload}",
+        "zh": "🔴 [HEADER_INJECT] 发现 {header} 请求头注入漏洞！payload={payload}",
+        "en": "🔴 [HEADER_INJECT] {header} header injection found! payload={payload}",
+    },
+    "parallel_scan_start": {
+        "ko": "⚡ [PARALLEL_SCAN] {url} [{param}] 병렬 멀티 취약점 스캔 ({types})",
+        "zh": "⚡ [PARALLEL_SCAN] {url} [{param}] 并行多漏洞扫描 ({types})",
+        "en": "⚡ [PARALLEL_SCAN] {url} [{param}] parallel multi-vuln scan ({types})",
+    },
+    "xss_plus_found": {
+        "ko": "🔴 [XSS+] XSS 취약점 확인 — param={param}, {n}개 페이로드 반사됨",
+        "zh": "🔴 [XSS+] XSS漏洞确认 — param={param}, {n}个载荷被反射",
+        "en": "🔴 [XSS+] XSS confirmed — param={param}, {n} payload(s) reflected",
+    },
+    "lfi_plus_found": {
+        "ko": "🔴 [LFI+] LFI 취약점 확인 — param={param}, 서명: {sigs}",
+        "zh": "🔴 [LFI+] LFI漏洞确认 — param={param}, 特征: {sigs}",
+        "en": "🔴 [LFI+] LFI confirmed — param={param}, signatures: {sigs}",
+    },
+    "ssrf_plus_found": {
+        "ko": "🔴 [SSRF+] SSRF 취약점 확인 — param={param}",
+        "zh": "🔴 [SSRF+] SSRF漏洞确认 — param={param}",
+        "en": "🔴 [SSRF+] SSRF confirmed — param={param}",
+    },
+    "ssti_plus_found": {
+        "ko": "🔴 [SSTI+] 템플릿 인젝션 확인 — engine={engine}",
+        "zh": "🔴 [SSTI+] 模板注入确认 — engine={engine}",
+        "en": "🔴 [SSTI+] Template injection confirmed — engine={engine}",
+    },
+    "cmdi_plus_found": {
+        "ko": "🔴 [CMDi+] 명령어 인젝션 확인 — param={param}",
+        "zh": "🔴 [CMDi+] 命令注入确认 — param={param}",
+        "en": "🔴 [CMDi+] Command injection confirmed — param={param}",
+    },
+    "auto_crawl_found": {
+        "ko": "📋 [AUTO_CRAWL] {url} 에서 {count}개 파라미터 발견",
+        "zh": "📋 [AUTO_CRAWL] 在 {url} 发现 {count} 个参数",
+        "en": "📋 [AUTO_CRAWL] Found {count} parameter(s) at {url}",
+    },
 })
 
 

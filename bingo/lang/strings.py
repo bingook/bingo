@@ -7324,6 +7324,11 @@ _STRINGS.update({
     },
 
     # ── sqli_autoexploit 출력 메시지 ─────────────────────────────────────────
+    "sqli_cache_hit": {
+        "ko": "✅ [SQLI_CACHE] STAGE 1-3 캐시 복원 — oracle={oracle}  VERSION={ver}  DB={db}  USER={usr}",
+        "zh": "✅ [SQLI_CACHE] STAGE 1-3 缓存命中 — oracle={oracle}  VERSION={ver}  DB={db}  USER={usr}",
+        "en": "✅ [SQLI_CACHE] STAGE 1-3 cache restored — oracle={oracle}  VERSION={ver}  DB={db}  USER={usr}",
+    },
     "sqli_stage1": {
         "ko": "=== STAGE 1: Boolean Oracle 탐지 ===",
         "zh": "=== STAGE 1: Boolean Oracle 检测 ===",

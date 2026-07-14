@@ -8457,6 +8457,37 @@ _STRINGS.update({
     "tor_auto_win":        {"ko": "⚠️ Windows 자동 설치 미지원 — 수동 설치 필요", "zh": "⚠️ Windows 不支持自动安装 — 请手动安装", "en": "⚠️ Windows auto-install not supported — manual install required"},
     "proxy_hunt_done":     {"ko": "🌐 무료 프록시 {n}개 자동 수집됨", "zh": "🌐 自动收集 {n} 个免费代理", "en": "🌐 {n} free proxies auto-collected"},
     "proxy_hunt_fail":     {"ko": "⚠️ 프록시 수집 실패: {err}", "zh": "⚠️ 代理收集失败: {err}", "en": "⚠️ Proxy hunt failed: {err}"},
+    # ── v6.2.136 프록시 지속 순환 자동교정기 ──────────────────────────────────
+    "proxy_cycle_blocked": {
+        "ko": "🔄 현재 프록시 차단됨 — 다음 프록시로 자동 전환",
+        "zh": "🔄 当前代理已被封锁 — 自动切换到下一个代理",
+        "en": "🔄 Current proxy blocked — auto-rotating to next proxy",
+    },
+    "proxy_cycle_exhaust": {
+        "ko": "⚠️ 프록시 풀 소진 — 새 프록시 자동 수집 중...",
+        "zh": "⚠️ 代理池已耗尽 — 正在自动收集新代理...",
+        "en": "⚠️ Proxy pool exhausted — auto-collecting new proxies...",
+    },
+    "proxy_cycle_notice": {
+        "ko": (
+            "🔄 [PROXY_CYCLE_NOTICE] 프록시 순환 자동 교정기 작동\n"
+            "  현재 프록시({proxy})가 차단되었습니다.\n"
+            "  다음 프록시({next_proxy})로 전환하여 재시도하세요:\n"
+            "  TOOL_CALL:{{\"name\":\"sqli_with_ip_rotation\",\"args\":{{\"url\":\"<URL>\",\"param\":\"<param>\",\"proxy_list\":{pool_json}}}}}"
+        ),
+        "zh": (
+            "🔄 [PROXY_CYCLE_NOTICE] 代理轮换自动校正器已激活\n"
+            "  当前代理({proxy})已被封锁。\n"
+            "  请切换到下一个代理({next_proxy})重试:\n"
+            "  TOOL_CALL:{{\"name\":\"sqli_with_ip_rotation\",\"args\":{{\"url\":\"<URL>\",\"param\":\"<param>\",\"proxy_list\":{pool_json}}}}}"
+        ),
+        "en": (
+            "🔄 [PROXY_CYCLE_NOTICE] Proxy cycle auto-corrector triggered\n"
+            "  Current proxy ({proxy}) is blocked.\n"
+            "  Rotate to next proxy ({next_proxy}):\n"
+            "  TOOL_CALL:{{\"name\":\"sqli_with_ip_rotation\",\"args\":{{\"url\":\"<URL>\",\"param\":\"<param>\",\"proxy_list\":{pool_json}}}}}"
+        ),
+    },
     # ── v6.2.125 루프/추출 자동교정기 ─────────────────────────────────────────
     "tilde_loop_stop": {
         "ko": (

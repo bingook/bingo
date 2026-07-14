@@ -4717,6 +4717,34 @@ class BingoTerminal:
         from rich.markup import escape as _resc
 
         # ══════════════════════════════════════════════════════════════════════
+        # v6.2.145 ── XML tool_call 형식 자동 변환 (Type A 자동 교정기)
+        # AI가 가끔 <tool_call>{"name":...,"arguments":{...}}</tool_call> XML 형식을 출력.
+        # bingo는 TOOL_CALL:{} 형식만 인식하므로 자동 변환.
+        # 변환: <tool_call>{"name":"X","arguments":{...}}</tool_call>
+        #      → TOOL_CALL:{"name":"X","args":{...}}
+        import re as _re_tc
+        def _convert_xml_toolcall(text: str) -> str:
+            """<tool_call>...</tool_call> XML 형식 → TOOL_CALL:{} 형식 자동 변환"""
+            _xml_tc_pat = _re_tc.compile(
+                r'<tool_call>\s*(\{.*?\})\s*</tool_call>',
+                _re_tc.DOTALL | _re_tc.IGNORECASE,
+            )
+            def _replace_tc(m: "_re_tc.Match") -> str:
+                try:
+                    import json as _j
+                    _obj = _j.loads(m.group(1))
+                    _name = str(_obj.get("name", "") or _obj.get("tool_name", ""))
+                    _args = _obj.get("arguments", _obj.get("args", _obj.get("parameters", {})))
+                    if not isinstance(_args, dict):
+                        _args = {}
+                    return "TOOL_CALL:" + _j.dumps({"name": _name, "args": _args}, ensure_ascii=False)
+                except Exception:
+                    return m.group(0)
+            if "<tool_call>" in text.lower():
+                text = _xml_tc_pat.sub(_replace_tc, text)
+            return text
+        response = _convert_xml_toolcall(response)
+
         # v5.2.0 ── TOOL_CALL 파서 (bash 블록 처리 이전에 실행)
         # 형식: TOOL_CALL:{"name":"sqli_timebased","args":{"url":"...","param":"id"}}
         # ══════════════════════════════════════════════════════════════════════

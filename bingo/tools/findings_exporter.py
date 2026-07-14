@@ -91,13 +91,28 @@ _XSS_PATTERNS = [
         r'[^<\s]',
         re.I
     ),
-    re.compile(r'alert\s*\(\s*["\']?[^)]{0,50}["\']?\s*\)', re.I),
+    # v6.2.145 FIX: alert() 단독 패턴 삭제 → _is_server_alert_response() 함수로 대체.
+    # 기존 패턴이 서버 자체 생성 alert('등록된 하위 메뉴가 없습니다.') 등을 XSS로 오탐.
+    # 실제 XSS alert는 _detect_vuln_type 에서 페이로드 반영 여부 확인 후 처리.
     # v5.1.1 FIX: onerror= 단독(이벤트 핸들러 속성 이름만)도 오발.
     # 실행 함수(alert/eval/document/fetch 등)가 포함된 경우만 매칭.
     re.compile(r'(?:onerror|onload|onfocus|onmouseover)\s*=\s*["\']?\s*(?:alert|eval|document\.|window\.|fetch\s*\(|location\.)', re.I),
     re.compile(r'\bXSS\b.*?(confirmed|실행|성공|detected)', re.I),
     re.compile(r'window\.__BINGO_XSS__\s*=\s*1', re.I),
 ]
+
+# v6.2.145: 서버 자체 생성 alert() 오탐 방지
+# 서버가 직접 출력하는 alert('에러메시지'); history.back() 패턴 — XSS 아님
+_SERVER_ALERT_PATTERN = re.compile(
+    r'<script[^>]*>\s*alert\s*\(\s*["\'][^"\']*["\'][^)]*\)\s*;?\s*'
+    r'(?:history\.back|location\.|window\.location)',
+    re.I | re.DOTALL,
+)
+# XSS 페이로드가 코드/URL에 포함됐는지 확인 (진짜 XSS 공격 시도)
+_XSS_PAYLOAD_IN_CODE = re.compile(
+    r'(?:<script|alert\s*\(|onerror\s*=|javascript:|<img[^>]+on\w+=|<svg[^>]+on\w+=|%3cscript|%3ealert)',
+    re.I,
+)
 
 _XSS_URL_PATTERN = re.compile(
     r'https?://[^\s"\'<>]+(?:%3C|<)(?:script|img|svg|body)[^\s"\'<>]*',
@@ -315,12 +330,24 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
             (FINDING_SQLI,        SEVERITY_HIGH,     _SQLI_PATTERNS),
         ]
 
+    # v6.2.145: XSS 오탐 사전 판단 플래그
+    # 서버 자체 생성 alert() + 코드에 XSS 페이로드 없음 → XSS 검사 건너뜀
+    _skip_xss = False
+    if _SERVER_ALERT_PATTERN.search(output) and not _XSS_PAYLOAD_IN_CODE.search(code_snippet):
+        _skip_xss = True
+    # 코드에도 XSS 페이로드가 없고 출력에 script+alert가 서버 응답 형태이면 오탐 가능성 高
+    if not _XSS_PAYLOAD_IN_CODE.search(code_snippet) and not _XSS_PAYLOAD_IN_CODE.search(output):
+        _skip_xss = True
+
     for vtype, sev, patterns in checks:
         # v4.9.4: LFI 오탐 방지 — php://filter+HTML redirect 조합이면 LFI 검사 건너뜀
         if vtype == FINDING_LFI and _skip_lfi:
             continue
         # v6.2.66: JS chunk 다운로드 출력 — credential 패턴 건너뜀 (미니파이 JS 오탐 방지)
         if vtype == FINDING_CREDENTIAL and _is_js_chunk_output:
+            continue
+        # v6.2.145: 서버 자체 생성 alert() 오탐 방지 — XSS 페이로드 미포함 시 건너뜀
+        if vtype == FINDING_XSS and _skip_xss:
             continue
         for pat in patterns:
             if pat.search(output):

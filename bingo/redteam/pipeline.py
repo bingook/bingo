@@ -78,11 +78,13 @@ class RedTeamPipeline:
                 admin_logged_in = any(
                     f.get("data", {}).get("admin_login")
                     for f in exploit_result
-                    if isinstance(f.get("data"), dict)
+                    if isinstance(f, dict) and isinstance(f.get("data"), dict)
                 )
                 # 비인증 업로드도 있으면 webshell 진행
                 unauth_upload = any(
-                    "unauth_upload:" in str(f.get("data", ""))
+                    "unauth_upload:" in str(
+                        f.get("data", "") if isinstance(f, dict) else f
+                    )
                     for f in exploit_result
                 )
                 if not admin_logged_in and not unauth_upload and "webshell" not in (phases or []):

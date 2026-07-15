@@ -250,6 +250,9 @@ class BingoTerminal:
         self._stop_crack_flag = threading.Event()
         # 세션 내 해시 중복 크랙 방지 (파일명 캐시 버스팅 해시 포함)
         self._session_cracked_hashes: set = set()
+        # v6.2.147: 에이전트 루프 중 수집한 해시 임시 큐 (스레드 인터리빙 방지)
+        # _collect_crack_hashes()로 모아두고, 루프 완료 후 _notify_hashes_found()에서 한번에 크랙
+        self._pending_crack_hashes: list = []
         # Agent 루프 중단 플래그 (Ctrl+C)
         self._agent_stop_flag = threading.Event()
         # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
@@ -8695,7 +8698,9 @@ class BingoTerminal:
 
             self.history.append(Message(role="assistant", content=followup_response))
             self._append_to_session_log("assistant", followup_response)
-            self._notify_hashes_found(followup_response)
+            # v6.2.147: 루프 내부에서는 수집만 (스레드 시작 안 함 → 인터리빙 방지)
+            # 크랙은 _execute_ai_commands 완료 후 send_message()의 _notify_hashes_found()에서 실행
+            self._collect_crack_hashes(followup_response)
 
             # ── v4.5.0: 실행 후 LLM 분석에서 CONFIRMED/FALSE POSITIVE 감지 ────────
             # 여기서 나타나는 태그는 실제 코드 실행 결과를 보고 LLM이 판단한 것 → 신뢰
@@ -10212,39 +10217,34 @@ class BingoTerminal:
         except Exception:
             return ""
 
-    def _notify_hashes_found(self, text: str) -> None:
-        """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행
-        (컨텍스트 필터: 오류코드/추적ID/파일명 캐시버스팅 해시 자동 제외 + 세션 중복 방지)
-        v6.2.50: 세션 추가를 즉시 수행 → 빠른 연속 호출 시 중복 크랙 완전 차단
+    def _collect_crack_hashes(self, text: str) -> None:
+        """v6.2.147: 에이전트 루프 중 해시 수집만 — 스레드 시작 없음.
+        _execute_ai_commands 내부 루프에서 호출. 실제 크랙은 루프 완료 후
+        _notify_hashes_found()가 _pending_crack_hashes를 flush할 때 시작됨.
+        → 해시 크랙 출력과 BASH 도구 출력 인터리빙 문제 해결 (Type A 자동 교정기).
         """
         import re as _re_hf
         from ..tools.hash_crack import extract_hashes_from_text
 
-        # ── 1단계: 파일명/URL 컨텍스트 해시 → 세션 블록리스트에 추가 (오탐 영구 제외)
+        # 파일명/URL 캐시버스팅 해시 → 블록리스트에 추가
         _fname_hash_re = _re_hf.compile(
             r"""(?<=[._\-/])([0-9a-fA-F]{32,64})(?=\.[a-zA-Z]{2,5}(?:[?&#\s"')|]|$))"""
         )
         for _fhm in _fname_hash_re.finditer(text):
             self._session_cracked_hashes.add(_fhm.group(1).lower())
 
-        # ── 2단계: 해시 추출
-        raw_hashes    = extract_hashes_from_text(text, strict=False)   # 필터 전
-        hashes_strict = extract_hashes_from_text(text, strict=True)    # strict 필터 후
+        raw_hashes    = extract_hashes_from_text(text, strict=False)
+        hashes_strict = extract_hashes_from_text(text, strict=True)
 
-        # ── 3단계: 오탐(strict 필터 제거) vs 세션 중복 명확히 분리
         _strict_set  = {h.lower() for h in hashes_strict}
-        fp_filtered  = [h for h in raw_hashes    if h.lower() not in _strict_set]
-        sess_deduped = [h for h in hashes_strict if h.lower() in self._session_cracked_hashes]
+        fp_filtered  = [h for h in raw_hashes if h.lower() not in _strict_set]
         new_hashes   = [h for h in hashes_strict if h.lower() not in self._session_cracked_hashes]
 
-        # ── 4단계: 신규 해시를 세션에 즉시 추가 (스레드 시작 전)
-        # Bug 1 핵심 수정: 크랙 스레드 시작 전에 등록 → 연속 호출 중복 차단
+        # 즉시 세션에 등록 (중복 크랙 방지)
         for _h in new_hashes:
             self._session_cracked_hashes.add(_h.lower())
 
         _lang = getattr(self.config, "lang", "en")
-
-        # ── 5단계: 오탐 메시지 (strict 필터로 제거된 경우만)
         if fp_filtered:
             _msg_fp = {
                 "ko": f"[dim]🔍 오탐 제외: {len(fp_filtered)}개 hex 문자열이 오류코드/추적ID로 판단되어 크랙 건너뜀[/dim]",
@@ -10253,14 +10253,28 @@ class BingoTerminal:
             }.get(_lang, f"[dim]🔍 Filtered {len(fp_filtered)} non-hash hex string(s)[/dim]")
             self.console.print(_msg_fp)
 
-        # ── Bug 2 핵심 수정: 세션 중복은 별도 메시지 (오탐과 혼동 방지)
-        if sess_deduped:
-            _msg_sd = {
-                "ko": f"[dim]🔁 중복 방지: {len(sess_deduped)}개 해시는 이미 크랙 시도됨 — 건너뜀[/dim]",
-                "zh": f"[dim]🔁 去重保护: {len(sess_deduped)}个哈希已在本次会话中尝试过 — 已跳过[/dim]",
-                "en": f"[dim]🔁 Dedup: {len(sess_deduped)} hash(es) already attempted this session — skipped[/dim]",
-            }.get(_lang, f"[dim]🔁 Dedup: {len(sess_deduped)} hash(es) skipped[/dim]")
-            self.console.print(_msg_sd)
+        # 큐에 추가 (중복 제외)
+        for _h in new_hashes:
+            if _h not in self._pending_crack_hashes:
+                self._pending_crack_hashes.append(_h)
+
+    def _notify_hashes_found(self, text: str) -> None:
+        """AI 응답에서 해시 감지 시 자동 온라인 조회 → 오프라인 크랙 파이프라인 실행.
+        v6.2.147: _execute_ai_commands 루프 완료 후 호출되어 pending 큐를 flush.
+        루프 도중 _collect_crack_hashes()로 모인 해시를 한 번에 크랙 → 인터리빙 방지.
+        (컨텍스트 필터: 오류코드/추적ID/파일명 캐시버스팅 해시 자동 제외 + 세션 중복 방지)
+        """
+        # 현재 text에서도 수집 (initial full_response 포함)
+        self._collect_crack_hashes(text)
+
+        # pending 큐에서 크랙할 해시 수집
+        new_hashes = list(self._pending_crack_hashes)
+        self._pending_crack_hashes.clear()
+
+        _lang = getattr(self.config, "lang", "en")
+
+        # 세션 중복 메시지 (pending flush 단계에서 통합 출력)
+        # (이미 _collect_crack_hashes에서 session dedup 완료 — 여기선 새 해시만 남음)
 
         if not new_hashes:
             # 크레덴셜 발견 키워드 감지 → 크리티컬 알림 (해시 없음, 평문 발견)
@@ -10281,7 +10295,7 @@ class BingoTerminal:
         _hb = {"ko": "자동 크랙 시작됨", "zh": "自动破解已启动", "en": "Auto-crack started"}.get(_lang, "Auto-crack started")
         self._send_notification(_ht, _hb, critical=True)
 
-        # 별도 스레드에서 실행 (채팅 블로킹 방지)
+        # 별도 스레드에서 실행 (채팅 블로킹 방지) — 에이전트 루프 완료 후 실행이므로 인터리빙 없음
         self._stop_crack_flag.clear()
         t = threading.Thread(
             target=self._auto_crack_pipeline,

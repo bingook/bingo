@@ -253,6 +253,8 @@ class BingoTerminal:
         # v6.2.147: 에이전트 루프 중 수집한 해시 임시 큐 (스레드 인터리빙 방지)
         # _collect_crack_hashes()로 모아두고, 루프 완료 후 _notify_hashes_found()에서 한번에 크랙
         self._pending_crack_hashes: list = []
+        # v6.2.148: API 에러 메시지 캐시 (Grok 403 자동 폴백 교정기용)
+        self._last_stream_error: str = ""
         # Agent 루프 중단 플래그 (Ctrl+C)
         self._agent_stop_flag = threading.Event()
         # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
@@ -1947,6 +1949,21 @@ class BingoTerminal:
         )
         return Message(role="system", content=system)
 
+    def _get_grok_fallback_model(self):
+        """v6.2.148: Grok 403 폴백용 — DeepSeek/GLM 우선으로 비-Grok 모델 반환."""
+        _pref_order = ["deepseek", "glm", "zhipu", "openai", "claude", "anthropic"]
+        _models = getattr(self.config, "models", [])
+        # 우선순위 순으로 탐색
+        for _pref in _pref_order:
+            for _m in _models:
+                if _pref in _m.provider.lower() and "grok" not in _m.provider.lower():
+                    return _m
+        # 우선순위 없으면 Grok 아닌 첫 번째 모델
+        for _m in _models:
+            if "grok" not in _m.provider.lower() and "xai" not in _m.provider.lower():
+                return _m
+        return None
+
     def _send_message(self, text: str, _force_pentest: bool = False) -> None:
         # 사용자 메시지 출력
         self._print_user(text)
@@ -2295,6 +2312,7 @@ class BingoTerminal:
             return
 
         # 시스템 프롬프트 + 스킬 컨텍스트 포함한 전체 메시지로 스트리밍
+        self._last_stream_error = ""
         full_response = self._stream_response(
             model.chat_stream(self._build_messages(skill_context))
         )
@@ -2303,6 +2321,29 @@ class BingoTerminal:
         if self._agent_stop_flag.is_set():
             self._agent_stop_flag.clear()
             return
+
+        # ── v6.2.148 자동교정기: Grok/xAI 403 자동 폴백 모델 스위치 ────────────
+        # Grok이 "Content violates usage guidelines" HTTP 403을 반환하면
+        # 설정된 다른 모델(DeepSeek/GLM 우선)로 자동 전환 후 동일 요청 재시도.
+        if not full_response and "403" in self._last_stream_error:
+            _cur_prov = model_cfg.provider.lower()
+            if "grok" in _cur_prov or "xai" in _cur_prov or "grok" in model_cfg.model.lower():
+                _fallback_cfg = self._get_grok_fallback_model()
+                if _fallback_cfg and _fallback_cfg.alias != model_cfg.alias:
+                    _fb_name = _fallback_cfg.display_name()
+                    _switch_msg = {
+                        "ko": f"⚡ Grok 403 차단 → 자동 폴백: {_fb_name}",
+                        "zh": f"⚡ Grok 403 拒绝 → 自动切换至: {_fb_name}",
+                        "en": f"⚡ Grok 403 blocked → auto-fallback: {_fb_name}",
+                    }.get(getattr(self.config, "lang", "en"), f"⚡ Grok 403 → fallback: {_fb_name}")
+                    self.console.print(f"[{THEME['warn']}]{_switch_msg}[/]")
+                    _fb_model = ModelRegistry.build(_fallback_cfg)
+                    full_response = self._stream_response(
+                        _fb_model.chat_stream(self._build_messages(skill_context))
+                    )
+                    if full_response:
+                        model_cfg = _fallback_cfg  # 이후 처리에 fallback cfg 사용
+                        model = _fb_model
 
         # 거부 감지 → 재구성 후 재시도 (이전 출력은 이미 표시됨 — 새 시도만 추가 출력)
         if full_response and detect_refusal(full_response):
@@ -2789,6 +2830,7 @@ class BingoTerminal:
                     break
                 if chunk.error:
                     live.stop()
+                    self._last_stream_error = chunk.error  # v6.2.148: 에러 캐시
                     self._error(f"{self.s['api_error']}: {chunk.error}")
                     return ""
                 if chunk.text:
@@ -8682,19 +8724,40 @@ class BingoTerminal:
             )
 
             if not followup_response:
-                # API 응답 없음 → 잠시 대기 후 재시도
-                import time as _t
-                _t.sleep(3)
-                model_cfg3 = self.config.get_active_model_config()
-                if not model_cfg3:
-                    break
-                from ..models.registry import ModelRegistry as _MR3
-                _m3 = _MR3.build(model_cfg3)
-                followup_response = self._stream_response(
-                    _m3.chat_stream(self._build_messages(""))
-                )
+                # ── v6.2.148: Grok 403 → 자동 폴백 모델로 전환 ──────────
+                if "403" in self._last_stream_error:
+                    _fb403 = self._get_grok_fallback_model()
+                    if _fb403:
+                        _fb403_name = _fb403.display_name()
+                        _fb403_lang = getattr(self.config, "lang", "en")
+                        _fb_msg = {
+                            "ko": f"⚡ Grok 403 → 폴백: {_fb403_name}",
+                            "zh": f"⚡ Grok 403 → 切换: {_fb403_name}",
+                            "en": f"⚡ Grok 403 → fallback: {_fb403_name}",
+                        }.get(_fb403_lang, f"⚡ Grok 403 → {_fb403_name}")
+                        self.console.print(f"[{THEME['warn']}]{_fb_msg}[/]")
+                        model_cfg = _fb403
+                        model = ModelRegistry.build(_fb403)
+                        followup_response = self._stream_response(
+                            model.chat_stream(self._build_messages(""))
+                        )
+                        if followup_response:
+                            self._last_stream_error = ""
+
+                # 여전히 응답 없음 → 3초 대기 후 재시도
                 if not followup_response:
-                    break  # 재시도도 실패하면 종료
+                    import time as _t
+                    _t.sleep(3)
+                    model_cfg3 = self.config.get_active_model_config()
+                    if not model_cfg3:
+                        break
+                    from ..models.registry import ModelRegistry as _MR3
+                    _m3 = _MR3.build(model_cfg3)
+                    followup_response = self._stream_response(
+                        _m3.chat_stream(self._build_messages(""))
+                    )
+                    if not followup_response:
+                        break  # 재시도도 실패하면 종료
 
             self.history.append(Message(role="assistant", content=followup_response))
             self._append_to_session_log("assistant", followup_response)

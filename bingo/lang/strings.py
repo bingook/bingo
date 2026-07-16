@@ -8911,6 +8911,55 @@ _STRINGS.update({
         "zh": "💡 用法: 只需在聊天框输入'URL + 任务描述'即可自动执行完整攻击链。\n   例: https://target.com/ 绕过waf，sql渗透，管理员账号密码，webshell权限",
         "en": "💡 Usage: Just type 'URL + mission description' in chat to auto-run the full attack chain.\n   e.g: https://target.com/ bypass waf, sql injection, admin credentials, webshell",
     },
+    # ── v6.2.151 autoDream / Doom Loop / 2-pass Compaction ────────────────
+    "doom_loop_escape": {
+        "ko": (
+            "⚠️ [DOOM_LOOP] 반복 패턴 감지 — 전략을 즉시 변경하세요.\n"
+            "1) 다른 파라미터/엔드포인트로 전환\n"
+            "2) WAF 우회 인코딩 방식 교체\n"
+            "3) 다른 취약점 유형으로 전환\n"
+            "4) 프록시 교체 후 재시도"
+        ),
+        "zh": (
+            "⚠️ [DOOM_LOOP] 检测到重复模式 — 请立即换策略。\n"
+            "1) 切换到其他参数/端点\n"
+            "2) 更换WAF绕过编码方式\n"
+            "3) 切换到其他漏洞类型\n"
+            "4) 更换代理后重试"
+        ),
+        "en": (
+            "⚠️ [DOOM_LOOP] Repetitive pattern detected — change strategy now.\n"
+            "1) Switch to a different parameter/endpoint\n"
+            "2) Use different WAF bypass encoding\n"
+            "3) Switch to a different vuln type\n"
+            "4) Rotate proxy and retry"
+        ),
+    },
+    "autodream_saved": {
+        "ko": "🧠 [autoDream] 세션 기억 저장 완료: {path}",
+        "zh": "🧠 [autoDream] 会话记忆已保存: {path}",
+        "en": "🧠 [autoDream] Session memory saved: {path}",
+    },
+    "autodream_loaded": {
+        "ko": "🧠 [autoDream] 이전 기억 로드 완료 ({count}개 청크)",
+        "zh": "🧠 [autoDream] 已加载历史记忆 ({count}个块)",
+        "en": "🧠 [autoDream] Previous memory loaded ({count} chunks)",
+    },
+    "autodream_dream_done": {
+        "ko": "🧠 [autoDream] {count}개 세션 통합 요약 완료",
+        "zh": "🧠 [autoDream] {count}个会话整合摘要完成",
+        "en": "🧠 [autoDream] {count} sessions consolidated",
+    },
+    "compaction_started": {
+        "ko": "📦 [Compaction] 히스토리 압축 중 (배경 처리)...",
+        "zh": "📦 [Compaction] 正在后台压缩历史记录...",
+        "en": "📦 [Compaction] Compacting history in background...",
+    },
+    "compaction_done": {
+        "ko": "📦 [Compaction] 히스토리 압축 완료 — 컨텍스트 최적화됨",
+        "zh": "📦 [Compaction] 历史压缩完成 — 上下文已优化",
+        "en": "📦 [Compaction] History compacted — context optimized",
+    },
 })
 
 

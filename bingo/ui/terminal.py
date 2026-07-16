@@ -299,6 +299,15 @@ class BingoTerminal:
         # Stuck 감지 — 마지막 N개 결과의 해시값 (반복 시 자동 전략 전환)
         self._recent_results: list[str] = []
         self._stuck_count: int = 0
+        # ── v6.2.151 Doom Loop 감지기 (grok-build doom_loop.rs 이식) ──────
+        # 최근 도구 호출 시그니처 목록 (이름+인자 해시) — 반복 패턴 감지용
+        self._dl_tool_sigs: list[str] = []
+        self._dl_no_progress: int = 0       # 연속 "진전 없음" 루프 수
+        # ── v6.2.151 2-pass Compaction 상태 ──────────────────────────────
+        self._compaction_summary: str = ""  # 배경 LLM 생성 요약
+        self._compaction_lock = __import__("threading").Lock()
+        self._compaction_running: bool = False
+        self._compaction_threshold: int = 40  # 히스토리 메시지 수 임계값
         # 네트워크 환경 (VPN 감지 결과 캐싱)
         self._net_env: dict = {}
         self._detect_network_env()
@@ -566,6 +575,41 @@ class BingoTerminal:
             self._warn(self.s["no_model_configured"])
             self._cmd_model()
 
+        # ── v6.2.151 autoDream: 조건 충족 시 배경 세션 통합 ──────────────────
+        try:
+            from ..core.memory import auto_dream as _auto_dream
+            import threading as _ad_th
+            _ad_th.Thread(
+                target=_auto_dream,
+                kwargs={"lang": getattr(self.config, "lang", "en")},
+                daemon=True,
+                name="bingo-autodream",
+            ).start()
+        except Exception:
+            pass
+        # ─────────────────────────────────────────────────────────────────────
+
+        # ── v6.2.151 autoDream: 타겟 관련 이전 기억 주입 ─────────────────────
+        try:
+            from ..core.memory import inject_context as _mem_inject
+            _mem_target = self._agent_state.get("target", "")
+            if _mem_target:
+                _mem_ctx = _mem_inject(_mem_target, lang=getattr(self.config, "lang", "en"))
+                if _mem_ctx:
+                    # 시스템 메시지 뒤에 메모리 컨텍스트 주입
+                    self.history.insert(0, Message(role="user", content=_mem_ctx))
+                    self.history.insert(1, Message(
+                        role="assistant",
+                        content={
+                            "ko": "이전 세션 기억을 불러왔습니다. 계속 진행하겠습니다.",
+                            "zh": "已加载历史会话记忆，继续执行。",
+                            "en": "Previous session memory loaded. Continuing.",
+                        }.get(getattr(self.config, "lang", "en"), "Memory loaded."),
+                    ))
+        except Exception:
+            pass
+        # ─────────────────────────────────────────────────────────────────────
+
         # 이전 세션 이어하기 제안
         _resumed = self._offer_resume()
 
@@ -718,6 +762,24 @@ class BingoTerminal:
                 )
         except Exception:
             pass
+
+        # ── v6.2.151 autoDream: 세션 종료 시 발견사항 메모리 저장 ────────────
+        try:
+            from ..core.memory import save_session as _mem_save
+            import threading as _ads_th
+            _ads_target = self._agent_state.get("target", "")
+            _ads_log = self._session_log_path
+            _ads_state = dict(self._agent_state)
+            _ads_snippets = list(getattr(self, "_recent_results", []))
+            _ads_th.Thread(
+                target=_mem_save,
+                args=(_ads_log, _ads_target, _ads_state, _ads_snippets),
+                daemon=True,
+                name="bingo-dream-save",
+            ).start()
+        except Exception:
+            pass
+        # ─────────────────────────────────────────────────────────────────────
 
     # ── 채팅 루프 ─────────────────────────────────────────────────
     def _chat_loop(self) -> None:
@@ -1771,6 +1833,10 @@ class BingoTerminal:
     def _build_messages(self, skill_context: str = "") -> list[Message]:
         """시스템 프롬프트 + 스킬 컨텍스트 + 대화 히스토리 합치기.
         history 안에 dict가 섞여 있어도 자동으로 Message 로 변환한다.
+
+        v6.2.151: 2-pass Compaction — 히스토리가 임계값을 초과하면
+        오래된 메시지를 배경 LLM 요약으로 압축하여 컨텍스트 창 효율을 높임.
+        (grok-build xai-grok-compaction 아키텍처 Python 이식)
         """
         safe_history: list[Message] = []
         for m in self.history:
@@ -1782,7 +1848,99 @@ class BingoTerminal:
                 if role in ("user", "assistant", "system") and content:
                     safe_history.append(Message(role=role, content=content))
         self.history = safe_history          # 정규화 반영
+
+        # ── v6.2.151 2-pass Compaction (Type A) ──────────────────────────
+        # Pass 1: 비-시스템 메시지가 임계값 초과 시 배경 LLM 요약 스케줄링
+        # Pass 2: 요약 완성 후 오래된 히스토리를 요약문으로 대체
+        non_system = [m for m in safe_history if m.role != "system"]
+        _compaction_thr = getattr(self, "_compaction_threshold", 40)
+        if (
+            len(non_system) > _compaction_thr
+            and not getattr(self, "_compaction_running", False)
+        ):
+            self._trigger_background_compaction(non_system)
+
+        if getattr(self, "_compaction_summary", ""):
+            # Pass 2: 요약 완성 → 앞부분 히스토리를 요약 메시지로 교체
+            _keep_recent = 10
+            system_msgs = [m for m in safe_history if m.role == "system"]
+            non_sys = [m for m in safe_history if m.role != "system"]
+            if len(non_sys) > _keep_recent:
+                _lang = getattr(self.config, "lang", "en")
+                _compaction_prefix = {
+                    "ko": "[압축된 이전 대화 요약]\n",
+                    "zh": "[已压缩的历史对话摘要]\n",
+                    "en": "[Compacted history summary]\n",
+                }.get(_lang, "[Compacted history]\n")
+                compact_msg = Message(
+                    role="assistant",
+                    content=_compaction_prefix + self._compaction_summary,
+                )
+                safe_history = system_msgs + [compact_msg] + non_sys[-_keep_recent:]
+                self.history = safe_history
+                with self._compaction_lock:
+                    self._compaction_summary = ""  # 소비 완료
+
         return [self._get_system_message(skill_context)] + safe_history
+
+    def _trigger_background_compaction(self, non_system_msgs: list) -> None:
+        """오래된 히스토리를 백그라운드 스레드에서 LLM으로 요약 (2-pass Compaction Pass 1)."""
+        import threading as _ct
+        if getattr(self, "_compaction_running", False):
+            return
+        _msgs_to_compact = non_system_msgs[:-8]  # 최근 8개는 보존
+        if len(_msgs_to_compact) < 6:
+            return
+
+        def _compact_worker():
+            try:
+                with self._compaction_lock:
+                    self._compaction_running = True
+
+                _lang = getattr(self.config, "lang", "en")
+                _compact_text = "\n".join(
+                    f"[{m.role}]: {m.content[:300]}" for m in _msgs_to_compact[-20:]
+                )
+                _prompt_map = {
+                    "ko": (
+                        f"다음 침투테스트 대화를 중요 발견사항 중심으로 간결하게 요약하세요 "
+                        f"(취약점, 계정, SQLi 포인트, WAF 정보, 다음 단계 포함):\n\n{_compact_text}"
+                    ),
+                    "zh": (
+                        f"请简洁总结以下渗透测试对话，重点包括发现的漏洞、凭据、SQLi点、"
+                        f"WAF信息和下一步操作：\n\n{_compact_text}"
+                    ),
+                    "en": (
+                        f"Summarize this pentest conversation concisely, focusing on key findings "
+                        f"(vulns, creds, SQLi points, WAF info, next steps):\n\n{_compact_text}"
+                    ),
+                }
+                _compact_prompt = _prompt_map.get(_lang, _prompt_map["en"])
+
+                from ..models.registry import ModelRegistry as _MR
+                _mc = self.config.get_active_model_config()
+                if not _mc:
+                    return
+                _m = _MR.build(_mc)
+                _summ_parts = []
+                for _chunk in _m.chat_stream(
+                    [Message(role="user", content=_compact_prompt)]
+                ):
+                    if _chunk.text:
+                        _summ_parts.append(_chunk.text)
+                    if _chunk.done:
+                        break
+                _summary = "".join(_summ_parts).strip()
+                if _summary:
+                    with self._compaction_lock:
+                        self._compaction_summary = _summary
+            except Exception:
+                pass
+            finally:
+                with self._compaction_lock:
+                    self._compaction_running = False
+
+        _ct.Thread(target=_compact_worker, daemon=True, name="bingo-compaction").start()
 
     # ────────────────────────────────────────────────────────────────
     # 일반 대화 감지 — 침투테스트와 무관한 질문인지 판별
@@ -7846,6 +8004,69 @@ class BingoTerminal:
                     )
             self._show_token_usage()
             self._exec_loop_count += 1
+
+            # ── v6.2.151 Doom Loop 감지기 (Type A) ───────────────────────────
+            # grok-build doom_loop.rs 이식: 연속 동일 도구 호출 패턴 감지
+            # 조건: 최근 6개 시그니처 중 4개 이상 동일 → doom loop 탈출 힌트 주입
+            import hashlib as _dl_md5
+            _dl_sig = _dl_md5.md5(
+                (current_response or "")[:200].encode()
+            ).hexdigest()[:12]
+            self._dl_tool_sigs.append(_dl_sig)
+            if len(self._dl_tool_sigs) > 12:
+                self._dl_tool_sigs = self._dl_tool_sigs[-12:]
+            _dl_window = self._dl_tool_sigs[-6:] if len(self._dl_tool_sigs) >= 6 else []
+            _dl_doom_detected = len(_dl_window) >= 6 and (
+                max(_dl_window.count(s) for s in set(_dl_window)) >= 4
+            )
+            # 진전 없음 판단: 실행 결과에 새 발견사항 키워드가 없음
+            _dl_progress_keywords = re.compile(
+                r"(?:found|detected|confirmed|success|추출|발견|확인|성공|"
+                r"Found|Detected|OK|200|201|credential|hash|admin|upload)",
+                re.IGNORECASE,
+            )
+            _dl_has_progress = bool(_dl_progress_keywords.search(raw_results or ""))
+            if not _dl_has_progress:
+                self._dl_no_progress += 1
+            else:
+                self._dl_no_progress = 0
+            if _dl_doom_detected or self._dl_no_progress >= 8:
+                from ..i18n import t as _t_dl, get_lang as _gl_dl
+                _dl_escape_map = {
+                    "ko": (
+                        "⚠️ [DOOM_LOOP] 반복 패턴 감지됨 — 전략을 바꿔야 합니다.\n"
+                        "다음 중 하나를 시도하세요:\n"
+                        "1) 다른 파라미터/엔드포인트로 전환\n"
+                        "2) WAF 우회 페이로드 교체 (인코딩 변경)\n"
+                        "3) 다른 취약점 유형으로 전환 (XSS→LFI 등)\n"
+                        "4) 프록시 교체 후 재시도\n"
+                        "즉시 전략을 바꿔서 계속하세요."
+                    ),
+                    "zh": (
+                        "⚠️ [DOOM_LOOP] 检测到重复模式 — 需要换策略。\n"
+                        "请尝试以下之一：\n"
+                        "1) 切换到其他参数/端点\n"
+                        "2) 更换WAF绕过载荷（改变编码）\n"
+                        "3) 切换到其他漏洞类型（XSS→LFI等）\n"
+                        "4) 更换代理后重试\n"
+                        "立即改变策略并继续。"
+                    ),
+                    "en": (
+                        "⚠️ [DOOM_LOOP] Repetitive pattern detected — change strategy now.\n"
+                        "Try one of:\n"
+                        "1) Switch to a different parameter/endpoint\n"
+                        "2) Use different WAF bypass payload (change encoding)\n"
+                        "3) Switch to a different vuln type (XSS→LFI etc.)\n"
+                        "4) Rotate proxy and retry\n"
+                        "Change strategy immediately and continue."
+                    ),
+                }
+                _dl_lang = getattr(self.config, "lang", "en")
+                _dl_msg = _dl_escape_map.get(_dl_lang, _dl_escape_map["en"])
+                self.history.append(Message(role="user", content=_dl_msg))
+                self._dl_tool_sigs.clear()
+                self._dl_no_progress = 0
+            # ─────────────────────────────────────────────────────────────────
 
             # ── v6.2.125: 루프 과다 자동 차단 (Type A) ───────────────────────
             # 동일 세션에서 60루프 이상 돌면 AI가 루프에 갇힌 것으로 판단 → 강제 중단

@@ -5173,36 +5173,89 @@ class BingoTerminal:
             if tool_results:
                 return tool_results
         # ══════════════════════════════════════════════════════════════════════
-        # v6.2.39 Bug 1 FIX: AI가 잘못된 dict 형식으로 tool call 시도 감지 + 경고
-        # 패턴: {"tool": "http_get", ...} 또는 {"tool": "waf_detect", ...}
-        # 이 형식은 실행되지 않으므로 TOOL_CALL 형식으로 변환하여 경고 출력
+        # v6.2.152 Type A 자동교정기: AI가 잘못된 dict 형식으로 tool call 시도 시
+        # 자동으로 TOOL_CALL 형식으로 변환하여 즉시 실행 (경고만 출력 → 실행까지)
+        # 패턴 1: {"tool": "waf_detect", "args": {...}}
+        # 패턴 2: {"tool": "waf_detect", "url": "...", ...}  (args 래퍼 없는 flat dict)
         # ══════════════════════════════════════════════════════════════════════
-        _wrong_tc_pattern = re.compile(
-            r'[\{,\s]\s*["\']tool["\']\s*:\s*["\']([^"\']+)["\']',
-            re.DOTALL
-        )
-        _wrong_tc_matches = _wrong_tc_pattern.findall(response)
-        if _wrong_tc_matches:
-            try:
-                from ..tools_ext.pentest_tools import TOOL_REGISTRY as _TR
-                _known_tools = set(_TR.keys()) if _TR else set()
-            except Exception:
-                _known_tools = set()
-            _known_tools |= {
-                "http_get","run_python","run_bash","waf_detect","web_tech_detect",
-                "dir_fuzz","sqli_autoexploit","bool_oracle_extract","detect_waf",
-                "waf_sqli_db","sqli_timebased","analyze_response_lang",
-            }
-            _bad_tool_names = [t for t in _wrong_tc_matches if t in _known_tools]
-            if _bad_tool_names:
-                self.console.print(
-                    f"[{THEME['error']}]⚠ [WRONG_TOOL_FORMAT] AI used Python dict format "
-                    f"for tool call: {_bad_tool_names}\n"
-                    f"  Correct format: TOOL_CALL:{{\"name\":\"{_bad_tool_names[0]}\","
-                    f"\"args\":{{...}}}}\n"
-                    f"  Dict format {{'tool': '...'}} is NOT executed![/]"
-                )
+        import re as _wtf_re, json as _wtf_json
+        # 전체 dict 블록 추출 (중첩 고려 위해 brace-counting)
+        def _extract_dict_tool_calls(text: str) -> list[str]:
+            """응답 텍스트에서 {"tool": "..."} 패턴의 dict 블록 전체를 추출."""
+            _blocks = []
+            _i = 0
+            while _i < len(text):
+                if text[_i] == '{':
+                    _depth = 0
+                    _start = _i
+                    while _i < len(text):
+                        if text[_i] == '{':
+                            _depth += 1
+                        elif text[_i] == '}':
+                            _depth -= 1
+                            if _depth == 0:
+                                _blocks.append(text[_start:_i+1])
+                                break
+                        _i += 1
+                _i += 1
+            return _blocks
 
+        _wtf_known_tools: set[str] = set()
+        try:
+            from ..tools_ext.pentest_tools import TOOL_REGISTRY as _TR
+            _wtf_known_tools = set(_TR.keys()) if _TR else set()
+        except Exception:
+            pass
+        _wtf_known_tools |= {
+            "http_get","run_python","run_bash","waf_detect","web_tech_detect",
+            "dir_fuzz","sqli_autoexploit","bool_oracle_extract","detect_waf",
+            "waf_sqli_db","sqli_timebased","analyze_response_lang","http_post",
+            "crack_hash","check_login","find_admin","port_scan","subdomain_scan",
+            "js_secret_scan","api_fuzz","ssrf_check","lfi_check","rce_check",
+        }
+
+        _wtf_converted: list[str] = []  # 변환된 TOOL_CALL 문자열 목록
+
+        for _blk in _extract_dict_tool_calls(response):
+            try:
+                # 작은따옴표 → 큰따옴표 변환 후 파싱 시도
+                _blk_norm = _blk.replace("'", '"')
+                _parsed = _wtf_json.loads(_blk_norm)
+            except Exception:
+                try:
+                    import ast as _wtf_ast
+                    _parsed = _wtf_ast.literal_eval(_blk)
+                except Exception:
+                    continue
+
+            if not isinstance(_parsed, dict):
+                continue
+            _tool_name = _parsed.get("tool") or _parsed.get("name") or _parsed.get("tool_name")
+            if not _tool_name or _tool_name not in _wtf_known_tools:
+                continue
+
+            # args 추출: "args" 키가 있으면 그대로, 없으면 tool/name 제외 나머지 키
+            _args = _parsed.get("args") or _parsed.get("arguments") or {}
+            if not _args:
+                _args = {k: v for k, v in _parsed.items()
+                         if k not in ("tool", "name", "tool_name", "args", "arguments")}
+
+            _tc_str = _wtf_json.dumps({"name": _tool_name, "args": _args}, ensure_ascii=False)
+            _wtf_converted.append(f"TOOL_CALL:{_tc_str}")
+
+        if _wtf_converted:
+            self.console.print(
+                f"[{THEME['warn']}]⚠ [WRONG_TOOL_FORMAT→AUTO_FIX] "
+                f"dict 형식 tool call {len(_wtf_converted)}개 자동 변환 후 실행[/]"
+            )
+            # 변환된 TOOL_CALL 문자열을 response에 추가하여 아래 TOOL_CALL 처리 블록에서 실행
+            response = response + "\n" + "\n".join(_wtf_converted)
+        elif _wtf_re.search(r'["\']tool["\']\s*:\s*["\']', response):
+            # 알 수 없는 도구명 — 경고만 출력
+            self.console.print(
+                f"[{THEME['error']}]⚠ [WRONG_TOOL_FORMAT] dict 형식 tool call 감지 "
+                f"(알 수 없는 도구명 — 무시됨)[/]"
+            )
         # ══════════════════════════════════════════════════════════════════════
         # TOOL_CALL 없음 → 기존 bash 블록 처리로 진행 (하위 호환)
         # ══════════════════════════════════════════════════════════════════════

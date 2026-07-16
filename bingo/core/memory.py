@@ -1,7 +1,7 @@
 """
 bingo/core/memory.py — autoDream 세션 간 메모리 시스템 (v6.2.151)
 
-grok-build xai-grok-memory 아키텍처 Python 이식.
+bingo 자체 개발 세션-to-세션 영구 기억 엔진.
 
 ## 스토리지 레이아웃
   ~/.config/bingo/memory/
@@ -20,7 +20,7 @@ grok-build xai-grok-memory 아키텍처 Python 이식.
 
 ## 검색 알고리즘
   FTS 키워드 매칭 + 도메인/IP 직접 비교 + 시간 감쇠
-  (grok-build MMR 다양성 재랭킹의 Python 단순화 버전)
+  (BM25 점수 + 시간 반감기 기반 bingo 자체 랭킹 알고리즘)
 """
 from __future__ import annotations
 

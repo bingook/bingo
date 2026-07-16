@@ -299,7 +299,7 @@ class BingoTerminal:
         # Stuck 감지 — 마지막 N개 결과의 해시값 (반복 시 자동 전략 전환)
         self._recent_results: list[str] = []
         self._stuck_count: int = 0
-        # ── v6.2.151 Doom Loop 감지기 (grok-build doom_loop.rs 이식) ──────
+        # ── v6.2.151 Doom Loop 감지기 (bingo 자체 설계) ──────────────────
         # 최근 도구 호출 시그니처 목록 (이름+인자 해시) — 반복 패턴 감지용
         self._dl_tool_sigs: list[str] = []
         self._dl_no_progress: int = 0       # 연속 "진전 없음" 루프 수
@@ -1836,7 +1836,7 @@ class BingoTerminal:
 
         v6.2.151: 2-pass Compaction — 히스토리가 임계값을 초과하면
         오래된 메시지를 배경 LLM 요약으로 압축하여 컨텍스트 창 효율을 높임.
-        (grok-build xai-grok-compaction 아키텍처 Python 이식)
+        (bingo 자체 설계: Pass1 배경 요약 + Pass2 히스토리 교체)
         """
         safe_history: list[Message] = []
         for m in self.history:
@@ -8006,7 +8006,7 @@ class BingoTerminal:
             self._exec_loop_count += 1
 
             # ── v6.2.151 Doom Loop 감지기 (Type A) ───────────────────────────
-            # grok-build doom_loop.rs 이식: 연속 동일 도구 호출 패턴 감지
+            # 연속 동일 응답 패턴 감지 → 전략 전환 힌트 자동 주입
             # 조건: 최근 6개 시그니처 중 4개 이상 동일 → doom loop 탈출 힌트 주입
             import hashlib as _dl_md5
             _dl_sig = _dl_md5.md5(

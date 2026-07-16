@@ -8020,10 +8020,11 @@ class BingoTerminal:
                 max(_dl_window.count(s) for s in set(_dl_window)) >= 4
             )
             # 진전 없음 판단: 실행 결과에 새 발견사항 키워드가 없음
-            _dl_progress_keywords = re.compile(
+            import re as _dl_re
+            _dl_progress_keywords = _dl_re.compile(
                 r"(?:found|detected|confirmed|success|추출|발견|확인|성공|"
                 r"Found|Detected|OK|200|201|credential|hash|admin|upload)",
-                re.IGNORECASE,
+                _dl_re.IGNORECASE,
             )
             _dl_has_progress = bool(_dl_progress_keywords.search(raw_results or ""))
             if not _dl_has_progress:

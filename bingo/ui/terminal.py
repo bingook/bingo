@@ -9748,28 +9748,41 @@ class BingoTerminal:
         if not finding:
             return
 
-        # ── v6.2.76: 취약점 알림 박스 (Rich Panel — 자동 너비 정렬) ──
-        # len() 패딩 대신 Rich Panel을 사용해 이모지/한자 폭 오계산 방지
+        # ── v6.2.76/175: 취약점 알림 박스 (blocked는 별도 톤) ──────────
         from rich.panel import Panel as _AlertPanel
         from rich.markup import escape as _alert_esc
-        _sev_map = {
-            "CRITICAL": ("#ff1744", "CRITICAL"),
-            "HIGH":     ("#ffd600", "HIGH"),
-        }
-        _sev_color, _sev_label = _sev_map.get(
-            finding.severity, ("#ffd600", finding.severity)
-        )
+        _conf = getattr(finding, "confidence", "") or ""
+        if _conf == "blocked":
+            _sev_color, _sev_label = ("#ffaa00", f"BLOCKED:{getattr(finding, 'reason_code', '')}")
+        else:
+            _sev_map = {
+                "CRITICAL": ("#ff1744", "POTENTIAL CRITICAL" if _conf == "potential" else "CRITICAL"),
+                "HIGH":     ("#ffd600", "HIGH"),
+                "LOW":      ("#4a4a4a", "LOW"),
+            }
+            _sev_color, _sev_label = _sev_map.get(
+                finding.severity, ("#ffd600", finding.severity)
+            )
         _fe_title = self.s.get(
             "fe_finding_detected",
             {"ko": "취약점 발견", "zh": "漏洞发现", "en": "Finding Detected"},
         )
+        if _conf == "blocked":
+            _fe_title = {
+                "ko": "WAF/차단 이벤트 (SQLi 미증명)",
+                "zh": "WAF/阻断事件 (SQLi未证明)",
+                "en": "WAF/Block Event (SQLi unproven)",
+            }
         _fe_title_str = _fe_title.get(_lang, _fe_title.get("en", "Finding Detected")) \
             if isinstance(_fe_title, dict) else str(_fe_title)
 
         _vuln_body = (
             f"[{_sev_color}]! {_sev_label}[/]  —  {_fe_title_str}\n"
             f"[{THEME['dim']}]ID   :[/] {_alert_esc(finding.id)}\n"
-            f"[{THEME['dim']}]Type :[/] [{_sev_color}]{_alert_esc(finding.vuln_type)}[/]"
+            f"[{THEME['dim']}]Type :[/] [{_sev_color}]{_alert_esc(finding.vuln_type)}[/]\n"
+            f"[{THEME['dim']}]Conf :[/] {_alert_esc(_conf or 'inconclusive')}"
+            + (f"  reason={_alert_esc(getattr(finding, 'reason_code', '') or '-')}"
+               if getattr(finding, "reason_code", "") else "")
         )
         self.console.print()
         self.console.print(_AlertPanel(
@@ -9778,6 +9791,10 @@ class BingoTerminal:
             padding=(0, 2),
             width=62,
         ))
+
+        # blocked finding은 XSS 검증/CRITICAL 알림 후속 스킵
+        if _conf == "blocked":
+            return
 
         # ── XSS URL 탐지 → Playwright 자동 검증 ──────────────────────
         if finding.vuln_type == "xss":
@@ -9979,35 +9996,86 @@ class BingoTerminal:
         )
 
     @staticmethod
-    def _sanitize_report_confirmed_claims(report: str, confirmed_count: int = 0) -> str:
-        """v6.2.174 Type A: confirmed=0 보고서의 Confirmed/已确认/Critical 과장 표현을 강제 교정."""
-        if not report:
-            return report
+    def _sanitize_ground_truth_claims(text: str, confirmed_count: int = 0) -> str:
+        """v6.2.175 Type A: confirmed=0 텍스트의 Confirmed/已确认/Critical 과장 표현 강제 교정.
+        보고서·progress summary·next_steps·followup 공용.
+        """
+        if not text:
+            return text
         import re as _re_sr
         if confirmed_count > 0:
-            return report
-        # confirmed 증거가 0개인데 확정 표현이 있으면 UNCONFIRMED로 치환
+            return text
         _repls = [
             (r'✅\s*已确认', '⚠ 未确认'),
             (r'已确认（存在性验证成功[^）]*）', '未确认（WAF/Oracle 미검증）'),
             (r'已确认\(存在性验证成功[^)]*\)', '未确认(WAF/Oracle 미검증)'),
+            (r'已确认dswhosp[^\s，。]*', '未确认(WAF/Oracle)'),
+            (r'已确认.{0,40}(?:布尔盲|SQL\s*注入|布尔盲注)', '未确认 SQL注入(WAF阻断)'),
             (r'상태：✅\s*已确认', '상태：⚠ 未确认'),
             (r'状态：✅\s*已确认', '状态：⚠ 未确认'),
             (r'✅\s*CONFIRMED', '⚠ UNCONFIRMED'),
             (r'\bCONFIRMED\b(?!\s*=)', 'UNCONFIRMED'),
             (r'✅\s*확인됨', '⚠ 미확인'),
-            (r'✅\s*已确认（存在性验证成功，但受WAF限制无法提取具体凭证）',
-             '⚠ 未确认（WAF/Oracle 구분 실패 — 취약점 미증명）'),
-            # Critical 확정 톤 → Potential/미확인 (findings confirmed=0과 일치)
+            (r'已确认', '未确认'),
+            (r'확인된', '미확인'),
             (r'\bCritical\b(?!\s*Potential)', 'Potential'),
             (r'\bCRITICAL\b(?!\s*POTENTIAL)', 'POTENTIAL'),
             (r'严重\s*[:：]?\s*Critical', '严重：Potential'),
             (r'심각도\s*[:：]?\s*Critical', '심각도：Potential'),
+            (r'🔴\s*Critical', '⚠ Potential'),
+            (r'🔴\[#ff1744\]Critical', '⚠ Potential'),
         ]
-        out = report
+        out = text
         for pat, rep in _repls:
             out = _re_sr.sub(pat, rep, out)
         return out
+
+    @staticmethod
+    def _sanitize_report_confirmed_claims(report: str, confirmed_count: int = 0) -> str:
+        """하위 호환 래퍼 → _sanitize_ground_truth_claims."""
+        return BingoTerminal._sanitize_ground_truth_claims(report, confirmed_count)
+
+    @staticmethod
+    def _filter_next_steps_by_evidence(options: list, flags: dict) -> list:
+        """v6.2.175 Type A: 증거 없는 고위험 next_steps 제거/치환."""
+        import re as _re_ns
+        if not options:
+            return options
+        out = []
+        for opt in options:
+            low = (opt or "").lower()
+            # 웹쉘/업로드 — 업로드 기능 증거 없으면 제거
+            if _re_ns.search(
+                r'webshell|웹쉘|web\s*shell|파일\s*업로드|upload\s*(?:shell|webshell|php|phtml)|phtml|getshell',
+                low, _re_ns.I
+            ) and not flags.get("has_upload"):
+                continue
+            # 撞库/credential stuffing / 가짜 계정 aaa — 실자격증명 없으면 제거
+            if _re_ns.search(
+                r'撞库|credential\s*stuff|비밀번호\s*크랙|password\s*crack'
+                r'|mb_id\s*[\'"]?aaa|계정\s*[\'"]?aaa[\'"]?|default\s*password'
+                r'|기본\s*암호|기본\s*비밀번호',
+                low, _re_ns.I
+            ) and not flags.get("has_real_cred"):
+                continue
+            # "已确认 SQLi" 전제의 심화 추출 — confirmed SQLi 없으면 WAF 우회 탐색으로 완화 표기만 유지
+            if _re_ns.search(r'已确认|confirmed\s+sqli|확인된\s*sqli', low, _re_ns.I) \
+                    and not flags.get("has_confirmed_sqli"):
+                opt = _re_ns.sub(
+                    r'已确认|confirmed\s+sqli|확인된\s*sqli',
+                    '未确认(WAF)',
+                    opt,
+                    flags=_re_ns.I,
+                )
+            out.append(opt)
+        # 전부 걸러지면 안전 대안 삽입
+        if not out:
+            out = [
+                "Enumerate JS/API endpoints for unauthenticated access",
+                "Re-test boolean oracle with non-keyword payloads (avoid WAF signatures)",
+                "Map GnuBoard paths (/bbs/, /adm/) without assuming SQLi confirmed",
+            ]
+        return out[:5]
 
     def _auto_generate_report(self) -> None:
         """작업 완료/중단 시 지금까지 발견한 내용을 자동으로 마크다운 보고서로 저장."""
@@ -10118,37 +10186,42 @@ class BingoTerminal:
                 f"DO NOT invent or assume any credentials, table names, or database names not present in the recent findings context.\n"
             )
 
-        # v6.2.174 Type A: findings JSON 스냅샷을 보고서에 강제 주입
-        # confirmed=0 인 항목을 AI가 "已确认/Confirmed/Critical"로 과장하지 못하게 함
-        _fe_snap_lines = []
+        # v6.2.175 Type A: findings JSON 스냅샷을 보고서에 강제 주입
         _fe_confirmed_n = 0
-        _fe_total_n = 0
+        _fe_snap_block = ""
         try:
             _fe = getattr(self, "_findings_exporter", None)
-            if _fe is not None:
+            if _fe is not None and hasattr(_fe, "ground_truth_block"):
+                _stats = _fe.stats() if hasattr(_fe, "stats") else {}
+                _fe_confirmed_n = int(_stats.get("confirmed", 0) or 0)
+                _fe_snap_block = (
+                    f"\n⚠️ FINDINGS GROUND TRUTH (HARD RULE — DO NOT CONTRADICT):\n"
+                    + _fe.ground_truth_block()
+                    + "\nRULES:\n"
+                    + "1) If confirmed=False / confidence!=confirmed → status MUST be UNCONFIRMED / 未确认 / 미확인.\n"
+                    + "2) If confirmed=0 overall → NEVER write Critical Confirmed / 已确认 exploitation success.\n"
+                    + "3) confidence=blocked / reason_code=blocked_by_waf_* is NOT SQLi proof — it is a WAF block event.\n"
+                    + "4) All-zero / sequential hashes (0000..., 0123456789abcdef) are NOT valid credentials.\n"
+                    + "5) Login form fields are NOT credential findings.\n"
+                    + "6) Use potential_critical counts, never inflate CRITICAL when confirmed=0.\n"
+                )
+            elif _fe is not None:
+                _fe_snap_lines = []
                 for _f in list(_fe.findings):
-                    _fe_total_n += 1
                     _c = bool(getattr(_f, "confirmed", False))
                     if _c:
                         _fe_confirmed_n += 1
                     _fe_snap_lines.append(
                         f"- id={getattr(_f,'id','')} type={getattr(_f,'vuln_type','')} "
-                        f"sev={getattr(_f,'severity','')} confirmed={_c} "
-                        f"title={(getattr(_f,'notes','') or '')[:80]}"
+                        f"sev={getattr(_f,'severity','')} confirmed={_c}"
                     )
+                _fe_snap_block = (
+                    f"\n⚠️ FINDINGS GROUND TRUTH:\n"
+                    + ("\n".join(_fe_snap_lines) if _fe_snap_lines else "- (none)\n")
+                )
         except Exception:
-            pass
-        _fe_snap_block = (
-            f"\n⚠️ FINDINGS GROUND TRUTH (HARD RULE — DO NOT CONTRADICT):\n"
-            f"total={_fe_total_n} confirmed={_fe_confirmed_n}\n"
-            + ("\n".join(_fe_snap_lines) if _fe_snap_lines else "- (no structured findings)\n")
-            + "\nRULES:\n"
-            + "1) If confirmed=False → MUST write status as UNCONFIRMED / 未确认 / 미확인. NEVER write 已确认/Confirmed/✅ Confirmed.\n"
-            + "2) If confirmed=0 overall → do NOT label any finding as Critical Confirmed exploitation success.\n"
-            + "3) WAF block pages (490B / 해킹방지시스템 / CF challenge) are NOT SQLi proof.\n"
-            + "4) All-zero / all-same hashes (0000..., aaaa...) are NOT valid credentials.\n"
-            + "5) Login form fields (id/passwd inputs) are NOT credential findings.\n"
-        )
+            _fe_snap_block = ""
+            _fe_confirmed_n = 0
 
         prompt_msg = Message(
             role="user",
@@ -10485,26 +10558,37 @@ class BingoTerminal:
         }.get(_lang, "exact command")
 
         # 아직 수행하지 않은 공격 항목 추출 (컨텍스트 힌트)
-        _untested_hint = {
-            "ko": (
-                "아직 시도하지 않은 가능한 공격: 비밀번호 크랙, "
-                "웹쉘 업로드, IDOR 권한 상승, SQLi 심화, API 엔드포인트 퍼징, "
-                "ACPV(클라이언트 사이드 인증 우회 — localStorage/sessionStorage 조작, "
-                "무인증 API 접근, Burp Suite 응답 변조)"
-            ),
-            "zh": (
-                "尚未尝试的潜在攻击：密码破解、Webshell上传、"
-                "IDOR权限提升、深度SQLi、API端点爆破、"
-                "ACPV客户端认证绕过（localStorage/sessionStorage操控、"
-                "未授权API访问、Burp响应篡改）"
-            ),
-            "en": (
-                "Potentially untested: password cracking, webshell upload, "
-                "IDOR privilege escalation, deep SQLi, API endpoint fuzzing, "
-                "ACPV client-side auth bypass (localStorage/sessionStorage manipulation, "
-                "unauthenticated API access, Burp Suite response manipulation)"
-            ),
-        }.get(_lang, "")
+        # v6.2.175: 증거 없으면 webshell/撞库 힌트 자체를 넣지 않음
+        _fe_flags = {}
+        _fe_gt = ""
+        _fe_confirmed_n = 0
+        try:
+            _fe = getattr(self, "_findings_exporter", None)
+            if _fe is not None:
+                if hasattr(_fe, "evidence_flags"):
+                    _fe_flags = _fe.evidence_flags()
+                if hasattr(_fe, "ground_truth_block"):
+                    _fe_gt = _fe.ground_truth_block()
+                if hasattr(_fe, "stats"):
+                    _fe_confirmed_n = int(_fe.stats().get("confirmed", 0) or 0)
+        except Exception:
+            pass
+
+        _safe_hints = []
+        if _fe_flags.get("has_upload"):
+            _safe_hints.append("webshell upload (upload form confirmed)")
+        if _fe_flags.get("has_real_cred"):
+            _safe_hints.append("password cracking / credential reuse (real hash/cred confirmed)")
+        if _fe_flags.get("has_confirmed_sqli"):
+            _safe_hints.append("deep SQLi extraction (SQLi CONFIRMED)")
+        else:
+            _safe_hints.append("re-validate boolean oracle / WAF bypass (SQLi NOT confirmed)")
+        _safe_hints.extend([
+            "API endpoint fuzzing / unauthenticated API",
+            "IDOR privilege escalation",
+            "ACPV client-side auth bypass",
+        ])
+        _untested_hint = "; ".join(_safe_hints)
 
         prompt_msg = Message(
             role="user",
@@ -10512,8 +10596,15 @@ class BingoTerminal:
                 "[INTERACTIVE NEXT STEPS — PENTEST CONTINUATION]\n\n"
                 f"Target: {_state.get('target', 'unknown')}\n"
                 f"Current state: {_state}\n\n"
+                f"⚠️ FINDINGS GROUND TRUTH (DO NOT CONTRADICT):\n{_fe_gt or '(none)'}\n\n"
+                f"Evidence flags: {_fe_flags}\n"
+                f"HARD RULES:\n"
+                f"- If confirmed=0: summary MUST say UNCONFIRMED / 未确认, NEVER 已确认/Confirmed Critical.\n"
+                f"- Do NOT suggest webshell upload unless has_upload=true.\n"
+                f"- Do NOT suggest credential stuffing / 撞库 / mb_id 'aaa' unless has_real_cred=true.\n"
+                f"- Do NOT treat WAF 490B blocks as confirmed SQLi.\n\n"
                 f"Recent activity:\n{recent_context}\n\n"
-                f"Hint — {_untested_hint}\n\n"
+                f"Hint — potentially useful next actions: {_untested_hint}\n\n"
                 f"INSTRUCTIONS (CRITICAL — follow EXACTLY):\n"
                 f"1. Plain text ONLY. NO code blocks. NO markdown headers (#).\n"
                 f"2. Respond ENTIRELY in {_lang_label}.\n"
@@ -10592,6 +10683,20 @@ class BingoTerminal:
 
             # ── 출력 ──────────────────────────────────────────────────
             from rich.markup import escape as _esc
+
+            # v6.2.175: progress summary + next_steps ground-truth 교정
+            if summary_lines:
+                _sum_joined = " ".join(summary_lines[:5])
+                _sum_joined = BingoTerminal._sanitize_ground_truth_claims(
+                    _sum_joined, confirmed_count=_fe_confirmed_n
+                )
+                summary_lines = [_sum_joined]
+            if options:
+                options = [
+                    BingoTerminal._sanitize_ground_truth_claims(o, confirmed_count=_fe_confirmed_n)
+                    for o in options
+                ]
+                options = BingoTerminal._filter_next_steps_by_evidence(options, _fe_flags)
 
             # ── 요약 출력 (v6.2.80: Rich Panel) ─────────────────────────
             if summary_lines:

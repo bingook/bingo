@@ -38,6 +38,22 @@ SEVERITY_HIGH     = "HIGH"
 SEVERITY_MEDIUM   = "MEDIUM"
 SEVERITY_LOW      = "LOW"
 
+# v6.2.175: 증거 신뢰도 3상태 (+ potential)
+CONF_CONFIRMED    = "confirmed"
+CONF_BLOCKED      = "blocked"
+CONF_INCONCLUSIVE = "inconclusive"
+CONF_POTENTIAL    = "potential"
+
+REASON_BLOCKED_WAF_SAME_SIZE = "blocked_by_waf_same_size"
+REASON_ORACLE_PRECHECK_FAIL  = "oracle_precheck_failed"
+REASON_LOGIN_FORM_ONLY       = "login_form_only"
+REASON_PLACEHOLDER_HASH      = "placeholder_hash"
+REASON_PAGE_CONTAMINATION    = "page_contamination"
+REASON_WAF_BLOCK_PAGE        = "waf_block_page"
+REASON_NOT_VULNERABLE        = "not_vulnerable"
+REASON_CF_BLOCK              = "cloudflare_block"
+REASON_WAF_REDIRECT          = "waf_security_redirect"
+
 
 @dataclass
 class Finding:
@@ -51,6 +67,9 @@ class Finding:
     confirmed: bool = False  # Playwright 등으로 2차 검증 완료 여부
     screenshot_path: str = ""
     notes: str = ""
+    # v6.2.175: 보고서/요약/next_steps가 공유하는 근거
+    confidence: str = CONF_INCONCLUSIVE  # confirmed|blocked|inconclusive|potential
+    reason_code: str = ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -282,20 +301,14 @@ _AUTH_BYPASS_PATTERNS = [
 ]
 
 
-def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | None:
-    """출력 텍스트에서 취약점 유형과 심각도 탐지. 없으면 None.
-    우선순위: RCE > LFI > AUTH_BYPASS > CREDENTIAL > SSRF > XSS > SQLi
+def _assess_evidence(output: str, code_snippet: str = "") -> tuple[str, str]:
+    """v6.2.175 Type A: 출력을 confirmed/blocked/inconclusive 3상태로 분류.
 
-    v4.8.0 수정: SQLi 컨텍스트(code_snippet에 EXTRACTVALUE/SLEEP 등) 포함 시
-    CREDENTIAL보다 SQLi를 우선 분류 — 오분류 방지.
-
-    v4.9.4 수정:
-    - LFI 오탐 방지: php://filter 요청인데 HTML 응답(homepage redirect)이면 LFI 아님
-    - Oracle 실패 억제: 추출값이 'aaa...' 반복 문자이면 credential/sqli 오탐 억제
+    Returns:
+        (status, reason_code)
+        status: 'blocked' | 'inconclusive' | 'ok'
+        reason_code: REASON_* 또는 ''
     """
-    # ── v6.2.168: 도구 자체 "NOT vulnerable" 판정 → 즉시 None ───────────────────
-    # sqli_error / sqli_autoexploit 등이 명시적으로 취약하지 않다고 판단한 경우
-    # 출력에 페이로드 텍스트(EXTRACTVALUE 등)가 포함돼 SQLI_PATTERNS에 오매칭되는 것 방지
     _NOT_VULN_RE = re.compile(
         r'NOT\s+vulnerable\s*[❌✗×⛔]'
         r'|→\s*NOT\s+vulnerable'
@@ -310,18 +323,13 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
         re.I
     )
     if _NOT_VULN_RE.search(output):
-        return None
+        return ("blocked", REASON_NOT_VULNERABLE)
 
-    # ── v5.1.1: WAF 차단 응답 조기 종료 ─────────────────────────────────────────
-    # 소형 응답(≤ 2000B) + 한국어/영어 차단 메시지 → 취약점 감지 건너뜀.
-    # WAF 차단 = 페이로드 미도달, 취약점 증명 불가. 오발 방지.
     if len(output) <= 2000 and (
         _WAF_BLOCK_KO.search(output) or _WAF_BLOCK_EN.search(output)
     ):
-        return None
+        return ("blocked", REASON_WAF_BLOCK_PAGE)
 
-    # ── v6.2.168: Cloudflare 403/차단 응답 조기 종료 ─────────────────────────────
-    # Cloudflare error page, Ray ID, CF challenge 등 → 페이로드 차단, 취약점 없음
     _CF_BLOCK_RE = re.compile(
         r'cloudflare.*?(error|blocked|denied)'
         r'|ray\s+id\s*:\s*[0-9a-f]+'
@@ -331,10 +339,8 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
         re.I
     )
     if _CF_BLOCK_RE.search(output):
-        return None
+        return ("blocked", REASON_CF_BLOCK)
 
-    # ── v6.2.174: WAF/Oracle 실패를 SQLi로 오탐하지 않음 ───────────────────────
-    # 1) TRUE/FALSE 둘 다 동일 소형 응답(예: 490B) → WAF 차단, 취약점 미증명
     _same_waf_size = re.search(
         r'(?:TRUE|1=1|2>1).{0,40}?(\d{2,4})B'
         r'.{0,120}?'
@@ -342,9 +348,18 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
         output, re.I | re.S
     )
     if _same_waf_size:
-        return None
-    # 2) UPDATEXML/EXTRACTVALUE "DATA:" 가 페이지 본문(시간/요일/HTML)만 반환
-    #    → XPATH 에러가 아닌 페이지 오염, SQLi 미증명
+        return ("blocked", REASON_BLOCKED_WAF_SAME_SIZE)
+
+    # 정상 대용량 vs payload 소형(WAF) — 490B 차단 페이지 단독 패턴
+    if re.search(
+        r'(?:해킹방지|요청이\s*차단|security\s+system|blocked\s+by\s+waf).{0,80}?\b(\d{2,4})B\b'
+        r'|\b49[0-9]B\b.{0,40}?(?:해킹방지|WAF|차단)',
+        output, re.I | re.S
+    ):
+        # SQLi 컨텍스트일 때만 blocked (일반 490B 페이지는 무시)
+        if _SQLI_CONTEXT_KEYWORDS.search(output) or _SQLI_CONTEXT_KEYWORDS.search(code_snippet):
+            return ("blocked", REASON_WAF_BLOCK_PAGE)
+
     if re.search(r'(?:updatexml|extractvalue)\s*\(', output, re.I):
         _has_xpath_err = bool(re.search(
             r'XPATH\s+syntax\s+error|xpath\s+error|~[a-zA-Z0-9_.\-]{2,80}~',
@@ -357,61 +372,74 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
         ))
         _data_empty = bool(re.search(r'->\s*DATA:\s*(?:None|null|\(empty)?\s*$', output, re.I | re.M))
         if (_page_contam or _data_empty) and not _has_xpath_err:
-            return None
+            return ("blocked", REASON_PAGE_CONTAMINATION)
 
-    # ── v6.2.16: WAF 보안도메인 302 리다이렉트 조기 종료 ─────────────────────────
-    # 302 → igear/securecp/cloudbric 등 보안 도메인 = WAF 페이로드 차단.
-    # 이는 취약점 증거가 아님 → 오탐 방지. IP 전체 차단도 아님 (특정 페이로드 차단).
     if _WAF_SECURITY_REDIRECT.search(output.lower()):
-        return None
+        return ("blocked", REASON_WAF_REDIRECT)
 
-    # ── v4.9.4 / v6.2.174: Oracle 실패 조기 감지 ─────────────────────────────
-    # 추출된 값이 동일 문자 반복(aaa.../0000..., 따옴표 유무 무관) → 오탐 → None
-    if _ORACLE_FAILURE_REPEATED.search(output):
-        return None
-    # 도구/교정기가 oracle 실패를 명시적으로 경고한 경우
-    if _ORACLE_FAILURE_WARNING.search(output):
+    if _ORACLE_FAILURE_REPEATED.search(output) or _ORACLE_FAILURE_WARNING.search(output):
+        return ("blocked", REASON_ORACLE_PRECHECK_FAIL)
+
+    if _FAKE_CRED_VALUE.search(output):
+        return ("blocked", REASON_PLACEHOLDER_HASH)
+
+    _is_login_form_only = bool(_LOGIN_FORM_ONLY.search(output)) and not re.search(
+        r'\[CREDENTIAL\]\s*\S+\s*:\s*(?!0{6,}|a{6,})\S{4,}', output, re.I
+    )
+    if _is_login_form_only and _CRED_PATTERNS and any(p.search(output) for p in _CRED_PATTERNS):
+        return ("blocked", REASON_LOGIN_FORM_ONLY)
+
+    return ("ok", "")
+
+
+def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | None:
+    """출력 텍스트에서 취약점 유형과 심각도 탐지. 없으면 None.
+    우선순위: RCE > LFI > AUTH_BYPASS > CREDENTIAL > SSRF > XSS > SQLi
+
+    v4.8.0 수정: SQLi 컨텍스트(code_snippet에 EXTRACTVALUE/SLEEP 등) 포함 시
+    CREDENTIAL보다 SQLi를 우선 분류 — 오분류 방지.
+
+    v4.9.4 수정:
+    - LFI 오탐 방지: php://filter 요청인데 HTML 응답(homepage redirect)이면 LFI 아님
+    - Oracle 실패 억제: 추출값이 'aaa...' 반복 문자이면 credential/sqli 오탐 억제
+
+    v6.2.175: WAF/oracle blocked는 _assess_evidence()에서 처리.
+              여기서는 ok 경로의 패턴 매칭만 수행.
+    """
+    # ── v6.2.175: blocked/not-vuln → None (process()가 blocked finding 별도 기록) ──
+    _status, _reason = _assess_evidence(output, code_snippet)
+    if _status == "blocked":
         return None
 
     # ── v6.2.174: 로그인 폼 HTML만 있고 실제 추출 자격증명 없음 → credential 금지 ──
     _is_login_form_only = bool(_LOGIN_FORM_ONLY.search(output)) and not re.search(
         r'\[CREDENTIAL\]\s*\S+\s*:\s*(?!0{6,}|a{6,})\S{4,}', output, re.I
     )
-    # 가짜 해시(전부 0/a) 자격증명 출력 → 전체 finding 억제
-    if _FAKE_CRED_VALUE.search(output):
-        return None
 
     # ── v6.2.66: 미니파이 JS 출력 감지 — credential 오탐 방지 ─────────────────
-    # JS chunk 다운로드 결과(Next.js, webpack 등)이면 credential 패턴 건너뜀
     _is_js_chunk_output = bool(_MINIFIED_JS_CONTEXT.search(output))
 
     # ── v4.9.4: LFI php://filter 오탐 방지 ────────────────────────────────────
-    # php://filter 요청이 감지됐는데 응답에 실제 base64 파일 내용 없고 HTML 페이지면
-    # → 서버가 홈페이지/에러페이지로 리다이렉트한 것 → LFI 아님
     _skip_lfi = False
     if _PHP_FILTER_IN_OUTPUT.search(output) or _PHP_FILTER_IN_OUTPUT.search(code_snippet):
-        # php://filter 테스트가 있음 → 실제 base64 파일 내용 있는지 확인
         _has_b64_content = bool(_BASE64_FILE_BLOCK.search(output))
         _has_html_redirect = bool(_LFI_REDIRECT_HTML.search(output))
         if _has_html_redirect and not _has_b64_content:
-            # HTML 페이지가 응답 + base64 없음 → 리다이렉트 오탐 → LFI 검사 건너뜀
             _skip_lfi = True
 
     # ── v4.8.0: SQLi 컨텍스트 사전 검사 ──────────────────────────────────────
-    # code_snippet 또는 output에 SQLi 키워드가 있으면 credential 검사를 SQLi 이후로
     _sqli_context = (
         _SQLI_CONTEXT_KEYWORDS.search(code_snippet)
         or _SQLI_CONTEXT_KEYWORDS.search(output)
     )
 
     if _sqli_context:
-        # SQLi 컨텍스트 확인됨 → SQLi 패턴 먼저, credential은 SQLi 없을 때만
         checks = [
             (FINDING_RCE,         SEVERITY_CRITICAL, _RCE_PATTERNS),
             (FINDING_LFI,         SEVERITY_CRITICAL, _LFI_PATTERNS),
             (FINDING_AUTH_BYPASS, SEVERITY_CRITICAL, _AUTH_BYPASS_PATTERNS),
-            (FINDING_SQLI,        SEVERITY_HIGH,     _SQLI_PATTERNS),   # SQLi 우선
-            (FINDING_CREDENTIAL,  SEVERITY_CRITICAL, _CRED_PATTERNS),   # credential 후순위
+            (FINDING_SQLI,        SEVERITY_HIGH,     _SQLI_PATTERNS),
+            (FINDING_CREDENTIAL,  SEVERITY_CRITICAL, _CRED_PATTERNS),
             (FINDING_SSRF,        SEVERITY_HIGH,     _SSRF_PATTERNS),
             (FINDING_XSS,         SEVERITY_HIGH,     _XSS_PATTERNS),
         ]
@@ -426,26 +454,19 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
             (FINDING_SQLI,        SEVERITY_HIGH,     _SQLI_PATTERNS),
         ]
 
-    # v6.2.145: XSS 오탐 사전 판단 플래그
-    # 서버 자체 생성 alert() + 코드에 XSS 페이로드 없음 → XSS 검사 건너뜀
     _skip_xss = False
     if _SERVER_ALERT_PATTERN.search(output) and not _XSS_PAYLOAD_IN_CODE.search(code_snippet):
         _skip_xss = True
-    # 코드에도 XSS 페이로드가 없고 출력에 script+alert가 서버 응답 형태이면 오탐 가능성 高
     if not _XSS_PAYLOAD_IN_CODE.search(code_snippet) and not _XSS_PAYLOAD_IN_CODE.search(output):
         _skip_xss = True
 
     for vtype, sev, patterns in checks:
-        # v4.9.4: LFI 오탐 방지 — php://filter+HTML redirect 조합이면 LFI 검사 건너뜀
         if vtype == FINDING_LFI and _skip_lfi:
             continue
-        # v6.2.66: JS chunk 다운로드 출력 — credential 패턴 건너뜀 (미니파이 JS 오탐 방지)
         if vtype == FINDING_CREDENTIAL and _is_js_chunk_output:
             continue
-        # v6.2.174: 로그인 폼 파싱만 한 출력 — credential 오탐 방지
         if vtype == FINDING_CREDENTIAL and _is_login_form_only:
             continue
-        # v6.2.145: 서버 자체 생성 alert() 오탐 방지 — XSS 페이로드 미포함 시 건너뜀
         if vtype == FINDING_XSS and _skip_xss:
             continue
         for pat in patterns:
@@ -456,12 +477,10 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
 
 def _extract_payload(output: str) -> str:
     """출력에서 페이로드/쿼리 라인 추출 (최대 300자)"""
-    # payload = 또는 query = 또는 url = 로 시작하는 라인 우선
     for line in output.splitlines():
         stripped = line.strip()
         if re.match(r'^(payload|query|url|request|inject)\s*[=:]', stripped, re.I):
             return stripped[:300]
-    # 없으면 URL 패턴에서
     m = re.search(r'https?://\S+', output)
     if m:
         return m.group(0)[:300]
@@ -483,6 +502,7 @@ class FindingsExporter:
         self.target = target
         self._findings: list[Finding] = []
         self._finding_hashes: set[str] = set()   # 중복 방지
+        self._blocked_reasons: set[str] = set()  # v6.2.175: blocked reason 중복 방지
 
         if output_dir:
             self._dir = Path(output_dir)
@@ -521,11 +541,63 @@ class FindingsExporter:
         code_snippet: str = "",
         extra_notes: str = "",
     ) -> Optional[Finding]:
-        """코드 실행 출력에서 발견 탐지 후 내부 저장. 발견 시 Finding 반환."""
+        """코드 실행 출력에서 발견 탐지 후 내부 저장. 발견 시 Finding 반환.
+
+        v6.2.175:
+          - blocked(WAF/oracle) → CRITICAL SQLi 금지, LOW+confidence=blocked 1회 기록
+          - 미확인 CRITICAL → confidence=potential (요약에서 POTENTIAL_CRITICAL 분리)
+        """
         if not output or len(output.strip()) < 10:
             return None
 
-        # v4.8.0: code_snippet 전달 — SQLi 컨텍스트 기반 우선순위 조정
+        status, reason = _assess_evidence(output, code_snippet=code_snippet)
+
+        # ── blocked: SQLi Critical 오탐 대신 차단 이벤트 1회 기록 ──────────────
+        if status == "blocked":
+            if reason in self._blocked_reasons:
+                return None
+            # SQLi/credential 시도 맥락일 때만 blocked finding 기록
+            _sqli_ctx = bool(
+                _SQLI_CONTEXT_KEYWORDS.search(code_snippet)
+                or _SQLI_CONTEXT_KEYWORDS.search(output)
+                or reason in (
+                    REASON_BLOCKED_WAF_SAME_SIZE,
+                    REASON_ORACLE_PRECHECK_FAIL,
+                    REASON_PAGE_CONTAMINATION,
+                    REASON_WAF_BLOCK_PAGE,
+                )
+            )
+            _cred_ctx = reason in (REASON_LOGIN_FORM_ONLY, REASON_PLACEHOLDER_HASH)
+            if not _sqli_ctx and not _cred_ctx and reason not in (
+                REASON_NOT_VULNERABLE, REASON_CF_BLOCK, REASON_WAF_REDIRECT
+            ):
+                return None
+            self._blocked_reasons.add(reason)
+            vtype = FINDING_CREDENTIAL if _cred_ctx else (
+                FINDING_SQLI if _sqli_ctx else FINDING_INFO_DISC
+            )
+            evidence = output[:2000]
+            import hashlib
+            _hash = hashlib.md5(
+                (f"blocked:{reason}:" + evidence[:120]).encode("utf-8", errors="ignore")
+            ).hexdigest()[:12]
+            if _hash in self._finding_hashes:
+                return None
+            self._finding_hashes.add(_hash)
+            finding = Finding(
+                id=f"BINGO-{len(self._findings)+1:04d}",
+                vuln_type=vtype,
+                severity=SEVERITY_LOW,
+                target=self.target,
+                payload=(code_snippet or _extract_payload(output))[:500],
+                evidence=evidence,
+                notes=extra_notes or f"blocked:{reason}",
+                confidence=CONF_BLOCKED,
+                reason_code=reason,
+            )
+            self._findings.append(finding)
+            return finding
+
         detected = _detect_vuln_type(output, code_snippet=code_snippet)
         if not detected:
             return None
@@ -534,7 +606,6 @@ class FindingsExporter:
         payload = code_snippet or _extract_payload(output)
         evidence = output[:2000]
 
-        # 중복 제거: evidence 앞 200자 해시
         import hashlib
         _hash = hashlib.md5(
             (vtype + evidence[:200]).encode("utf-8", errors="ignore")
@@ -543,6 +614,8 @@ class FindingsExporter:
             return None
         self._finding_hashes.add(_hash)
 
+        # 미확인 CRITICAL → potential (요약/보고서에서 Critical Confirmed 금지)
+        confidence = CONF_POTENTIAL if severity == SEVERITY_CRITICAL else CONF_INCONCLUSIVE
         finding = Finding(
             id=f"BINGO-{len(self._findings)+1:04d}",
             vuln_type=vtype,
@@ -551,6 +624,8 @@ class FindingsExporter:
             payload=payload[:500],
             evidence=evidence,
             notes=extra_notes,
+            confidence=confidence,
+            reason_code="",
         )
         self._findings.append(finding)
         return finding
@@ -558,6 +633,8 @@ class FindingsExporter:
     def mark_confirmed(self, finding: Finding, screenshot_path: str = "") -> None:
         """Playwright 등 2차 검증 후 confirmed 플래그 세팅."""
         finding.confirmed = True
+        finding.confidence = CONF_CONFIRMED
+        finding.reason_code = finding.reason_code or "verified"
         if screenshot_path:
             finding.screenshot_path = screenshot_path
 
@@ -568,20 +645,17 @@ class FindingsExporter:
         ts = time.strftime("%Y%m%d_%H%M%S")
         safe = (self.target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:30]
         path = self._dir / f"findings_{safe}_{ts}.json"
+        _stats = self.stats()
         data = {
             "bingo_version": _get_version(),
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "target": self.target,
-            "total": len(self._findings),
-            "critical": sum(1 for f in self._findings if f.severity == SEVERITY_CRITICAL),
-            "high": sum(1 for f in self._findings if f.severity == SEVERITY_HIGH),
-            "confirmed": sum(1 for f in self._findings if f.confirmed),
+            **_stats,
             "findings": [f.to_dict() for f in self._findings],
         }
         try:
             path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception as e:
-            # fallback to cwd
+        except Exception:
             path = Path.cwd() / f"findings_{safe}_{ts}.json"
             try:
                 path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -589,22 +663,108 @@ class FindingsExporter:
                 return None
         return path
 
-    def summary(self) -> str:
-        """발견 요약 1줄"""
+    def stats(self) -> dict:
+        """v6.2.175: confirmed / potential / blocked 분리 집계."""
         total = len(self._findings)
-        if not total:
+        confirmed = sum(1 for f in self._findings if f.confirmed or f.confidence == CONF_CONFIRMED)
+        blocked = sum(1 for f in self._findings if f.confidence == CONF_BLOCKED)
+        potential_critical = sum(
+            1 for f in self._findings
+            if f.severity == SEVERITY_CRITICAL and not f.confirmed and f.confidence != CONF_BLOCKED
+        )
+        potential_high = sum(
+            1 for f in self._findings
+            if f.severity == SEVERITY_HIGH and not f.confirmed and f.confidence != CONF_BLOCKED
+        )
+        # confirmed=0 이면 CRITICAL 카운트는 0 (과장 금지) — potential로만 표시
+        critical_confirmed = sum(
+            1 for f in self._findings
+            if f.severity == SEVERITY_CRITICAL and (f.confirmed or f.confidence == CONF_CONFIRMED)
+        )
+        high_confirmed = sum(
+            1 for f in self._findings
+            if f.severity == SEVERITY_HIGH and (f.confirmed or f.confidence == CONF_CONFIRMED)
+        )
+        return {
+            "total": total,
+            "critical": critical_confirmed,
+            "high": high_confirmed,
+            "potential_critical": potential_critical,
+            "potential_high": potential_high,
+            "blocked": blocked,
+            "confirmed": confirmed,
+            "reason_codes": sorted({f.reason_code for f in self._findings if f.reason_code}),
+        }
+
+    def summary(self) -> str:
+        """발견 요약 1줄 — confirmed=0이면 CRITICAL 대신 POTENTIAL_* 표기."""
+        if not self._findings:
             return ""
-        crit = sum(1 for f in self._findings if f.severity == SEVERITY_CRITICAL)
-        high = sum(1 for f in self._findings if f.severity == SEVERITY_HIGH)
-        conf = sum(1 for f in self._findings if f.confirmed)
+        s = self.stats()
         parts = []
-        if crit:
-            parts.append(f"CRITICAL:{crit}")
-        if high:
-            parts.append(f"HIGH:{high}")
-        if conf:
-            parts.append(f"confirmed:{conf}")
-        return f"[FINDINGS] total={total} " + " ".join(parts)
+        if s["confirmed"]:
+            parts.append(f"confirmed:{s['confirmed']}")
+        if s["critical"]:
+            parts.append(f"CRITICAL:{s['critical']}")
+        if s["potential_critical"]:
+            parts.append(f"POTENTIAL_CRITICAL:{s['potential_critical']}")
+        if s["high"]:
+            parts.append(f"HIGH:{s['high']}")
+        if s["potential_high"]:
+            parts.append(f"POTENTIAL_HIGH:{s['potential_high']}")
+        if s["blocked"]:
+            parts.append(f"blocked:{s['blocked']}")
+        return f"[FINDINGS] total={s['total']} " + " ".join(parts)
+
+    def ground_truth_block(self) -> str:
+        """보고서/progress/next_steps에 주입할 FINDINGS GROUND TRUTH 텍스트."""
+        s = self.stats()
+        lines = [
+            f"total={s['total']} confirmed={s['confirmed']} "
+            f"critical={s['critical']} potential_critical={s['potential_critical']} "
+            f"blocked={s['blocked']}",
+            f"reason_codes={s['reason_codes'] or []}",
+        ]
+        for f in self._findings:
+            lines.append(
+                f"- id={f.id} type={f.vuln_type} sev={f.severity} "
+                f"confirmed={f.confirmed} confidence={f.confidence} "
+                f"reason={f.reason_code or '-'} notes={(f.notes or '')[:60]}"
+            )
+        return "\n".join(lines)
+
+    def evidence_flags(self) -> dict:
+        """next_steps 고위험 액션 필터용 증거 플래그."""
+        texts = " ".join(
+            (f.evidence or "") + " " + (f.notes or "") + " " + (f.payload or "")
+            for f in self._findings
+            if f.confidence != CONF_BLOCKED
+        ).lower()
+        has_upload = bool(re.search(
+            r'upload|multipart|file\s*input|enctype\s*=\s*[\'"]multipart'
+            r'|웹쉘|webshell|\.php\s*upload|파일\s*업로드',
+            texts, re.I
+        ))
+        has_real_cred = bool(re.search(
+            r'\[CREDENTIAL\]\s*\S+\s*:\s*(?!0{6,}|a{6,}|0123456789abcdef)\S{4,}',
+            texts, re.I
+        )) or any(
+            f.vuln_type == FINDING_CREDENTIAL and f.confidence == CONF_CONFIRMED
+            for f in self._findings
+        )
+        has_confirmed_sqli = any(
+            f.vuln_type == FINDING_SQLI and (f.confirmed or f.confidence == CONF_CONFIRMED)
+            for f in self._findings
+        )
+        has_admin_panel = bool(re.search(r'/adm(?:in)?/|관리자\s*패널|admin\s*panel', texts, re.I))
+        return {
+            "has_upload": has_upload,
+            "has_real_cred": has_real_cred,
+            "has_confirmed_sqli": has_confirmed_sqli,
+            "has_admin_panel": has_admin_panel,
+            "confirmed_count": sum(1 for f in self._findings if f.confirmed),
+            "blocked_count": sum(1 for f in self._findings if f.confidence == CONF_BLOCKED),
+        }
 
     @property
     def findings(self) -> list[Finding]:
@@ -613,10 +773,8 @@ class FindingsExporter:
     def extract_xss_urls(self, output: str) -> list[str]:
         """출력에서 XSS payload가 포함된 URL 추출 (Playwright 검증용)"""
         urls = []
-        # <script>, %3Cscript, onerror= 등이 포함된 URL
         for m in _XSS_URL_PATTERN.finditer(output):
             urls.append(m.group(0))
-        # 일반 URL + XSS 패턴
         for line in output.splitlines():
             stripped = line.strip()
             if re.search(r'https?://', stripped) and re.search(
@@ -625,7 +783,7 @@ class FindingsExporter:
                 m_url = re.search(r'https?://\S+', stripped)
                 if m_url and m_url.group(0) not in urls:
                     urls.append(m_url.group(0))
-        return urls[:5]  # 최대 5개
+        return urls[:5]
 
 
 def _get_version() -> str:

@@ -248,6 +248,9 @@ class BingoTerminal:
         }
         # 자동 크랙 중단 플래그
         self._stop_crack_flag = threading.Event()
+        # v6.2.169: 세션 하트비트 — 쿠키 만료 방지
+        self._heartbeat_stop = threading.Event()
+        self._heartbeat_thread: threading.Thread | None = None
         # 세션 내 해시 중복 크랙 방지 (파일명 캐시 버스팅 해시 포함)
         self._session_cracked_hashes: set = set()
         # v6.2.147: 에이전트 루프 중 수집한 해시 임시 큐 (스레드 인터리빙 방지)
@@ -724,6 +727,34 @@ class BingoTerminal:
             f"[{THEME['dim']}]{self.s['session_saved']}: {self._session_log_path}[/]\n"
         )
 
+    @staticmethod
+    def _mask_sensitive_in_log(text: str) -> str:
+        """v6.2.169: 세션 로그 저장 전 쿠키/토큰 값 마스킹.
+        침투테스트 과정에서 캡처한 타겟 세션 쿠키/JWT가 로컬 파일에 평문 노출되는 것 방지.
+        키(이름)는 남기고 값만 마스킹 — 어떤 쿠키가 있는지 확인은 가능.
+        """
+        import re as _re
+        # Set-Cookie: name=VALUE; ... / Cookie: name=VALUE; ...
+        text = _re.sub(
+            r'(?i)((?:Set-Cookie|Cookie)\s*:\s*(?:[^=\s]+=[^\s;]{0,6})[^\s;]{6,})',
+            lambda m: _re.sub(r'(=[^\s;,\'"]{6,})', lambda v: v.group(0)[:4] + '***', m.group(1)),
+            text
+        )
+        # PHPSESSID=VALUE, csrftoken=VALUE, Bearer TOKEN 등 독립 패턴
+        text = _re.sub(
+            r'(?i)((?:PHPSESSID|JSESSIONID|csrftoken|session(?:_?id)?|_?token|auth(?:_token)?'
+            r'|Bearer)\s*[=:]\s*)[A-Za-z0-9._\-/+=]{16,}',
+            lambda m: m.group(1) + m.group(0)[len(m.group(1)):len(m.group(1))+4] + '***',
+            text
+        )
+        # "cookies": {"name": "LONG_VALUE"} JSON 형태
+        text = _re.sub(
+            r'(?i)("(?:value|token|cookie|session)"\s*:\s*")([A-Za-z0-9._\-/+=]{16,})(")',
+            lambda m: m.group(1) + m.group(2)[:4] + '***' + m.group(3),
+            text
+        )
+        return text
+
     def _append_to_session_log(self, role: str, content: str) -> None:
         """대화 한 턴을 세션 로그에 추가"""
         if not self._session_log_path:
@@ -731,10 +762,78 @@ class BingoTerminal:
         try:
             ts = datetime.now().strftime("%H:%M:%S")
             label = "**YOU**" if role == "user" else "**bingo**"
+            # v6.2.169: 쿠키/토큰 평문 마스킹 후 저장
+            _safe_content = BingoTerminal._mask_sensitive_in_log(content)
             with open(self._session_log_path, "a", encoding="utf-8") as f:
-                f.write(f"### {label} `{ts}`\n{content}\n\n")
+                f.write(f"### {label} `{ts}`\n{_safe_content}\n\n")
         except Exception:
             pass
+
+    # ── v6.2.169: 세션 하트비트 ─────────────────────────────────────
+    def _start_session_heartbeat(self, target_url: str, interval: int = 300) -> None:
+        """인증 세션 쿠키 만료 방지용 하트비트 스레드.
+        interval초(기본 5분)마다 타겟에 가벼운 HEAD/GET 요청을 보내
+        서버 측 세션 타임아웃을 리셋. 새 Set-Cookie가 오면 _auth_session에 반영.
+        """
+        if self._heartbeat_thread and self._heartbeat_thread.is_alive():
+            return  # 이미 실행 중
+
+        self._heartbeat_stop.clear()
+
+        def _beat() -> None:
+            import urllib.request as _ur
+            import urllib.error as _ue
+            import re as _re_hb
+            _lang = getattr(self.config, "lang", "en")
+            _ok_msg = {"ko": "  [HB] 세션 갱신", "zh": "  [HB] 会话续期", "en": "  [HB] session renewed"}.get(_lang, "[HB] renewed")
+            _fail_msg = {"ko": "  [HB] 세션 갱신 실패", "zh": "  [HB] 会话续期失败", "en": "  [HB] session refresh failed"}.get(_lang, "[HB] failed")
+
+            # 하트비트 대상 URL — 메인 페이지나 /api/status 등 저비용 엔드포인트
+            _hb_url = target_url.rstrip("/")
+            _beat_count = 0
+
+            while not self._heartbeat_stop.is_set():
+                self._heartbeat_stop.wait(interval)
+                if self._heartbeat_stop.is_set():
+                    break
+                try:
+                    _cookies = self._auth_session.get("cookies", {})
+                    if not _cookies:
+                        continue  # 쿠키 없으면 하트비트 의미없음
+
+                    _cookie_hdr = "; ".join(f"{k}={v}" for k, v in _cookies.items())
+                    _req = _ur.Request(
+                        _hb_url,
+                        headers={
+                            "User-Agent": "Mozilla/5.0 (compatible; bingo-heartbeat/1.0)",
+                            "Cookie": _cookie_hdr,
+                        },
+                        method="GET",
+                    )
+                    with _ur.urlopen(_req, timeout=10) as _resp:
+                        _beat_count += 1
+                        # 새 Set-Cookie 헤더 처리 → 쿠키 갱신
+                        _new_cookies = {}
+                        for _hdr_val in _resp.headers.get_all("Set-Cookie") or []:
+                            _m = _re_hb.match(r'([^=]+)=([^;]+)', _hdr_val)
+                            if _m:
+                                _new_cookies[_m.group(1).strip()] = _m.group(2).strip()
+                        if _new_cookies:
+                            self._auth_session["cookies"].update(_new_cookies)
+                        if _beat_count % 3 == 1:  # 3번마다 한 번 출력 (너무 자주 출력 방지)
+                            self.console.print(f"[dim]{_ok_msg} #{_beat_count}[/dim]")
+                except Exception:
+                    pass  # 하트비트 실패는 조용히 무시 (에이전트 루프 방해 안 함)
+
+        self._heartbeat_thread = threading.Thread(target=_beat, daemon=True, name="session-heartbeat")
+        self._heartbeat_thread.start()
+
+    def _stop_session_heartbeat(self) -> None:
+        """하트비트 스레드 정지."""
+        self._heartbeat_stop.set()
+        if self._heartbeat_thread:
+            self._heartbeat_thread.join(timeout=3)
+            self._heartbeat_thread = None
 
     # ── v3.2.72: 세션 로그 자동 파싱 → target_memory 저장 ─────────
     def _auto_parse_session_to_memory(self) -> None:
@@ -986,41 +1085,65 @@ class BingoTerminal:
             _termios = None  # type: ignore[assignment]
 
         if _tty_ok and _termios is not None:
-            _tty_fd = None
+            _tty_fd_raw = None
             _old_attr = None
             try:
-                _tty_fd = open("/dev/tty", "r+")
-                _old_attr = _termios.tcgetattr(_tty_fd)
+                # v6.2.169: binary raw 모드로 열기 — 캐노니컬 모드의 4096B 라인버퍼 제한 우회
+                # macOS TTY 캐노니컬 모드는 한 줄 입력을 4096B로 잘라버림.
+                # raw 모드에서 문자 단위로 읽으면 붙여넣기도 제한 없이 수신 가능.
+                _tty_fd_raw = open("/dev/tty", "rb+", buffering=0)
+                _old_attr = _termios.tcgetattr(_tty_fd_raw)
 
-                # cooked(canonical) 모드 강제 복원 — Ctrl+C 이후 raw 모드 잔존 방지
-                try:
-                    _tty_mod.setcbreak(_tty_fd)
-                    _termios.tcsetattr(
-                        _tty_fd, _termios.TCSADRAIN,
-                        _old_attr,  # 저장된 원본 설정으로 복원
-                    )
-                except Exception:
-                    pass
+                # raw 모드 전환 (canonical/echo 비활성 → 캐릭터 단위 즉시 전달)
+                _new_attr = list(_old_attr)
+                import termios as _tc
+                _new_attr[3] = _new_attr[3] & ~(_tc.ECHO | _tc.ICANON)
+                _new_attr[6][_tc.VMIN] = 1
+                _new_attr[6][_tc.VTIME] = 0
+                _termios.tcsetattr(_tty_fd_raw, _termios.TCSADRAIN, _new_attr)
 
-                # hint 프롬프트 직접 출력 후 한 줄 읽기
-                _tty_fd.write("💬 hint ❯ ")
-                _tty_fd.flush()
-                _line = _tty_fd.readline()
-                _h = _line.strip() if _line else ""
+                # 프롬프트 출력
+                _prompt_b = "💬 hint ❯ ".encode("utf-8")
+                _tty_fd_raw.write(_prompt_b)
+                _tty_fd_raw.flush()
+
+                # 문자 단위로 읽어 누적 — 길이 제한 없음
+                _chars: list[bytes] = []
+                while True:
+                    _c = _tty_fd_raw.read(1)
+                    if not _c:
+                        break
+                    if _c in (b'\r', b'\n'):
+                        _tty_fd_raw.write(b'\r\n')
+                        _tty_fd_raw.flush()
+                        break
+                    if _c == b'\x03':         # Ctrl+C
+                        raise KeyboardInterrupt
+                    if _c in (b'\x7f', b'\x08'):  # backspace
+                        if _chars:
+                            _chars.pop()
+                            _tty_fd_raw.write(b'\x08 \x08')
+                            _tty_fd_raw.flush()
+                    else:
+                        _chars.append(_c)
+                        _tty_fd_raw.write(_c)   # echo
+                        _tty_fd_raw.flush()
+
+                _h = b''.join(_chars).decode('utf-8', 'replace').strip()
                 return _h if _h else None
             except KeyboardInterrupt:
                 return None
             except Exception:
                 pass  # fallback으로 진행
             finally:
-                if _old_attr is not None and _tty_fd is not None:
+                if _old_attr is not None and _tty_fd_raw is not None:
                     try:
-                        _termios.tcsetattr(_tty_fd, _termios.TCSADRAIN, _old_attr)
+                        _termios.tcsetattr(_tty_fd_raw, _termios.TCSADRAIN, _old_attr)
                     except Exception:
                         pass
-                if _tty_fd is not None:
+                if _tty_fd_raw is not None:
                     try:
-                        _tty_fd.close()
+                        _tty_fd_raw.close()
                     except Exception:
                         pass
 
@@ -3728,6 +3851,9 @@ class BingoTerminal:
                 "evidence": result.evidence,
                 "active": True,
             })
+            # v6.2.169: 세션 하트비트 시작 — 쿠키 만료 방지 (5분 간격)
+            _hb_target = self._agent_state.get("target", "") or url
+            self._start_session_heartbeat(_hb_target, interval=300)
             self.console.print(
                 f"\n[{THEME['success']}]{result.message}[/]"
             )
@@ -3798,6 +3924,11 @@ class BingoTerminal:
             "evidence": "MANUAL",
             "active": True,
         })
+        # v6.2.169: 수동 쿠키 저장 시에도 하트비트 시작
+        if extra_cookies:
+            _hb_target = self._agent_state.get("target", "") or self._auth_session.get("login_url", "")
+            if _hb_target:
+                self._start_session_heartbeat(_hb_target, interval=300)
         self.console.print(
             f"[{THEME['success']}]{self.s.get('cred_saved_ok', '✅ Credentials saved')}[/]\n"
             f"  ID: {username}  PW: {'*' * len(password)}"

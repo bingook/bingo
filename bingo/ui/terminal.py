@@ -1130,11 +1130,12 @@ class BingoTerminal:
         빈 입력 → None (루프 중단), 텍스트 입력 → 힌트 주입 후 루프 계속.
 
         v6.2.104: /dev/tty + input() — prompt_toolkit asyncio 동결 회피.
-        v6.2.180: Type A 먹통 수정
-          1) /dev/tty 성공 return 시 SIGINT 핸들러 미복구 버그 (이후 Ctrl+C/입력이 죽음)
-          2) Ctrl+C 잔여 바이트로 즉시 빈 Enter 처리되는 버그 → tcflush
-          3) 백그라운드 도구 출력과 경합 → 짧은 settle
-          4) continue/继续  alone → agent_state 재개 지시로 자동 확장
+        v6.2.180: SIGINT 미복구/잔여바이트/재개어 확장.
+        v6.2.181: "쳐도 안 보이고 Enter 무반응(완전 먹통)" 근본 수정.
+          핵심 원인 = 이전 도구/스트리밍이 tty 를 raw(ICANON·ECHO off)로 남김.
+          → 진입 시 캐노니컬+ECHO+ISIG 를 강제 ON 하여 터미널을 '치료',
+            커널 라인규율이 입력/에코/백스페이스/붙여넣기를 정상 처리.
+          → fallback 도 stty sane 으로 복원 후 input().
         """
         import sys as _sys
         import signal as _signal
@@ -1184,66 +1185,55 @@ class BingoTerminal:
                 _tty_ok = False
                 _termios = None  # type: ignore[assignment]
 
+            # ── v6.2.181: 캐노니컬 모드 + 터미널 상태 강제 정상화 ─────────────
+            # "쳐도 안 보이고 Enter 무반응(=완전 먹통)"의 근본 원인:
+            #   이전 도구/스트리밍/크래시가 tty 를 raw(ICANON·ECHO off) 상태로 남김.
+            #   기존 코드는 수동 raw 처리라 이 상태를 복구 못 하고 그대로 죽었음.
+            # 해결: 진입 시 ICANON·ECHO·ISIG·ICRNL·OPOST 를 강제 ON 하여
+            #       커널 라인 규율이 입력/에코/백스페이스/붙여넣기를 처리하게 함.
+            #       (이 자체가 망가진 터미널을 '치료'함)
             if _tty_ok and _termios is not None:
                 _tty_fd_raw = None
                 _old_attr = None
                 try:
-                    _tty_fd_raw = open("/dev/tty", "rb+", buffering=0)
-                    _old_attr = _termios.tcgetattr(_tty_fd_raw)
+                    import termios as _tc
+                    _tty_fd_raw = open("/dev/tty", "r+b", buffering=0)
+                    _fd = _tty_fd_raw.fileno()
+                    _old_attr = _termios.tcgetattr(_fd)
 
-                    # Ctrl+C/스트림 잔여 입력 폐기 — 아니면 빈 Enter로 즉시 종료(=먹통)
+                    # 정상 라인 입력 모드로 강제 설정 (망가진 상태도 치료)
+                    _new_attr = list(_old_attr)
+                    # iflag: Enter(CR)→NL 변환, XON/XOFF 흐름제어
+                    _new_attr[0] = _new_attr[0] | _tc.ICRNL | _tc.IXON
+                    # oflag: 출력 후처리(개행 \r\n) ON
+                    _new_attr[1] = _new_attr[1] | _tc.OPOST | _tc.ONLCR
+                    # lflag: 캐노니컬 + 에코 + 시그널 + 에코 편집 ON
+                    _new_attr[3] = (
+                        _new_attr[3]
+                        | _tc.ICANON | _tc.ECHO | _tc.ECHOE
+                        | _tc.ECHOK | _tc.ISIG
+                    )
+                    _termios.tcsetattr(_fd, _termios.TCSAFLUSH, _new_attr)
+
+                    # 잔여 입력(Ctrl+C/스트림 바이트) 폐기 — 빈 Enter 오인 방지
                     try:
-                        _termios.tcflush(_tty_fd_raw, _termios.TCIFLUSH)
+                        _termios.tcflush(_fd, _termios.TCIFLUSH)
                     except Exception:
                         pass
 
-                    _new_attr = list(_old_attr)
-                    import termios as _tc
-                    _new_attr[3] = _new_attr[3] & ~(_tc.ECHO | _tc.ICANON)
-                    _new_attr[6][_tc.VMIN] = 1
-                    _new_attr[6][_tc.VTIME] = 0
-                    _termios.tcsetattr(_tty_fd_raw, _termios.TCSADRAIN, _new_attr)
-
-                    _prompt_b = "💬 hint ❯ ".encode("utf-8")
-                    _tty_fd_raw.write(_prompt_b)
+                    _tty_fd_raw.write("💬 hint ❯ ".encode("utf-8"))
                     _tty_fd_raw.flush()
 
+                    # 캐노니컬 모드: 한 줄 완성 시 select 가 깨어남
                     import select as _sel_hint
-                    _chars: list[bytes] = []
-                    while True:
-                        _rdy2, _, _ = _sel_hint.select([_tty_fd_raw], [], [], 300.0)
-                        if not _rdy2:
-                            _tty_fd_raw.write(b"\r\n")
-                            _tty_fd_raw.flush()
-                            _hint_out = None
-                            _got_via_tty = True
-                            break
-                        _c = _tty_fd_raw.read(1)
-                        if not _c:
-                            break
-                        if _c in (b"\r", b"\n"):
-                            _tty_fd_raw.write(b"\r\n")
-                            _tty_fd_raw.flush()
-                            break
-                        if _c == b"\x03":  # Ctrl+C
-                            raise KeyboardInterrupt
-                        if _c in (b"\x7f", b"\x08"):
-                            if _chars:
-                                _chars.pop()
-                                _tty_fd_raw.write(b"\x08 \x08")
-                                _tty_fd_raw.flush()
-                        elif _c == b"\x15":  # Ctrl+U clear line
-                            while _chars:
-                                _chars.pop()
-                                _tty_fd_raw.write(b"\x08 \x08")
-                            _tty_fd_raw.flush()
-                        else:
-                            _chars.append(_c)
-                            _tty_fd_raw.write(_c)
-                            _tty_fd_raw.flush()
-
-                    if not _got_via_tty:
-                        _h = b"".join(_chars).decode("utf-8", "replace").strip()
+                    _rdy2, _, _ = _sel_hint.select([_fd], [], [], 300.0)
+                    if not _rdy2:
+                        # 5분 무입력 → 중단
+                        _hint_out = None
+                        _got_via_tty = True
+                    else:
+                        _line = _tty_fd_raw.readline()
+                        _h = (_line or b"").decode("utf-8", "replace").strip()
                         _hint_out = _h if _h else None
                         _got_via_tty = True
                 except KeyboardInterrupt:
@@ -1255,7 +1245,9 @@ class BingoTerminal:
                     if _old_attr is not None and _tty_fd_raw is not None:
                         try:
                             _termios.tcsetattr(
-                                _tty_fd_raw, _termios.TCSADRAIN, _old_attr
+                                _tty_fd_raw.fileno(),
+                                _termios.TCSADRAIN,
+                                _old_attr,
                             )
                         except Exception:
                             pass
@@ -1267,6 +1259,11 @@ class BingoTerminal:
 
             if not _got_via_tty:
                 try:
+                    # 최후 치료: 터미널이 raw 상태로 망가졌으면 stty sane 으로 복원
+                    try:
+                        _os.system("stty sane < /dev/tty > /dev/tty 2>/dev/null")
+                    except Exception:
+                        pass
                     # stdin 잔여 개행 폐기 시도
                     try:
                         import termios as _ti2

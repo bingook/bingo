@@ -828,6 +828,9 @@ _STRINGS = {
 
     # ── 보고서 ───────────────────────────────────────────────────
     "report_generating":   {"ko": "보고서 생성 중",      "zh": "正在生成报告",     "en": "Generating report"},
+    "report_fallback_used": {"ko": "⚠ 보고서 모델 응답 없음 — 로컬 증거 기반 fallback 보고서를 저장합니다",
+                               "zh": "⚠ 报告模型无响应 — 正在保存基于本地证据的 fallback 报告",
+                               "en": "⚠ Report model unavailable — saving a local-evidence fallback report"},
     "severity_critical":   {"ko": "위험 (Critical)",     "zh": "严重 (Critical)",  "en": "Critical"},
     "severity_high":       {"ko": "높음 (High)",         "zh": "高危 (High)",      "en": "High"},
     "severity_medium":     {"ko": "중간 (Medium)",       "zh": "中危 (Medium)",    "en": "Medium"},
@@ -8542,6 +8545,16 @@ _STRINGS.update({
             "✅ Summarize findings so far, then TASK_COMPLETE and generate report.\n"
             "   Or switch to a completely different attack vector (Actuator/JS/IDOR)."
         ),
+    },
+    "loop_limit_report_start": {
+        "ko": "📋 루프 중단 완료 — 지금 최종 보고서를 생성합니다.",
+        "zh": "📋 循环已停止 — 现在生成最终报告。",
+        "en": "📋 Loop stopped — generating the final report now.",
+    },
+    "doom_loop_report_stop": {
+        "ko": "⛔ 전략 전환 3회 후에도 진전 없음 — 중단하고 보고서를 생성합니다.",
+        "zh": "⛔ 三次策略切换后仍无进展 — 停止并生成报告。",
+        "en": "⛔ No progress after three strategy changes — stopping and generating report.",
     },
     # ── v6.2.139: 취약점 강화 스캐너 ──────────────────────────────────────────
     "full_scan_start": {

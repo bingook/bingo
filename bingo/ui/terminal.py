@@ -371,6 +371,7 @@ class BingoTerminal:
         # 최근 도구 호출 시그니처 목록 (이름+인자 해시) — 반복 패턴 감지용
         self._dl_tool_sigs: list[str] = []
         self._dl_no_progress: int = 0       # 연속 "진전 없음" 루프 수
+        self._dl_escape_count: int = 0      # 전략 전환 경고 누적 횟수
         # ── v6.2.151 2-pass Compaction 상태 ──────────────────────────────
         self._compaction_summary: str = ""  # 배경 LLM 생성 요약
         self._compaction_lock = __import__("threading").Lock()
@@ -8830,18 +8831,14 @@ class BingoTerminal:
             _dl_doom_detected = len(_dl_window) >= 6 and (
                 max(_dl_window.count(s) for s in set(_dl_window)) >= 4
             )
-            # 진전 없음 판단: 실행 결과에 새 발견사항 키워드가 없음
-            import re as _dl_re
-            _dl_progress_keywords = _dl_re.compile(
-                r"(?:found|detected|confirmed|success|추출|발견|확인|성공|"
-                r"Found|Detected|OK|200|201|credential|hash|admin|upload)",
-                _dl_re.IGNORECASE,
-            )
-            _dl_has_progress = bool(_dl_progress_keywords.search(raw_results or ""))
+            # HTTP 200/found 같은 일반 문구가 반복을 영구 리셋하지 않도록
+            # 검증된 신규 증거만 진행으로 인정한다.
+            _dl_has_progress = self._has_meaningful_loop_progress(raw_results)
             if not _dl_has_progress:
                 self._dl_no_progress += 1
             else:
                 self._dl_no_progress = 0
+                self._dl_escape_count = 0
             if _dl_doom_detected or self._dl_no_progress >= 8:
                 from ..i18n import t as _t_dl, get_lang as _gl_dl
                 _dl_escape_map = {
@@ -8878,6 +8875,15 @@ class BingoTerminal:
                 self.history.append(Message(role="user", content=_dl_msg))
                 self._dl_tool_sigs.clear()
                 self._dl_no_progress = 0
+                self._dl_escape_count += 1
+                if self._dl_escape_count >= 3:
+                    _doom_stop = self.s.get(
+                        "doom_loop_report_stop",
+                        "Repeated strategy changes made no progress — stopping and generating report",
+                    )
+                    self.console.print(f"\n[{THEME['warn']}]{_doom_stop}[/]")
+                    self._loop_limit_hit = True
+                    self._agent_stop_flag.set()
             # ─────────────────────────────────────────────────────────────────
 
             # ── v6.2.159 Self-Reflection 주기적 자기평가 (Type A) ─────────────
@@ -9724,6 +9730,13 @@ class BingoTerminal:
                 self._agent_stop_flag.clear()
                 if getattr(self, "_loop_limit_hit", False):
                     self._loop_limit_hit = False
+                    self._exec_loop_count = 0
+                    _report_msg = self.s.get(
+                        "loop_limit_report_start",
+                        "Loop stopped — generating the final report now",
+                    )
+                    self.console.print(f"\n[{THEME['warn']}]{_report_msg}[/]")
+                    self._auto_generate_report()
                     break
                 _hint = self._prompt_mid_task_hint()
                 if _hint:
@@ -10561,6 +10574,64 @@ class BingoTerminal:
                 ]
         return out[:5]
 
+    @staticmethod
+    def _build_fallback_report(
+        target: str,
+        lang: str,
+        confirmed_count: int,
+        potential_count: int,
+        ground_truth: str,
+        session_credentials: list,
+    ) -> str:
+        """Build a deterministic report when the report LLM is unavailable."""
+        labels = {
+            "ko": ("요약", "발견된 취약점", "증거 (페이로드)", "추출된 자격증명", "권고 조치"),
+            "zh": ("摘要", "发现的漏洞", "证据（载荷）", "提取的凭据", "修复建议"),
+            "en": ("Summary", "Vulnerabilities Found", "Evidence (Payloads)", "Credentials Extracted", "Recommended Fix"),
+        }
+        summary, vulns, evidence, creds, fixes = labels.get(lang, labels["en"])
+        no_creds = {"ko": "- 이번 세션에서 확인된 자격증명 없음", "zh": "- 本次会话未确认凭据", "en": "- No credentials confirmed in this session"}
+        fallback_note = {
+            "ko": "모델 보고서 생성 실패로 로컬 증거 기반 fallback 보고서를 생성했습니다.",
+            "zh": "报告模型不可用，已根据本地证据生成 fallback 报告。",
+            "en": "The report model was unavailable; this fallback was generated from local evidence.",
+        }.get(lang, "Fallback report generated from local evidence.")
+        metrics = {
+            "ko": ("확정", "추정/잠재"),
+            "zh": ("已确认", "推定/潜在"),
+            "en": ("Confirmed", "Probable/Potential"),
+        }.get(lang, ("Confirmed", "Probable/Potential"))
+        fix_lines = {
+            "ko": (
+                "- 안정적인 대조 oracle로 probable 항목을 재검증하세요.\n"
+                "- WAF 차단 페이지와 일반 응답 크기 차이는 미확정으로 처리하세요.\n"
+            ),
+            "zh": (
+                "- 使用稳定的对照 oracle 重新验证 probable 项目。\n"
+                "- 将 WAF 拦截页和普通响应大小差异视为未确认。\n"
+            ),
+            "en": (
+                "- Re-test probable findings with a stable control oracle.\n"
+                "- Treat WAF block pages and generic response-size differences as unconfirmed.\n"
+            ),
+        }.get(lang, "- Re-test probable findings with a stable control oracle.\n")
+        credential_lines = (
+            "\n".join(f"- {item}" for item in session_credentials)
+            if session_credentials else no_creds.get(lang, no_creds["en"])
+        )
+        truth = ground_truth.strip()[:4000] or "- No findings recorded"
+        return (
+            f"# Target: {target}\n"
+            f"## {summary}\n"
+            f"{fallback_note}\n"
+            f"- {metrics[0]}: {confirmed_count}\n"
+            f"- {metrics[1]}: {potential_count}\n\n"
+            f"## {vulns}\n{truth}\n\n"
+            f"## {evidence}\n{truth}\n\n"
+            f"## {creds}\n{credential_lines}\n\n"
+            f"## {fixes}\n{fix_lines}"
+        )
+
     def _auto_generate_report(self) -> None:
         """작업 완료/중단 시 지금까지 발견한 내용을 자동으로 마크다운 보고서로 저장."""
         from ..models.registry import ModelRegistry
@@ -10571,9 +10642,6 @@ class BingoTerminal:
         # datetime.now() → AttributeError 발생 → 제거
 
         model_cfg = self.config.get_active_model_config()
-        if not model_cfg:
-            return
-
         _lang = getattr(self.config, "lang", "en")
         _lang_label = {"ko": "Korean", "zh": "Chinese (Simplified)", "en": "English"}.get(_lang, "English")
         _state = self._agent_state
@@ -10680,7 +10748,8 @@ class BingoTerminal:
                 _stats = _fe.stats() if hasattr(_fe, "stats") else {}
                 _fe_confirmed_n = int(_stats.get("confirmed", 0) or 0)
                 _fe_potential_n = int(
-                    (_stats.get("potential_critical", 0) or 0)
+                    (_stats.get("probable", 0) or 0)
+                    + (_stats.get("potential_critical", 0) or 0)
                     + (_stats.get("potential_high", 0) or 0)
                 )
                 _fe_snap_block = (
@@ -10736,7 +10805,10 @@ class BingoTerminal:
             )
         )
 
-        temp_messages = [self._get_system_message("")] + self.history[-8:] + [prompt_msg]
+        temp_messages = (
+            [self._get_system_message("")] + self.history[-8:] + [prompt_msg]
+            if model_cfg else []
+        )
 
         # ── v6.2.74: 해커 스타일 보고서 생성 헤더 ──────────────────────
         _gen_label = self.s.get('report_generating', 'Generating Report')
@@ -10749,64 +10821,79 @@ class BingoTerminal:
         _ht.append(target, style=THEME["accent"])
         self.console.print(_HdrPanel(_ht, border_style=THEME["dim"], padding=(0, 2)))
 
-        try:
-            model = ModelRegistry.build(model_cfg)
-            full = ""
-            _now_r = datetime.now().strftime("%H:%M:%S")
-            self.console.print(
-                f"\n[{THEME['dim']}]╔═[/][{THEME['secondary']}][REPORT GEN][/]"
-                f"[{THEME['dim']}]══ {_now_r} ══▶[/]"
+        full = ""
+        if model_cfg:
+            try:
+                model = ModelRegistry.build(model_cfg)
+                _now_r = datetime.now().strftime("%H:%M:%S")
+                self.console.print(
+                    f"\n[{THEME['dim']}]╔═[/][{THEME['secondary']}][REPORT GEN][/]"
+                    f"[{THEME['dim']}]══ {_now_r} ══▶[/]"
+                )
+
+                with Live(console=self.console, refresh_per_second=15, transient=True) as live:
+                    from rich.text import Text as _Text
+                    for chunk in model.chat_stream(temp_messages):
+                        if chunk.error:
+                            raise RuntimeError(chunk.error)
+                        if chunk.text:
+                            full += chunk.text
+                            live.update(_Text(full, style="white"))
+            except Exception as e:
+                self._error(f"report error: {e}")
+
+        if not full.strip():
+            _fallback_msg = self.s.get(
+                "report_fallback_used",
+                "Report model unavailable — writing local evidence fallback",
+            )
+            self.console.print(f"[{THEME['warn']}]{_fallback_msg}[/]")
+            full = self._build_fallback_report(
+                target=target,
+                lang=_lang,
+                confirmed_count=_fe_confirmed_n,
+                potential_count=_fe_potential_n,
+                ground_truth=_fe_snap_block,
+                session_credentials=list(_session_creds),
             )
 
-            with Live(console=self.console, refresh_per_second=15, transient=True) as live:
-                from rich.text import Text as _Text
-                for chunk in model.chat_stream(temp_messages):
-                    if chunk.error:
-                        live.stop()
-                        self._error(chunk.error)
-                        return
-                    if chunk.text:
-                        full += chunk.text
-                        live.update(_Text(full, style="white"))
+        full = BingoTerminal._sanitize_report_confirmed_claims(
+            full,
+            confirmed_count=_fe_confirmed_n,
+            potential_count=_fe_potential_n,
+        )
+        try:
+            report_path.write_text(full.strip(), encoding="utf-8")
+        except Exception as _write_err:
+            report_path = Path.cwd() / f"report_{safe_target}_{ts}.md"
+            report_path.write_text(full.strip(), encoding="utf-8")
+            self.console.print(
+                f"[{THEME['warn']}]⚠ Report path write failed ({_write_err}); "
+                f"saved to {report_path.absolute()}[/]"
+            )
+        self.console.print()
+        try:
+            self._render_hacker_report(full.strip(), target)
+        except Exception as _render_err:
+            self._error(f"report render error: {_render_err}")
+        _rp_str = str(report_path.absolute())
+        _ok_label = self.s.get("report_save_ok", "REPORT SAVED SUCCESSFULLY")
+        _now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        from rich.text import Text as _OkText
+        _ot = _OkText()
+        _ot.append(f"✔ {_ok_label}\n", style=THEME["success"])
+        _ot.append("PATH : ", style=THEME["dim"])
+        _ot.append(_rp_str + "\n", style="bold white")
+        _ot.append("TIME : ", style=THEME["dim"])
+        _ot.append(_now_ts, style=THEME["dim"])
+        from rich.panel import Panel as _OkPanel
+        self.console.print(_OkPanel(_ot, border_style=THEME["success"], padding=(0, 2)))
 
-            if full.strip():
-                # v6.2.174 Type A: confirmed=0 인데 보고서가 Confirmed/已确认 을 쓰면 강제 교정
-                full = BingoTerminal._sanitize_report_confirmed_claims(
-                    full,
-                    confirmed_count=_fe_confirmed_n,
-                    potential_count=_fe_potential_n,
-                )
-                self.console.print()
-                # ── 해커 스타일 보고서 본문 출력 ─────────────────────────
-                self._render_hacker_report(full.strip(), target)
-
-                # 파일로 저장
-                report_path.write_text(full.strip(), encoding="utf-8")
-                _rp_str   = str(report_path.absolute())
-                _ok_label = self.s.get("report_save_ok", "REPORT SAVED SUCCESSFULLY")
-                _now_ts   = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                # ── v6.2.80: Rich Panel로 교체 ───────────────────────────
-                from rich.text import Text as _OkText
-                _ot = _OkText()
-                _ot.append(f"✔ {_ok_label}\n", style=THEME["success"])
-                _ot.append("PATH : ", style=THEME["dim"])
-                _ot.append(_rp_str + "\n", style="bold white")
-                _ot.append("TIME : ", style=THEME["dim"])
-                _ot.append(_now_ts, style=THEME["dim"])
-                from rich.panel import Panel as _OkPanel
-                self.console.print(_OkPanel(_ot, border_style=THEME["success"], padding=(0, 2)))
-
-                # v6.2.172: 보고서 ↔ findings ↔ 세션 로그 자동 수렴
-                try:
-                    self._converge_session_artifacts(report_path, target)
-                except Exception:
-                    pass
-
-                # ── 보고서 직후 인터랙티브 다음 단계 선택지 표시 ────
-                self._suggest_next_steps()
-
-        except Exception as e:
-            self._error(f"report error: {e}")
+        try:
+            self._converge_session_artifacts(report_path, target)
+        except Exception:
+            pass
+        self._suggest_next_steps()
 
         # ── v3.2.96: findings JSON 자동 저장 ─────────────────────────
         try:
@@ -11737,6 +11824,53 @@ class BingoTerminal:
         except Exception:
             return ""
 
+    @staticmethod
+    def _has_meaningful_loop_progress(text: str) -> bool:
+        """Return True only for execution evidence that advances the mission."""
+        import re as _re_progress
+
+        if not text:
+            return False
+        patterns = (
+            r"\bBINGO_SIGNAL\s*:",
+            r"\b(?:CONFIRMED|VERIFIED)\b",
+            r"(?:credential|password|passwd|username)\s*(?:found|extracted|[:=])",
+            r"(?:자격증명|비밀번호|계정)\s*(?:발견|추출|[:=])",
+            r"(?:凭据|密码|用户名)\s*(?:发现|提取|[:：=])",
+            r"(?:database|table|column|endpoint)\s+(?:name\s+)?(?:extracted|enumerated)",
+            r"(?:DB|테이블|컬럼|엔드포인트)\s*(?:추출|열거|확인)",
+            r"(?:数据库|表名|列名|端点)\s*(?:提取|枚举|确认)",
+            r"(?:shell|RCE)\s*(?:obtained|confirmed|verified)",
+            r"(?:셸|RCE)\s*(?:획득|확인)",
+            r"(?:Shell|RCE)\s*(?:获取|确认)",
+        )
+        return any(_re_progress.search(p, text, _re_progress.IGNORECASE) for p in patterns)
+
+    @staticmethod
+    def _hashes_from_error_context(text: str, hashes: list[str]) -> set[str]:
+        """Identify hex identifiers embedded in error/trace messages."""
+        import re as _re_hash_ctx
+
+        lowered = text.lower()
+        error_re = _re_hash_ctx.compile(
+            r"(?:error|exception|trace(?:back)?|request[ _-]?id|trace[ _-]?id|"
+            r"tracking[ _-]?id|input length too long|http\s*400|400\s+input)"
+        )
+        rejected: set[str] = set()
+        for value in hashes:
+            start = 0
+            needle = value.lower()
+            while True:
+                pos = lowered.find(needle, start)
+                if pos < 0:
+                    break
+                context = lowered[max(0, pos - 120):pos + len(needle) + 120]
+                if error_re.search(context):
+                    rejected.add(needle)
+                    break
+                start = pos + len(needle)
+        return rejected
+
     def _collect_crack_hashes(self, text: str) -> None:
         """v6.2.147: 에이전트 루프 중 해시 수집만 — 스레드 시작 없음.
         _execute_ai_commands 내부 루프에서 호출. 실제 크랙은 루프 완료 후
@@ -11755,10 +11889,19 @@ class BingoTerminal:
 
         raw_hashes    = extract_hashes_from_text(text, strict=False)
         hashes_strict = extract_hashes_from_text(text, strict=True)
+        _error_context_hashes = self._hashes_from_error_context(text, hashes_strict)
+        for _error_hash in _error_context_hashes:
+            self._session_cracked_hashes.add(_error_hash)
 
         _strict_set  = {h.lower() for h in hashes_strict}
         fp_filtered  = [h for h in raw_hashes if h.lower() not in _strict_set]
-        new_hashes   = [h for h in hashes_strict if h.lower() not in self._session_cracked_hashes]
+        fp_filtered.extend(
+            h for h in hashes_strict if h.lower() in _error_context_hashes
+        )
+        new_hashes   = [
+            h for h in hashes_strict
+            if h.lower() not in self._session_cracked_hashes
+        ]
 
         # 즉시 세션에 등록 (중복 크랙 방지)
         for _h in new_hashes:
@@ -11815,17 +11958,12 @@ class BingoTerminal:
         _hb = {"ko": "자동 크랙 시작됨", "zh": "自动破解已启动", "en": "Auto-crack started"}.get(_lang, "Auto-crack started")
         self._send_notification(_ht, _hb, critical=True)
 
-        # 별도 스레드에서 실행 (채팅 블로킹 방지) — 에이전트 루프 완료 후 실행이므로 인터리빙 없음
+        # 입력 프롬프트를 열기 전에 완료해 prompt_toolkit과 Rich 출력 경합을 막는다.
         self._stop_crack_flag.clear()
-        t = threading.Thread(
-            target=self._auto_crack_pipeline,
-            args=(new_hashes,),
-            daemon=True,
-        )
-        t.start()
+        self._auto_crack_pipeline(new_hashes)
     def _auto_crack_pipeline(self, hashes: list[str]) -> None:
         """
-        자동 크랙 파이프라인 (백그라운드 스레드)
+        자동 크랙 파이프라인 (입력 프롬프트 복귀 전 실행)
         Step 1: 온라인 해시 조회 (여러 사이트 순서대로)
         Step 2: 미해결 해시 → 오프라인 크랙 (john/hashcat/python)
         /stop 입력 시 즉시 중단

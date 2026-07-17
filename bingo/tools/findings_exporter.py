@@ -266,12 +266,39 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
     - LFI 오탐 방지: php://filter 요청인데 HTML 응답(homepage redirect)이면 LFI 아님
     - Oracle 실패 억제: 추출값이 'aaa...' 반복 문자이면 credential/sqli 오탐 억제
     """
+    # ── v6.2.168: 도구 자체 "NOT vulnerable" 판정 → 즉시 None ───────────────────
+    # sqli_error / sqli_autoexploit 등이 명시적으로 취약하지 않다고 판단한 경우
+    # 출력에 페이로드 텍스트(EXTRACTVALUE 등)가 포함돼 SQLI_PATTERNS에 오매칭되는 것 방지
+    _NOT_VULN_RE = re.compile(
+        r'NOT\s+vulnerable\s*[❌✗×⛔]'
+        r'|→\s*NOT\s+vulnerable'
+        r'|DB\s+errors\s+found:\s*None'
+        r'|boolean\s+oracle.*?fail'
+        r'|confirmed\s*[=:]\s*(?:false|0\b|False)',
+        re.I
+    )
+    if _NOT_VULN_RE.search(output):
+        return None
+
     # ── v5.1.1: WAF 차단 응답 조기 종료 ─────────────────────────────────────────
     # 소형 응답(≤ 2000B) + 한국어/영어 차단 메시지 → 취약점 감지 건너뜀.
     # WAF 차단 = 페이로드 미도달, 취약점 증명 불가. 오발 방지.
     if len(output) <= 2000 and (
         _WAF_BLOCK_KO.search(output) or _WAF_BLOCK_EN.search(output)
     ):
+        return None
+
+    # ── v6.2.168: Cloudflare 403/차단 응답 조기 종료 ─────────────────────────────
+    # Cloudflare error page, Ray ID, CF challenge 등 → 페이로드 차단, 취약점 없음
+    _CF_BLOCK_RE = re.compile(
+        r'cloudflare.*?(error|blocked|denied)'
+        r'|ray\s+id\s*:\s*[0-9a-f]+'
+        r'|__cf_chl|cf-ray:'
+        r'|error\s+1\d{3}\s+access\s+denied'
+        r'|sorry,\s+you\s+have\s+been\s+blocked',
+        re.I
+    )
+    if _CF_BLOCK_RE.search(output):
         return None
 
     # ── v6.2.16: WAF 보안도메인 302 리다이렉트 조기 종료 ─────────────────────────

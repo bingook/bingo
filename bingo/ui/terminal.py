@@ -273,6 +273,9 @@ class BingoTerminal:
         self._last_stream_error: str = ""
         # Agent 루프 중단 플래그 (Ctrl+C)
         self._agent_stop_flag = threading.Event()
+        # v6.2.182: hint 입력 중 — 백그라운드 도구/heartbeat 콘솔 출력 억제
+        self._hint_input_active = threading.Event()
+        self._active_tool_thread: threading.Thread | None = None
         # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
         # v6.0.1: 프로세스 PID별 독립 파일 → 다중 터미널 동시 실행 시 상태 오염 방지
         import os as _os
@@ -1131,11 +1134,10 @@ class BingoTerminal:
 
         v6.2.104: /dev/tty + input() — prompt_toolkit asyncio 동결 회피.
         v6.2.180: SIGINT 미복구/잔여바이트/재개어 확장.
-        v6.2.181: "쳐도 안 보이고 Enter 무반응(완전 먹통)" 근본 수정.
-          핵심 원인 = 이전 도구/스트리밍이 tty 를 raw(ICANON·ECHO off)로 남김.
-          → 진입 시 캐노니컬+ECHO+ISIG 를 강제 ON 하여 터미널을 '치료',
-            커널 라인규율이 입력/에코/백스페이스/붙여넣기를 정상 처리.
-          → fallback 도 stty sane 으로 복원 후 input().
+        v6.2.181: tty raw 잔재를 캐노니컬+ECHO 강제 ON 으로 치료.
+        v6.2.182: (1) hint 종료 후 망가진 old_attr 로 되돌리던 버그 제거
+                  (2) hint 중 백그라운드 도구 stdout 경합 억제
+                  (3) 활성 도구 스레드 join 후 hint 진입
         """
         import sys as _sys
         import signal as _signal
@@ -1144,13 +1146,20 @@ class BingoTerminal:
 
         _orig_sigint = _signal.getsignal(_signal.SIGINT)
         _hint_out: "str | None" = None
+        self._hint_input_active.set()
 
         try:
             # hint 입력 중 Ctrl+C = 취소(기본 동작). 종료 후 반드시 커스텀 핸들러 복구.
             _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
 
-            # 도구 스레드/Live 출력이 가라앉을 시간 (힌트 프롬프트와 경합 → 먹통)
-            _time.sleep(0.2)
+            # 활성 도구 스레드가 stdout 을 덮어쓰지 않도록 대기
+            _ath = getattr(self, "_active_tool_thread", None)
+            if _ath is not None and _ath.is_alive():
+                try:
+                    _ath.join(timeout=3.0)
+                except Exception:
+                    pass
+            _time.sleep(0.15)
 
             _sys.stdout.write("\r\n")
             _sys.stdout.flush()
@@ -1185,37 +1194,32 @@ class BingoTerminal:
                 _tty_ok = False
                 _termios = None  # type: ignore[assignment]
 
-            # ── v6.2.181: 캐노니컬 모드 + 터미널 상태 강제 정상화 ─────────────
+            # ── v6.2.181/182: 캐노니컬 모드 + 터미널 상태 강제 정상화 ───────
             # "쳐도 안 보이고 Enter 무반응(=완전 먹통)"의 근본 원인:
-            #   이전 도구/스트리밍/크래시가 tty 를 raw(ICANON·ECHO off) 상태로 남김.
-            #   기존 코드는 수동 raw 처리라 이 상태를 복구 못 하고 그대로 죽었음.
-            # 해결: 진입 시 ICANON·ECHO·ISIG·ICRNL·OPOST 를 강제 ON 하여
-            #       커널 라인 규율이 입력/에코/백스페이스/붙여넣기를 처리하게 함.
-            #       (이 자체가 망가진 터미널을 '치료'함)
+            #   이전 도구/스트리밍/크래시가 tty 를 raw(ICANON·ECHO off)로 남김.
+            # 해결: 진입 시 ICANON·ECHO·ISIG·ICRNL·OPOST 강제 ON.
+            # v6.2.182: 종료 시 망가진 old_attr 로 되돌리지 않음.
+            #   (이전엔 치료 후 다시 raw 로 복원해 다음 입력이 또 먹통이 됨)
             if _tty_ok and _termios is not None:
                 _tty_fd_raw = None
-                _old_attr = None
+                _sane_attr = None
                 try:
                     import termios as _tc
                     _tty_fd_raw = open("/dev/tty", "r+b", buffering=0)
                     _fd = _tty_fd_raw.fileno()
-                    _old_attr = _termios.tcgetattr(_fd)
+                    _cur = _termios.tcgetattr(_fd)
 
                     # 정상 라인 입력 모드로 강제 설정 (망가진 상태도 치료)
-                    _new_attr = list(_old_attr)
-                    # iflag: Enter(CR)→NL 변환, XON/XOFF 흐름제어
-                    _new_attr[0] = _new_attr[0] | _tc.ICRNL | _tc.IXON
-                    # oflag: 출력 후처리(개행 \r\n) ON
-                    _new_attr[1] = _new_attr[1] | _tc.OPOST | _tc.ONLCR
-                    # lflag: 캐노니컬 + 에코 + 시그널 + 에코 편집 ON
-                    _new_attr[3] = (
-                        _new_attr[3]
+                    _sane_attr = list(_cur)
+                    _sane_attr[0] = _sane_attr[0] | _tc.ICRNL | _tc.IXON
+                    _sane_attr[1] = _sane_attr[1] | _tc.OPOST | _tc.ONLCR
+                    _sane_attr[3] = (
+                        _sane_attr[3]
                         | _tc.ICANON | _tc.ECHO | _tc.ECHOE
                         | _tc.ECHOK | _tc.ISIG
                     )
-                    _termios.tcsetattr(_fd, _termios.TCSAFLUSH, _new_attr)
+                    _termios.tcsetattr(_fd, _termios.TCSAFLUSH, _sane_attr)
 
-                    # 잔여 입력(Ctrl+C/스트림 바이트) 폐기 — 빈 Enter 오인 방지
                     try:
                         _termios.tcflush(_fd, _termios.TCIFLUSH)
                     except Exception:
@@ -1224,11 +1228,9 @@ class BingoTerminal:
                     _tty_fd_raw.write("💬 hint ❯ ".encode("utf-8"))
                     _tty_fd_raw.flush()
 
-                    # 캐노니컬 모드: 한 줄 완성 시 select 가 깨어남
                     import select as _sel_hint
                     _rdy2, _, _ = _sel_hint.select([_fd], [], [], 300.0)
                     if not _rdy2:
-                        # 5분 무입력 → 중단
                         _hint_out = None
                         _got_via_tty = True
                     else:
@@ -1242,12 +1244,14 @@ class BingoTerminal:
                 except Exception:
                     _got_via_tty = False
                 finally:
-                    if _old_attr is not None and _tty_fd_raw is not None:
+                    # ★ v6.2.182: 망가진 old raw 상태로 되돌리지 않음.
+                    # hint 종료 후에도 sane(캐노니컬) 유지 → 다음 bingo 프롬프트 생존.
+                    if _sane_attr is not None and _tty_fd_raw is not None:
                         try:
                             _termios.tcsetattr(
                                 _tty_fd_raw.fileno(),
                                 _termios.TCSADRAIN,
-                                _old_attr,
+                                _sane_attr,
                             )
                         except Exception:
                             pass
@@ -1256,6 +1260,11 @@ class BingoTerminal:
                             _tty_fd_raw.close()
                         except Exception:
                             pass
+                    # 백그라운드 도구가 stdout 경합해도 다음 입력이 살도록 한 번 더
+                    try:
+                        _os.system("stty sane < /dev/tty > /dev/tty 2>/dev/null")
+                    except Exception:
+                        pass
 
             if not _got_via_tty:
                 try:
@@ -1289,6 +1298,10 @@ class BingoTerminal:
                 pass
             try:
                 self._agent_stop_flag.clear()
+            except Exception:
+                pass
+            try:
+                self._hint_input_active.clear()
             except Exception:
                 pass
 
@@ -5503,11 +5516,15 @@ class BingoTerminal:
                         }
 
                 _th = _thr_tool.Thread(target=_run_one, daemon=True)
+                self._active_tool_thread = _th
                 _th.start()
                 _wait_s = 0
                 while _th.is_alive():
                     _th.join(timeout=1.0)
                     _wait_s += 1
+                    if getattr(self, "_hint_input_active", None) and self._hint_input_active.is_set():
+                        # hint 입력 중이면 heartbeat/출력 억제
+                        continue
                     if self._agent_stop_flag.is_set():
                         self.console.print(
                             f"[{THEME['warn']}]│  ⏸ stop — waiting up to 8s for {_tool_name}…[/]"
@@ -5528,10 +5545,11 @@ class BingoTerminal:
                         f"exit_code=-1  success=false  elapsed={_wait_s}s\n"
                         f"--- output ---\nINTERRUPTED mid-tool\n=== END TOOL_RESULT ==="
                     )
-                    self.console.print(
-                        f"[{THEME['warn']}]└─ ✘ interrupted[/]"
-                    )
-                    _flush_ui()
+                    if not (getattr(self, "_hint_input_active", None) and self._hint_input_active.is_set()):
+                        self.console.print(
+                            f"[{THEME['warn']}]└─ ✘ interrupted[/]"
+                        )
+                        _flush_ui()
                     break
 
                 _result = _box.get(
@@ -5540,6 +5558,7 @@ class BingoTerminal:
                 )
                 _elapsed = round(__import__("time").time() - _t0, 2)
                 _tools_executed += 1
+                self._active_tool_thread = None
 
                 _out = _result.get("output", "")
                 _ok  = _result.get("success", False)
@@ -5548,11 +5567,12 @@ class BingoTerminal:
                 # 화면에 결과 미리보기 출력 (v5.2.7: 스마트 필터 적용)
                 _color = THEME["success"] if _ok else THEME["warn"]
                 _status_icon = "✔" if _ok else "✘"
-                self.console.print(
-                    f"[{THEME['dim']}]└─[/][{_color}]{_status_icon} exit={_ec}[/]"
-                    f"[{THEME['dim']}]  elapsed={_elapsed}s[/]"
-                )
-                _flush_ui()
+                if not (getattr(self, "_hint_input_active", None) and self._hint_input_active.is_set()):
+                    self.console.print(
+                        f"[{THEME['dim']}]└─[/][{_color}]{_status_icon} exit={_ec}[/]"
+                        f"[{THEME['dim']}]  elapsed={_elapsed}s[/]"
+                    )
+                    _flush_ui()
                 if _out:
                     import re as _re_tr
                     from rich.markup import escape as _esc

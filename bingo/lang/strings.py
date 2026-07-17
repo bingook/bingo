@@ -8960,6 +8960,157 @@ _STRINGS.update({
         "zh": "📦 [Compaction] 历史压缩完成 — 上下文已优化",
         "en": "📦 [Compaction] History compacted — context optimized",
     },
+    # ── scanner banner keys (advanced_scanners.py / vuln_scanner_plus.py) ──
+    "tech_stack_start": {
+        "ko": "🔬 기술 스택 탐지 — {url}",
+        "zh": "🔬 技术栈检测 — {url}",
+        "en": "🔬 Technology Stack Detection — {url}",
+    },
+    "cve_auto_start": {
+        "ko": "🔎 CVE 자동 스캔 — {url}",
+        "zh": "🔎 CVE自动扫描 — {url}",
+        "en": "🔎 CVE Auto Scan — {url}",
+    },
+    "dom_xss_scan_start": {
+        "ko": "🎭 DOM XSS 스캔 — {url} [{param}]",
+        "zh": "🎭 DOM XSS扫描 — {url} [{param}]",
+        "en": "🎭 DOM XSS Scan — {url} [{param}]",
+    },
+    "param_fuzz_banner": {
+        "ko": "🔍 파라미터 퍼징 — {url}",
+        "zh": "🔍 参数模糊测试 — {url}",
+        "en": "🔍 Parameter Fuzzing — {url}",
+    },
+    "sqli_plus_banner": {
+        "ko": "💉 SQLi 강화 스캔 (600+ payloads) — {url} [{param}]",
+        "zh": "💉 SQLi增强扫描 (600+ payloads) — {url} [{param}]",
+        "en": "💉 SQLi Enhanced Scan (600+ payloads) — {url} [{param}]",
+    },
+    "wp_scan_banner": {
+        "ko": "🔌 WordPress 특화 스캔 — {url}",
+        "zh": "🔌 WordPress专项扫描 — {url}",
+        "en": "🔌 WordPress Specialized Scan — {url}",
+    },
+    "http_method_banner": {
+        "ko": "📡 HTTP 메서드 스캔 — {url}",
+        "zh": "📡 HTTP方法扫描 — {url}",
+        "en": "📡 HTTP Method Scan — {url}",
+    },
+    "api_sec_banner": {
+        "ko": "🔑 API 보안 스캔 — {url}",
+        "zh": "🔑 API安全扫描 — {url}",
+        "en": "🔑 API Security Scan — {url}",
+    },
+    "full_deep_scan_banner": {
+        "ko": "🚀 FULL DEEP SCAN (95% Acunetix Level) — {url}",
+        "zh": "🚀 全面深度扫描 (95% Acunetix级别) — {url}",
+        "en": "🚀 FULL DEEP SCAN (95% Acunetix Level) — {url}",
+    },
+    "cms_scan_skip": {
+        "ko": "[6/10] CMS 스캔 스킵 (cms={cms})",
+        "zh": "[6/10] 跳过CMS扫描 (cms={cms})",
+        "en": "[6/10] CMS scan skipped (cms={cms})",
+    },
+    "xss_plus_banner": {
+        "ko": "💉 XSS 강화 스캔 (220+ payloads) — {url} [{param}]",
+        "zh": "💉 XSS增强扫描 (220+ payloads) — {url} [{param}]",
+        "en": "💉 XSS Enhanced Scan (220+ payloads) — {url} [{param}]",
+    },
+    "lfi_plus_banner": {
+        "ko": "🗂  LFI 강화 스캔 (180+ payloads) — {url} [{param}]",
+        "zh": "🗂  LFI增强扫描 (180+ payloads) — {url} [{param}]",
+        "en": "🗂  LFI Enhanced Scan (180+ payloads) — {url} [{param}]",
+    },
+    "ssrf_plus_banner": {
+        "ko": "🌐 SSRF 강화 스캔 (140+ payloads) — {url} [{param}]",
+        "zh": "🌐 SSRF增强扫描 (140+ payloads) — {url} [{param}]",
+        "en": "🌐 SSRF Enhanced Scan (140+ payloads) — {url} [{param}]",
+    },
+    "ssti_plus_banner": {
+        "ko": "🧩 SSTI 강화 스캔 (120+ payloads) — {url} [{param}]",
+        "zh": "🧩 SSTI增强扫描 (120+ payloads) — {url} [{param}]",
+        "en": "🧩 SSTI Enhanced Scan (120+ payloads) — {url} [{param}]",
+    },
+    "cmdi_plus_banner": {
+        "ko": "💣 CMDi 강화 스캔 (130+ payloads) — {url} [{param}]",
+        "zh": "💣 命令注入增强扫描 (130+ payloads) — {url} [{param}]",
+        "en": "💣 CMDi Enhanced Scan (130+ payloads) — {url} [{param}]",
+    },
+    "xxe_plus_banner": {
+        "ko": "📝 XXE 강화 스캔 (80+ payloads) — {url}",
+        "zh": "📝 XXE增强扫描 (80+ payloads) — {url}",
+        "en": "📝 XXE Enhanced Scan (80+ payloads) — {url}",
+    },
+    "nosql_plus_banner": {
+        "ko": "🗄  NoSQL 강화 스캔 (90+ payloads) — {url} [{param}]",
+        "zh": "🗄  NoSQL注入增强扫描 (90+ payloads) — {url} [{param}]",
+        "en": "🗄  NoSQL Enhanced Scan (90+ payloads) — {url} [{param}]",
+    },
+    "header_inject_banner": {
+        "ko": "📨 헤더 주입 스캔 ({count} 헤더 유형) — {url}",
+        "zh": "📨 Header注入扫描 ({count}种请求头) — {url}",
+        "en": "📨 Header Injection Scan ({count} header types) — {url}",
+    },
+    "crlf_plus_banner": {
+        "ko": "🔀 CRLF 강화 스캔 (80+ payloads) — {url}",
+        "zh": "🔀 CRLF增强扫描 (80+ payloads) — {url}",
+        "en": "🔀 CRLF Enhanced Scan (80+ payloads) — {url}",
+    },
+    "open_redirect_plus_banner": {
+        "ko": "↗️  Open Redirect 강화 스캔 (100+ payloads) — {url} [{param}]",
+        "zh": "↗️  开放重定向增强扫描 (100+ payloads) — {url} [{param}]",
+        "en": "↗️  Open Redirect Enhanced Scan (100+ payloads) — {url} [{param}]",
+    },
+    "full_site_scan_banner": {
+        "ko": "🔍 FULL SITE SCAN — {url}",
+        "zh": "🔍 全站扫描 — {url}",
+        "en": "🔍 FULL SITE SCAN — {url}",
+    },
+    "vuln_types_label": {
+        "ko": "  취약점 유형: {types}",
+        "zh": "  漏洞类型: {types}",
+        "en": "  Vuln types: {types}",
+    },
+    "parallel_scan_label": {
+        "ko": "  병렬 스캔: {flag}",
+        "zh": "  并行扫描: {flag}",
+        "en": "  Parallel scan: {flag}",
+    },
+    "params_found_label": {
+        "ko": "  📋 총 {count}개 파라미터 발견 (최대 {max}개 테스트)",
+        "zh": "  📋 共发现 {count} 个参数 (最多测试 {max} 个)",
+        "en": "  📋 {count} parameters found (testing up to {max})",
+    },
+    "scan_tasks_start_label": {
+        "ko": "  🚀 총 {count}개 스캔 작업 시작...",
+        "zh": "  🚀 开始 {count} 个扫描任务...",
+        "en": "  🚀 Starting {count} scan tasks...",
+    },
+    "parallel_multi_scan_banner": {
+        "ko": "⚡ 병렬 멀티 스캔 [{types}] — {url} [{param}]",
+        "zh": "⚡ 并行多类型扫描 [{types}] — {url} [{param}]",
+        "en": "⚡ Parallel Multi Scan [{types}] — {url} [{param}]",
+    },
+    "js_render_banner": {
+        "ko": "🎭 JS 렌더링 크롤 — {url}",
+        "zh": "🎭 JS渲染爬取 — {url}",
+        "en": "🎭 JS Rendering Crawl — {url}",
+    },
+    "fp_verify_banner": {
+        "ko": "🔬 FP 재검증 [{vuln_type}] — {url} [{param}]",
+        "zh": "🔬 误报重验证 [{vuln_type}] — {url} [{param}]",
+        "en": "🔬 FP Re-verification [{vuln_type}] — {url} [{param}]",
+    },
+    "batch_fp_verify_banner": {
+        "ko": "🔬 배치 FP 재검증 — {count}개 결과",
+        "zh": "🔬 批量误报重验证 — {count} 个结果",
+        "en": "🔬 Batch FP Re-verification — {count} results",
+    },
+    "raw_findings_count": {
+        "ko": "  🔍 원본 발견: {count}개",
+        "zh": "  🔍 原始发现: {count} 个",
+        "en": "  🔍 Raw findings: {count}",
+    },
 })
 
 

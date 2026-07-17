@@ -1053,7 +1053,7 @@ def xss_scan_plus(
     sess.headers.update({"X-XSS-Protection": "0"})
     findings = []
     
-    print(_banner(f"💉 XSS 강화 스캔 (220+ payloads) — {url} [{param}]"))
+    print(_banner(_t("xss_plus_banner", "💉 XSS Enhanced Scan (220+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     for payload in XSS_PAYLOADS_PLUS:
         p = dict(extra_params or {})
@@ -1110,7 +1110,7 @@ def lfi_scan_plus(
     sess = _sess(session_headers)
     findings = []
     
-    print(_banner(f"🗂  LFI 강화 스캔 (180+ payloads) — {url} [{param}]"))
+    print(_banner(_t("lfi_plus_banner", "🗂  LFI Enhanced Scan (180+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     base_p = dict(extra_params or {})
     base_p[param] = "index.php"
@@ -1167,7 +1167,7 @@ def ssrf_scan_plus(
     sess = _sess(session_headers)
     findings = []
     
-    print(_banner(f"🌐 SSRF 강화 스캔 (140+ payloads) — {url} [{param}]"))
+    print(_banner(_t("ssrf_plus_banner", "🌐 SSRF Enhanced Scan (140+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     for payload in SSRF_PAYLOADS_PLUS:
         p = dict(extra_params or {})
@@ -1223,7 +1223,7 @@ def ssti_scan_plus(
     sess = _sess(session_headers)
     findings = []
     
-    print(_banner(f"🧩 SSTI 강화 스캔 (120+ payloads) — {url} [{param}]"))
+    print(_banner(_t("ssti_plus_banner", "🧩 SSTI Enhanced Scan (120+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     for payload, expected, engine in SSTI_PAYLOADS_PLUS:
         p = dict(extra_params or {})
@@ -1270,7 +1270,7 @@ def cmdi_scan_plus(
     findings = []
     blind_findings = []
     
-    print(_banner(f"💣 CMDi 강화 스캔 (130+ payloads) — {url} [{param}]"))
+    print(_banner(_t("cmdi_plus_banner", "💣 CMDi Enhanced Scan (130+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     # 기준 응답시간 측정
     base_r = _req(sess, method, url, params={param: "test"} if method.upper() == "GET" else None,
@@ -1333,7 +1333,7 @@ def xxe_scan_plus(
     sess = _sess(session_headers)
     findings = []
     
-    print(_banner(f"📝 XXE 강화 스캔 (80+ payloads) — {url}"))
+    print(_banner(_t("xxe_plus_banner", "📝 XXE Enhanced Scan (80+ payloads) — {url}").format(url=url)))
     
     for payload, expected_sig, desc in XXE_PAYLOADS_PLUS:
         hdrs = {"Content-Type": content_type}
@@ -1383,7 +1383,7 @@ def nosql_scan_plus(
     sess = _sess(session_headers)
     findings = []
     
-    print(_banner(f"🗄  NoSQL 강화 스캔 (90+ payloads) — {url} [{param}]"))
+    print(_banner(_t("nosql_plus_banner", "🗄  NoSQL Enhanced Scan (90+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     # Baseline
     base_p = {param: "test123invalid"}
@@ -1458,7 +1458,7 @@ def header_injection_scan(
     sess = _sess(session_headers)
     findings = []
     
-    print(_banner(f"📨 헤더 주입 스캔 ({len(HEADER_INJECTION_TARGETS)} 헤더 유형) — {url}"))
+    print(_banner(_t("header_inject_banner", "📨 Header Injection Scan ({count} header types) — {url}").format(count=len(HEADER_INJECTION_TARGETS), url=url)))
     
     # Baseline
     base_r = _req(sess, "GET", url)
@@ -1520,7 +1520,7 @@ def crlf_scan_plus(
     sess = _sess(session_headers)
     findings = []
     
-    print(_banner(f"🔀 CRLF 강화 스캔 (80+ payloads) — {url}"))
+    print(_banner(_t("crlf_plus_banner", "🔀 CRLF Enhanced Scan (80+ payloads) — {url}").format(url=url)))
     
     for payload in CRLF_PAYLOADS_PLUS:
         test_url = url
@@ -1578,7 +1578,7 @@ def open_redirect_scan_plus(
     sess = _sess(session_headers)
     findings = []
     
-    print(_banner(f"↗️  Open Redirect 강화 스캔 (100+ payloads) — {url} [{param}]"))
+    print(_banner(_t("open_redirect_plus_banner", "↗️  Open Redirect Enhanced Scan (100+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     for payload in OPEN_REDIRECT_PAYLOADS_PLUS:
         p = dict(extra_params or {})
@@ -1649,9 +1649,9 @@ def full_site_scan(
     ALL_VULNS = ["xss", "lfi", "ssrf", "ssti", "cmdi", "crlf", "open_redirect", "header", "nosql"]
     vulns = vuln_types or ALL_VULNS
     
-    print(_banner(f"🔍 FULL SITE SCAN — {url}"))
-    print(f"  취약점 유형: {', '.join(vulns)}")
-    print(f"  병렬 스캔: {'✅' if parallel else '❌'}")
+    print(_banner(_t("full_site_scan_banner", "🔍 FULL SITE SCAN — {url}").format(url=url)))
+    print(_t("vuln_types_label", "  Vuln types: {types}").format(types=', '.join(vulns)))
+    print(_t("parallel_scan_label", "  Parallel scan: {flag}").format(flag='✅' if parallel else '❌'))
     
     # 1단계: 파라미터 수집
     crawl_result = auto_crawl_params(url, depth=1, session_headers=session_headers)
@@ -1672,7 +1672,7 @@ def full_site_scan(
             "findings": [],
         }
     
-    print(f"\n  📋 총 {sum(len(t['params']) for t in targets[:5])}개 파라미터 발견 (최대 {max_params}개 테스트)")
+    print(f"\n{_t('params_found_label', '  📋 {count} parameters found (testing up to {max})').format(count=sum(len(t['params']) for t in targets[:5]), max=max_params)}")
     
     all_findings: List[Dict] = []
     scan_tasks: List[Tuple] = []  # (scan_fn, kwargs)
@@ -1719,7 +1719,7 @@ def full_site_scan(
     if "header" in vulns:
         scan_tasks.append((header_injection_scan, {"url": url, "session_headers": session_headers}))
     
-    print(f"  🚀 총 {len(scan_tasks)}개 스캔 작업 시작...")
+    print(_t("scan_tasks_start_label", "  🚀 Starting {count} scan tasks...").format(count=len(scan_tasks)))
     
     # 3단계: 실행 (병렬 or 순차)
     if parallel:
@@ -1817,7 +1817,7 @@ def parallel_multi_scan(
     kwargs_base = {"url": url, "param": param, "method": method,
                    "extra_params": extra_params, "session_headers": session_headers}
     
-    print(_banner(f"⚡ 병렬 멀티 스캔 [{', '.join(types)}] — {url} [{param}]"))
+    print(_banner(_t("parallel_multi_scan_banner", "⚡ Parallel Multi Scan [{types}] — {url} [{param}]").format(types=', '.join(types), url=url, param=param)))
     
     all_findings = []
     with ThreadPoolExecutor(max_workers=min(8, len(types))) as executor:
@@ -2165,7 +2165,7 @@ def js_render_crawl(
         elif "?" in req_url and req.resource_type in ("xhr", "fetch"):
             intercepted_urls.append(req_url)
 
-    print(_banner(f"🎭 JS 렌더링 크롤 — {url}"))
+    print(_banner(_t("js_render_banner", "🎭 JS Rendering Crawl — {url}").format(url=url)))
 
     try:
         with sync_playwright() as pw:
@@ -2335,8 +2335,8 @@ def auth_session_scan(
     Returns:
         dict with "session_cookies", "findings", "output"
     """
-    print(_banner(f"🔐 인증 세션 스캔 — {url}"))
-    print(f"  로그인: {login_url} / user={username}")
+    print(_banner(_t("auth_scan_start", "🔐 [AUTH_SCAN] Starting authenticated scan for {url} (user={user})").format(url=url, user=username)))
+    print(f"  {login_url} / user={username}")
 
     session_cookies: Dict[str, str] = {}
 
@@ -2477,7 +2477,7 @@ def fp_verify(
         return {"confirmed": False, "confidence": 0, "output": "requests 필요"}
 
     sess = _sess(session_headers)
-    print(_banner(f"🔬 FP 재검증 [{vuln_type}] — {url} [{param}]"))
+    print(_banner(_t("fp_verify_banner", "🔬 FP Re-verification [{vuln_type}] — {url} [{param}]").format(vuln_type=vuln_type, url=url, param=param)))
 
     # 베이스라인 응답
     baseline_val = "BASELINE_SAFE_VALUE_12345"
@@ -2600,7 +2600,7 @@ def batch_fp_verify(
     confirmed = []
     removed = []
 
-    print(_banner(f"🔬 배치 FP 재검증 — {min(len(findings), max_verify)}개 결과"))
+    print(_banner(_t("batch_fp_verify_banner", "🔬 Batch FP Re-verification — {count} results").format(count=min(len(findings), max_verify))))
 
     for f in findings[:max_verify]:
         url = f.get("url", "")
@@ -2671,8 +2671,8 @@ def full_site_scan_v2(
     ALL_VULNS = ["xss", "lfi", "ssrf", "ssti", "cmdi", "nosql", "crlf", "open_redirect", "header"]
     vulns = vuln_types or ALL_VULNS
 
-    print(_banner(f"🚀 FULL SITE SCAN v2 — {url}"))
-    print(f"  Playwright: {'✅' if use_playwright else '❌'} | FP 재검증: {'✅' if auto_fp_verify else '❌'}")
+    print(_banner(_t("full_scan_v2_start", "🚀 [FULL_SCAN_V2] Starting full scan v2 for {url} (Playwright+FP verify)").format(url=url)))
+    print(f"  Playwright: {'✅' if use_playwright else '❌'} | FP: {'✅' if auto_fp_verify else '❌'}")
 
     # 1단계: 파라미터 수집 (requests + Playwright 병합)
     all_targets: List[Dict] = []
@@ -2715,7 +2715,7 @@ def full_site_scan_v2(
     )
 
     raw_findings = scan_result.get("findings", [])
-    print(f"\n  🔍 원본 발견: {len(raw_findings)}개")
+    print(f"\n{_t('raw_findings_count', '  🔍 Raw findings: {count}').format(count=len(raw_findings))}")
 
     # 3단계: FP 재검증
     final_findings = raw_findings

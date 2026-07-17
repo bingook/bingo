@@ -115,7 +115,7 @@ def tech_fingerprint(
     if not _HAS_REQUESTS:
         return {"success": False, "technologies": [], "output": "requests 필요"}
 
-    print(_banner(f"🔬 기술 스택 탐지 — {url}"))
+    print(_banner(_t("tech_stack_start", "🔬 Technology Stack Detection — {url}").format(url=url)))
     sess = _sess(session_headers)
 
     found: Dict[str, float] = {}  # tech → confidence
@@ -196,7 +196,7 @@ def cve_scan(
 
     from .payload_db import LOG4SHELL_DB, SPRING4SHELL_DB, SHELLSHOCK_DB, EL_INJECTION_DB
 
-    print(_banner(f"🔎 CVE 자동 스캔 — {url}"))
+    print(_banner(_t("cve_auto_start", "🔎 CVE Auto Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
     findings = []
 
@@ -347,7 +347,7 @@ def dom_xss_scan(
     Returns:
         dict with "findings", "output"
     """
-    print(_banner(f"🎭 DOM XSS 스캔 — {url} [{param or 'auto'}]"))
+    print(_banner(_t("dom_xss_scan_start", "🎭 DOM XSS Scan — {url} [{param}]").format(url=url, param=param or "auto")))
 
     findings = []
 
@@ -564,7 +564,7 @@ def param_fuzz(
     if not _HAS_REQUESTS:
         return {"success": False, "found_params": [], "output": "requests 필요"}
 
-    print(_banner(f"🔍 파라미터 퍼징 — {url}"))
+    print(_banner(_t("param_fuzz_banner", "🔍 Parameter Fuzzing — {url}").format(url=url)))
 
     words = (wordlist or PARAM_WORDLIST)[:max_params]
     sess = _sess(session_headers)
@@ -670,7 +670,7 @@ def sqli_scan_plus(
 
     from .payload_db import SQLI_DB, SQLI_ERROR_SIGS
 
-    print(_banner(f"💉 SQLi 강화 스캔 (600+ payloads) — {url} [{param}]"))
+    print(_banner(_t("sqli_plus_banner", "💉 SQLi Enhanced Scan (600+ payloads) — {url} [{param}]").format(url=url, param=param)))
     sess = _sess(session_headers)
     findings = []
 
@@ -767,7 +767,7 @@ def wordpress_scan(
     if not _HAS_REQUESTS:
         return {"success": False, "findings": [], "output": "requests 필요"}
 
-    print(_banner(f"🔌 WordPress 특화 스캔 — {url}"))
+    print(_banner(_t("wp_scan_banner", "🔌 WordPress Specialized Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
     base = url.rstrip("/")
     findings = []
@@ -858,7 +858,7 @@ def http_method_scan(
     if not _HAS_REQUESTS:
         return {"success": False, "findings": [], "output": "requests 필요"}
 
-    print(_banner(f"📡 HTTP 메서드 스캔 — {url}"))
+    print(_banner(_t("http_method_banner", "📡 HTTP Method Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
     findings = []
     allowed_methods = []
@@ -951,7 +951,7 @@ def api_security_scan(
     if not _HAS_REQUESTS:
         return {"success": False, "findings": [], "output": "requests 필요"}
 
-    print(_banner(f"🔑 API 보안 스캔 — {url}"))
+    print(_banner(_t("api_sec_banner", "🔑 API Security Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
     findings = []
 
@@ -1062,7 +1062,7 @@ def full_deep_scan(
     Returns:
         dict with "all_findings", "by_category", "output"
     """
-    print(_banner(f"🚀 FULL DEEP SCAN (95% Acunetix Level) — {url}"))
+    print(_banner(_t("full_deep_scan_banner", "🚀 FULL DEEP SCAN (95% Acunetix Level) — {url}").format(url=url)))
     print(f"  Playwright: {'✅' if use_playwright else '❌'}")
 
     all_findings: List[Dict] = []
@@ -1111,7 +1111,7 @@ def full_deep_scan(
         for f in wp_result.get("findings", []):
             all_findings.append({**f, "category": "WordPress"})
     else:
-        print(f"\n[6/10] CMS 스캔 스킵 (cms={cms})")
+        print(f"\n{_t('cms_scan_skip', '[6/10] CMS scan skipped (cms={cms})').format(cms=cms)}")
 
     # ── 7. 취약점 파라미터 스캔 ───────────────────────────────────────────────
     print("\n[7/10] 파라미터 취약점 스캔...")

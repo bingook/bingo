@@ -1108,8 +1108,16 @@ class BingoTerminal:
                 _tty_fd_raw.flush()
 
                 # 문자 단위로 읽어 누적 — 길이 제한 없음
+                # v6.2.170: select() 5분 타임아웃 → 입력 없으면 먹통 방지
+                import select as _sel_hint
                 _chars: list[bytes] = []
                 while True:
+                    _rdy2, _, _ = _sel_hint.select([_tty_fd_raw], [], [], 300.0)
+                    if not _rdy2:
+                        # 5분 타임아웃 → hint 없이 종료
+                        _tty_fd_raw.write(b'\r\n')
+                        _tty_fd_raw.flush()
+                        return None
                     _c = _tty_fd_raw.read(1)
                     if not _c:
                         break
@@ -10278,25 +10286,31 @@ class BingoTerminal:
                 self.console.print()
 
                 # ── /dev/tty 직접 입력 (prompt_toolkit 충돌 방지) ─────────
-                # ★ SIG_DFL 일시 복원: readline() 블로킹 중 Ctrl+C가 KeyboardInterrupt를 올리게 함
+                # v6.2.170: binary 모드 + errors='replace' + select() timeout 5min
+                # → utf-8 codec 오류 및 먹통(무한 대기) 방지
                 _tty_path = "/dev/tty"
                 import os as _os_ns
                 import signal as _sig_mod
+                import select as _sel_mod
                 raw = ""
                 _old_sigint = _sig_mod.getsignal(_sig_mod.SIGINT)
                 try:
-                    _sig_mod.signal(_sig_mod.SIGINT, _sig_mod.SIG_DFL)  # Ctrl+C → KeyboardInterrupt
+                    _sig_mod.signal(_sig_mod.SIGINT, _sig_mod.SIG_DFL)
                     if _os_ns.path.exists(_tty_path):
-                        with open(_tty_path, "r") as _tr, open(_tty_path, "w") as _tw:
-                            _tw.write("  > ")
-                            _tw.flush()
-                            raw = _tr.readline().strip()
+                        with open(_tty_path, "rb+", buffering=0) as _tty_rw:
+                            _tty_rw.write(b"  > ")
+                            _tty_rw.flush()
+                            # 5분 타임아웃: 입력 없으면 그냥 skip
+                            _rdy, _, _ = _sel_mod.select([_tty_rw], [], [], 300.0)
+                            if _rdy:
+                                raw = _tty_rw.readline().decode("utf-8", errors="replace").strip()
+                            else:
+                                return  # 타임아웃 → 메뉴 종료
                     else:
                         raw = input("  > ").strip()
                 except (EOFError, KeyboardInterrupt, OSError):
                     return
                 finally:
-                    # 커스텀 핸들러 복원
                     try:
                         _sig_mod.signal(_sig_mod.SIGINT, _old_sigint)
                     except Exception:

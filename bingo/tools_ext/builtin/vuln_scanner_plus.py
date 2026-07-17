@@ -1024,9 +1024,14 @@ def auto_crawl_params(url: str, depth: int = 1, session_headers: Optional[Dict] 
                     queue.append(link)
     
     output_lines = [f"[AUTO_CRAWL] {url}"]
-    output_lines.append(f"  발견된 타겟: {len(targets)}개")
+    output_lines.append(
+        "  " + _t("crawl_targets_found", "{count} targets found").format(count=len(targets))
+    )
     for t in targets:
-        output_lines.append(f"  [{t['method']}] {t['url']} — 파라미터: {', '.join(t['params'])}")
+        output_lines.append(
+            f"  [{t['method']}] {t['url']} — "
+            + _t("crawl_params_label", "params: {params}").format(params=', '.join(t['params']))
+        )
     
     return {
         "success": True,

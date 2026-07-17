@@ -9111,6 +9111,16 @@ _STRINGS.update({
         "zh": "  🔍 原始发现: {count} 个",
         "en": "  🔍 Raw findings: {count}",
     },
+    "crawl_targets_found": {
+        "ko": "발견된 타겟: {count}개",
+        "zh": "发现目标: {count} 个",
+        "en": "{count} targets found",
+    },
+    "crawl_params_label": {
+        "ko": "파라미터: {params}",
+        "zh": "参数: {params}",
+        "en": "params: {params}",
+    },
 })
 
 

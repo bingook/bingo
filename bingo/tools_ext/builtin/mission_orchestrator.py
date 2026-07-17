@@ -293,9 +293,9 @@ def mission_execute(
         from bingo.tools_ext.builtin.advanced_scanners import param_fuzz
         fuzz_r = _safe_run(param_fuzz, "파라미터 퍼징", url, session_headers=session_headers, max_params=100)
         found_params = fuzz_r.get("found_params", [])
-        print(f"  발견된 파라미터: {len(found_params)}개")
+        print("  " + _t("crawl_targets_found", "{count} targets found").format(count=len(found_params)))
         if found_params:
-            print(f"  파라미터 목록: {[p['param'] for p in found_params[:10]]}")
+            print(f"  {[p['param'] for p in found_params[:10]]}")
     except Exception:
         pass
 

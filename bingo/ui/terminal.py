@@ -5228,7 +5228,56 @@ class BingoTerminal:
                 execute_tool = None
                 TOOL_REGISTRY = {}
 
-            for _raw_json in _tool_matches:
+            # ── v6.2.179 Type A: TOOL_CALL 실행 중 UI '不动/卡死' 방지 ──────────
+            # 증상(채팅/스크린샷): AI가 run_bash + http_get×N 을 한 번에 쏟아낸 뒤
+            # 실행 중 화면에 아무 진행도 안 보여 '멈춤'으로 오인.
+            # (백엔드는 동작 중 — Ctrl+C 후 continue 하면 결과 나옴)
+            # 수정: 진행 표시 + 5초 heartbeat + flush + Ctrl+C로 남은 도구 스킵
+            #      + 배치 http_get 은 curl 우선(Playwright×N 수분 정지 방지)
+            _MAX_TOOLS_PER_TURN = 10
+            _MAX_HTTP_GET_PER_TURN = 6
+            _total_tc = len(_tool_matches)
+            _http_get_done = 0
+            _tools_executed = 0
+            _deferred_names: list[str] = []
+            import sys as _sys_flush
+            import threading as _thr_tool
+
+            def _flush_ui() -> None:
+                try:
+                    self.console.file.flush()
+                except Exception:
+                    pass
+                try:
+                    _sys_flush.stdout.flush()
+                    _sys_flush.stderr.flush()
+                except Exception:
+                    pass
+
+            _lang_tc = getattr(self.config, "lang", "en")
+            _tc_banner = {
+                "ko": f"⚙ 도구 {_total_tc}개 실행 중… (진행 표시됨 / Ctrl+C=중단)",
+                "zh": f"⚙ 正在执行 {_total_tc} 个工具…（会显示进度 / Ctrl+C=中断）",
+                "en": f"⚙ Running {_total_tc} tools… (progress shown / Ctrl+C=stop)",
+            }.get(_lang_tc, f"⚙ Running {_total_tc} tools…")
+            self.console.print(f"[{THEME['accent']}]{_tc_banner}[/]")
+            _flush_ui()
+
+            for _tc_i, _raw_json in enumerate(_tool_matches):
+                if self._agent_stop_flag.is_set():
+                    _stop_tc = {
+                        "ko": f"⏸ Ctrl+C — 남은 도구 {_total_tc - _tc_i}개 스킵",
+                        "zh": f"⏸ Ctrl+C — 跳过剩余 {_total_tc - _tc_i} 个工具",
+                        "en": f"⏸ Ctrl+C — skipped {_total_tc - _tc_i} remaining tools",
+                    }.get(_lang_tc, "⏸ Interrupted")
+                    self.console.print(f"[{THEME['warn']}]{_stop_tc}[/]")
+                    _flush_ui()
+                    tool_results.append(
+                        "=== INTERRUPTED by Ctrl+C — remaining TOOL_CALLs skipped ===\n"
+                        "Summarize partial results. Do NOT re-emit the same TOOL_CALL flood."
+                    )
+                    break
+
                 # JSON 파싱
                 # v6.2.40 FIX: re.sub(r'\s+', ' ') 제거 — 이것이 Python 코드의 들여쓰기를
                 # 파괴하여 SyntaxError: expected 'except' or 'finally' block 의 근본 원인이었음.
@@ -5299,6 +5348,32 @@ class BingoTerminal:
                         f"[{THEME['warn']}]{self.s.get('tool_call_json_recovered', '⚠ TOOL_CALL JSON auto-recovered ({name})').format(name=_tool_name)}[/]"
                     )
 
+                if _tools_executed >= _MAX_TOOLS_PER_TURN:
+                    _deferred_names.append(_tool_name or "?")
+                    continue
+
+                if _tool_name == "http_get":
+                    if _http_get_done >= _MAX_HTTP_GET_PER_TURN:
+                        _deferred_names.append("http_get")
+                        tool_results.append(
+                            f"=== TOOL_RESULT: http_get ===\n"
+                            f"exit_code=-95  success=false\n"
+                            f"--- output ---\n"
+                            f"[HTTP_GET_BATCH_CAP] max {_MAX_HTTP_GET_PER_TURN} http_get/turn skipped.\n"
+                            f"Probe many hosts with ONE run_bash curl loop, not N×http_get.\n"
+                            f"URL: {str(_tool_args.get('url', ''))[:120]}\n"
+                            f"=== END TOOL_RESULT ==="
+                        )
+                        continue
+                    _tool_args = dict(_tool_args)
+                    _tool_args["prefer_curl"] = True
+                    try:
+                        _to = int(_tool_args.get("timeout", 10) or 10)
+                    except Exception:
+                        _to = 10
+                    _tool_args["timeout"] = min(max(_to, 3), 10)
+                    _http_get_done += 1
+
                 if execute_tool is None:
                     tool_results.append(
                         f"TOOL_RESULT:{{'name':'{_tool_name}','error':'pentest_tools not available','success':false}}"
@@ -5309,15 +5384,65 @@ class BingoTerminal:
                 _args_preview = str(_tool_args)[:100]
                 self.console.print(
                     f"\n[{THEME['dim']}]┌─[/][{THEME['accent']}]⚙ {_tool_name}[/]"
-                    f"[{THEME['dim']}]──────────────────────────────[/]"
+                    f"[{THEME['dim']}] ({_tc_i + 1}/{_total_tc}) ────────────────────[/]"
                 )
                 self.console.print(
                     f"[{THEME['dim']}]│  {_args_preview}[/]"
                 )
+                _flush_ui()
 
                 _t0 = __import__("time").time()
-                _result = execute_tool(_tool_name, _tool_args)
+                # 실행 중 heartbeat — 화면이 不动처럼 보이는 핵심 원인 제거
+                _box: dict = {}
+
+                def _run_one(_n=_tool_name, _a=_tool_args):
+                    try:
+                        _box["r"] = execute_tool(_n, _a)
+                    except Exception as _ex:
+                        _box["r"] = {
+                            "success": False,
+                            "output": f"execute_tool exception: {_ex}",
+                            "exit_code": -1,
+                        }
+
+                _th = _thr_tool.Thread(target=_run_one, daemon=True)
+                _th.start()
+                _wait_s = 0
+                while _th.is_alive():
+                    _th.join(timeout=1.0)
+                    _wait_s += 1
+                    if self._agent_stop_flag.is_set():
+                        self.console.print(
+                            f"[{THEME['warn']}]│  ⏸ stop — waiting up to 8s for {_tool_name}…[/]"
+                        )
+                        _flush_ui()
+                        _th.join(timeout=8.0)
+                        break
+                    if _wait_s % 5 == 0:
+                        self.console.print(
+                            f"[{THEME['dim']}]│  ⏱ {_tool_name} running… {_wait_s}s "
+                            f"(not frozen)[/]"
+                        )
+                        _flush_ui()
+
+                if self._agent_stop_flag.is_set() and _th.is_alive():
+                    tool_results.append(
+                        f"=== TOOL_RESULT: {_tool_name} ===\n"
+                        f"exit_code=-1  success=false  elapsed={_wait_s}s\n"
+                        f"--- output ---\nINTERRUPTED mid-tool\n=== END TOOL_RESULT ==="
+                    )
+                    self.console.print(
+                        f"[{THEME['warn']}]└─ ✘ interrupted[/]"
+                    )
+                    _flush_ui()
+                    break
+
+                _result = _box.get(
+                    "r",
+                    {"success": False, "output": "no result", "exit_code": -1},
+                )
                 _elapsed = round(__import__("time").time() - _t0, 2)
+                _tools_executed += 1
 
                 _out = _result.get("output", "")
                 _ok  = _result.get("success", False)
@@ -5330,6 +5455,7 @@ class BingoTerminal:
                     f"[{THEME['dim']}]└─[/][{_color}]{_status_icon} exit={_ec}[/]"
                     f"[{THEME['dim']}]  elapsed={_elapsed}s[/]"
                 )
+                _flush_ui()
                 if _out:
                     import re as _re_tr
                     from rich.markup import escape as _esc
@@ -5446,6 +5572,17 @@ class BingoTerminal:
                 # ── 감지 끝 ────────────────────────────────────────────────────────────────
 
                 tool_results.append(_result_str)
+
+            if _deferred_names:
+                _n_def = len(_deferred_names)
+                _cap_msg = (
+                    f"[TOOL_CALL_CAP] Deferred {_n_def} call(s) "
+                    f"(max {_MAX_TOOLS_PER_TURN} tools / {_MAX_HTTP_GET_PER_TURN} http_get per turn). "
+                    f"Use ONE run_bash probe loop instead of flooding http_get."
+                )
+                self.console.print(f"[{THEME['warn']}]⚠ {_cap_msg}[/]")
+                _flush_ui()
+                tool_results.append(_cap_msg)
 
             if tool_results:
                 return tool_results

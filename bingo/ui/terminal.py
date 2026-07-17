@@ -347,6 +347,18 @@ class BingoTerminal:
         from ..core.file_watcher import AgentOutputWatcher
         self._file_watcher = AgentOutputWatcher(console=self.console)
         self._file_watcher.start()
+        # Code-change memory: install the post-commit hook and backfill HEAD.
+        # Run in the background so terminal startup never waits on Git I/O.
+        try:
+            from ..core.change_memory import watch_worktree_changes as _watch_change_memory
+            threading.Thread(
+                target=_watch_change_memory,
+                args=(Path.cwd(),),
+                daemon=True,
+                name="bingo-change-memory",
+            ).start()
+        except Exception:
+            pass
         # 토큰 / 비용 추적
         self._token_usage: dict = {"prompt": 0, "completion": 0, "total": 0}
         self._cost_usd: float = 0.0

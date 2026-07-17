@@ -9996,61 +9996,109 @@ class BingoTerminal:
         )
 
     @staticmethod
-    def _sanitize_ground_truth_claims(text: str, confirmed_count: int = 0) -> str:
-        """v6.2.175 Type A: confirmed=0 텍스트의 Confirmed/已确认/Critical 과장 표현 강제 교정.
-        보고서·progress summary·next_steps·followup 공용.
+    def _sanitize_ground_truth_claims(
+        text: str,
+        confirmed_count: int = 0,
+        potential_count: int = 0,
+    ) -> str:
+        """v6.2.175/176 Type A: confirmed=0 텍스트의 과장 Confirmed/Critical 교정.
+
+        v6.2.176: potential_count>0 이면 '已确认'만 未确认으로 바꾸고
+        Critical→Potential 은 유지하되, Potential/미확인 실탐 서술은 지우지 않음.
         """
         if not text:
             return text
         import re as _re_sr
         if confirmed_count > 0:
             return text
+        # 확정 표현만 교정 (실탐 potential 서술은 보존)
         _repls = [
-            (r'✅\s*已确认', '⚠ 未确认'),
-            (r'已确认（存在性验证成功[^）]*）', '未确认（WAF/Oracle 미검증）'),
-            (r'已确认\(存在性验证成功[^)]*\)', '未确认(WAF/Oracle 미검증)'),
-            (r'已确认dswhosp[^\s，。]*', '未确认(WAF/Oracle)'),
-            (r'已确认.{0,40}(?:布尔盲|SQL\s*注入|布尔盲注)', '未确认 SQL注入(WAF阻断)'),
-            (r'상태：✅\s*已确认', '상태：⚠ 未确认'),
-            (r'状态：✅\s*已确认', '状态：⚠ 未确认'),
-            (r'✅\s*CONFIRMED', '⚠ UNCONFIRMED'),
-            (r'\bCONFIRMED\b(?!\s*=)', 'UNCONFIRMED'),
-            (r'✅\s*확인됨', '⚠ 미확인'),
-            (r'已确认', '未确认'),
-            (r'확인된', '미확인'),
-            (r'\bCritical\b(?!\s*Potential)', 'Potential'),
-            (r'\bCRITICAL\b(?!\s*POTENTIAL)', 'POTENTIAL'),
-            (r'严重\s*[:：]?\s*Critical', '严重：Potential'),
-            (r'심각도\s*[:：]?\s*Critical', '심각도：Potential'),
-            (r'🔴\s*Critical', '⚠ Potential'),
-            (r'🔴\[#ff1744\]Critical', '⚠ Potential'),
+            (r'✅\s*已确认', '⚠ 未确认(potential)'),
+            (r'已确认（存在性验证成功[^）]*）', '未确认（potential — 추가검증필요）'),
+            (r'已确认\(存在性验证成功[^)]*\)', '未确认(potential)'),
+            (r'상태：✅\s*已确认', '상태：⚠ Potential'),
+            (r'状态：✅\s*已确认', '状态：⚠ Potential'),
+            (r'✅\s*CONFIRMED', '⚠ POTENTIAL'),
+            (r'\bCONFIRMED\b(?!\s*=)', 'POTENTIAL'),
+            (r'✅\s*확인됨', '⚠ 미확인(potential)'),
         ]
+        # confirmed=0 이고 potential도 0일 때만 강한 demote
+        if potential_count <= 0:
+            _repls.extend([
+                (r'已确认dswhosp[^\s，。]*', '未确认(WAF/Oracle)'),
+                (r'已确认.{0,40}(?:布尔盲|SQL\s*注入|布尔盲注)', '未确认 SQL注入(WAF阻断)'),
+                (r'已确认', '未确认'),
+                (r'확인된', '미확인'),
+                (r'\bCritical\b(?!\s*Potential)', 'Potential'),
+                (r'\bCRITICAL\b(?!\s*POTENTIAL)', 'POTENTIAL'),
+                (r'严重\s*[:：]?\s*Critical', '严重：Potential'),
+                (r'심각도\s*[:：]?\s*Critical', '심각도：Potential'),
+                (r'🔴\s*Critical', '⚠ Potential'),
+                (r'🔴\[#ff1744\]Critical', '⚠ Potential'),
+            ])
+        else:
+            # potential 있음: Critical Confirmed 톤만 Potential로, 취약점 존재 서술은 유지
+            _repls.extend([
+                (r'已确认', '潜在确认(potential)'),
+                (r'\bCritical\b(?!\s*Potential)', 'Potential'),
+                (r'\bCRITICAL\b(?!\s*POTENTIAL)', 'POTENTIAL'),
+                (r'🔴\s*Critical', '⚠ Potential'),
+            ])
         out = text
         for pat, rep in _repls:
             out = _re_sr.sub(pat, rep, out)
         return out
 
     @staticmethod
-    def _sanitize_report_confirmed_claims(report: str, confirmed_count: int = 0) -> str:
+    def _sanitize_report_confirmed_claims(
+        report: str,
+        confirmed_count: int = 0,
+        potential_count: int = 0,
+    ) -> str:
         """하위 호환 래퍼 → _sanitize_ground_truth_claims."""
-        return BingoTerminal._sanitize_ground_truth_claims(report, confirmed_count)
+        return BingoTerminal._sanitize_ground_truth_claims(
+            report, confirmed_count, potential_count=potential_count
+        )
 
     @staticmethod
     def _filter_next_steps_by_evidence(options: list, flags: dict) -> list:
-        """v6.2.175 Type A: 증거 없는 고위험 next_steps 제거/치환."""
+        """v6.2.175/176 Type A: 증거 없는 고위험 next_steps 제거.
+        SQLi potential/confirmed 검증·WAF 우회 제안은 절대 제거하지 않음.
+        """
         import re as _re_ns
         if not options:
             return options
         out = []
+        _keep_sqli = bool(
+            flags.get("has_confirmed_sqli")
+            or flags.get("has_potential_sqli")
+            or flags.get("blocked_count")  # blocked여도 우회 재시도 유지
+        )
         for opt in options:
             low = (opt or "").lower()
+            # SQLi/WAF 우회/oracle 재검증 — 실탐 누락 방지: 항상 유지
+            _is_sqli_path = bool(_re_ns.search(
+                r'sqli|sql\s*注入|布尔|블라인드|blind|oracle|waf|우회|绕过'
+                r'|benchmark|sleep|extractvalue|updatexml|substring|시간\s*맹',
+                low, _re_ns.I
+            ))
+            if _is_sqli_path:
+                if not flags.get("has_confirmed_sqli"):
+                    opt = _re_ns.sub(
+                        r'已确认|confirmed\s+sqli|확인된\s*sqli',
+                        '潜在(potential)',
+                        opt,
+                        flags=_re_ns.I,
+                    )
+                out.append(opt)
+                continue
             # 웹쉘/업로드 — 업로드 기능 증거 없으면 제거
             if _re_ns.search(
                 r'webshell|웹쉘|web\s*shell|파일\s*업로드|upload\s*(?:shell|webshell|php|phtml)|phtml|getshell',
                 low, _re_ns.I
             ) and not flags.get("has_upload"):
                 continue
-            # 撞库/credential stuffing / 가짜 계정 aaa — 실자격증명 없으면 제거
+            # 撞库 / 가짜 aaa — 실자격증명 없으면 제거
             if _re_ns.search(
                 r'撞库|credential\s*stuff|비밀번호\s*크랙|password\s*crack'
                 r'|mb_id\s*[\'"]?aaa|계정\s*[\'"]?aaa[\'"]?|default\s*password'
@@ -10058,23 +10106,20 @@ class BingoTerminal:
                 low, _re_ns.I
             ) and not flags.get("has_real_cred"):
                 continue
-            # "已确认 SQLi" 전제의 심화 추출 — confirmed SQLi 없으면 WAF 우회 탐색으로 완화 표기만 유지
-            if _re_ns.search(r'已确认|confirmed\s+sqli|확인된\s*sqli', low, _re_ns.I) \
-                    and not flags.get("has_confirmed_sqli"):
-                opt = _re_ns.sub(
-                    r'已确认|confirmed\s+sqli|확인된\s*sqli',
-                    '未确认(WAF)',
-                    opt,
-                    flags=_re_ns.I,
-                )
             out.append(opt)
-        # 전부 걸러지면 안전 대안 삽입
         if not out:
-            out = [
-                "Enumerate JS/API endpoints for unauthenticated access",
-                "Re-test boolean oracle with non-keyword payloads (avoid WAF signatures)",
-                "Map GnuBoard paths (/bbs/, /adm/) without assuming SQLi confirmed",
-            ]
+            if _keep_sqli:
+                out = [
+                    "Re-test boolean oracle / WAF bypass (potential SQLi — do not drop)",
+                    "Try time-based or error-based extraction with signature evasion",
+                    "Enumerate JS/API endpoints for unauthenticated access",
+                ]
+            else:
+                out = [
+                    "Enumerate JS/API endpoints for unauthenticated access",
+                    "Map application paths without assuming SQLi confirmed",
+                    "Recon auth/session surfaces",
+                ]
         return out[:5]
 
     def _auto_generate_report(self) -> None:
@@ -10186,24 +10231,29 @@ class BingoTerminal:
                 f"DO NOT invent or assume any credentials, table names, or database names not present in the recent findings context.\n"
             )
 
-        # v6.2.175 Type A: findings JSON 스냅샷을 보고서에 강제 주입
+        # v6.2.175/176 Type A: findings JSON 스냅샷을 보고서에 강제 주입
         _fe_confirmed_n = 0
+        _fe_potential_n = 0
         _fe_snap_block = ""
         try:
             _fe = getattr(self, "_findings_exporter", None)
             if _fe is not None and hasattr(_fe, "ground_truth_block"):
                 _stats = _fe.stats() if hasattr(_fe, "stats") else {}
                 _fe_confirmed_n = int(_stats.get("confirmed", 0) or 0)
+                _fe_potential_n = int(
+                    (_stats.get("potential_critical", 0) or 0)
+                    + (_stats.get("potential_high", 0) or 0)
+                )
                 _fe_snap_block = (
                     f"\n⚠️ FINDINGS GROUND TRUTH (HARD RULE — DO NOT CONTRADICT):\n"
                     + _fe.ground_truth_block()
                     + "\nRULES:\n"
-                    + "1) If confirmed=False / confidence!=confirmed → status MUST be UNCONFIRMED / 未确认 / 미확인.\n"
-                    + "2) If confirmed=0 overall → NEVER write Critical Confirmed / 已确认 exploitation success.\n"
-                    + "3) confidence=blocked / reason_code=blocked_by_waf_* is NOT SQLi proof — it is a WAF block event.\n"
-                    + "4) All-zero / sequential hashes (0000..., 0123456789abcdef) are NOT valid credentials.\n"
+                    + "1) If confidence=confirmed → MAY write Confirmed / 已确认.\n"
+                    + "2) If confidence=potential → write Potential / 潜在, keep the vulnerability in the report (DO NOT drop it).\n"
+                    + "3) If confidence=blocked only → WAF block event, NOT proven SQLi; do not claim Confirmed Critical.\n"
+                    + "4) All-zero / sequential hashes are NOT valid credentials.\n"
                     + "5) Login form fields are NOT credential findings.\n"
-                    + "6) Use potential_critical counts, never inflate CRITICAL when confirmed=0.\n"
+                    + "6) Strong proof (TRUE≠FALSE size, XPATH extract, real creds) overrides FP filters — report as potential/confirmed.\n"
                 )
             elif _fe is not None:
                 _fe_snap_lines = []
@@ -10211,6 +10261,8 @@ class BingoTerminal:
                     _c = bool(getattr(_f, "confirmed", False))
                     if _c:
                         _fe_confirmed_n += 1
+                    if getattr(_f, "confidence", "") in ("potential", "inconclusive"):
+                        _fe_potential_n += 1
                     _fe_snap_lines.append(
                         f"- id={getattr(_f,'id','')} type={getattr(_f,'vuln_type','')} "
                         f"sev={getattr(_f,'severity','')} confirmed={_c}"
@@ -10222,6 +10274,7 @@ class BingoTerminal:
         except Exception:
             _fe_snap_block = ""
             _fe_confirmed_n = 0
+            _fe_potential_n = 0
 
         prompt_msg = Message(
             role="user",
@@ -10280,7 +10333,9 @@ class BingoTerminal:
             if full.strip():
                 # v6.2.174 Type A: confirmed=0 인데 보고서가 Confirmed/已确认 을 쓰면 강제 교정
                 full = BingoTerminal._sanitize_report_confirmed_claims(
-                    full, confirmed_count=_fe_confirmed_n
+                    full,
+                    confirmed_count=_fe_confirmed_n,
+                    potential_count=_fe_potential_n,
                 )
                 self.console.print()
                 # ── 해커 스타일 보고서 본문 출력 ─────────────────────────
@@ -10562,15 +10617,23 @@ class BingoTerminal:
         _fe_flags = {}
         _fe_gt = ""
         _fe_confirmed_n = 0
+        _fe_potential_n = 0
         try:
             _fe = getattr(self, "_findings_exporter", None)
             if _fe is not None:
                 if hasattr(_fe, "evidence_flags"):
                     _fe_flags = _fe.evidence_flags()
+                    _fe_potential_n = int(_fe_flags.get("potential_count", 0) or 0)
                 if hasattr(_fe, "ground_truth_block"):
                     _fe_gt = _fe.ground_truth_block()
                 if hasattr(_fe, "stats"):
-                    _fe_confirmed_n = int(_fe.stats().get("confirmed", 0) or 0)
+                    _st = _fe.stats()
+                    _fe_confirmed_n = int(_st.get("confirmed", 0) or 0)
+                    if not _fe_potential_n:
+                        _fe_potential_n = int(
+                            (_st.get("potential_critical", 0) or 0)
+                            + (_st.get("potential_high", 0) or 0)
+                        )
         except Exception:
             pass
 
@@ -10581,6 +10644,10 @@ class BingoTerminal:
             _safe_hints.append("password cracking / credential reuse (real hash/cred confirmed)")
         if _fe_flags.get("has_confirmed_sqli"):
             _safe_hints.append("deep SQLi extraction (SQLi CONFIRMED)")
+        elif _fe_flags.get("has_potential_sqli") or _fe_flags.get("blocked_count"):
+            _safe_hints.append(
+                "CONTINUE SQLi verification / WAF bypass (potential or blocked — DO NOT abandon)"
+            )
         else:
             _safe_hints.append("re-validate boolean oracle / WAF bypass (SQLi NOT confirmed)")
         _safe_hints.extend([
@@ -10688,12 +10755,18 @@ class BingoTerminal:
             if summary_lines:
                 _sum_joined = " ".join(summary_lines[:5])
                 _sum_joined = BingoTerminal._sanitize_ground_truth_claims(
-                    _sum_joined, confirmed_count=_fe_confirmed_n
+                    _sum_joined,
+                    confirmed_count=_fe_confirmed_n,
+                    potential_count=_fe_potential_n,
                 )
                 summary_lines = [_sum_joined]
             if options:
                 options = [
-                    BingoTerminal._sanitize_ground_truth_claims(o, confirmed_count=_fe_confirmed_n)
+                    BingoTerminal._sanitize_ground_truth_claims(
+                        o,
+                        confirmed_count=_fe_confirmed_n,
+                        potential_count=_fe_potential_n,
+                    )
                     for o in options
                 ]
                 options = BingoTerminal._filter_next_steps_by_evidence(options, _fe_flags)

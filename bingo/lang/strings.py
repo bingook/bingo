@@ -841,6 +841,16 @@ _STRINGS = {
         "zh": "🔍 [自动校正] 普通页面脚本模式 — 已从 XSS 发现中排除",
         "en": "🔍 [Auto-correct] Generic page script pattern — excluded from XSS findings",
     },
+    "fe_inactive_pattern_autocorrected": {
+        "ko": "🔍 [자동 교정] 실제 테스트 증거 없는 {vtype} 패턴 — 발견에서 제외",
+        "zh": "🔍 [自动校正] {vtype} 模式缺少实际测试证据 — 已从发现中排除",
+        "en": "🔍 [Auto-correct] {vtype} pattern has no active-test evidence — excluded from findings",
+    },
+    "fe_xss_negative_autocorrected": {
+        "ko": "🔍 [자동 교정] 브라우저 음성 검증 — XSS 후보를 발견 목록에서 제거",
+        "zh": "🔍 [自动校正] 浏览器验证为阴性 — 已从发现列表移除 XSS 候选",
+        "en": "🔍 [Auto-correct] Negative browser verification — XSS candidate removed from findings",
+    },
     "fe_candidate_detected": {
         "ko": "검증 필요 후보",
         "zh": "待验证候选",

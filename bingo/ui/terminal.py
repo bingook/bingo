@@ -10173,6 +10173,25 @@ class BingoTerminal:
         return result
 
     # ── v3.2.96: 실시간 발견 감지 + XSS Playwright 자동 검증 ──────────────────
+    def _show_finding_autocorrection(self, reason: str) -> None:
+        """Render a localized message for a FindingsExporter correction."""
+        if reason == "xss_browser_negative":
+            key = "fe_xss_negative_autocorrected"
+            fallback = "[Auto-correct] Negative browser verification removed the XSS candidate"
+        elif reason.startswith("xss_pattern_"):
+            key = "fe_pattern_fp_autocorrected"
+            fallback = "[Auto-correct] Generic page script excluded from XSS findings"
+        else:
+            key = "fe_inactive_pattern_autocorrected"
+            fallback = "[Auto-correct] Pattern without active-test evidence excluded from findings"
+        message = self.s.get(key, fallback)
+        vtype = reason.split("_pattern_", 1)[0].upper() if "_pattern_" in reason else ""
+        try:
+            message = str(message).format(vtype=vtype)
+        except (KeyError, ValueError):
+            message = str(message)
+        self.console.print(f"[{THEME['dim']}]{message}[/]")
+
     def _auto_analyze_findings(self, exec_output: str, code_snippet: str = "") -> None:
         """코드 실행 결과에서 취약점 발견을 감지하고 JSON 자동 누적 저장.
         XSS payload URL이 감지되면 Playwright로 2차 검증을 수행."""
@@ -10194,13 +10213,19 @@ class BingoTerminal:
             code_snippet=code_snippet[:500] if code_snippet else "",
         )
         if not finding:
-            if getattr(self._findings_exporter, "last_autocorrection", ""):
-                _fp_msg = self.s.get(
-                    "fe_pattern_fp_autocorrected",
-                    "Auto-corrected: generic page script is not an XSS finding",
-                )
-                self.console.print(f"[{THEME['dim']}]{_fp_msg}[/]")
+            correction = getattr(self._findings_exporter, "last_autocorrection", "")
+            if correction:
+                self._show_finding_autocorrection(correction)
             return
+
+        # Verify an actionable XSS URL before presenting a finding panel. A
+        # deterministic negative result removes the candidate automatically.
+        if finding.vuln_type == "xss":
+            xss_urls = self._findings_exporter.extract_xss_urls(exec_output)
+            if xss_urls:
+                self._playwright_verify_xss(finding, xss_urls)
+                if finding not in self._findings_exporter.findings:
+                    return
 
         # ── v6.2.76/175: 취약점 알림 박스 (blocked는 별도 톤) ──────────
         from rich.panel import Panel as _AlertPanel
@@ -10255,12 +10280,6 @@ class BingoTerminal:
         if _conf == "blocked":
             return
 
-        # ── XSS URL 탐지 → Playwright 자동 검증 ──────────────────────
-        if finding.vuln_type == "xss":
-            xss_urls = self._findings_exporter.extract_xss_urls(exec_output)
-            if xss_urls:
-                self._playwright_verify_xss(finding, xss_urls)
-
         # ── 자동 저장 (5개 발견마다 중간 저장) ───────────────────────
         if len(self._findings_exporter.findings) % 5 == 0:
             _saved = self._findings_exporter.save()
@@ -10298,6 +10317,7 @@ class BingoTerminal:
             return
 
         confirmed_any = False
+        verification_completed = False
         ss_path = ""
         import time as _t_pw
         import re as _re_pw
@@ -10308,6 +10328,7 @@ class BingoTerminal:
                 _params_m = _re_pw.findall(r'[?&](\w+)=', url)
                 _params = _params_m if _params_m else ["q"]
                 confirmed_params = engine.dom_xss_test(url, _params)
+                verification_completed = True
                 if confirmed_params:
                     confirmed_any = True
                     # 스크린샷 저장
@@ -10339,6 +10360,10 @@ class BingoTerminal:
             self.console.print(f"[#00ff41]{_confirmed_str}[/]")
             if ss_path:
                 self.console.print(f"[#4a4a4a]  Screenshot: {ss_path}[/]")
+        elif verification_completed and self._findings_exporter.reject_finding(
+            finding, "xss_browser_negative"
+        ):
+            self._show_finding_autocorrection("xss_browser_negative")
         else:
             _unconf_msg = self.s.get(
                 "fe_xss_unconfirmed",

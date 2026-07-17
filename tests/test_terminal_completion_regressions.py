@@ -45,7 +45,144 @@ def test_generic_homepage_script_is_not_an_xss_finding(tmp_path: Path) -> None:
     finding = exporter.process(homepage, code_snippet="curl -sk https://example.test/")
 
     assert finding is None
-    assert exporter.last_autocorrection == "xss_pattern_without_test_payload"
+    assert exporter.last_autocorrection == "xss_pattern_without_active_test"
+
+
+def test_xss_response_parser_is_not_an_active_payload(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    homepage = "HTTP 200\n<script>function notice(){alert('hello')}</script>"
+    parser = "body=requests.get(url).text\nif 'alert(' in body: print(body)"
+
+    assert exporter.process(homepage, code_snippet=parser) is None
+    assert exporter.last_autocorrection == "xss_pattern_without_active_test"
+
+
+def test_documentation_patterns_are_autocorrected(tmp_path: Path) -> None:
+    cases = {
+        "ssrf": "Documentation: metadata endpoint 169.254.169.254 is described here.",
+        "lfi": "Example configuration: DB_HOST=localhost DB_PASSWORD=changeme",
+        "rce": "Troubleshooting guide: run cat /etc/passwd to inspect accounts.",
+        "auth_bypass": "Example URL: https://docs.example/admin/",
+        "credential": "Example JSON: password='example123'",
+    }
+    for expected_type, output in cases.items():
+        exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+        finding = exporter.process(f"HTTP 200\n{output}", "curl -sk https://example.test/docs")
+        assert finding is None
+        assert exporter.last_autocorrection == f"{expected_type}_pattern_without_active_test"
+
+
+def test_active_security_tests_remain_candidates(tmp_path: Path) -> None:
+    cases = [
+        (
+            "sqli",
+            "HTTP 200\ntable_name=users",
+            "curl 'https://example.test/?id=1 UNION SELECT table_name FROM information_schema.tables'",
+        ),
+        (
+            "ssrf",
+            "HTTP 200\n169.254.169.254 returned 200 OK",
+            "requests.get('http://169.254.169.254/latest/meta-data/')",
+        ),
+        (
+            "lfi",
+            "HTTP 200\nroot:x:0:0:root:/root:/bin/bash",
+            "curl 'https://example.test/?file=../../../../etc/passwd'",
+        ),
+        (
+            "rce",
+            "HTTP 200\ncat /etc/passwd command accepted",
+            "requests.get(url, params={'cmd': 'cat /etc/passwd'})",
+        ),
+        (
+            "auth_bypass",
+            "HTTP 200\nURL: https://example.test/admin/",
+            "curl -H 'Authorization: Bearer test' https://example.test/admin/",
+        ),
+        (
+            "credential",
+            "HTTP 200\npassword='example123'",
+            "requests.get(url, params={'action': 'credential_extract'})",
+        ),
+    ]
+    for expected_type, output, code in cases:
+        exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+        finding = exporter.process(output, code)
+        assert finding is not None
+        assert finding.vuln_type == expected_type
+        assert finding.confidence == "potential"
+        assert finding.severity != "CRITICAL"
+        assert exporter.last_autocorrection == ""
+
+
+def test_negative_verification_removes_potential_finding(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    payload = "<img src=x onerror=alert(1)>"
+    finding = exporter.process(
+        f"HTTP 200\nreflected={payload}",
+        f"curl 'https://example.test/?q={payload}'",
+    )
+    assert finding is not None
+
+    assert exporter.reject_finding(finding, "xss_browser_negative")
+    assert exporter.findings == []
+    assert exporter.last_autocorrection == "xss_browser_negative"
+    assert exporter.autocorrections == ["xss_browser_negative"]
+    assert exporter.autocorrection_counts == {"xss_browser_negative": 1}
+
+
+def test_short_output_clears_previous_autocorrection(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    exporter.process("HTTP 200\npassword='example123'", "curl https://example.test/docs")
+    assert exporter.last_autocorrection
+
+    assert exporter.process("short") is None
+    assert exporter.last_autocorrection == ""
+
+
+def test_browser_confirmation_replaces_pattern_reason(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    payload = "<img src=x onerror=alert(1)>"
+    finding = exporter.process(
+        f"HTTP 200\nreflected={payload}",
+        f"curl 'https://example.test/?q={payload}'",
+    )
+    assert finding is not None
+
+    exporter.mark_confirmed(finding)
+    assert finding.confirmed
+    assert finding.confidence == "confirmed"
+    assert finding.reason_code == "xss_browser_confirmed"
+
+
+def test_negative_xss_verification_skips_finding_panel(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.config = SimpleNamespace(lang="en")
+    terminal.console = _Console()
+    terminal.s = {
+        "fe_xss_negative_autocorrected": "negative XSS auto-corrected",
+    }
+    terminal._agent_state = {"target": "https://example.test"}
+    terminal._findings_exporter = exporter
+
+    def reject_candidate(finding, _urls) -> None:
+        exporter.reject_finding(finding, "xss_browser_negative")
+        terminal._show_finding_autocorrection("xss_browser_negative")
+
+    terminal._playwright_verify_xss = reject_candidate
+    output = (
+        "HTTP 200\nPAYLOAD_REFLECTED XSS detected\n"
+        "URL: https://example.test/?q=%3Cimg%20src=x%20onerror=alert(1)%3E"
+    )
+    terminal._auto_analyze_findings(
+        output,
+        "curl 'https://example.test/?q=<img onerror=alert(1)>'",
+    )
+
+    assert exporter.findings == []
+    assert len(terminal.console.messages) == 1
+    assert "negative XSS auto-corrected" in terminal.console.messages[0]
 
 
 def test_attempted_xss_payload_remains_a_candidate(tmp_path: Path) -> None:

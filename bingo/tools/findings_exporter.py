@@ -176,11 +176,74 @@ _XSS_PAYLOAD_IN_CODE = re.compile(
     r'(?:<script|alert\s*\(|onerror\s*=|javascript:|<img[^>]+on\w+=|<svg[^>]+on\w+=|%3cscript|%3ealert)',
     re.I,
 )
+_XSS_ACTIVE_PAYLOAD = re.compile(
+    r'(?:<script|onerror\s*=|onload\s*=|javascript:|'
+    r'<(?:img|svg|body)[^>]+on\w+\s*=|%3c(?:script|img|svg|body))',
+    re.I,
+)
 _XSS_TEST_EVIDENCE = re.compile(
     r'(?:bINg0XsS\w*|BINGO[_-]?XSS|PAYLOAD[_ -]?REFLECTED|'
     r'XSS.{0,40}(?:confirmed|reflected|executed|browser\s+verified))',
     re.I,
 )
+
+_ACTIVE_HTTP_TEST = re.compile(
+    r'\b(?:curl|wget|httpx|requests\.(?:get|post|request)|'
+    r'session\.(?:get|post|request)|urllib|fetch\s*\(|page\.goto|dom_xss_test)\b',
+    re.I,
+)
+_ACTIVE_TEST_PAYLOADS = {
+    FINDING_SQLI: re.compile(
+        r'(?:union\s+(?:all\s+)?select|(?:or|and)\s+[\'"\d]+\s*=\s*[\'"\d]+'
+        r'|sleep\s*\(|benchmark\s*\(|waitfor\s+delay|extractvalue\s*\('
+        r'|updatexml\s*\(|information_schema|sql.?inject|\bsqli\b)',
+        re.I,
+    ),
+    FINDING_SSRF: re.compile(
+        r'(?:169\.254\.(?:169\.254|170\.2)|metadata\.google\.internal|'
+        r'127\.0\.0\.1|localhost|\[?::1\]?|gopher://|dict://|file://|\bssrf\b)',
+        re.I,
+    ),
+    FINDING_LFI: re.compile(
+        r'(?:\.\./|%2e%2e|php://filter|/etc/(?:passwd|shadow|hosts)|'
+        r'/proc/self/environ|boot\.ini|win\.ini|\blfi\b|local.?file.?inclusion)',
+        re.I,
+    ),
+    FINDING_RCE: re.compile(
+        r'(?:[;&|`]\s*(?:id|whoami|uname|cat|type|dir)\b|\$\([^)]*\)|'
+        r'[\'\"]?(?:cmd|command|exec|shell)[\'\"]?\s*[=:]|\brce\b|remote.?code.?execution)',
+        re.I,
+    ),
+    FINDING_AUTH_BYPASS: re.compile(
+        r'(?:/admin(?:/|\b)|authorization|bearer\s+|cookie\s*[=:]|'
+        r'jwt|auth.?bypass|login.?bypass|role\s*[=:]\s*[\'\"]?admin)',
+        re.I,
+    ),
+    FINDING_CREDENTIAL: re.compile(
+        r'(?:credential|password|passwd|hash|login|dump|extract|\bsqli\b|sql.?inject)',
+        re.I,
+    ),
+}
+
+
+def _potential_autocorrection_reason(
+    vtype: str,
+    output: str,
+    code_snippet: str,
+) -> str:
+    """Return an auto-correction reason when a pattern has no active test context."""
+    code = code_snippet or ""
+    if vtype == FINDING_XSS:
+        if _XSS_TEST_EVIDENCE.search(output):
+            return ""
+        if _ACTIVE_HTTP_TEST.search(code) and _XSS_ACTIVE_PAYLOAD.search(code):
+            return ""
+        return "xss_pattern_without_active_test"
+
+    payload_pattern = _ACTIVE_TEST_PAYLOADS.get(vtype)
+    if payload_pattern and _ACTIVE_HTTP_TEST.search(code) and payload_pattern.search(code):
+        return ""
+    return f"{vtype}_pattern_without_active_test"
 
 _XSS_URL_PATTERN = re.compile(
     r'https?://[^\s"\'<>]+(?:%3C|<)(?:script|img|svg|body)[^\s"\'<>]*',
@@ -572,6 +635,10 @@ def _detect_vuln_type_raw(output: str, code_snippet: str = "") -> tuple[str, str
         _SQLI_CONTEXT_KEYWORDS.search(code_snippet)
         or _SQLI_CONTEXT_KEYWORDS.search(output)
     )
+    _lfi_test_context = bool(
+        _ACTIVE_HTTP_TEST.search(code_snippet)
+        and _ACTIVE_TEST_PAYLOADS[FINDING_LFI].search(code_snippet)
+    )
 
     if _sqli_context:
         checks = [
@@ -610,6 +677,10 @@ def _detect_vuln_type_raw(output: str, code_snippet: str = "") -> tuple[str, str
         if vtype == FINDING_XSS and _skip_xss:
             continue
         for pat in patterns:
+            # A bare "password=..." is credential-shaped unless an LFI payload
+            # actively requested a configuration file.
+            if vtype == FINDING_LFI and pat is _LFI_PATTERNS[-1] and not _lfi_test_context:
+                continue
             if pat.search(output):
                 return (vtype, sev)
     return None
@@ -660,6 +731,8 @@ class FindingsExporter:
         self._finding_hashes: set[str] = set()   # 중복 방지
         self._blocked_reasons: set[str] = set()  # v6.2.175: blocked reason 중복 방지
         self.last_autocorrection: str = ""
+        self.autocorrections: list[str] = []
+        self.autocorrection_counts: dict[str, int] = {}
 
         if output_dir:
             self._dir = Path(output_dir)
@@ -708,10 +781,10 @@ class FindingsExporter:
           NONE      → 무시
           상위 티어가 나오면 기존 하위(blocked) finding 자동 승격
         """
+        self.last_autocorrection = ""
         if not output or len(output.strip()) < 10:
             return None
 
-        self.last_autocorrection = ""
         verdict = _evidence_ladder(output, code_snippet=code_snippet)
         if verdict.tier == CONF_NONE:
             return None
@@ -784,16 +857,13 @@ class FindingsExporter:
                 return None
             vtype, severity = FINDING_SQLI, SEVERITY_HIGH
 
-        # v6.2.187: generic page JavaScript/server alert is not an XSS finding.
-        # Potential XSS requires an attempted payload or a scanner/browser marker.
-        if (
-            verdict.tier == CONF_POTENTIAL
-            and vtype == FINDING_XSS
-            and not _XSS_PAYLOAD_IN_CODE.search(code_snippet or "")
-            and not _XSS_TEST_EVIDENCE.search(output)
-        ):
-            self.last_autocorrection = "xss_pattern_without_test_payload"
-            return None
+        # Pattern-only candidates must be tied to an active test. This central
+        # gate prevents documentation and normal page content from becoming findings.
+        if verdict.tier == CONF_POTENTIAL:
+            correction = _potential_autocorrection_reason(vtype, output, code_snippet)
+            if correction:
+                self._record_autocorrection(correction)
+                return None
 
         # ladder → confidence / confirmed / severity 매핑
         if verdict.tier == CONF_CONFIRMED:
@@ -808,9 +878,8 @@ class FindingsExporter:
         else:  # POTENTIAL
             confidence, confirmed = CONF_POTENTIAL, False
             if severity == SEVERITY_CRITICAL:
-                # 패턴만으로 Critical Confirmed 금지
-                severity = SEVERITY_HIGH if vtype == FINDING_SQLI else severity
-                confidence = CONF_POTENTIAL
+                # Pattern-only evidence can never carry CRITICAL severity.
+                severity = SEVERITY_HIGH
 
         _hash = hashlib.md5(
             (f"{verdict.tier}:{vtype}:" + evidence[:200]).encode("utf-8", errors="ignore")
@@ -835,6 +904,27 @@ class FindingsExporter:
         self._findings.append(finding)
         self._promote_to_tier(vtype, confidence, confirmed, verdict.reason_code, evidence)
         return finding
+
+    def _record_autocorrection(self, reason: str) -> None:
+        self.last_autocorrection = reason
+        self.autocorrection_counts[reason] = self.autocorrection_counts.get(reason, 0) + 1
+        if reason not in self.autocorrections:
+            self.autocorrections.append(reason)
+
+    def reject_finding(self, finding: Finding, reason: str) -> bool:
+        """Remove a candidate after a deterministic negative verification."""
+        if finding not in self._findings or finding.confirmed:
+            return False
+        self._findings.remove(finding)
+        import hashlib
+        finding_hash = hashlib.md5(
+            (f"{finding.confidence}:{finding.vuln_type}:" + (finding.evidence or "")[:200]).encode(
+                "utf-8", errors="ignore"
+            )
+        ).hexdigest()[:12]
+        self._finding_hashes.discard(finding_hash)
+        self._record_autocorrection(reason)
+        return True
 
     def _promote_to_tier(
         self,
@@ -881,7 +971,7 @@ class FindingsExporter:
         """Playwright 등 2차 검증 = Ladder CONFIRMED 승격."""
         finding.confirmed = True
         finding.confidence = CONF_CONFIRMED
-        finding.reason_code = finding.reason_code or REASON_XSS_BROWSER
+        finding.reason_code = REASON_XSS_BROWSER
         if screenshot_path:
             finding.screenshot_path = screenshot_path
 
@@ -901,6 +991,9 @@ class FindingsExporter:
             "bingo_version": _get_version(),
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "target": self.target,
+            "autocorrection_count": sum(self.autocorrection_counts.values()),
+            "autocorrections": list(self.autocorrections),
+            "autocorrection_counts": dict(self.autocorrection_counts),
             **_stats,
             "findings": [f.to_dict() for f in self._findings],
         }
@@ -988,6 +1081,7 @@ class FindingsExporter:
             f"potential={s.get('potential', 0)} blocked={s['blocked']} "
             f"critical_confirmed={s['critical']}",
             f"reason_codes={s['reason_codes'] or []}",
+            f"autocorrections={self.autocorrection_counts or {}}",
         ]
         for f in self._findings:
             lines.append(

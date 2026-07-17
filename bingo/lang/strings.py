@@ -9729,27 +9729,70 @@ _STRINGS.update({
 
 
 def get_text(key: str, default: str = "") -> str:
-    """현재 i18n 언어로 문자열 반환. advanced_scanners / vuln_scanner_plus _t()용."""
+    """현재 i18n 언어로 문자열 반환. advanced_scanners / vuln_scanner_plus _t()용.
+
+    v6.2.178: zh에서 Hangul 누출 시 en 폴백.
+    """
     try:
-        from bingo.i18n import get_lang
+        from bingo.i18n import get_lang, has_hangul
         lang = get_lang()
     except Exception:
         lang = "en"
+        has_hangul = lambda s: False  # type: ignore
     entry = _STRINGS.get(key)
     if entry is None:
+        if lang != "ko" and has_hangul(default):
+            return key
         return default
-    return entry.get(lang) or entry.get("en") or default
+    primary = entry.get(lang) or ""
+    en = entry.get("en") or ""
+    if lang == "zh" and has_hangul(primary):
+        primary = en
+    if not primary:
+        primary = en or default
+    if lang == "zh" and has_hangul(primary):
+        primary = en or key
+    return primary
 
 
 def get_strings(lang: str = "en") -> dict:
-    """특정 언어의 모든 문자열 반환"""
+    """특정 언어의 모든 문자열 반환.
+
+    v6.2.178: zh 값에 Hangul이 있으면 해당 키만 en으로 교체 (UI 한국어 누출 방지).
+    """
     if lang not in SUPPORTED_LANGS:
         lang = "en"
-    return {k: v.get(lang, v.get("en", "")) for k, v in _STRINGS.items()}
+    try:
+        from bingo.i18n import has_hangul
+    except Exception:
+        def has_hangul(s: str) -> bool:  # type: ignore
+            return False
+    out = {}
+    for k, v in _STRINGS.items():
+        val = v.get(lang, "") or ""
+        if lang == "zh" and has_hangul(val):
+            val = v.get("en", "") or val
+        if not val:
+            val = v.get("en", "") or ""
+        out[k] = val
+    return out
 
 
 def get_slash_commands(lang: str = "en") -> list:
     """슬래시 자동완성 명령어 목록 (현재 언어 기준)"""
     if lang not in SUPPORTED_LANGS:
         lang = "en"
-    return [(cmd, desc.get(lang, desc.get("en", ""))) for cmd, desc in _SLASH_DESC.items()]
+    try:
+        from bingo.i18n import has_hangul
+    except Exception:
+        def has_hangul(s: str) -> bool:  # type: ignore
+            return False
+    result = []
+    for cmd, desc in _SLASH_DESC.items():
+        val = desc.get(lang, "") or ""
+        if lang == "zh" and has_hangul(val):
+            val = desc.get("en", "") or val
+        if not val:
+            val = desc.get("en", "") or ""
+        result.append((cmd, val))
+    return result

@@ -16,13 +16,23 @@ from typing import Any, Callable, Optional
 
 
 def _nl(ko: str, zh: str, en: str) -> str:
-    """현재 설정 언어에 맞는 문자열 반환."""
+    """현재 설정 언어에 맞는 문자열 반환.
+
+    v6.2.178: zh에 Hangul 혼입 시 en 폴백.
+    """
     try:
-        from ..i18n import get_lang
+        from ..i18n import get_lang, has_hangul
         lang = get_lang()
     except Exception:
         lang = "en"
-    return {"ko": ko, "zh": zh, "en": en}.get(lang, en)
+        has_hangul = lambda s: False  # type: ignore
+    if lang == "zh":
+        if zh and not has_hangul(zh):
+            return zh
+        return en
+    if lang == "ko":
+        return ko
+    return en
 
 
 # ─────────────────────────────────────────────────────────────────────────────

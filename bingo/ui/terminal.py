@@ -226,10 +226,23 @@ class BingoTerminal:
             set_lang(getattr(config, "lang", "en"))
         except Exception:
             pass
-        # v6.2.101: 자동 교정기 공지 언어 동기화
+        # v6.2.101/178: 자동 교정기 공지 언어 동기화 (기본 en — zh에서 한국어 누출 방지)
         try:
             from ..tools_ext.pentest_tools import set_notice_lang
-            set_notice_lang(getattr(config, "lang", "ko"))
+            set_notice_lang(getattr(config, "lang", "en"))
+        except Exception:
+            pass
+
+        # v6.2.178: self.s 값에 Hangul이 섞인 zh 누출 최종 방어
+        try:
+            from ..i18n import has_hangul, get_lang
+            if get_lang() == "zh" or getattr(config, "lang", "") == "zh":
+                from ..lang.strings import _STRINGS as _S_FIX
+                for _sk, _sv in list(self.s.items()):
+                    if isinstance(_sv, str) and has_hangul(_sv):
+                        _en = (_S_FIX.get(_sk) or {}).get("en") or ""
+                        if _en and not has_hangul(_en):
+                            self.s[_sk] = _en
         except Exception:
             pass
         self.console = Console(highlight=False)
@@ -4322,10 +4335,10 @@ class BingoTerminal:
             self._warn(self.s["lang_invalid"].format(raw=raw))
             return
 
-        # 설정 저장 + strings 갱신
-            self.config.lang = lang
-            self.config.save()
-            self.s = get_strings(lang)
+        # 설정 저장 + strings 갱신 (v6.2.178: 들여쓰기 버그 수정 — 이전엔 if블록 안 unreachable)
+        self.config.lang = lang
+        self.config.save()
+        self.s = get_strings(lang)
 
         # 전역 i18n 동기화
         try:
@@ -4333,8 +4346,13 @@ class BingoTerminal:
             _set_lang(lang)
         except Exception:
             pass
+        try:
+            from ..tools_ext.pentest_tools import set_notice_lang as _snl
+            _snl(lang)
+        except Exception:
+            pass
 
-            self._success(self.s["lang_saved"])
+        self._success(self.s["lang_saved"])
         self.console.print(
             f"  [{THEME['dim']}]{self.s['lang_changed'].format(lang=SUPPORTED_LANGS[lang])}[/]"
         )
@@ -11364,7 +11382,7 @@ class BingoTerminal:
             ]
             if any(s in text.lower() for s in _cred_signals):
                 _t = {"ko": "🚨 BINGO — 크레덴셜 발견!", "zh": "🚨 BINGO — 发现凭据!", "en": "🚨 BINGO — Credential Found!"}.get(_lang, "🚨 BINGO — Critical!")
-                _b = {"ko": "관리자 자격증명이 발견되었습니다.", "zh": "发现了管리员凭据。", "en": "Admin credentials have been found."}.get(_lang, "Credential found.")
+                _b = {"ko": "관리자 자격증명이 발견되었습니다.", "zh": "发现了管理员凭据。", "en": "Admin credentials have been found."}.get(_lang, "Credential found.")
                 self._send_notification(_t, _b, critical=True)
             return
 
@@ -11494,7 +11512,13 @@ class BingoTerminal:
 
         # 세션 로그에 저장
         if cracked:
-            lines = ["## 🔓 자동 크랙 결과\n"]
+            _lang_log = getattr(self.config, "lang", "en")
+            _hdr = {
+                "ko": "## 🔓 자동 크랙 결과\n",
+                "zh": "## 🔓 自动破解结果\n",
+                "en": "## 🔓 Auto-crack results\n",
+            }.get(_lang_log, "## 🔓 Auto-crack results\n")
+            lines = [_hdr]
             for h, p in cracked.items():
                 lines.append(f"- `{h}` → **{p}**\n")
             self._append_to_session_log("assistant", "".join(lines))
@@ -12918,16 +12942,25 @@ class BingoTerminal:
                 db.load(passive=fake_passive, active=fake_active)
 
                 severity = parts[2] if len(parts) > 2 else "critical,high,medium"
-                self.console.print(
-                    f"[bold cyan]🧬 Nuclei 스캔 시작: {target}[/bold cyan]")
+                _lang_n = getattr(self.config, "lang", "en")
+                _nuclei_start = {
+                    "ko": f"🧬 Nuclei 스캔 시작: {target}",
+                    "zh": f"🧬 Nuclei 扫描开始: {target}",
+                    "en": f"🧬 Nuclei scan started: {target}",
+                }.get(_lang_n, f"🧬 Nuclei scan: {target}")
+                self.console.print(f"[bold cyan]{_nuclei_start}[/bold cyan]")
                 findings_str = db.run_nuclei(severity=severity)
 
                 if findings_str.strip():
                     self.console.print(f"\n[bold red]{self.s.get('nuclei_results_label', '🧬 Nuclei results:')}[/bold red]")
                     self.console.print(findings_str)
                 else:
-                    self.console.print(
-                        "[yellow]  Nuclei 스캔 결과 없음 (nuclei 미설치 또는 취약점 없음)[/yellow]")
+                    _nuclei_empty = {
+                        "ko": "  Nuclei 스캔 결과 없음 (nuclei 미설치 또는 취약점 없음)",
+                        "zh": "  Nuclei 无结果（未安装 nuclei 或无漏洞）",
+                        "en": "  No Nuclei findings (nuclei not installed or no vulns)",
+                    }.get(_lang_n, "  No Nuclei findings")
+                    self.console.print(f"[yellow]{_nuclei_empty}[/yellow]")
 
             except ImportError as e:
                 self._warn(f"Recon nuclei module import error: {e}")
@@ -12948,11 +12981,21 @@ class BingoTerminal:
                     self.console.print(f"  {d}")
 
                 # 클립보드에 복사 힌트
-                self.console.print(
-                    f"\n[dim]💡 복사: /recon dorks {target} | pbcopy (macOS)[/dim]")
+                _lang_d = getattr(self.config, "lang", "en")
+                _copy_hint = {
+                    "ko": f"\n💡 복사: /recon dorks {target} | pbcopy (macOS)",
+                    "zh": f"\n💡 复制: /recon dorks {target} | pbcopy (macOS)",
+                    "en": f"\n💡 Copy: /recon dorks {target} | pbcopy (macOS)",
+                }.get(_lang_d, f"\n💡 Copy: /recon dorks {target} | pbcopy (macOS)")
+                self.console.print(f"[dim]{_copy_hint}[/dim]")
             except ImportError as e:
                 self._warn(f"Recon dorks module import error: {e}")
 
         else:
-            self._warn(self.s.get("recon_unknown_sub",
-                f"알 수 없는 Recon 서브 명령: '{sub}'. /recon 으로 도움말 확인"))
+            _lang_u = getattr(self.config, "lang", "en")
+            _unk = {
+                "ko": f"알 수 없는 Recon 서브 명령: '{sub}'. /recon 으로 도움말 확인",
+                "zh": f"未知 Recon 子命令: '{sub}'。输入 /recon 查看帮助",
+                "en": f"Unknown Recon subcommand: '{sub}'. Use /recon for help",
+            }.get(_lang_u, f"Unknown Recon subcommand: '{sub}'")
+            self._warn(self.s.get("recon_unknown_sub", _unk))

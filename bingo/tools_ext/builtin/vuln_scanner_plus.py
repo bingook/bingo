@@ -1171,7 +1171,17 @@ def ssrf_scan_plus(
     
     sess = _sess(session_headers)
     findings = []
-    
+
+    # v6.2.167: baseline 응답 가져오기 (오탐 방지)
+    _baseline_body = ""
+    _baseline_p = dict(extra_params or {})
+    _baseline_r = _req(sess, method, url,
+                       params=_baseline_p if method.upper() == "GET" else None,
+                       data=_baseline_p if method.upper() == "POST" else None,
+                       timeout=6)
+    if _baseline_r is not None:
+        _baseline_body = _baseline_r.text
+
     print(_banner(_t("ssrf_plus_banner", "🌐 SSRF Enhanced Scan (140+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     for payload in SSRF_PAYLOADS_PLUS:
@@ -1187,7 +1197,10 @@ def ssrf_scan_plus(
             continue
         
         body = r.text
-        matched = [s for s in _SSRF_SIGS_PLUS if s.lower() in body.lower()]
+        # v6.2.167: baseline에 없는 sig만 유효하게 처리 + payload echo 감지
+        raw_matched = [s for s in _SSRF_SIGS_PLUS if s.lower() in body.lower()]
+        # baseline에도 있는 sig 제거 (정상 응답에 원래 있던 것)
+        matched = [s for s in raw_matched if s.lower() not in _baseline_body.lower()]
         
         # 타임아웃 이상 (내부 서버 응답 지연)
         if elapsed > 4.5 and r.status_code == 200:
@@ -1195,7 +1208,16 @@ def ssrf_scan_plus(
             print(f"  🟡 SSRF timing anomaly: {payload[:60]} ({elapsed:.1f}s)")
         
         if matched and len(body) > 50:
-            severity = "🔴 CONFIRMED" if any(s in ["ami-id", "computeMetadata", "root:x:0:0"] for s in matched) else "🟡 SUSPECTED"
+            # v6.2.167: CONFIRMED 판정 — sig가 payload URL 자체에 포함된 경우는
+            # 단순 echo 가능성이 높으므로 CONFIRMED에서 제외
+            # 예: "computeMetadata" → payload URL에 포함 → SUSPECTED
+            # "ami-id", "project-id" 등 → payload에 없음 → CONFIRMED 가능
+            _confirmed_candidates = ["ami-id", "computeMetadata", "root:x:0:0"]
+            _real_confirmed_sigs = [
+                s for s in _confirmed_candidates
+                if s in matched and s.lower() not in payload.lower()
+            ]
+            severity = "🔴 CONFIRMED" if _real_confirmed_sigs else "🟡 SUSPECTED"
             print(f"  {severity}: {payload[:60]} — sigs: {matched[:3]}")
             findings.append({"payload": payload, "signatures": matched, "excerpt": body[:200]})
             if len(findings) >= 5:
@@ -1227,7 +1249,17 @@ def ssti_scan_plus(
     
     sess = _sess(session_headers)
     findings = []
-    
+
+    # v6.2.167: baseline 응답 가져오기 (오탐 방지)
+    # "49" 같은 expected 값은 WAF 페이지나 정상 HTML에도 있을 수 있음
+    _baseline_body = ""
+    _baseline_p = dict(extra_params or {})
+    _baseline_r = _req(sess, method, url,
+                       params=_baseline_p if method.upper() == "GET" else None,
+                       data=_baseline_p if method.upper() == "POST" else None)
+    if _baseline_r is not None:
+        _baseline_body = _baseline_r.text
+
     print(_banner(_t("ssti_plus_banner", "🧩 SSTI Enhanced Scan (120+ payloads) — {url} [{param}]").format(url=url, param=param)))
     
     for payload, expected, engine in SSTI_PAYLOADS_PLUS:
@@ -1241,7 +1273,10 @@ def ssti_scan_plus(
         
         body = r.text
         if expected and expected in body:
-            # False positive 확인: expected가 정상 응답에도 있으면 제외
+            # v6.2.167: baseline에 expected가 이미 있으면 오탐 — 스킵
+            # "49" 같은 숫자는 WAF 페이지나 정상 HTML에 흔히 존재
+            if _baseline_body and expected in _baseline_body:
+                continue
             print(f"  🔴 SSTI Confirmed [{engine}]: {payload[:50]} → '{expected}' found")
             findings.append({"payload": payload, "expected": expected, "engine": engine})
             if len(findings) >= 5:

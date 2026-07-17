@@ -585,6 +585,24 @@ def extract_hashes_from_text(text: str, strict: bool = True) -> list[str]:
             ):
                 continue  # 쿠키 이름 컨텍스트 → 오탐
 
+            # v6.2.167: 세션 쿠키 값(PHPSESSID=<hash>, uniq_id=<hash> 등) 오탐 방지
+            # Set-Cookie: name=<hash> 형태에서 hash 값을 DB 해시로 오인하는 케이스
+            _pre_char = text[m.start() - 1] if m.start() > 0 else ''
+            if _pre_char == '=':
+                _pre60 = text[max(0, m.start() - 80):m.start()]
+                # 알려진 세션/추적 쿠키 이름 패턴
+                _SESSION_COOKIE_RE = re.compile(
+                    r'\b(?:PHPSESSID|JSESSIONID|ASP\.NET_SessionId|session(?:_?id)?'
+                    r'|sessid|uniq_id|visitor_id|tracking_id|uid|token|csrftoken'
+                    r'|_ga|_gid|sid|auth|remember_token|laravel_session)\s*=\s*$',
+                    re.IGNORECASE
+                )
+                if _SESSION_COOKIE_RE.search(_pre60):
+                    continue  # 세션/추적 쿠키 값 → 오탐
+                # Set-Cookie: 헤더에서 name= 패턴 (이름이 위 목록에 없어도)
+                if re.search(r'Set-Cookie[:\s]+\w[\w.-]*=\s*$', _pre60, re.IGNORECASE):
+                    continue  # Set-Cookie 헤더 값 → 오탐
+
             # OLD_PASSWORD 16-char(idx 8): passwd=/hash= 같은 컨텍스트 키워드 필수
             if idx == 8:
                 ctx_start = max(0, m.start() - 60)

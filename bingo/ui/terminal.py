@@ -1073,127 +1073,227 @@ class BingoTerminal:
     # ────────────────────────────────────────────────────────────────
     # 실행 루프 중 힌트 입력 — Ctrl+C 후 힌트 주면 루프 유지
     # ────────────────────────────────────────────────────────────────
+    def _normalize_mid_task_hint(self, hint: str) -> str:
+        """Ctrl+C 후 'continue/继续/계속' 같은 빈 재개어를 agent_state 기반 재개 지시로 확장.
+
+        채팅 피드백: hint에 continue만 넣으면 AI가 무엇을 이을지 모름 → 먹통처럼 보임.
+        """
+        _raw = (hint or "").strip()
+        if not _raw:
+            return _raw
+        _h = _raw.lower()
+        _resume = {
+            "continue", "cont", "c", "go on", "resume", "go",
+            "继续", "继续吧", "继续干", "继续执行", "接着", "接着做", "接着干",
+            "继续攻击", "往下", "下一步",
+            "계속", "계속해", "계속하세요", "이어서", "이어가", "다음",
+        }
+        if _h not in _resume and _raw not in _resume:
+            return _raw
+
+        _st = getattr(self, "_agent_state", {}) or {}
+        _target = _st.get("target", "") or ""
+        _findings = _st.get("findings") or _st.get("confirmed") or []
+        _find_s = ""
+        if isinstance(_findings, list) and _findings:
+            _find_s = "; ".join(str(x)[:80] for x in _findings[:5])
+        elif isinstance(_findings, str):
+            _find_s = _findings[:200]
+
+        _lang = getattr(self.config, "lang", "en")
+        if _lang == "zh":
+            return (
+                f"[中断后继续]\n"
+                f"目标: {_target or '(见对话历史)'}\n"
+                f"已知: {_find_s or '(见对话历史)'}\n"
+                f"不要从头重来。根据历史结果执行下一步攻击。"
+                f"立即输出下一个 TOOL_CALL 或 bash 代码块。"
+            )
+        if _lang == "ko":
+            return (
+                f"[중단 후 재개]\n"
+                f"타겟: {_target or '(대화 기록 참고)'}\n"
+                f"알려진 결과: {_find_s or '(대화 기록 참고)'}\n"
+                f"처음부터 다시 하지 말고, 이어서 다음 공격 단계를 실행하세요. "
+                f"즉시 다음 TOOL_CALL 또는 bash 코드 블록을 출력하세요."
+            )
+        return (
+            f"[RESUME AFTER INTERRUPT]\n"
+            f"Target: {_target or '(see chat history)'}\n"
+            f"Known: {_find_s or '(see chat history)'}\n"
+            f"Do NOT restart from scratch. Continue the next unfinished attack step. "
+            f"Emit the next TOOL_CALL or bash block NOW."
+        )
+
     def _prompt_mid_task_hint(self) -> "str | None":
         """Ctrl+C 눌렀을 때 힌트를 입력받고 반환.
         빈 입력 → None (루프 중단), 텍스트 입력 → 힌트 주입 후 루프 계속.
 
-        v6.2.104: 근본 수정 — /dev/tty + input() 직접 읽기 방식으로 통일.
-                prompt_toolkit PromptSession은 asyncio 이벤트 루프가 활성일 때
-                완전 동결되는 문제가 있어 제거. 붙여넣기/입력 안 되는 버그 해결.
+        v6.2.104: /dev/tty + input() — prompt_toolkit asyncio 동결 회피.
+        v6.2.180: Type A 먹통 수정
+          1) /dev/tty 성공 return 시 SIGINT 핸들러 미복구 버그 (이후 Ctrl+C/입력이 죽음)
+          2) Ctrl+C 잔여 바이트로 즉시 빈 Enter 처리되는 버그 → tcflush
+          3) 백그라운드 도구 출력과 경합 → 짧은 settle
+          4) continue/继续  alone → agent_state 재개 지시로 자동 확장
         """
         import sys as _sys
         import signal as _signal
         import os as _os
+        import time as _time
 
         _orig_sigint = _signal.getsignal(_signal.SIGINT)
-        _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
+        _hint_out: "str | None" = None
 
-        # 터미널 상태 복구 (커서가 줄 중간에 걸려 있을 때)
-        _sys.stdout.write("\r\n")
-        _sys.stdout.flush()
-        _sys.stderr.write("\r\n")
-        _sys.stderr.flush()
-
-        _lang = getattr(self.config, "lang", "en")
-        _s_hint = get_strings(_lang)
-        _pause_msg = _s_hint.get("hint_loop_paused", "⚡ Loop paused — type hint or Enter to stop")
-        _continue_msg = _s_hint.get("hint_loop_continue", "(Press Enter directly or Ctrl+C again to stop)")
-        self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]")
-        self.console.print(f"[{THEME['dim']}]{_continue_msg}[/]\n")
-        self.console.file.flush()
-
-        # ── v6.2.104: /dev/tty 직접 읽기 — prompt_toolkit 완전 우회 ─────────────
-        # prompt_toolkit PromptSession은 asyncio 이벤트루프가 살아 있을 때 완전 동결됨.
-        # /dev/tty로 제어 터미널에서 직접 한 줄 읽으면 stdin 오염/asyncio 상태에 무관.
         try:
-            import termios as _termios, tty as _tty_mod
-            _tty_ok = _os.path.exists("/dev/tty")
-        except ImportError:
-            _tty_ok = False
-            _termios = None  # type: ignore[assignment]
+            # hint 입력 중 Ctrl+C = 취소(기본 동작). 종료 후 반드시 커스텀 핸들러 복구.
+            _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
 
-        if _tty_ok and _termios is not None:
-            _tty_fd_raw = None
-            _old_attr = None
-            try:
-                # v6.2.169: binary raw 모드로 열기 — 캐노니컬 모드의 4096B 라인버퍼 제한 우회
-                # macOS TTY 캐노니컬 모드는 한 줄 입력을 4096B로 잘라버림.
-                # raw 모드에서 문자 단위로 읽으면 붙여넣기도 제한 없이 수신 가능.
-                _tty_fd_raw = open("/dev/tty", "rb+", buffering=0)
-                _old_attr = _termios.tcgetattr(_tty_fd_raw)
+            # 도구 스레드/Live 출력이 가라앉을 시간 (힌트 프롬프트와 경합 → 먹통)
+            _time.sleep(0.2)
 
-                # raw 모드 전환 (canonical/echo 비활성 → 캐릭터 단위 즉시 전달)
-                _new_attr = list(_old_attr)
-                import termios as _tc
-                _new_attr[3] = _new_attr[3] & ~(_tc.ECHO | _tc.ICANON)
-                _new_attr[6][_tc.VMIN] = 1
-                _new_attr[6][_tc.VTIME] = 0
-                _termios.tcsetattr(_tty_fd_raw, _termios.TCSADRAIN, _new_attr)
-
-                # 프롬프트 출력
-                _prompt_b = "💬 hint ❯ ".encode("utf-8")
-                _tty_fd_raw.write(_prompt_b)
-                _tty_fd_raw.flush()
-
-                # 문자 단위로 읽어 누적 — 길이 제한 없음
-                # v6.2.170: select() 5분 타임아웃 → 입력 없으면 먹통 방지
-                import select as _sel_hint
-                _chars: list[bytes] = []
-                while True:
-                    _rdy2, _, _ = _sel_hint.select([_tty_fd_raw], [], [], 300.0)
-                    if not _rdy2:
-                        # 5분 타임아웃 → hint 없이 종료
-                        _tty_fd_raw.write(b'\r\n')
-                        _tty_fd_raw.flush()
-                        return None
-                    _c = _tty_fd_raw.read(1)
-                    if not _c:
-                        break
-                    if _c in (b'\r', b'\n'):
-                        _tty_fd_raw.write(b'\r\n')
-                        _tty_fd_raw.flush()
-                        break
-                    if _c == b'\x03':         # Ctrl+C
-                        raise KeyboardInterrupt
-                    if _c in (b'\x7f', b'\x08'):  # backspace
-                        if _chars:
-                            _chars.pop()
-                            _tty_fd_raw.write(b'\x08 \x08')
-                            _tty_fd_raw.flush()
-                    else:
-                        _chars.append(_c)
-                        _tty_fd_raw.write(_c)   # echo
-                        _tty_fd_raw.flush()
-
-                _h = b''.join(_chars).decode('utf-8', 'replace').strip()
-                return _h if _h else None
-            except KeyboardInterrupt:
-                return None
-            except Exception:
-                pass  # fallback으로 진행
-            finally:
-                if _old_attr is not None and _tty_fd_raw is not None:
-                    try:
-                        _termios.tcsetattr(_tty_fd_raw, _termios.TCSADRAIN, _old_attr)
-                    except Exception:
-                        pass
-                if _tty_fd_raw is not None:
-                    try:
-                        _tty_fd_raw.close()
-                    except Exception:
-                        pass
-
-        # ── 최종 fallback: 표준 input() ─────────────────────────────────────────
-        try:
-            _sys.stdout.write("💬 hint ❯ ")
+            _sys.stdout.write("\r\n")
             _sys.stdout.flush()
-            _h2 = input()
-            return _h2.strip() if _h2.strip() else None
-        except (EOFError, KeyboardInterrupt, Exception):
-            return None
+            _sys.stderr.write("\r\n")
+            _sys.stderr.flush()
+
+            _lang = getattr(self.config, "lang", "en")
+            _s_hint = get_strings(_lang)
+            _pause_msg = _s_hint.get(
+                "hint_loop_paused",
+                "⚡ Loop paused — type hint or Enter to stop",
+            )
+            _continue_msg = _s_hint.get(
+                "hint_loop_continue",
+                "(Press Enter directly or Ctrl+C again to stop)",
+            )
+            _hint_tip = {
+                "ko": "예: 관리자 패널 찾아 / SQLi 이어서 / WAF 우회 시도  (그냥 '계속'도 OK)",
+                "zh": "例: 找管理后台 / 继续SQLi / 试WAF绕过  (只输入「继续」也可以)",
+                "en": "e.g. find admin panel / continue SQLi / try WAF bypass  ('continue' also OK)",
+            }.get(_lang, "Type a direction, or just 'continue'")
+            self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]")
+            self.console.print(f"[{THEME['dim']}]{_continue_msg}[/]")
+            self.console.print(f"[{THEME['dim']}]{_hint_tip}[/]\n")
+            self.console.file.flush()
+
+            _got_via_tty = False
+            try:
+                import termios as _termios
+                _tty_ok = _os.path.exists("/dev/tty")
+            except ImportError:
+                _tty_ok = False
+                _termios = None  # type: ignore[assignment]
+
+            if _tty_ok and _termios is not None:
+                _tty_fd_raw = None
+                _old_attr = None
+                try:
+                    _tty_fd_raw = open("/dev/tty", "rb+", buffering=0)
+                    _old_attr = _termios.tcgetattr(_tty_fd_raw)
+
+                    # Ctrl+C/스트림 잔여 입력 폐기 — 아니면 빈 Enter로 즉시 종료(=먹통)
+                    try:
+                        _termios.tcflush(_tty_fd_raw, _termios.TCIFLUSH)
+                    except Exception:
+                        pass
+
+                    _new_attr = list(_old_attr)
+                    import termios as _tc
+                    _new_attr[3] = _new_attr[3] & ~(_tc.ECHO | _tc.ICANON)
+                    _new_attr[6][_tc.VMIN] = 1
+                    _new_attr[6][_tc.VTIME] = 0
+                    _termios.tcsetattr(_tty_fd_raw, _termios.TCSADRAIN, _new_attr)
+
+                    _prompt_b = "💬 hint ❯ ".encode("utf-8")
+                    _tty_fd_raw.write(_prompt_b)
+                    _tty_fd_raw.flush()
+
+                    import select as _sel_hint
+                    _chars: list[bytes] = []
+                    while True:
+                        _rdy2, _, _ = _sel_hint.select([_tty_fd_raw], [], [], 300.0)
+                        if not _rdy2:
+                            _tty_fd_raw.write(b"\r\n")
+                            _tty_fd_raw.flush()
+                            _hint_out = None
+                            _got_via_tty = True
+                            break
+                        _c = _tty_fd_raw.read(1)
+                        if not _c:
+                            break
+                        if _c in (b"\r", b"\n"):
+                            _tty_fd_raw.write(b"\r\n")
+                            _tty_fd_raw.flush()
+                            break
+                        if _c == b"\x03":  # Ctrl+C
+                            raise KeyboardInterrupt
+                        if _c in (b"\x7f", b"\x08"):
+                            if _chars:
+                                _chars.pop()
+                                _tty_fd_raw.write(b"\x08 \x08")
+                                _tty_fd_raw.flush()
+                        elif _c == b"\x15":  # Ctrl+U clear line
+                            while _chars:
+                                _chars.pop()
+                                _tty_fd_raw.write(b"\x08 \x08")
+                            _tty_fd_raw.flush()
+                        else:
+                            _chars.append(_c)
+                            _tty_fd_raw.write(_c)
+                            _tty_fd_raw.flush()
+
+                    if not _got_via_tty:
+                        _h = b"".join(_chars).decode("utf-8", "replace").strip()
+                        _hint_out = _h if _h else None
+                        _got_via_tty = True
+                except KeyboardInterrupt:
+                    _hint_out = None
+                    _got_via_tty = True
+                except Exception:
+                    _got_via_tty = False
+                finally:
+                    if _old_attr is not None and _tty_fd_raw is not None:
+                        try:
+                            _termios.tcsetattr(
+                                _tty_fd_raw, _termios.TCSADRAIN, _old_attr
+                            )
+                        except Exception:
+                            pass
+                    if _tty_fd_raw is not None:
+                        try:
+                            _tty_fd_raw.close()
+                        except Exception:
+                            pass
+
+            if not _got_via_tty:
+                try:
+                    # stdin 잔여 개행 폐기 시도
+                    try:
+                        import termios as _ti2
+                        if _sys.stdin.isatty():
+                            _ti2.tcflush(_sys.stdin.fileno(), _ti2.TCIFLUSH)
+                    except Exception:
+                        pass
+                    _sys.stdout.write("💬 hint ❯ ")
+                    _sys.stdout.flush()
+                    _h2 = input()
+                    _hint_out = _h2.strip() if _h2.strip() else None
+                except (EOFError, KeyboardInterrupt, Exception):
+                    _hint_out = None
+
+            if _hint_out:
+                _hint_out = self._normalize_mid_task_hint(_hint_out)
+            return _hint_out
         finally:
-            _signal.signal(_signal.SIGINT, _orig_sigint)
-            self._agent_stop_flag.clear()
+            # ★ v6.2.180: 어떤 return 경로든 SIGINT 핸들러 복구 (이전 버그: tty 성공 시 미복구)
+            try:
+                _signal.signal(_signal.SIGINT, _orig_sigint)
+            except Exception:
+                pass
+            try:
+                self._agent_stop_flag.clear()
+            except Exception:
+                pass
 
     # ── 메시지 전송 + 스트리밍 출력 ──────────────────────────────
     def _inject_warmup_history(self) -> None:

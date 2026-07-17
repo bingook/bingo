@@ -9254,6 +9254,16 @@ _STRINGS.update({
         "zh": "  ⚠ Oracle全同字符已确认 — 后续提取禁用boolean oracle",
         "en": "  ⚠ Oracle all-same confirmed — disabling boolean oracle for subsequent extractions",
     },
+    "sqli_oracle_precheck_fail": {
+        "ko": "  {tag}⚠ Oracle 사전 검증 실패: TRUE/FALSE 구분 불가 (WAF 전체 차단) — 추출 건너뜀",
+        "zh": "  {tag}⚠ Oracle预检失败: TRUE/FALSE无法区分（WAF全部拦截）— 跳过提取",
+        "en": "  {tag}⚠ Oracle pre-check FAILED: TRUE/FALSE indistinguishable (WAF blocking all) — skipping",
+    },
+    "sqli_early_abort_allsame": {
+        "ko": "  {tag}⚠ 조기 중단: 처음 {n}자 모두 '{c}' — oracle 신뢰 불가, 즉시 중단",
+        "zh": "  {tag}⚠ 提前终止: 前{n}个字符均为 '{c}' — oracle不可信, 立即停止",
+        "en": "  {tag}⚠ Early abort: first {n} chars all '{c}' — oracle unreliable, stopping now",
+    },
 })
 
 

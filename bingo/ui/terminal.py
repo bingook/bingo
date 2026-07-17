@@ -2002,20 +2002,27 @@ class BingoTerminal:
                     safe_history.append(Message(role=role, content=content))
         self.history = safe_history          # 정규화 반영
 
-        # ── v6.2.151 2-pass Compaction (Type A) ──────────────────────────
+        # ── v6.2.151 2-pass Compaction (Type A) — v6.2.171 조기화 개선 ─────
         # Pass 1: 비-시스템 메시지가 임계값 초과 시 배경 LLM 요약 스케줄링
-        # Pass 2: 요약 완성 후 오래된 히스토리를 요약문으로 대체
+        #         트리거: 메시지 25개 초과 OR 추정 토큰 60k 초과 (이중 조건)
+        # Pass 2: 요약 완성 후 오래된 히스토리를 요약문으로 교체
+        #         + 보존된 최근 12개 메시지 내 대형 항목도 3000자로 클리핑
         non_system = [m for m in safe_history if m.role != "system"]
-        _compaction_thr = getattr(self, "_compaction_threshold", 40)
+
+        # v6.2.171: 토큰 기반 조기 트리거 추가
+        _ns_total_chars = sum(len(m.content) for m in non_system)
+        _ns_est_tokens  = _ns_total_chars // 4
+        _compaction_thr = getattr(self, "_compaction_threshold", 25)  # 40→25
+        _token_thr      = 60_000  # 60k 토큰 초과 시 강제 압축
         if (
-            len(non_system) > _compaction_thr
+            (len(non_system) > _compaction_thr or _ns_est_tokens > _token_thr)
             and not getattr(self, "_compaction_running", False)
         ):
             self._trigger_background_compaction(non_system)
 
         if getattr(self, "_compaction_summary", ""):
             # Pass 2: 요약 완성 → 앞부분 히스토리를 요약 메시지로 교체
-            _keep_recent = 10
+            _keep_recent = 12  # 10→12 (최근 조금 더 보존)
             system_msgs = [m for m in safe_history if m.role == "system"]
             non_sys = [m for m in safe_history if m.role != "system"]
             if len(non_sys) > _keep_recent:
@@ -2029,7 +2036,19 @@ class BingoTerminal:
                     role="assistant",
                     content=_compaction_prefix + self._compaction_summary,
                 )
-                safe_history = system_msgs + [compact_msg] + non_sys[-_keep_recent:]
+                # v6.2.171: 보존된 최근 메시지 중 단일 거대 메시지 클리핑
+                # (툴 결과 HTML 등 대형 내용이 컨텍스트를 차지하는 것 방지)
+                _recent = non_sys[-_keep_recent:]
+                _clipped = []
+                for _cm in _recent:
+                    if len(_cm.content) > 3000:
+                        _clipped.append(Message(
+                            role=_cm.role,
+                            content=_cm.content[:3000] + "\n...[컨텍스트 압축: 초과분 생략]..."
+                        ))
+                    else:
+                        _clipped.append(_cm)
+                safe_history = system_msgs + [compact_msg] + _clipped
                 self.history = safe_history
                 with self._compaction_lock:
                     self._compaction_summary = ""  # 소비 완료

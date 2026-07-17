@@ -10001,28 +10001,28 @@ class BingoTerminal:
         confirmed_count: int = 0,
         potential_count: int = 0,
     ) -> str:
-        """v6.2.175/176 Type A: confirmed=0 텍스트의 과장 Confirmed/Critical 교정.
+        """v6.2.177 Type A: Evidence Ladder 기반 문구 교정.
 
-        v6.2.176: potential_count>0 이면 '已确认'만 未确认으로 바꾸고
-        Critical→Potential 은 유지하되, Potential/미확인 실탐 서술은 지우지 않음.
+        confirmed_count>0 → 교정 안 함 (已确认 허용)
+        potential/probable>0 → 已确认만 降级, 취약점 서술은 유지
+        둘 다 0 → Confirmed/Critical 과장 전부 제거
         """
         if not text:
             return text
         import re as _re_sr
         if confirmed_count > 0:
             return text
-        # 확정 표현만 교정 (실탐 potential 서술은 보존)
+        # 확정 표현만 교정 (실탐 potential/probable 서술은 보존)
         _repls = [
-            (r'✅\s*已确认', '⚠ 未确认(potential)'),
-            (r'已确认（存在性验证成功[^）]*）', '未确认（potential — 추가검증필요）'),
-            (r'已确认\(存在性验证成功[^)]*\)', '未确认(potential)'),
-            (r'상태：✅\s*已确认', '상태：⚠ Potential'),
-            (r'状态：✅\s*已确认', '状态：⚠ Potential'),
-            (r'✅\s*CONFIRMED', '⚠ POTENTIAL'),
-            (r'\bCONFIRMED\b(?!\s*=)', 'POTENTIAL'),
-            (r'✅\s*확인됨', '⚠ 미확인(potential)'),
+            (r'✅\s*已确认', '⚠ Probable/Potential'),
+            (r'已确认（存在性验证成功[^）]*）', '未确认（ladder≠confirmed）'),
+            (r'已确认\(存在性验证成功[^)]*\)', '未确认(ladder≠confirmed)'),
+            (r'상태：✅\s*已确认', '상태：⚠ Probable'),
+            (r'状态：✅\s*已确认', '状态：⚠ Probable'),
+            (r'✅\s*CONFIRMED', '⚠ PROBABLE'),
+            (r'\bCONFIRMED\b(?!\s*=)', 'PROBABLE'),
+            (r'✅\s*확인됨', '⚠ 미확정(probable)'),
         ]
-        # confirmed=0 이고 potential도 0일 때만 강한 demote
         if potential_count <= 0:
             _repls.extend([
                 (r'已确认dswhosp[^\s，。]*', '未确认(WAF/Oracle)'),
@@ -10037,9 +10037,8 @@ class BingoTerminal:
                 (r'🔴\[#ff1744\]Critical', '⚠ Potential'),
             ])
         else:
-            # potential 있음: Critical Confirmed 톤만 Potential로, 취약점 존재 서술은 유지
             _repls.extend([
-                (r'已确认', '潜在确认(potential)'),
+                (r'已确认', 'Probable(未达confirmed)'),
                 (r'\bCritical\b(?!\s*Potential)', 'Potential'),
                 (r'\bCRITICAL\b(?!\s*POTENTIAL)', 'POTENTIAL'),
                 (r'🔴\s*Critical', '⚠ Potential'),
@@ -10247,13 +10246,13 @@ class BingoTerminal:
                 _fe_snap_block = (
                     f"\n⚠️ FINDINGS GROUND TRUTH (HARD RULE — DO NOT CONTRADICT):\n"
                     + _fe.ground_truth_block()
-                    + "\nRULES:\n"
-                    + "1) If confidence=confirmed → MAY write Confirmed / 已确认.\n"
-                    + "2) If confidence=potential → write Potential / 潜在, keep the vulnerability in the report (DO NOT drop it).\n"
-                    + "3) If confidence=blocked only → WAF block event, NOT proven SQLi; do not claim Confirmed Critical.\n"
-                    + "4) All-zero / sequential hashes are NOT valid credentials.\n"
-                    + "5) Login form fields are NOT credential findings.\n"
-                    + "6) Strong proof (TRUE≠FALSE size, XPATH extract, real creds) overrides FP filters — report as potential/confirmed.\n"
+                    + "EVIDENCE LADDER RULES:\n"
+                    + "1) tier=confirmed ONLY → MAY write 已确认/Confirmed/Critical Confirmed.\n"
+                    + "2) tier=probable → MUST keep vulnerability as Probable/潜在; NEVER drop; NEVER 已确认.\n"
+                    + "3) tier=potential → keep as Potential; NEVER 已确认.\n"
+                    + "4) tier=blocked → WAF/oracle event only; NOT proven vuln.\n"
+                    + "5) Fake hashes / login forms are NEVER credentials.\n"
+                    + "6) CONFIRMED requires extraction/RCE/browser proof — 100% evidence bar.\n"
                 )
             elif _fe is not None:
                 _fe_snap_lines = []

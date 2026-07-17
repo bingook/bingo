@@ -38,11 +38,28 @@ SEVERITY_HIGH     = "HIGH"
 SEVERITY_MEDIUM   = "MEDIUM"
 SEVERITY_LOW      = "LOW"
 
-# v6.2.175: 증거 신뢰도 3상태 (+ potential)
+# ─── v6.2.177 Evidence Ladder (단일 판정 기준) ───────────────────────────────
+# CONFIRMED  : 추출/실행/브라우저 검증 — 보고서에서만 "已确认/Confirmed" 허용
+# PROBABLE   : TRUE≠FALSE / time-based — 취약점 후보로 유지, Confirmed 금지
+# POTENTIAL  : 모호한 신호 — 유지, Confirmed 금지
+# BLOCKED    : WAF/동일크기/가짜해시 — 차단 이벤트 (취약점 확정 아님)
+# NONE       : 신호 없음
 CONF_CONFIRMED    = "confirmed"
-CONF_BLOCKED      = "blocked"
-CONF_INCONCLUSIVE = "inconclusive"
+CONF_PROBABLE     = "probable"
 CONF_POTENTIAL    = "potential"
+CONF_BLOCKED      = "blocked"
+CONF_INCONCLUSIVE = "inconclusive"  # legacy alias → potential 취급
+CONF_NONE         = "none"
+
+# ladder 순위 (높을수록 확정)
+_LADDER_RANK = {
+    CONF_NONE: 0,
+    CONF_BLOCKED: 1,
+    CONF_INCONCLUSIVE: 2,
+    CONF_POTENTIAL: 3,
+    CONF_PROBABLE: 4,
+    CONF_CONFIRMED: 5,
+}
 
 REASON_BLOCKED_WAF_SAME_SIZE = "blocked_by_waf_same_size"
 REASON_ORACLE_PRECHECK_FAIL  = "oracle_precheck_failed"
@@ -53,14 +70,32 @@ REASON_WAF_BLOCK_PAGE        = "waf_block_page"
 REASON_NOT_VULNERABLE        = "not_vulnerable"
 REASON_CF_BLOCK              = "cloudflare_block"
 REASON_WAF_REDIRECT          = "waf_security_redirect"
-# v6.2.176: 실탐 승격 reason
 REASON_BOOLEAN_DIFF          = "boolean_true_false_diff"
 REASON_XPATH_EXTRACT         = "xpath_error_extract"
 REASON_DB_TABLE_EXTRACT      = "db_table_extract"
 REASON_REAL_CREDENTIAL       = "real_credential_extract"
 REASON_RCE_PROOF             = "rce_command_output"
 REASON_TIME_BASED            = "time_based_delay"
+REASON_XSS_BROWSER           = "xss_browser_confirmed"
 REASON_STRONG_OVERRIDE       = "strong_proof_overrides_fp"
+REASON_PATTERN_MATCH         = "pattern_match_unverified"
+
+
+@dataclass
+class EvidenceVerdict:
+    """v6.2.177: Evidence Ladder 단일 판정 결과."""
+    tier: str          # confirmed|probable|potential|blocked|none
+    reason_code: str
+    vuln_hint: str = ""  # sqli|rce|credential|xss|... 또는 ""
+    detail: str = ""
+
+    @property
+    def is_vuln_candidate(self) -> bool:
+        return self.tier in (CONF_CONFIRMED, CONF_PROBABLE, CONF_POTENTIAL)
+
+    @property
+    def may_claim_confirmed(self) -> bool:
+        return self.tier == CONF_CONFIRMED
 
 
 @dataclass
@@ -72,11 +107,11 @@ class Finding:
     payload: str
     evidence: str           # 실제 응답/결과 (잘린 최대 2000자)
     timestamp: float = field(default_factory=time.time)
-    confirmed: bool = False  # Playwright 등으로 2차 검증 완료 여부
+    confirmed: bool = False  # Evidence Ladder CONFIRMED 만 True
     screenshot_path: str = ""
     notes: str = ""
-    # v6.2.175: 보고서/요약/next_steps가 공유하는 근거
-    confidence: str = CONF_INCONCLUSIVE  # confirmed|blocked|inconclusive|potential
+    # confirmed|probable|potential|blocked|inconclusive
+    confidence: str = CONF_POTENTIAL
     reason_code: str = ""
 
     def to_dict(self) -> dict:
@@ -84,6 +119,7 @@ class Finding:
         d["timestamp_str"] = time.strftime(
             "%Y-%m-%d %H:%M:%S", time.localtime(self.timestamp)
         )
+        d["may_claim_confirmed"] = bool(self.confirmed or self.confidence == CONF_CONFIRMED)
         return d
 
 
@@ -309,21 +345,67 @@ _AUTH_BYPASS_PATTERNS = [
 ]
 
 
-def _strong_vuln_proof(output: str, code_snippet: str = "") -> tuple[str, str] | None:
-    """v6.2.176 Type A: 오탐 필터보다 우선하는 실탐 증거.
+def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
+    """v6.2.177 Type A — Evidence Ladder 단일 판정 엔진.
 
-    Returns:
-        (proof_level, reason_code) or None
-        proof_level: 'confirmed' (추출/실행 증명) | 'potential' (oracle 차이 등)
+    규칙 (근본):
+      1) CONFIRMED만 "已确认/Confirmed/Critical Confirmed" 허용
+         = 데이터 추출 / RCE 출력 / 브라우저 XSS / 실자격증명
+      2) PROBABLE = TRUE≠FALSE / time-based — 취약점 후보로 반드시 유지
+      3) POTENTIAL = 패턴만 맞음 — 유지, Confirmed 금지
+      4) BLOCKED = WAF/동일크기/가짜해시 — 차단 이벤트 (확정 아님)
+      5) 상위 티어가 있으면 하위 FP(blocked)로 절대 덮어쓰지 않음
     """
-    if not output:
-        return None
+    if not output or len(output.strip()) < 10:
+        return EvidenceVerdict(CONF_NONE, "", detail="empty")
 
-    # 1) RCE: uid= / whoami
+    code = code_snippet or ""
+    blob = output + "\n" + code
+
+    # ═══════════════ TIER 5: CONFIRMED (100%급 증거만) ═══════════════
     if re.search(r'\buid=\d+\([^)]+\)\s+gid=\d+', output, re.I):
-        return ("confirmed", REASON_RCE_PROOF)
+        return EvidenceVerdict(CONF_CONFIRMED, REASON_RCE_PROOF, FINDING_RCE, "uid/gid")
 
-    # 2) Boolean TRUE/FALSE 응답 크기 차이 (동일 크기 아님 → 실 oracle)
+    if re.search(r'window\.__BINGO_XSS__\s*=\s*1', output):
+        return EvidenceVerdict(CONF_CONFIRMED, REASON_XSS_BROWSER, FINDING_XSS, "bingo xss marker")
+
+    if re.search(
+        r'XPATH\s+syntax\s+error[^\n]{0,80}~[A-Za-z0-9_.\-]{2,80}~'
+        r'|~[A-Za-z0-9_.\-]{2,80}~[^\n]{0,40}XPATH',
+        output, re.I
+    ):
+        if not re.search(
+            r'~(?:오전|오후|월요일|화요일|수요일|목요일|금요일|토요일|일요일)',
+            output, re.I
+        ):
+            return EvidenceVerdict(CONF_CONFIRMED, REASON_XPATH_EXTRACT, FINDING_SQLI, "xpath extract")
+
+    if re.search(
+        r'->\s*DATA:\s*[~\'"]?([A-Za-z][A-Za-z0-9_.\-]{1,63})[~\'"]?',
+        output, re.I
+    ):
+        if not re.search(
+            r'->\s*DATA:\s*.*(?:오전|오후|월요일|화요일|수요일|목요일|금요일|토요일|일요일'
+            r'|<html|<!DOCTYPE|해킹방지)',
+            output, re.I
+        ):
+            return EvidenceVerdict(CONF_CONFIRMED, REASON_XPATH_EXTRACT, FINDING_SQLI, "data extract")
+
+    if re.search(
+        r'(?:database|db_name|schema)\s*[=:]\s*[\'"]?(?!a{4,}|0{4,})[a-zA-Z][\w]{1,40}'
+        r'|table(?:_name)?\s+[\w]+\s*:\s*EXISTS'
+        r'|\[?\s*(?:g5_|wp_|information_schema)[\w]*\s*\]?\s*(?:EXISTS|found|존재)',
+        output, re.I
+    ) and not _ORACLE_FAILURE_REPEATED.search(output):
+        return EvidenceVerdict(CONF_CONFIRMED, REASON_DB_TABLE_EXTRACT, FINDING_SQLI, "db/table")
+
+    if re.search(
+        r'\[CREDENTIAL\]\s*\S+\s*:\s*(?!0{6,}|a{6,}|A{6,}|0123456789abcdef)\S{6,}',
+        output, re.I
+    ) and not _FAKE_CRED_VALUE.search(output):
+        return EvidenceVerdict(CONF_CONFIRMED, REASON_REAL_CREDENTIAL, FINDING_CREDENTIAL, "real cred")
+
+    # ═══════════════ TIER 4: PROBABLE (실 oracle, Confirmed 아님) ═══════════════
     _m_t = re.search(
         r'(?:TRUE|1\s*=\s*1|2\s*>\s*1).{0,60}?(\d{2,6})\s*B',
         output, re.I | re.S
@@ -335,75 +417,26 @@ def _strong_vuln_proof(output: str, code_snippet: str = "") -> tuple[str, str] |
     if _m_t and _m_f:
         try:
             _tb, _fb = int(_m_t.group(1)), int(_m_f.group(1))
-            # 최소 200B 차이 → WAF 동일차단이 아닌 실제 boolean 차이
             if abs(_tb - _fb) >= 200:
-                return ("potential", REASON_BOOLEAN_DIFF)
+                return EvidenceVerdict(
+                    CONF_PROBABLE, REASON_BOOLEAN_DIFF, FINDING_SQLI,
+                    f"true={_tb}B false={_fb}B",
+                )
         except ValueError:
             pass
 
-    # 3) XPATH/EXTRACTVALUE 실제 에러 추출 (~dbname~ / XPATH syntax error)
-    if re.search(
-        r'XPATH\s+syntax\s+error[^\n]{0,80}~[A-Za-z0-9_.\-]{2,80}~'
-        r'|~[A-Za-z0-9_.\-]{2,80}~[^\n]{0,40}XPATH'
-        r'|->\s*DATA:\s*[~\'"]?[A-Za-z][A-Za-z0-9_.\-]{1,63}[~\'"]?'
-        r'(?!\s*(?:오전|오후|월요일|화요일|<html|<!DOCTYPE|해킹방지))',
-        output, re.I
-    ):
-        # 페이지 오염(시간/요일)만이면 제외 — xpath 토큰이 명확할 때만
-        if not re.search(
-            r'->\s*DATA:\s*.*(?:오전|오후|월요일|화요일|수요일|목요일|금요일|토요일|일요일)',
-            output, re.I
-        ):
-            return ("confirmed", REASON_XPATH_EXTRACT)
-
-    # 4) DB/테이블 실추출 (EXISTS + 실제 이름, 반복문자 제외)
-    if re.search(
-        r'(?:database|db_name|schema)\s*[=:]\s*[\'"]?(?!a{4,}|0{4,})[a-zA-Z][\w]{1,40}'
-        r'|table(?:_name)?\s+[\w]+\s*:\s*EXISTS'
-        r'|\[?\s*(?:g5_|wp_|information_schema)[\w]*\s*\]?\s*(?:EXISTS|found|존재)',
-        output, re.I
-    ) and not _ORACLE_FAILURE_REPEATED.search(output):
-        return ("confirmed", REASON_DB_TABLE_EXTRACT)
-
-    # 5) 실제 자격증명 (플레이스홀더 제외)
-    if re.search(
-        r'\[CREDENTIAL\]\s*\S+\s*:\s*(?!0{6,}|a{6,}|A{6,}|0123456789abcdef)\S{6,}',
-        output, re.I
-    ) and not _FAKE_CRED_VALUE.search(output):
-        return ("confirmed", REASON_REAL_CREDENTIAL)
-
-    # 6) Time-based: SLEEP/BENCHMARK + 지연 확인
     if (
-        re.search(r'(?:SLEEP|BENCHMARK|WAITFOR\s+DELAY)\s*\(', output + " " + code_snippet, re.I)
+        re.search(r'(?:SLEEP|BENCHMARK|WAITFOR\s+DELAY)\s*\(', blob, re.I)
         and re.search(
             r'(?:delay|elapsed|took|응답\s*시간|耗时)\s*[=: ]*\s*(?:[5-9]|[1-9]\d+)(?:\.\d+)?\s*s'
             r'|time.?based.{0,40}(?:confirm|success|취약|vulnerable)',
             output, re.I
         )
     ):
-        return ("potential", REASON_TIME_BASED)
+        return EvidenceVerdict(CONF_PROBABLE, REASON_TIME_BASED, FINDING_SQLI, "time-based")
 
-    # 7) XSS 브라우저 확인 마커
-    if re.search(r'window\.__BINGO_XSS__\s*=\s*1|XSS\s+(?:confirmed|브라우저\s*실행\s*확인)', output, re.I):
-        return ("confirmed", "xss_browser_confirmed")
-
-    return None
-
-
-def _assess_evidence(output: str, code_snippet: str = "") -> tuple[str, str]:
-    """v6.2.175/176 Type A: 출력을 confirmed/blocked/ok 분류.
-
-    Returns:
-        (status, reason_code)
-        status: 'blocked' | 'ok' | 'strong'
-        - strong: 실탐 증거가 FP 신호를 이김 (process에서 potential/confirmed 승격)
-    """
-    # ── v6.2.176: 강한 실탐 증거가 있으면 FP blocked를 절대 우선하지 않음 ──
-    _proof = _strong_vuln_proof(output, code_snippet)
-    if _proof:
-        _level, _rc = _proof
-        return ("strong", _rc if _level == "confirmed" else f"potential:{_rc}")
-
+    # ═══════════════ TIER 1: BLOCKED (확정 금지, 이벤트만) ═══════════════
+    # CONFIRMED/PROBABLE가 없을 때만 적용 — 실탐을 FP로 덮지 않음
     _NOT_VULN_RE = re.compile(
         r'NOT\s+vulnerable\s*[❌✗×⛔]'
         r'|→\s*NOT\s+vulnerable'
@@ -416,14 +449,28 @@ def _assess_evidence(output: str, code_snippet: str = "") -> tuple[str, str]:
         r'|Boolean\s+character\s+extraction\s+disabled',
         re.I
     )
-    # 주의: confirmed=false JSON 덤프는 실탐 억제에 쓰지 않음 (오탐 방지용 메타가 실탐을 죽임)
     if _NOT_VULN_RE.search(output):
-        return ("blocked", REASON_NOT_VULNERABLE)
+        return EvidenceVerdict(CONF_BLOCKED, REASON_NOT_VULNERABLE, "", "tool not-vuln")
 
-    if len(output) <= 2000 and (
-        _WAF_BLOCK_KO.search(output) or _WAF_BLOCK_EN.search(output)
-    ):
-        return ("blocked", REASON_WAF_BLOCK_PAGE)
+    if _m_t and _m_f:
+        try:
+            if int(_m_t.group(1)) == int(_m_f.group(1)):
+                return EvidenceVerdict(
+                    CONF_BLOCKED, REASON_BLOCKED_WAF_SAME_SIZE, FINDING_SQLI, "same size"
+                )
+        except ValueError:
+            pass
+    _same = re.search(
+        r'(?:TRUE|1=1|2>1).{0,40}?(\d{2,4})B'
+        r'.{0,120}?'
+        r'(?:FALSE|1=0|1=2|1>2).{0,40}?\1B',
+        output, re.I | re.S
+    )
+    if _same:
+        return EvidenceVerdict(CONF_BLOCKED, REASON_BLOCKED_WAF_SAME_SIZE, FINDING_SQLI, "same size")
+
+    if len(output) <= 2000 and (_WAF_BLOCK_KO.search(output) or _WAF_BLOCK_EN.search(output)):
+        return EvidenceVerdict(CONF_BLOCKED, REASON_WAF_BLOCK_PAGE, "", "waf page")
 
     _CF_BLOCK_RE = re.compile(
         r'cloudflare.*?(error|blocked|denied)'
@@ -434,86 +481,81 @@ def _assess_evidence(output: str, code_snippet: str = "") -> tuple[str, str]:
         re.I
     )
     if _CF_BLOCK_RE.search(output):
-        return ("blocked", REASON_CF_BLOCK)
+        return EvidenceVerdict(CONF_BLOCKED, REASON_CF_BLOCK, "", "cloudflare")
 
-    _same_waf_size = re.search(
-        r'(?:TRUE|1=1|2>1).{0,40}?(\d{2,4})B'
-        r'.{0,120}?'
-        r'(?:FALSE|1=0|1=2|1>2).{0,40}?\1B',
-        output, re.I | re.S
-    )
-    if _same_waf_size:
-        return ("blocked", REASON_BLOCKED_WAF_SAME_SIZE)
-
-    # 정상 대용량 vs payload 소형(WAF) — 490B 차단 페이지 단독 패턴
     if re.search(
         r'(?:해킹방지|요청이\s*차단|security\s+system|blocked\s+by\s+waf).{0,80}?\b(\d{2,4})B\b'
         r'|\b49[0-9]B\b.{0,40}?(?:해킹방지|WAF|차단)',
         output, re.I | re.S
-    ):
-        if _SQLI_CONTEXT_KEYWORDS.search(output) or _SQLI_CONTEXT_KEYWORDS.search(code_snippet):
-            return ("blocked", REASON_WAF_BLOCK_PAGE)
+    ) and (_SQLI_CONTEXT_KEYWORDS.search(output) or _SQLI_CONTEXT_KEYWORDS.search(code)):
+        return EvidenceVerdict(CONF_BLOCKED, REASON_WAF_BLOCK_PAGE, FINDING_SQLI, "waf 490B")
 
-    if re.search(r'(?:updatexml|extractvalue)\s*\(', output, re.I):
-        _has_xpath_err = bool(re.search(
+    if re.search(r'(?:updatexml|extractvalue)\s*\(', blob, re.I):
+        _has_xpath = bool(re.search(
             r'XPATH\s+syntax\s+error|xpath\s+error|~[a-zA-Z0-9_.\-]{2,80}~',
             output, re.I
         ))
-        _page_contam = bool(re.search(
+        _page = bool(re.search(
             r'->\s*DATA:\s*.*(?:오전|오후|월요일|화요일|수요일|목요일|금요일|토요일|일요일'
             r'|<html|<!DOCTYPE|해킹방지|요청이\s*차단)',
             output, re.I
         ))
-        _data_empty = bool(re.search(r'->\s*DATA:\s*(?:None|null|\(empty)?\s*$', output, re.I | re.M))
-        if (_page_contam or _data_empty) and not _has_xpath_err:
-            return ("blocked", REASON_PAGE_CONTAMINATION)
+        _empty = bool(re.search(r'->\s*DATA:\s*(?:None|null|\(empty)?\s*$', output, re.I | re.M))
+        if (_page or _empty) and not _has_xpath:
+            return EvidenceVerdict(CONF_BLOCKED, REASON_PAGE_CONTAMINATION, FINDING_SQLI, "page contam")
 
     if _WAF_SECURITY_REDIRECT.search(output.lower()):
-        return ("blocked", REASON_WAF_REDIRECT)
+        return EvidenceVerdict(CONF_BLOCKED, REASON_WAF_REDIRECT, "", "waf redirect")
 
     if _ORACLE_FAILURE_REPEATED.search(output) or _ORACLE_FAILURE_WARNING.search(output):
-        return ("blocked", REASON_ORACLE_PRECHECK_FAIL)
+        return EvidenceVerdict(CONF_BLOCKED, REASON_ORACLE_PRECHECK_FAIL, FINDING_SQLI, "oracle fail")
 
     if _FAKE_CRED_VALUE.search(output):
-        return ("blocked", REASON_PLACEHOLDER_HASH)
+        return EvidenceVerdict(CONF_BLOCKED, REASON_PLACEHOLDER_HASH, FINDING_CREDENTIAL, "fake hash")
 
-    _is_login_form_only = bool(_LOGIN_FORM_ONLY.search(output)) and not re.search(
+    _login_only = bool(_LOGIN_FORM_ONLY.search(output)) and not re.search(
         r'\[CREDENTIAL\]\s*\S+\s*:\s*(?!0{6,}|a{6,})\S{4,}', output, re.I
     )
-    if _is_login_form_only and _CRED_PATTERNS and any(p.search(output) for p in _CRED_PATTERNS):
-        return ("blocked", REASON_LOGIN_FORM_ONLY)
+    if _login_only and any(p.search(output) for p in _CRED_PATTERNS):
+        return EvidenceVerdict(CONF_BLOCKED, REASON_LOGIN_FORM_ONLY, FINDING_CREDENTIAL, "login form")
 
-    return ("ok", "")
+    # ═══════════════ TIER 3: POTENTIAL (패턴만, Confirmed 금지) ═══════════════
+    # 실제 타입은 _detect_vuln_type_raw 가 결정 — 여기서는 "후보 있음"만
+    return EvidenceVerdict(CONF_POTENTIAL, REASON_PATTERN_MATCH, "", "pattern scan")
 
 
-def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | None:
-    """출력 텍스트에서 취약점 유형과 심각도 탐지. 없으면 None.
-    우선순위: RCE > LFI > AUTH_BYPASS > CREDENTIAL > SSRF > XSS > SQLi
+def _strong_vuln_proof(output: str, code_snippet: str = "") -> tuple[str, str] | None:
+    """하위 호환 래퍼 → Evidence Ladder."""
+    v = _evidence_ladder(output, code_snippet)
+    if v.tier == CONF_CONFIRMED:
+        return ("confirmed", v.reason_code)
+    if v.tier == CONF_PROBABLE:
+        return ("potential", v.reason_code)  # legacy: probable을 potential로 노출
+    return None
 
-    v4.8.0 수정: SQLi 컨텍스트(code_snippet에 EXTRACTVALUE/SLEEP 등) 포함 시
-    CREDENTIAL보다 SQLi를 우선 분류 — 오분류 방지.
 
-    v4.9.4 수정:
-    - LFI 오탐 방지: php://filter 요청인데 HTML 응답(homepage redirect)이면 LFI 아님
-    - Oracle 실패 억제: 추출값이 'aaa...' 반복 문자이면 credential/sqli 오탐 억제
+def _assess_evidence(output: str, code_snippet: str = "") -> tuple[str, str]:
+    """하위 호환 래퍼 → Evidence Ladder.
 
-    v6.2.175: WAF/oracle blocked는 _assess_evidence()에서 처리.
-              여기서는 ok/strong 경로의 패턴 매칭만 수행.
+    Returns status: 'blocked' | 'ok' | 'strong'
     """
-    # ── v6.2.175/176: blocked만 None. strong/ok는 계속 탐지 ──
-    _status, _reason = _assess_evidence(output, code_snippet)
-    if _status == "blocked":
-        return None
+    v = _evidence_ladder(output, code_snippet)
+    if v.tier == CONF_CONFIRMED:
+        return ("strong", v.reason_code)
+    if v.tier == CONF_PROBABLE:
+        return ("strong", f"potential:{v.reason_code}")
+    if v.tier == CONF_BLOCKED:
+        return ("blocked", v.reason_code)
+    return ("ok", v.reason_code or "")
 
-    # ── v6.2.174: 로그인 폼 HTML만 있고 실제 추출 자격증명 없음 → credential 금지 ──
+
+def _detect_vuln_type_raw(output: str, code_snippet: str = "") -> tuple[str, str] | None:
+    """패턴만으로 유형/심각도 탐지 (ladder 무시). blocked 억제는 호출측 책임."""
     _is_login_form_only = bool(_LOGIN_FORM_ONLY.search(output)) and not re.search(
         r'\[CREDENTIAL\]\s*\S+\s*:\s*(?!0{6,}|a{6,})\S{4,}', output, re.I
     )
-
-    # ── v6.2.66: 미니파이 JS 출력 감지 — credential 오탐 방지 ─────────────────
     _is_js_chunk_output = bool(_MINIFIED_JS_CONTEXT.search(output))
 
-    # ── v4.9.4: LFI php://filter 오탐 방지 ────────────────────────────────────
     _skip_lfi = False
     if _PHP_FILTER_IN_OUTPUT.search(output) or _PHP_FILTER_IN_OUTPUT.search(code_snippet):
         _has_b64_content = bool(_BASE64_FILE_BLOCK.search(output))
@@ -521,7 +563,6 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
         if _has_html_redirect and not _has_b64_content:
             _skip_lfi = True
 
-    # ── v4.8.0: SQLi 컨텍스트 사전 검사 ──────────────────────────────────────
     _sqli_context = (
         _SQLI_CONTEXT_KEYWORDS.search(code_snippet)
         or _SQLI_CONTEXT_KEYWORDS.search(output)
@@ -567,6 +608,22 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
             if pat.search(output):
                 return (vtype, sev)
     return None
+
+
+def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | None:
+    """출력 텍스트에서 취약점 유형과 심각도 탐지. 없으면 None.
+
+    v6.2.177: Evidence Ladder blocked만 억제. confirmed/probable/potential은 탐지 유지.
+    """
+    v = _evidence_ladder(output, code_snippet)
+    if v.tier == CONF_BLOCKED:
+        return None
+    if v.vuln_hint and v.tier in (CONF_CONFIRMED, CONF_PROBABLE):
+        sev = SEVERITY_CRITICAL if v.tier == CONF_CONFIRMED else SEVERITY_HIGH
+        if v.vuln_hint == FINDING_SQLI and v.tier == CONF_PROBABLE:
+            sev = SEVERITY_HIGH
+        return (v.vuln_hint, sev)
+    return _detect_vuln_type_raw(output, code_snippet)
 
 
 def _extract_payload(output: str) -> str:
@@ -635,110 +692,53 @@ class FindingsExporter:
         code_snippet: str = "",
         extra_notes: str = "",
     ) -> Optional[Finding]:
-        """코드 실행 출력에서 발견 탐지 후 내부 저장. 발견 시 Finding 반환.
+        """Evidence Ladder 단일 경로로 finding 생성.
 
-        v6.2.175:
-          - blocked(WAF/oracle) → CRITICAL SQLi 금지, LOW+confidence=blocked 1회 기록
-          - 미확인 CRITICAL → confidence=potential
-        v6.2.176:
-          - strong proof → FP blocked 무시, potential/confirmed 승격
-          - 이전 blocked SQLi finding이 있으면 동일 타입을 confirmed/potential로 승격
+        v6.2.177 근본 규칙:
+          CONFIRMED → confirmed=True, Critical 허용, 보고서 已确认 허용
+          PROBABLE  → confirmed=False, HIGH, 취약점 유지 (지우지 않음)
+          POTENTIAL → confirmed=False, 패턴 매칭 시만 기록
+          BLOCKED   → LOW 차단 이벤트 1회 (확정 아님)
+          NONE      → 무시
+          상위 티어가 나오면 기존 하위(blocked) finding 자동 승격
         """
         if not output or len(output.strip()) < 10:
             return None
 
-        status, reason = _assess_evidence(output, code_snippet=code_snippet)
-        proof = _strong_vuln_proof(output, code_snippet)
+        verdict = _evidence_ladder(output, code_snippet=code_snippet)
+        if verdict.tier == CONF_NONE:
+            return None
 
-        # ── strong: 실탐 증거 → FP 억제 무시하고 정상 finding (+ 승격) ─────────
-        if status == "strong" or proof:
-            _level, _prc = proof if proof else (
-                ("confirmed", reason) if not str(reason).startswith("potential:")
-                else ("potential", reason.split(":", 1)[-1])
-            )
-            # 패턴 탐지 시도 (실패해도 strong proof면 SQLi/RCE로 강제)
-            detected = None
-            # _detect_vuln_type은 blocked만 막음 — strong은 통과
-            try:
-                detected = _detect_vuln_type(output, code_snippet=code_snippet)
-            except Exception:
-                detected = None
-            if detected:
-                vtype, severity = detected
-            elif _prc in (REASON_RCE_PROOF,):
-                vtype, severity = FINDING_RCE, SEVERITY_CRITICAL
-            elif _prc in (REASON_REAL_CREDENTIAL,):
-                vtype, severity = FINDING_CREDENTIAL, SEVERITY_CRITICAL
-            else:
-                vtype, severity = FINDING_SQLI, SEVERITY_HIGH
+        import hashlib
+        evidence = output[:2000]
+        payload = (code_snippet or _extract_payload(output))[:500]
 
-            # CRITICAL 미확인은 potential 유지; confirmed proof면 승격
-            if _level == "confirmed":
-                confidence = CONF_CONFIRMED
-                confirmed = True
-                if severity == SEVERITY_HIGH and vtype == FINDING_SQLI:
-                    severity = SEVERITY_CRITICAL  # 추출 증명된 SQLi
-            else:
-                confidence = CONF_POTENTIAL
-                confirmed = False
-                # potential SQLi는 HIGH 유지 (CRITICAL Confirmed 과장 방지)
-                if severity == SEVERITY_CRITICAL and vtype == FINDING_SQLI:
-                    severity = SEVERITY_HIGH
-
-            evidence = output[:2000]
-            import hashlib
-            _hash = hashlib.md5(
-                (f"strong:{vtype}:" + evidence[:200]).encode("utf-8", errors="ignore")
-            ).hexdigest()[:12]
-            if _hash in self._finding_hashes:
-                # 중복이어도 기존 blocked → 승격 시도
-                self._promote_blocked(vtype, confidence, confirmed, _prc, evidence)
-                return None
-            self._finding_hashes.add(_hash)
-
-            finding = Finding(
-                id=f"BINGO-{len(self._findings)+1:04d}",
-                vuln_type=vtype,
-                severity=severity,
-                target=self.target,
-                payload=(code_snippet or _extract_payload(output))[:500],
-                evidence=evidence,
-                notes=extra_notes or f"strong:{_prc}",
-                confirmed=confirmed,
-                confidence=confidence,
-                reason_code=_prc or REASON_STRONG_OVERRIDE,
-            )
-            self._findings.append(finding)
-            self._promote_blocked(vtype, confidence, confirmed, _prc, evidence)
-            return finding
-
-        # ── blocked: SQLi Critical 오탐 대신 차단 이벤트 1회 기록 ──────────────
-        if status == "blocked":
-            if reason in self._blocked_reasons:
+        # ── BLOCKED: 차단 이벤트만 ──────────────────────────────────────────
+        if verdict.tier == CONF_BLOCKED:
+            if verdict.reason_code in self._blocked_reasons:
                 return None
             _sqli_ctx = bool(
-                _SQLI_CONTEXT_KEYWORDS.search(code_snippet)
+                verdict.vuln_hint == FINDING_SQLI
+                or _SQLI_CONTEXT_KEYWORDS.search(code_snippet)
                 or _SQLI_CONTEXT_KEYWORDS.search(output)
-                or reason in (
+                or verdict.reason_code in (
                     REASON_BLOCKED_WAF_SAME_SIZE,
                     REASON_ORACLE_PRECHECK_FAIL,
                     REASON_PAGE_CONTAMINATION,
                     REASON_WAF_BLOCK_PAGE,
                 )
             )
-            _cred_ctx = reason in (REASON_LOGIN_FORM_ONLY, REASON_PLACEHOLDER_HASH)
-            if not _sqli_ctx and not _cred_ctx and reason not in (
+            _cred_ctx = verdict.reason_code in (REASON_LOGIN_FORM_ONLY, REASON_PLACEHOLDER_HASH)
+            if not _sqli_ctx and not _cred_ctx and verdict.reason_code not in (
                 REASON_NOT_VULNERABLE, REASON_CF_BLOCK, REASON_WAF_REDIRECT
             ):
                 return None
-            self._blocked_reasons.add(reason)
+            self._blocked_reasons.add(verdict.reason_code)
             vtype = FINDING_CREDENTIAL if _cred_ctx else (
                 FINDING_SQLI if _sqli_ctx else FINDING_INFO_DISC
             )
-            evidence = output[:2000]
-            import hashlib
             _hash = hashlib.md5(
-                (f"blocked:{reason}:" + evidence[:120]).encode("utf-8", errors="ignore")
+                (f"blocked:{verdict.reason_code}:" + evidence[:120]).encode("utf-8", errors="ignore")
             ).hexdigest()[:12]
             if _hash in self._finding_hashes:
                 return None
@@ -748,45 +748,105 @@ class FindingsExporter:
                 vuln_type=vtype,
                 severity=SEVERITY_LOW,
                 target=self.target,
-                payload=(code_snippet or _extract_payload(output))[:500],
+                payload=payload,
                 evidence=evidence,
-                notes=extra_notes or f"blocked:{reason}",
+                notes=extra_notes or f"ladder:blocked:{verdict.reason_code}",
                 confidence=CONF_BLOCKED,
-                reason_code=reason,
+                reason_code=verdict.reason_code,
             )
             self._findings.append(finding)
             return finding
 
-        detected = _detect_vuln_type(output, code_snippet=code_snippet)
-        if not detected:
-            return None
+        # ── CONFIRMED / PROBABLE / POTENTIAL ───────────────────────────────
+        detected = _detect_vuln_type_raw(output, code_snippet)
+        if verdict.vuln_hint:
+            vtype = verdict.vuln_hint
+            if detected and detected[0] == verdict.vuln_hint:
+                severity = detected[1]
+            elif vtype == FINDING_SQLI:
+                severity = SEVERITY_CRITICAL if verdict.tier == CONF_CONFIRMED else SEVERITY_HIGH
+            elif vtype in (FINDING_RCE, FINDING_CREDENTIAL, FINDING_LFI):
+                severity = SEVERITY_CRITICAL
+            else:
+                severity = SEVERITY_HIGH
+        elif detected:
+            vtype, severity = detected
+        else:
+            # potential인데 패턴도 없으면 finding 안 만듦 (노이즈 방지)
+            if verdict.tier == CONF_POTENTIAL:
+                return None
+            vtype, severity = FINDING_SQLI, SEVERITY_HIGH
 
-        vtype, severity = detected
-        payload = code_snippet or _extract_payload(output)
-        evidence = output[:2000]
+        # ladder → confidence / confirmed / severity 매핑
+        if verdict.tier == CONF_CONFIRMED:
+            confidence, confirmed = CONF_CONFIRMED, True
+            if vtype == FINDING_SQLI:
+                severity = SEVERITY_CRITICAL
+        elif verdict.tier == CONF_PROBABLE:
+            confidence, confirmed = CONF_PROBABLE, False
+            # Confirmed Critical 과장 금지 — HIGH + probable
+            if severity == SEVERITY_CRITICAL and vtype == FINDING_SQLI:
+                severity = SEVERITY_HIGH
+        else:  # POTENTIAL
+            confidence, confirmed = CONF_POTENTIAL, False
+            if severity == SEVERITY_CRITICAL:
+                # 패턴만으로 Critical Confirmed 금지
+                severity = SEVERITY_HIGH if vtype == FINDING_SQLI else severity
+                confidence = CONF_POTENTIAL
 
-        import hashlib
         _hash = hashlib.md5(
-            (vtype + evidence[:200]).encode("utf-8", errors="ignore")
+            (f"{verdict.tier}:{vtype}:" + evidence[:200]).encode("utf-8", errors="ignore")
         ).hexdigest()[:12]
         if _hash in self._finding_hashes:
+            self._promote_to_tier(vtype, confidence, confirmed, verdict.reason_code, evidence)
             return None
         self._finding_hashes.add(_hash)
 
-        confidence = CONF_POTENTIAL if severity == SEVERITY_CRITICAL else CONF_INCONCLUSIVE
         finding = Finding(
             id=f"BINGO-{len(self._findings)+1:04d}",
             vuln_type=vtype,
             severity=severity,
             target=self.target,
-            payload=payload[:500],
+            payload=payload,
             evidence=evidence,
-            notes=extra_notes,
+            notes=extra_notes or f"ladder:{verdict.tier}:{verdict.reason_code}",
+            confirmed=confirmed,
             confidence=confidence,
-            reason_code="",
+            reason_code=verdict.reason_code or REASON_PATTERN_MATCH,
         )
         self._findings.append(finding)
+        self._promote_to_tier(vtype, confidence, confirmed, verdict.reason_code, evidence)
         return finding
+
+    def _promote_to_tier(
+        self,
+        vtype: str,
+        confidence: str,
+        confirmed: bool,
+        reason_code: str,
+        evidence: str,
+    ) -> None:
+        """하위 티어(blocked/potential) finding을 상위 ladder로 승격."""
+        new_rank = _LADDER_RANK.get(confidence, 0)
+        for f in self._findings:
+            if f.vuln_type != vtype:
+                continue
+            old_rank = _LADDER_RANK.get(f.confidence, 0)
+            if new_rank <= old_rank:
+                continue
+            f.confidence = confidence
+            f.confirmed = confirmed
+            f.reason_code = reason_code or f.reason_code
+            f.notes = (f.notes or "") + f" | promoted:{reason_code}"
+            if confirmed:
+                f.severity = SEVERITY_CRITICAL if vtype in (
+                    FINDING_SQLI, FINDING_RCE, FINDING_CREDENTIAL, FINDING_LFI
+                ) else f.severity
+            elif confidence == CONF_PROBABLE and f.severity == SEVERITY_LOW:
+                f.severity = SEVERITY_HIGH
+            if evidence and len(evidence) > len(f.evidence or ""):
+                f.evidence = evidence[:2000]
+            break
 
     def _promote_blocked(
         self,
@@ -796,43 +856,19 @@ class FindingsExporter:
         reason_code: str,
         evidence: str,
     ) -> None:
-        """v6.2.176: 이전 blocked finding을 strong proof로 승격 (실탐 누락 방지)."""
-        for f in self._findings:
-            if f.confidence != CONF_BLOCKED:
-                continue
-            if f.vuln_type != vtype and not (
-                vtype == FINDING_SQLI and f.vuln_type == FINDING_SQLI
-            ):
-                continue
-            f.confidence = confidence
-            f.confirmed = confirmed
-            if confirmed:
-                f.severity = SEVERITY_CRITICAL if vtype in (
-                    FINDING_SQLI, FINDING_RCE, FINDING_CREDENTIAL, FINDING_LFI
-                ) else f.severity
-            elif confidence == CONF_POTENTIAL and f.severity == SEVERITY_LOW:
-                f.severity = SEVERITY_HIGH if vtype == FINDING_SQLI else SEVERITY_MEDIUM
-            f.reason_code = reason_code or REASON_STRONG_OVERRIDE
-            f.notes = (f.notes or "") + f" | promoted:{reason_code}"
-            if evidence and len(evidence) > len(f.evidence or ""):
-                f.evidence = evidence[:2000]
-            # blocked reason 집합에서 제거해 재기록 가능하게
-            if f.reason_code in self._blocked_reasons:
-                self._blocked_reasons.discard(
-                    getattr(f, "_orig_block_reason", None) or ""
-                )
-            break
+        """하위 호환 → _promote_to_tier."""
+        self._promote_to_tier(vtype, confidence, confirmed, reason_code, evidence)
 
     def mark_confirmed(self, finding: Finding, screenshot_path: str = "") -> None:
-        """Playwright 등 2차 검증 후 confirmed 플래그 세팅."""
+        """Playwright 등 2차 검증 = Ladder CONFIRMED 승격."""
         finding.confirmed = True
         finding.confidence = CONF_CONFIRMED
-        finding.reason_code = finding.reason_code or "verified"
+        finding.reason_code = finding.reason_code or REASON_XSS_BROWSER
         if screenshot_path:
             finding.screenshot_path = screenshot_path
 
     def try_promote_from_output(self, output: str, code_snippet: str = "") -> Optional[Finding]:
-        """외부에서 strong proof 재평가용 (세션 후속 추출 결과 반영)."""
+        """후속 추출 결과로 ladder 재평가."""
         return self.process(output, code_snippet=code_snippet)
 
     def save(self) -> Path | None:
@@ -861,19 +897,27 @@ class FindingsExporter:
         return path
 
     def stats(self) -> dict:
-        """v6.2.175: confirmed / potential / blocked 분리 집계."""
+        """v6.2.177: Evidence Ladder 집계 — confirmed만 Critical Confirmed."""
         total = len(self._findings)
         confirmed = sum(1 for f in self._findings if f.confirmed or f.confidence == CONF_CONFIRMED)
+        probable = sum(1 for f in self._findings if f.confidence == CONF_PROBABLE)
         blocked = sum(1 for f in self._findings if f.confidence == CONF_BLOCKED)
+        potential = sum(
+            1 for f in self._findings
+            if f.confidence in (CONF_POTENTIAL, CONF_INCONCLUSIVE)
+        )
         potential_critical = sum(
             1 for f in self._findings
-            if f.severity == SEVERITY_CRITICAL and not f.confirmed and f.confidence != CONF_BLOCKED
+            if f.severity == SEVERITY_CRITICAL
+            and not f.confirmed
+            and f.confidence not in (CONF_BLOCKED, CONF_CONFIRMED)
         )
         potential_high = sum(
             1 for f in self._findings
-            if f.severity == SEVERITY_HIGH and not f.confirmed and f.confidence != CONF_BLOCKED
+            if f.severity == SEVERITY_HIGH
+            and not f.confirmed
+            and f.confidence not in (CONF_BLOCKED, CONF_CONFIRMED)
         )
-        # confirmed=0 이면 CRITICAL 카운트는 0 (과장 금지) — potential로만 표시
         critical_confirmed = sum(
             1 for f in self._findings
             if f.severity == SEVERITY_CRITICAL and (f.confirmed or f.confidence == CONF_CONFIRMED)
@@ -886,6 +930,8 @@ class FindingsExporter:
             "total": total,
             "critical": critical_confirmed,
             "high": high_confirmed,
+            "probable": probable,
+            "potential": potential,
             "potential_critical": potential_critical,
             "potential_high": potential_high,
             "blocked": blocked,
@@ -894,7 +940,7 @@ class FindingsExporter:
         }
 
     def summary(self) -> str:
-        """발견 요약 1줄 — confirmed=0이면 CRITICAL 대신 POTENTIAL_* 표기."""
+        """Evidence Ladder 요약 — Confirmed만 CRITICAL, 후보는 PROBABLE/POTENTIAL."""
         if not self._findings:
             return ""
         s = self.stats()
@@ -903,6 +949,8 @@ class FindingsExporter:
             parts.append(f"confirmed:{s['confirmed']}")
         if s["critical"]:
             parts.append(f"CRITICAL:{s['critical']}")
+        if s.get("probable"):
+            parts.append(f"PROBABLE:{s['probable']}")
         if s["potential_critical"]:
             parts.append(f"POTENTIAL_CRITICAL:{s['potential_critical']}")
         if s["high"]:
@@ -914,24 +962,25 @@ class FindingsExporter:
         return f"[FINDINGS] total={s['total']} " + " ".join(parts)
 
     def ground_truth_block(self) -> str:
-        """보고서/progress/next_steps에 주입할 FINDINGS GROUND TRUTH 텍스트."""
+        """보고서/progress/next_steps용 Evidence Ladder ground truth."""
         s = self.stats()
         lines = [
-            f"total={s['total']} confirmed={s['confirmed']} "
-            f"critical={s['critical']} potential_critical={s['potential_critical']} "
-            f"blocked={s['blocked']}",
+            "EVIDENCE LADDER (only confirmed may claim 已确认/Confirmed):",
+            f"total={s['total']} confirmed={s['confirmed']} probable={s.get('probable', 0)} "
+            f"potential={s.get('potential', 0)} blocked={s['blocked']} "
+            f"critical_confirmed={s['critical']}",
             f"reason_codes={s['reason_codes'] or []}",
         ]
         for f in self._findings:
             lines.append(
                 f"- id={f.id} type={f.vuln_type} sev={f.severity} "
-                f"confirmed={f.confirmed} confidence={f.confidence} "
+                f"tier={f.confidence} confirmed={f.confirmed} "
                 f"reason={f.reason_code or '-'} notes={(f.notes or '')[:60]}"
             )
         return "\n".join(lines)
 
     def evidence_flags(self) -> dict:
-        """next_steps 고위험 액션 필터용 증거 플래그."""
+        """next_steps 필터용 — probable/potential SQLi는 계속 추적."""
         texts = " ".join(
             (f.evidence or "") + " " + (f.notes or "") + " " + (f.payload or "")
             for f in self._findings
@@ -953,9 +1002,9 @@ class FindingsExporter:
             f.vuln_type == FINDING_SQLI and (f.confirmed or f.confidence == CONF_CONFIRMED)
             for f in self._findings
         )
-        # v6.2.176: potential SQLi도 실탐 후보 — next_steps에서 검증/우회 유지
         has_potential_sqli = any(
-            f.vuln_type == FINDING_SQLI and f.confidence in (CONF_POTENTIAL, CONF_INCONCLUSIVE, CONF_CONFIRMED)
+            f.vuln_type == FINDING_SQLI
+            and f.confidence in (CONF_PROBABLE, CONF_POTENTIAL, CONF_INCONCLUSIVE, CONF_CONFIRMED)
             for f in self._findings
         )
         has_admin_panel = bool(re.search(r'/adm(?:in)?/|관리자\s*패널|admin\s*panel', texts, re.I))
@@ -966,9 +1015,10 @@ class FindingsExporter:
             "has_potential_sqli": has_potential_sqli,
             "has_admin_panel": has_admin_panel,
             "confirmed_count": sum(1 for f in self._findings if f.confirmed),
+            "probable_count": sum(1 for f in self._findings if f.confidence == CONF_PROBABLE),
             "potential_count": sum(
                 1 for f in self._findings
-                if f.confidence in (CONF_POTENTIAL, CONF_INCONCLUSIVE) and f.confidence != CONF_BLOCKED
+                if f.confidence in (CONF_POTENTIAL, CONF_INCONCLUSIVE, CONF_PROBABLE)
             ),
             "blocked_count": sum(1 for f in self._findings if f.confidence == CONF_BLOCKED),
         }

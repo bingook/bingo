@@ -47,6 +47,7 @@ SEVERITY_LOW      = "LOW"
 CONF_CONFIRMED    = "confirmed"
 CONF_PROBABLE     = "probable"
 CONF_POTENTIAL    = "potential"
+CONF_QUARANTINED  = "quarantined"
 CONF_BLOCKED      = "blocked"
 CONF_INCONCLUSIVE = "inconclusive"  # legacy alias → potential 취급
 CONF_NONE         = "none"
@@ -55,6 +56,7 @@ CONF_NONE         = "none"
 _LADDER_RANK = {
     CONF_NONE: 0,
     CONF_BLOCKED: 1,
+    CONF_QUARANTINED: 2,
     CONF_INCONCLUSIVE: 2,
     CONF_POTENTIAL: 3,
     CONF_PROBABLE: 4,
@@ -189,7 +191,8 @@ _XSS_TEST_EVIDENCE = re.compile(
 
 _ACTIVE_HTTP_TEST = re.compile(
     r'\b(?:curl|wget|httpx|requests\.(?:get|post|request)|'
-    r'session\.(?:get|post|request)|urllib|fetch\s*\(|page\.goto|dom_xss_test)\b',
+    r'session\.(?:get|post|request)|urllib|fetch\s*\(|page\.goto|dom_xss_test|'
+    r'http_(?:get|post)|sqli_autoexploit|ssrf_check|lfi_check|rce_check)\b',
     re.I,
 )
 _ACTIVE_TEST_PAYLOADS = {
@@ -226,24 +229,40 @@ _ACTIVE_TEST_PAYLOADS = {
 }
 
 
-def _potential_autocorrection_reason(
+def _execution_code(code_snippet: str, execution_context: dict | None) -> str:
+    if execution_context:
+        scripts = execution_context.get("scripts", [])
+        structured = "\n".join(
+            str(item.get("code", ""))
+            for item in scripts
+            if isinstance(item, dict)
+        )
+        if structured.strip():
+            return structured
+    return code_snippet or ""
+
+
+def _potential_disposition(
     vtype: str,
     output: str,
     code_snippet: str,
-) -> str:
-    """Return an auto-correction reason when a pattern has no active test context."""
-    code = code_snippet or ""
+    execution_context: dict | None = None,
+) -> tuple[str, str]:
+    """Return keep/quarantine/reject for pattern-only evidence."""
+    code = _execution_code(code_snippet, execution_context)
     if vtype == FINDING_XSS:
         if _XSS_TEST_EVIDENCE.search(output):
-            return ""
+            return "keep", ""
         if _ACTIVE_HTTP_TEST.search(code) and _XSS_ACTIVE_PAYLOAD.search(code):
-            return ""
-        return "xss_pattern_without_active_test"
+            return "keep", ""
+        if _SERVER_ALERT_PATTERN.search(output):
+            return "reject", "xss_server_alert_false_positive"
+        return "quarantine", "xss_pattern_without_active_test"
 
     payload_pattern = _ACTIVE_TEST_PAYLOADS.get(vtype)
     if payload_pattern and _ACTIVE_HTTP_TEST.search(code) and payload_pattern.search(code):
-        return ""
-    return f"{vtype}_pattern_without_active_test"
+        return "keep", ""
+    return "quarantine", f"{vtype}_pattern_without_active_test"
 
 _XSS_URL_PATTERN = re.compile(
     r'https?://[^\s"\'<>]+(?:%3C|<)(?:script|img|svg|body)[^\s"\'<>]*',
@@ -728,11 +747,16 @@ class FindingsExporter:
     def __init__(self, target: str = "", output_dir: str | None = None) -> None:
         self.target = target
         self._findings: list[Finding] = []
+        self._quarantined: list[Finding] = []
         self._finding_hashes: set[str] = set()   # 중복 방지
+        self._quarantine_hashes: set[str] = set()
         self._blocked_reasons: set[str] = set()  # v6.2.175: blocked reason 중복 방지
         self.last_autocorrection: str = ""
+        self.last_quarantine_reason: str = ""
         self.autocorrections: list[str] = []
         self.autocorrection_counts: dict[str, int] = {}
+        self.quarantine_counts: dict[str, int] = {}
+        self.quarantine_revalidation_runs: int = 0
 
         if output_dir:
             self._dir = Path(output_dir)
@@ -770,6 +794,7 @@ class FindingsExporter:
         output: str,
         code_snippet: str = "",
         extra_notes: str = "",
+        execution_context: dict | None = None,
     ) -> Optional[Finding]:
         """Evidence Ladder 단일 경로로 finding 생성.
 
@@ -782,11 +807,26 @@ class FindingsExporter:
           상위 티어가 나오면 기존 하위(blocked) finding 자동 승격
         """
         self.last_autocorrection = ""
+        self.last_quarantine_reason = ""
         if not output or len(output.strip()) < 10:
             return None
 
         verdict = _evidence_ladder(output, code_snippet=code_snippet)
         if verdict.tier == CONF_NONE:
+            return None
+
+        # Deterministic application-generated alert responses are known false
+        # positives even when raw type detection intentionally skips XSS.
+        active_code = _execution_code(code_snippet, execution_context)
+        if (
+            verdict.tier == CONF_POTENTIAL
+            and _SERVER_ALERT_PATTERN.search(output)
+            and not (
+                _ACTIVE_HTTP_TEST.search(active_code)
+                and _XSS_ACTIVE_PAYLOAD.search(active_code)
+            )
+        ):
+            self._record_autocorrection("xss_server_alert_false_positive")
             return None
 
         import hashlib
@@ -857,12 +897,24 @@ class FindingsExporter:
                 return None
             vtype, severity = FINDING_SQLI, SEVERITY_HIGH
 
-        # Pattern-only candidates must be tied to an active test. This central
-        # gate prevents documentation and normal page content from becoming findings.
+        # Pattern-only candidates use a fail-open quarantine. Only deterministic
+        # false positives are rejected; unknown execution styles remain reviewable.
         if verdict.tier == CONF_POTENTIAL:
-            correction = _potential_autocorrection_reason(vtype, output, code_snippet)
-            if correction:
-                self._record_autocorrection(correction)
+            action, reason = _potential_disposition(
+                vtype, output, code_snippet, execution_context
+            )
+            if action == "reject":
+                self._record_autocorrection(reason)
+                return None
+            if action == "quarantine":
+                self._quarantine_candidate(
+                    vtype=vtype,
+                    output=output,
+                    code_snippet=code_snippet,
+                    reason=reason,
+                    extra_notes=extra_notes,
+                    execution_context=execution_context,
+                )
                 return None
 
         # ladder → confidence / confirmed / severity 매핑
@@ -904,6 +956,65 @@ class FindingsExporter:
         self._findings.append(finding)
         self._promote_to_tier(vtype, confidence, confirmed, verdict.reason_code, evidence)
         return finding
+
+    def _quarantine_candidate(
+        self,
+        vtype: str,
+        output: str,
+        code_snippet: str,
+        reason: str,
+        extra_notes: str,
+        execution_context: dict | None,
+    ) -> None:
+        import hashlib
+        evidence = output[:2000]
+        qhash = hashlib.md5(
+            (f"quarantine:{vtype}:" + evidence[:200]).encode("utf-8", errors="ignore")
+        ).hexdigest()[:12]
+        self.last_quarantine_reason = reason
+        self.quarantine_counts[reason] = self.quarantine_counts.get(reason, 0) + 1
+        if qhash in self._quarantine_hashes:
+            return
+        self._quarantine_hashes.add(qhash)
+        context_source = "runtime" if execution_context else "legacy"
+        finding = Finding(
+            id=f"BINGO-Q{len(self._quarantined)+1:04d}",
+            vuln_type=vtype,
+            severity=SEVERITY_LOW,
+            target=self.target,
+            payload=(code_snippet or _extract_payload(output))[:500],
+            evidence=evidence,
+            notes=extra_notes or f"quarantine:{reason}:source={context_source}",
+            confirmed=False,
+            confidence=CONF_QUARANTINED,
+            reason_code=reason,
+        )
+        self._quarantined.append(finding)
+
+    def revalidate_quarantined(self) -> int:
+        """Run the deterministic quarantine audit before report generation."""
+        self.quarantine_revalidation_runs += 1
+        # Confirmed/probable findings of the same type supersede quarantined noise,
+        # while unresolved items remain isolated for manual or future verification.
+        proven_types = {
+            f.vuln_type
+            for f in self._findings
+            if f.confidence in (CONF_CONFIRMED, CONF_PROBABLE)
+        }
+        before = len(self._quarantined)
+        if proven_types:
+            self._quarantined = [
+                q for q in self._quarantined if q.vuln_type not in proven_types
+            ]
+            self._quarantine_hashes = {
+                __import__("hashlib").md5(
+                    (f"quarantine:{q.vuln_type}:" + (q.evidence or "")[:200]).encode(
+                        "utf-8", errors="ignore"
+                    )
+                ).hexdigest()[:12]
+                for q in self._quarantined
+            }
+        return before - len(self._quarantined)
 
     def _record_autocorrection(self, reason: str) -> None:
         self.last_autocorrection = reason
@@ -981,7 +1092,7 @@ class FindingsExporter:
 
     def save(self) -> Path | None:
         """JSON 파일로 저장 후 경로 반환. 발견이 없으면 None."""
-        if not self._findings:
+        if not self._findings and not self._quarantined:
             return None
         ts = time.strftime("%Y%m%d_%H%M%S")
         safe = (self.target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:30]
@@ -994,8 +1105,12 @@ class FindingsExporter:
             "autocorrection_count": sum(self.autocorrection_counts.values()),
             "autocorrections": list(self.autocorrections),
             "autocorrection_counts": dict(self.autocorrection_counts),
+            "quarantine_count": len(self._quarantined),
+            "quarantine_reason_counts": dict(self.quarantine_counts),
+            "quarantine_revalidation_runs": self.quarantine_revalidation_runs,
             **_stats,
             "findings": [f.to_dict() for f in self._findings],
+            "quarantined": [f.to_dict() for f in self._quarantined],
         }
         try:
             path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1013,6 +1128,7 @@ class FindingsExporter:
         confirmed = sum(1 for f in self._findings if f.confirmed or f.confidence == CONF_CONFIRMED)
         probable = sum(1 for f in self._findings if f.confidence == CONF_PROBABLE)
         blocked = sum(1 for f in self._findings if f.confidence == CONF_BLOCKED)
+        quarantined = len(self._quarantined)
         potential = sum(
             1 for f in self._findings
             if f.confidence in (CONF_POTENTIAL, CONF_INCONCLUSIVE)
@@ -1046,6 +1162,7 @@ class FindingsExporter:
             "potential_critical": potential_critical,
             "potential_high": potential_high,
             "blocked": blocked,
+            "quarantined": quarantined,
             "confirmed": confirmed,
             "reason_codes": sorted({f.reason_code for f in self._findings if f.reason_code}),
         }
@@ -1070,6 +1187,8 @@ class FindingsExporter:
             parts.append(f"POTENTIAL_HIGH:{s['potential_high']}")
         if s["blocked"]:
             parts.append(f"blocked:{s['blocked']}")
+        if s["quarantined"]:
+            parts.append(f"quarantined:{s['quarantined']}")
         return f"[FINDINGS] total={s['total']} " + " ".join(parts)
 
     def ground_truth_block(self) -> str:
@@ -1079,7 +1198,7 @@ class FindingsExporter:
             "EVIDENCE LADDER (only confirmed may claim 已确认/Confirmed):",
             f"total={s['total']} confirmed={s['confirmed']} probable={s.get('probable', 0)} "
             f"potential={s.get('potential', 0)} blocked={s['blocked']} "
-            f"critical_confirmed={s['critical']}",
+            f"quarantined={s.get('quarantined', 0)} critical_confirmed={s['critical']}",
             f"reason_codes={s['reason_codes'] or []}",
             f"autocorrections={self.autocorrection_counts or {}}",
         ]
@@ -1088,6 +1207,11 @@ class FindingsExporter:
                 f"- id={f.id} type={f.vuln_type} sev={f.severity} "
                 f"tier={f.confidence} confirmed={f.confirmed} "
                 f"reason={f.reason_code or '-'} notes={(f.notes or '')[:60]}"
+            )
+        for q in self._quarantined:
+            lines.append(
+                f"- id={q.id} type={q.vuln_type} sev=LOW "
+                f"tier=quarantined confirmed=False reason={q.reason_code}"
             )
         return "\n".join(lines)
 
@@ -1138,6 +1262,10 @@ class FindingsExporter:
     @property
     def findings(self) -> list[Finding]:
         return list(self._findings)
+
+    @property
+    def quarantined(self) -> list[Finding]:
+        return list(self._quarantined)
 
     def extract_xss_urls(self, output: str) -> list[str]:
         """출력에서 XSS payload가 포함된 URL 추출 (Playwright 검증용)"""

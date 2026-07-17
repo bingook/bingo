@@ -846,10 +846,20 @@ _STRINGS = {
         "zh": "🔍 [自动校正] {vtype} 模式缺少实际测试证据 — 已从发现中排除",
         "en": "🔍 [Auto-correct] {vtype} pattern has no active-test evidence — excluded from findings",
     },
+    "fe_inactive_pattern_quarantined": {
+        "ko": "🧪 [격리] 활성 테스트 여부가 불명확한 {vtype} 패턴 — 재검증 목록에 보존",
+        "zh": "🧪 [隔离] 无法确认 {vtype} 模式是否来自主动测试 — 已保留供重新验证",
+        "en": "🧪 [Quarantine] {vtype} pattern has uncertain active-test context — retained for revalidation",
+    },
     "fe_xss_negative_autocorrected": {
         "ko": "🔍 [자동 교정] 브라우저 음성 검증 — XSS 후보를 발견 목록에서 제거",
         "zh": "🔍 [自动校正] 浏览器验证为阴性 — 已从发现列表移除 XSS 候选",
         "en": "🔍 [Auto-correct] Negative browser verification — XSS candidate removed from findings",
+    },
+    "fe_xss_verify_error": {
+        "ko": "브라우저 검증 오류 {n}건 — 후보를 제거하지 않고 보존",
+        "zh": "浏览器验证发生 {n} 个错误 — 候选项已保留，未删除",
+        "en": "{n} browser verification error(s) — candidate retained, not removed",
     },
     "fe_candidate_detected": {
         "ko": "검증 필요 후보",

@@ -10,11 +10,8 @@
 from __future__ import annotations
 
 import base64
-import subprocess
-import sys
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Callable
 
 
 @dataclass
@@ -156,7 +153,7 @@ class _PlaywrightEngine:
             console_logs=logs,
         )
 
-    def inject_dom_xss(self, url: str, param: str) -> bool:
+    def inject_dom_xss(self, url: str, param: str) -> bool | None:
         """DOM XSS 주입 후 alert 실행 여부 확인"""
         payload = "<img src=x onerror=window.__BINGO_XSS__=1>"
         xss_url = url + (
@@ -170,7 +167,7 @@ class _PlaywrightEngine:
             result = page.evaluate("() => window.__BINGO_XSS__")
             return result == 1
         except Exception:
-            return False
+            return None
         finally:
             ctx.close()
 
@@ -193,8 +190,8 @@ class _RequestsFallback:
     def login_and_screenshot(self, *args, **kwargs) -> BrowserResult:
         return BrowserResult(url="", console_logs=["playwright 미설치 — 스크린샷 불가"])
 
-    def inject_dom_xss(self, url: str, param: str) -> bool:
-        return False
+    def inject_dom_xss(self, url: str, param: str) -> bool | None:
+        return None
 
     def close(self) -> None:
         pass
@@ -235,11 +232,23 @@ class PlaywrightEngine:
         )
 
     def dom_xss_test(self, url: str, params: list[str]) -> list[str]:
-        confirmed = []
-        for p in params:
-            if self._engine.inject_dom_xss(url, p):
-                confirmed.append(p)
+        confirmed, _, _ = self.dom_xss_test_detailed(url, params)
         return confirmed
+
+    def dom_xss_test_detailed(self, url: str, params: list[str]) -> tuple[list[str], int, int]:
+        """Return confirmed params, completed checks, and execution errors."""
+        confirmed = []
+        completed = 0
+        errors = 0
+        for p in params:
+            result = self._engine.inject_dom_xss(url, p)
+            if result is None:
+                errors += 1
+                continue
+            completed += 1
+            if result:
+                confirmed.append(p)
+        return confirmed, completed, errors
 
     def auto_scan(self, url: str, params: list[str] | None = None) -> PlaywrightReport:
         report = PlaywrightReport(target=url)

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import threading
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 from bingo.ui.terminal import BingoTerminal
 from bingo.tools.findings_exporter import FindingsExporter
+from bingo.tools.playwright_engine import PlaywrightEngine
 
 
 class _Console:
@@ -45,7 +47,8 @@ def test_generic_homepage_script_is_not_an_xss_finding(tmp_path: Path) -> None:
     finding = exporter.process(homepage, code_snippet="curl -sk https://example.test/")
 
     assert finding is None
-    assert exporter.last_autocorrection == "xss_pattern_without_active_test"
+    assert exporter.last_quarantine_reason == "xss_pattern_without_active_test"
+    assert len(exporter.quarantined) == 1
 
 
 def test_xss_response_parser_is_not_an_active_payload(tmp_path: Path) -> None:
@@ -54,7 +57,8 @@ def test_xss_response_parser_is_not_an_active_payload(tmp_path: Path) -> None:
     parser = "body=requests.get(url).text\nif 'alert(' in body: print(body)"
 
     assert exporter.process(homepage, code_snippet=parser) is None
-    assert exporter.last_autocorrection == "xss_pattern_without_active_test"
+    assert exporter.last_quarantine_reason == "xss_pattern_without_active_test"
+    assert exporter.quarantined[0].confidence == "quarantined"
 
 
 def test_documentation_patterns_are_autocorrected(tmp_path: Path) -> None:
@@ -69,7 +73,17 @@ def test_documentation_patterns_are_autocorrected(tmp_path: Path) -> None:
         exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
         finding = exporter.process(f"HTTP 200\n{output}", "curl -sk https://example.test/docs")
         assert finding is None
-        assert exporter.last_autocorrection == f"{expected_type}_pattern_without_active_test"
+        assert exporter.last_quarantine_reason == f"{expected_type}_pattern_without_active_test"
+        assert exporter.quarantined[0].vuln_type == expected_type
+
+
+def test_deterministic_server_alert_is_rejected_not_quarantined(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    output = "HTTP 200\n<script>alert('no menu'); history.back();</script>"
+
+    assert exporter.process(output, "curl https://example.test/") is None
+    assert exporter.last_autocorrection == "xss_server_alert_false_positive"
+    assert exporter.quarantined == []
 
 
 def test_active_security_tests_remain_candidates(tmp_path: Path) -> None:
@@ -134,10 +148,148 @@ def test_negative_verification_removes_potential_finding(tmp_path: Path) -> None
 def test_short_output_clears_previous_autocorrection(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
     exporter.process("HTTP 200\npassword='example123'", "curl https://example.test/docs")
-    assert exporter.last_autocorrection
+    assert exporter.last_quarantine_reason
 
     assert exporter.process("short") is None
     assert exporter.last_autocorrection == ""
+    assert exporter.last_quarantine_reason == ""
+
+
+def test_payload_after_old_500_char_limit_is_retained(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    code = "# analysis\n" + ("x" * 700) + "\ncurl 'https://example.test/?id=1 UNION SELECT table_name FROM information_schema.tables'"
+
+    finding = exporter.process("HTTP 200\ntable_name=users", code[:16_384])
+
+    assert finding is not None
+    assert finding.vuln_type == "sqli"
+    assert exporter.quarantined == []
+
+
+def test_unknown_http_client_is_quarantined_not_dropped(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+
+    finding = exporter.process(
+        "HTTP 200\n169.254.169.254 returned 200 OK",
+        "custom_transport.send('http://169.254.169.254/latest/meta-data/')",
+    )
+
+    assert finding is None
+    assert exporter.quarantined[0].vuln_type == "ssrf"
+
+
+def test_quarantine_is_saved_separately(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    exporter.process(
+        "HTTP 200\nTroubleshooting: cat /etc/passwd",
+        "custom_transport.send(url)",
+    )
+
+    path = exporter.save()
+    assert path is not None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["findings"] == []
+    assert data["quarantine_count"] == 1
+    assert data["quarantined"][0]["confidence"] == "quarantined"
+
+
+def test_playwright_detailed_result_distinguishes_errors() -> None:
+    class FakeEngine:
+        def __init__(self, results):
+            self.results = iter(results)
+
+        def inject_dom_xss(self, _url, _param):
+            return next(self.results)
+
+    engine = PlaywrightEngine.__new__(PlaywrightEngine)
+    engine._engine = FakeEngine([None, False, True])
+
+    confirmed, completed, errors = engine.dom_xss_test_detailed(
+        "https://example.test", ["a", "b", "c"]
+    )
+
+    assert confirmed == ["c"]
+    assert completed == 2
+    assert errors == 1
+
+
+def test_confirmed_and_probable_evidence_bypass_quarantine(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+
+    confirmed = exporter.process("HTTP 200\nuid=0(root) gid=0(root)", "custom_exec(target)")
+    probable = exporter.process(
+        "HTTP 200\nTRUE 1200B\nFALSE 500B",
+        "custom_transport.send(target)",
+    )
+
+    assert confirmed is not None and confirmed.confidence == "confirmed"
+    assert probable is not None and probable.confidence == "probable"
+    assert exporter.quarantined == []
+
+
+def test_structured_runtime_context_preserves_active_candidate(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    context = {
+        "executed": True,
+        "source": "code_block",
+        "scripts": [{
+            "type": "python",
+            "code": "requests.get('http://169.254.169.254/latest/meta-data/')",
+            "returncode": 0,
+            "output_length": 40,
+        }],
+    }
+
+    finding = exporter.process(
+        "HTTP 200\n169.254.169.254 returned 200 OK",
+        "unrecognized wrapper",
+        execution_context=context,
+    )
+
+    assert finding is not None
+    assert finding.vuln_type == "ssrf"
+    assert exporter.quarantined == []
+
+
+def test_xss_verification_error_does_not_remove_candidate(tmp_path: Path, monkeypatch) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    payload = "<img src=x onerror=alert(1)>"
+    finding = exporter.process(
+        f"HTTP 200\nreflected={payload}",
+        f"curl 'https://example.test/?q={payload}'",
+    )
+    assert finding is not None
+
+    class ErrorEngine:
+        available = True
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def dom_xss_test_detailed(self, _url, _params):
+            return [], 0, 1
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("bingo.tools.playwright_engine.PlaywrightEngine", ErrorEngine)
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.config = SimpleNamespace(lang="en")
+    terminal.console = _Console()
+    terminal.s = {
+        "fe_xss_unconfirmed": "not confirmed",
+        "fe_xss_verify": "verifying",
+        "fe_xss_verify_error": "error {n}; retained",
+    }
+    terminal._findings_exporter = exporter
+
+    terminal._playwright_verify_xss(
+        finding,
+        ["https://example.test/?q=%3Cimg%20onerror=alert(1)%3E"],
+    )
+
+    assert exporter.findings == [finding]
+    assert any("retained" in message for message in terminal.console.messages)
 
 
 def test_browser_confirmation_replaces_pattern_reason(tmp_path: Path) -> None:

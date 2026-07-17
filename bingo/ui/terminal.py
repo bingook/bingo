@@ -5399,6 +5399,12 @@ class BingoTerminal:
         import re, subprocess, tempfile, os, threading
         from pathlib import Path
         from rich.markup import escape as _resc
+        self._last_execution_context = {
+            "executed": False,
+            "source": "runtime",
+            "scripts": [],
+            "response_bytes": 0,
+        }
 
         # ══════════════════════════════════════════════════════════════════════
         # v6.2.145 ── XML tool_call 형식 자동 변환 (Type A 자동 교정기)
@@ -5870,6 +5876,15 @@ class BingoTerminal:
                 tool_results.append(_cap_msg)
 
             if tool_results:
+                self._last_execution_context = {
+                    "executed": _tools_executed > 0,
+                    "source": "tool_call",
+                    "scripts": [
+                        {"type": "tool_call", "code": raw[:16_384], "returncode": 0}
+                        for raw in _tool_matches[:10]
+                    ],
+                    "response_bytes": sum(len(item) for item in tool_results),
+                }
                 return tool_results
         # ══════════════════════════════════════════════════════════════════════
         # v6.2.152 Type A 자동교정기: AI가 잘못된 dict 형식으로 tool call 시도 시
@@ -7267,6 +7282,7 @@ class BingoTerminal:
                 "path": str(_sh_path),
                 "cmd": first_real_lines[0][:80],   # 표시용 1줄 요약
                 "preview": script[:120],
+                "code": script[:16_384],
             })
 
         # ── v6.2.0: Python 블록 파싱 및 tasks 추가 ──────────────────────────────
@@ -7350,6 +7366,7 @@ class BingoTerminal:
                 "idx": _py_i,
                 "cmd": first_py_line[:80],
                 "preview": py_script[:120],
+                "code": py_script[:16_384],
             })
 
         if not tasks:
@@ -7787,6 +7804,8 @@ class BingoTerminal:
                     except Exception:
                         pass
                 output = "\n".join(all_lines)
+                task["returncode"] = p.returncode
+                task["output_length"] = len(output)
                 _kill_suffix = ""
                 if _killed_reason:
                     if _killed_reason.startswith("INFINITE_LOOP:"):
@@ -7947,7 +7966,22 @@ class BingoTerminal:
                         )
                 break
 
-        return [r for r in results_text if r]
+        filtered_results = [r for r in results_text if r]
+        self._last_execution_context = {
+            "executed": bool(tasks),
+            "source": "code_block",
+            "scripts": [
+                {
+                    "type": task.get("type", ""),
+                    "code": task.get("code", ""),
+                    "returncode": task.get("returncode"),
+                    "output_length": task.get("output_length", 0),
+                }
+                for task in tasks
+            ],
+            "response_bytes": sum(len(item) for item in filtered_results),
+        }
+        return filtered_results
 
     def _execute_ai_commands(
         self,
@@ -8772,7 +8806,11 @@ class BingoTerminal:
             raw_results = self._postcheck_exec_output(raw_results)
 
             # ── v3.2.96: 실시간 발견 자동 저장 + XSS Playwright 자동 검증 ──
-            self._auto_analyze_findings(raw_results, current_response)
+            self._auto_analyze_findings(
+                raw_results,
+                current_response[:16_384],
+                execution_context=getattr(self, "_last_execution_context", None),
+            )
             if len(raw_results) > 3000:
                 trimmed = (
                     raw_results[:1500]
@@ -10178,7 +10216,7 @@ class BingoTerminal:
         if reason == "xss_browser_negative":
             key = "fe_xss_negative_autocorrected"
             fallback = "[Auto-correct] Negative browser verification removed the XSS candidate"
-        elif reason.startswith("xss_pattern_"):
+        elif reason.startswith("xss_"):
             key = "fe_pattern_fp_autocorrected"
             fallback = "[Auto-correct] Generic page script excluded from XSS findings"
         else:
@@ -10192,7 +10230,24 @@ class BingoTerminal:
             message = str(message)
         self.console.print(f"[{THEME['dim']}]{message}[/]")
 
-    def _auto_analyze_findings(self, exec_output: str, code_snippet: str = "") -> None:
+    def _show_finding_quarantine(self, reason: str) -> None:
+        message = self.s.get(
+            "fe_inactive_pattern_quarantined",
+            "[Quarantine] Pattern could not be tied to an active test; retained for revalidation",
+        )
+        vtype = reason.split("_pattern_", 1)[0].upper() if "_pattern_" in reason else "UNKNOWN"
+        try:
+            message = str(message).format(vtype=vtype)
+        except (KeyError, ValueError):
+            message = str(message)
+        self.console.print(f"[{THEME['dim']}]{message}[/]")
+
+    def _auto_analyze_findings(
+        self,
+        exec_output: str,
+        code_snippet: str = "",
+        execution_context: dict | None = None,
+    ) -> None:
         """코드 실행 결과에서 취약점 발견을 감지하고 JSON 자동 누적 저장.
         XSS payload URL이 감지되면 Playwright로 2차 검증을 수행."""
         if not exec_output or len(exec_output.strip()) < 15:
@@ -10210,9 +10265,16 @@ class BingoTerminal:
         # ── 발견 탐지 ─────────────────────────────────────────────────
         finding = self._findings_exporter.process(
             output=exec_output,
-            code_snippet=code_snippet[:500] if code_snippet else "",
+            code_snippet=code_snippet[:16_384] if code_snippet else "",
+            execution_context=execution_context,
         )
         if not finding:
+            quarantine_reason = getattr(
+                self._findings_exporter, "last_quarantine_reason", ""
+            )
+            if quarantine_reason:
+                self._show_finding_quarantine(quarantine_reason)
+                return
             correction = getattr(self._findings_exporter, "last_autocorrection", "")
             if correction:
                 self._show_finding_autocorrection(correction)
@@ -10318,6 +10380,7 @@ class BingoTerminal:
 
         confirmed_any = False
         verification_completed = False
+        verification_errors = 0
         ss_path = ""
         import time as _t_pw
         import re as _re_pw
@@ -10327,8 +10390,15 @@ class BingoTerminal:
                 # param 추출: URL의 마지막 쿼리 파라미터
                 _params_m = _re_pw.findall(r'[?&](\w+)=', url)
                 _params = _params_m if _params_m else ["q"]
-                confirmed_params = engine.dom_xss_test(url, _params)
-                verification_completed = True
+                if hasattr(engine, "dom_xss_test_detailed"):
+                    confirmed_params, completed_n, errors_n = engine.dom_xss_test_detailed(
+                        url, _params
+                    )
+                    verification_completed = verification_completed or completed_n > 0
+                    verification_errors += errors_n
+                else:
+                    confirmed_params = engine.dom_xss_test(url, _params)
+                    verification_completed = True
                 if confirmed_params:
                     confirmed_any = True
                     # 스크린샷 저장
@@ -10360,7 +10430,7 @@ class BingoTerminal:
             self.console.print(f"[#00ff41]{_confirmed_str}[/]")
             if ss_path:
                 self.console.print(f"[#4a4a4a]  Screenshot: {ss_path}[/]")
-        elif verification_completed and self._findings_exporter.reject_finding(
+        elif verification_completed and verification_errors == 0 and self._findings_exporter.reject_finding(
             finding, "xss_browser_negative"
         ):
             self._show_finding_autocorrection("xss_browser_negative")
@@ -10371,6 +10441,12 @@ class BingoTerminal:
             )
             _unconf_str = _unconf_msg.get(_lang, _unconf_msg.get("en", "⚠ XSS Not Auto-Confirmed")) \
                 if isinstance(_unconf_msg, dict) else str(_unconf_msg)
+            if verification_errors:
+                _verify_error = self.s.get(
+                    "fe_xss_verify_error",
+                    "browser verification error ({n}); candidate retained",
+                )
+                _unconf_str += " — " + str(_verify_error).format(n=verification_errors)
             self.console.print(f"[#ffaa00]{_unconf_str}[/]")
 
     def _render_hacker_report(self, md_text: str, target: str) -> None:
@@ -10776,6 +10852,8 @@ class BingoTerminal:
         try:
             _fe = getattr(self, "_findings_exporter", None)
             if _fe is not None and hasattr(_fe, "ground_truth_block"):
+                if hasattr(_fe, "revalidate_quarantined"):
+                    _fe.revalidate_quarantined()
                 _stats = _fe.stats() if hasattr(_fe, "stats") else {}
                 _fe_confirmed_n = int(_stats.get("confirmed", 0) or 0)
                 _fe_potential_n = int(
@@ -10790,9 +10868,10 @@ class BingoTerminal:
                     + "1) tier=confirmed ONLY → MAY write 已确认/Confirmed/Critical Confirmed.\n"
                     + "2) tier=probable → MUST keep vulnerability as Probable/潜在; NEVER drop; NEVER 已确认.\n"
                     + "3) tier=potential → keep as Potential; NEVER 已确认.\n"
-                    + "4) tier=blocked → WAF/oracle event only; NOT proven vuln.\n"
-                    + "5) Fake hashes / login forms are NEVER credentials.\n"
-                    + "6) CONFIRMED requires extraction/RCE/browser proof — 100% evidence bar.\n"
+                    + "4) tier=quarantined → unresolved candidate; never claim as vuln, never discard.\n"
+                    + "5) tier=blocked → WAF/oracle event only; NOT proven vuln.\n"
+                    + "6) Fake hashes / login forms are NEVER credentials.\n"
+                    + "7) CONFIRMED requires extraction/RCE/browser proof — 100% evidence bar.\n"
                 )
             elif _fe is not None:
                 _fe_snap_lines = []

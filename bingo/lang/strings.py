@@ -9121,6 +9121,67 @@ _STRINGS.update({
         "zh": "参数: {params}",
         "en": "params: {params}",
     },
+    # ── v6.2.159 Intelligence Engine (SubAgent / TaskGraph / Self-Reflection) ─
+    "task_graph_label": {
+        "ko": "📋 미션 Task Graph",
+        "zh": "📋 任务图谱",
+        "en": "📋 Mission Task Graph",
+    },
+    "task_graph_next": {
+        "ko": "▶ 다음 단계: {steps}",
+        "zh": "▶ 下一步: {steps}",
+        "en": "▶ Next steps: {steps}",
+    },
+    "subagent_spawned": {
+        "ko": "🔀 서브에이전트 [{id}] 생성: {desc}",
+        "zh": "🔀 子代理 [{id}] 已创建: {desc}",
+        "en": "🔀 SubAgent [{id}] spawned: {desc}",
+    },
+    "subagent_done": {
+        "ko": "✅ [서브에이전트 완료] {id}: {desc}",
+        "zh": "✅ [子代理完成] {id}: {desc}",
+        "en": "✅ [SubAgent done] {id}: {desc}",
+    },
+    "subagent_running": {
+        "ko": "🔀 서브에이전트 실행중 ({count})",
+        "zh": "🔀 子代理运行中 ({count})",
+        "en": "🔀 SubAgents running ({count})",
+    },
+    "self_reflect_header": {
+        "ko": "🧠 [SELF_REFLECTION #{n}] Loop {loop} 도달 — 전략 재평가",
+        "zh": "🧠 [SELF_REFLECTION #{n}] 第{loop}循环 — 战略重评估",
+        "en": "🧠 [SELF_REFLECTION #{n}] Loop {loop} reached — strategy re-evaluation",
+    },
+    "self_reflect_found": {
+        "ko": "발견된 취약점: {vulns}",
+        "zh": "已发现漏洞: {vulns}",
+        "en": "Vulns found: {vulns}",
+    },
+    "self_reflect_failed": {
+        "ko": "실패한 도구: {tools}",
+        "zh": "失败工具: {tools}",
+        "en": "Failed tools: {tools}",
+    },
+    "self_reflect_q1": {
+        "ko": "1) 현재까지 목표 달성도는?",
+        "zh": "1) 目标完成度如何？",
+        "en": "1) How much of the objective has been achieved?",
+    },
+    "self_reflect_q2": {
+        "ko": "2) 낭비 중인 시도가 있는가?",
+        "zh": "2) 是否有浪费的尝试？",
+        "en": "2) Are there wasted attempts?",
+    },
+    "self_reflect_q3": {
+        "ko": "3) 놓친 공격 벡터는?",
+        "zh": "3) 是否遗漏了攻击向量？",
+        "en": "3) Any missed attack vectors?",
+    },
+    "self_reflect_q4": {
+        "ko": "4) 지금 당장 바꿔야 할 전략은?",
+        "zh": "4) 现在需要立即改变的策略？",
+        "en": "4) What strategy must change right now?",
+    },
 })
 
 

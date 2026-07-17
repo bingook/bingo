@@ -308,6 +308,15 @@ class BingoTerminal:
         self._compaction_lock = __import__("threading").Lock()
         self._compaction_running: bool = False
         self._compaction_threshold: int = 40  # 히스토리 메시지 수 임계값
+        # ── v6.2.159 Intelligence Engine (SubAgent/TaskGraph/Self-Reflection) ─
+        try:
+            from ..core.intelligence import SubAgentPool, TaskGraph, SelfReflector
+            self._subagent_pool = SubAgentPool()
+            self._task_graph = TaskGraph()
+            self._self_reflector = SelfReflector()
+            self._intel_ready = True
+        except Exception:
+            self._intel_ready = False
         # 네트워크 환경 (VPN 감지 결과 캐싱)
         self._net_env: dict = {}
         self._detect_network_env()
@@ -1055,6 +1064,19 @@ class BingoTerminal:
 
         if skill_context:
             system_text += "\n\n---\n## RELEVANT SKILL REFERENCES\n" + skill_context
+
+        # ── v6.2.159 SubAgent 사용법 힌트 ────────────────────────────────
+        system_text += (
+            "\n\n---\n## INTELLIGENCE ENGINE — SubAgent Delegation\n"
+            "You can spawn background subtasks in parallel using:\n"
+            "  SPAWN_SUBAGENT:<task_id>:<description>:<bash_command>\n"
+            "Example:\n"
+            "  SPAWN_SUBAGENT:port_scan:Port scanning:nmap -sV -p 80,443,8080 target.com\n"
+            "Results are automatically collected and injected back into context.\n"
+            "Use this for independent parallel tasks (port scan, DNS recon, hash crack, etc.)\n"
+            "while you continue with the main attack flow.\n"
+        )
+        # ─────────────────────────────────────────────────────────────────
 
         # ── 인증 세션 자동 주입 ─────────────────────────────────────
         if getattr(self, "_auth_session", {}).get("active"):
@@ -2261,6 +2283,18 @@ class BingoTerminal:
                 self._exec_loop_count = 0
                 self._stuck_count = 0
                 self._recent_results = []
+                # ── v6.2.159 Task Graph 초기화 (새 타겟 설정 시) ────────────
+                if getattr(self, "_intel_ready", False):
+                    try:
+                        self._task_graph.load_template(user_input)
+                        self._self_reflector._last_reflect_loop = 0
+                        self._self_reflector._reflect_count = 0
+                        _tg_render = self._task_graph.render()
+                        if _tg_render:
+                            self.console.print(f"\n[bold cyan]{_tg_render}[/bold cyan]")
+                    except Exception:
+                        pass
+                # ─────────────────────────────────────────────────────────────
                 # v6.2.102: 타겟 이탈 자동 차단기에 현재 타겟 동기화
                 try:
                     from ..tools_ext.pentest_tools import set_target_domain
@@ -7299,6 +7333,43 @@ class BingoTerminal:
                         self._execute_ai_commands(new_response, _depth=_depth + 1, _loaded_skills=_loaded_skills)
                     return
 
+        # ── v6.2.159 SPAWN_SUBAGENT 처리 (Type A auto-corrector) ────────────
+        # AI가 "SPAWN_SUBAGENT:<id>:<desc>:<bash_cmd>" 형식으로 서브에이전트 지시 가능
+        if getattr(self, "_intel_ready", False) and "SPAWN_SUBAGENT:" in response:
+            import re as _sa_re
+            for _sa_m in _sa_re.finditer(
+                r"SPAWN_SUBAGENT:([^:\n]+):([^:\n]+):(.+?)(?=\nSPAWN_SUBAGENT:|$)",
+                response,
+                _sa_re.DOTALL,
+            ):
+                _sa_id = _sa_m.group(1).strip()[:32]
+                _sa_desc = _sa_m.group(2).strip()[:128]
+                _sa_cmd = _sa_m.group(3).strip()[:1024]
+                if _sa_id and _sa_cmd:
+                    def _make_sa_fn(_cmd=_sa_cmd):
+                        def _fn():
+                            import subprocess, os
+                            r = subprocess.run(
+                                _cmd, shell=True,
+                                capture_output=True, text=True, timeout=60,
+                                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                            )
+                            return (r.stdout + r.stderr)[:4096]
+                        return _fn
+                    spawned = self._subagent_pool.spawn(_sa_id, _sa_desc, _make_sa_fn())
+                    _spawn_label = {
+                        "ko": f"🔀 서브에이전트 [{_sa_id}] 생성: {_sa_desc}",
+                        "zh": f"🔀 子代理 [{_sa_id}] 已创建: {_sa_desc}",
+                        "en": f"🔀 SubAgent [{_sa_id}] spawned: {_sa_desc}",
+                    }
+                    try:
+                        from ..i18n import get_lang as _sa_gl
+                        _spawn_msg = _spawn_label.get(_sa_gl(), _spawn_label["en"])
+                    except Exception:
+                        _spawn_msg = _spawn_label["en"]
+                    self.console.print(f"[bold cyan]{_spawn_msg}[/bold cyan]")
+        # ─────────────────────────────────────────────────────────────────────
+
         # ── 메인 에이전트 루프 (while — 재귀 없음) ────────────────────
         current_response = response
         _no_code_retry = 0  # AI가 코드 없이 텍스트만 보낸 횟수
@@ -8055,6 +8126,18 @@ class BingoTerminal:
                         f"sess = __import__('requests').Session(); sess.trust_env = False\n"
                         f"r = sess.get(url, proxies=PROXIES, verify=False, timeout=15)\n"
                     )
+            # ── v6.2.159 Task Graph + SubAgent 상태를 state_summary에 포함 ──
+            if getattr(self, "_intel_ready", False):
+                try:
+                    _tg_next = self._task_graph.next_hint()
+                    if _tg_next:
+                        state_summary += f"\n{_tg_next}"
+                    _sa_status = self._subagent_pool.build_status_msg()
+                    if _sa_status:
+                        state_summary += f"\n{_sa_status}"
+                except Exception:
+                    pass
+            # ─────────────────────────────────────────────────────────────────
             self._show_token_usage()
             self._exec_loop_count += 1
 
@@ -8120,6 +8203,53 @@ class BingoTerminal:
                 self.history.append(Message(role="user", content=_dl_msg))
                 self._dl_tool_sigs.clear()
                 self._dl_no_progress = 0
+            # ─────────────────────────────────────────────────────────────────
+
+            # ── v6.2.159 Self-Reflection 주기적 자기평가 (Type A) ─────────────
+            if getattr(self, "_intel_ready", False):
+                try:
+                    if self._self_reflector.should_reflect(self._exec_loop_count):
+                        _hist_texts = [
+                            m.content for m in self.history[-40:]
+                            if hasattr(m, "content") and isinstance(m.content, str)
+                        ]
+                        _tgt = self._agent_state.get("target", "?")
+                        _found_v = self._self_reflector.extract_found_vulns(_hist_texts)
+                        _failed_t = self._self_reflector.extract_failed_tools(_hist_texts)
+                        _reflect_msg = self._self_reflector.build_reflection_prompt(
+                            self._exec_loop_count,
+                            _found_v,
+                            _failed_t,
+                            _tgt,
+                            self._task_graph if self._task_graph._nodes else None,
+                        )
+                        self.history.append(Message(role="user", content=_reflect_msg))
+                        self.console.print(
+                            f"\n[bold magenta]{_reflect_msg.splitlines()[0]}[/bold magenta]"
+                        )
+                except Exception:
+                    pass
+
+            # ── v6.2.159 SubAgent 완료 결과 수집 → 히스토리 주입 ─────────────
+            if getattr(self, "_intel_ready", False):
+                try:
+                    _done_agents = self._subagent_pool.collect_done()
+                    if _done_agents:
+                        from ..core.intelligence import _nl as _intel_nl
+                        for _sa in _done_agents:
+                            _sa_label = _intel_nl(
+                                f"✅ [서브에이전트 완료] {_sa.task_id}: {_sa.task_desc}",
+                                f"✅ [子代理完成] {_sa.task_id}: {_sa.task_desc}",
+                                f"✅ [SubAgent done] {_sa.task_id}: {_sa.task_desc}",
+                            )
+                            _sa_content = (
+                                f"{_sa_label}\n"
+                                + (_sa.output if _sa.status == "done" else f"ERROR: {_sa.error}")
+                            )
+                            self.history.append(Message(role="user", content=_sa_content))
+                            self.console.print(f"\n[bold green]{_sa_label}[/bold green]")
+                except Exception:
+                    pass
             # ─────────────────────────────────────────────────────────────────
 
             # ── v6.2.125: 루프 과다 자동 차단 (Type A) ───────────────────────

@@ -1076,6 +1076,76 @@ class BingoTerminal:
     # ────────────────────────────────────────────────────────────────
     # 실행 루프 중 힌트 입력 — Ctrl+C 후 힌트 주면 루프 유지
     # ────────────────────────────────────────────────────────────────
+    @staticmethod
+    def _force_tty_sane(fd: int | None = None) -> bool:
+        """터미널을 무조건 정상 라인입력 모드로 강제 복구.
+
+        근본 치료: Rich Live / prompt_toolkit / 도구 스레드가 남긴 raw 상태를
+        ICANON+ECHO+ISIG 로 되돌린다. 성공 시 True.
+        """
+        import os as _os
+        try:
+            import termios as _tc
+        except ImportError:
+            # Windows 등 — stty 없으면 False
+            try:
+                _os.system("stty sane 2>/dev/null")
+            except Exception:
+                pass
+            return False
+
+        _close = False
+        _f = None
+        try:
+            if fd is None:
+                if not _os.path.exists("/dev/tty"):
+                    return False
+                _f = open("/dev/tty", "r+b", buffering=0)
+                fd = _f.fileno()
+                _close = True
+
+            # 1) stty sane — 가장 확실한 커널 레벨 복구
+            try:
+                _os.system("stty sane < /dev/tty > /dev/tty 2>/dev/null")
+            except Exception:
+                pass
+
+            _cur = list(_tc.tcgetattr(fd))
+            # iflag: CR→NL, XON
+            _cur[0] |= _tc.ICRNL | _tc.IXON
+            # oflag: 출력 후처리
+            _cur[1] |= _tc.OPOST
+            if hasattr(_tc, "ONLCR"):
+                _cur[1] |= _tc.ONLCR
+            # lflag: 캐노니컬 + 에코 + 시그널 (raw 잔재 제거가 핵심)
+            _l = _cur[3]
+            _l |= _tc.ICANON | _tc.ECHO | _tc.ECHOE | _tc.ECHOK | _tc.ISIG
+            # 입력 방해 플래그 OFF
+            for _off in ("IEXTEN",):
+                if hasattr(_tc, _off):
+                    pass  # IEXTEN 유지 OK
+            _cur[3] = _l
+            _tc.tcsetattr(fd, _tc.TCSAFLUSH, _cur)
+
+            # 잔여 입력 폐기
+            try:
+                _tc.tcflush(fd, _tc.TCIFLUSH)
+            except Exception:
+                pass
+
+            # 검증: ICANON+ECHO 가 실제로 켜졌는지
+            _chk = _tc.tcgetattr(fd)
+            _ok = bool(_chk[3] & _tc.ICANON) and bool(_chk[3] & _tc.ECHO)
+            return _ok
+        except Exception:
+            return False
+        finally:
+            if _close and _f is not None:
+                try:
+                    _f.close()
+                except Exception:
+                    pass
+
     def _normalize_mid_task_hint(self, hint: str) -> str:
         """Ctrl+C 후 'continue/继续/계속' 같은 빈 재개어를 agent_state 기반 재개 지시로 확장.
 
@@ -1128,38 +1198,104 @@ class BingoTerminal:
             f"Emit the next TOOL_CALL or bash block NOW."
         )
 
-    def _prompt_mid_task_hint(self) -> "str | None":
-        """Ctrl+C 눌렀을 때 힌트를 입력받고 반환.
-        빈 입력 → None (루프 중단), 텍스트 입력 → 힌트 주입 후 루프 계속.
+    def _read_hint_line_from_tty(self, timeout: float = 300.0) -> "str | None":
+        """/dev/tty 에서 한 줄을 읽는다. 반드시 sane 모드에서만 호출.
 
-        v6.2.104: /dev/tty + input() — prompt_toolkit asyncio 동결 회피.
-        v6.2.180: SIGINT 미복구/잔여바이트/재개어 확장.
-        v6.2.181: tty raw 잔재를 캐노니컬+ECHO 강제 ON 으로 치료.
-        v6.2.182: (1) hint 종료 후 망가진 old_attr 로 되돌리던 버그 제거
-                  (2) hint 중 백그라운드 도구 stdout 경합 억제
-                  (3) 활성 도구 스레드 join 후 hint 진입
+        Returns:
+            입력 문자열 (strip), 빈 Enter → None, 타임아웃/취소 → None
+        """
+        import os as _os
+        import select as _sel
+        import sys as _sys
+
+        if not _os.path.exists("/dev/tty"):
+            # fallback: stdin
+            try:
+                _sys.stdout.write("💬 hint ❯ ")
+                _sys.stdout.flush()
+                _h = input()
+                return _h.strip() if _h.strip() else None
+            except (EOFError, KeyboardInterrupt, Exception):
+                return None
+
+        _f = None
+        try:
+            _f = open("/dev/tty", "r+b", buffering=0)
+            _fd = _f.fileno()
+            # 읽기 직전 한 번 더 강제 sane + flush
+            self._force_tty_sane(_fd)
+
+            _f.write("💬 hint ❯ ".encode("utf-8"))
+            _f.flush()
+
+            _rdy, _, _ = _sel.select([_fd], [], [], timeout)
+            if not _rdy:
+                _f.write(b"\r\n")
+                _f.flush()
+                return None
+            _line = _f.readline()
+            _h = (_line or b"").decode("utf-8", "replace").strip()
+            return _h if _h else None
+        except KeyboardInterrupt:
+            return None
+        except Exception:
+            # 최후 fallback
+            try:
+                self._force_tty_sane()
+                _sys.stdout.write("💬 hint ❯ ")
+                _sys.stdout.flush()
+                _h2 = input()
+                return _h2.strip() if _h2.strip() else None
+            except (EOFError, KeyboardInterrupt, Exception):
+                return None
+        finally:
+            if _f is not None:
+                try:
+                    _f.close()
+                except Exception:
+                    pass
+            # 읽기 종료 후에도 sane 유지 (다음 bingo 프롬프트용)
+            self._force_tty_sane()
+
+    def _prompt_mid_task_hint(self) -> "str | None":
+        """Ctrl+C 후 hint 입력. 빈 입력/취소 → None, 텍스트 → 주입 후 루프 계속.
+
+        v6.2.183 근본 처리 (100%):
+          1) hint 진입 전: 도구 스레드 join + hint_input_active 로 모든 경쟁 출력 차단
+          2) _force_tty_sane(): raw 잔재를 ICANON+ECHO 로 강제 치료 + 검증
+          3) /dev/tty 단독 라인 읽기 (prompt_toolkit/Rich/stdin 오염 우회)
+          4) 종료 후 sane 유지 + SIGINT 핸들러 복구 (절대 망가진 상태로 안 되돌림)
+          5) continue/继续 → agent_state 재개 지시 자동 확장
         """
         import sys as _sys
         import signal as _signal
-        import os as _os
         import time as _time
 
         _orig_sigint = _signal.getsignal(_signal.SIGINT)
-        _hint_out: "str | None" = None
         self._hint_input_active.set()
 
         try:
-            # hint 입력 중 Ctrl+C = 취소(기본 동작). 종료 후 반드시 커스텀 핸들러 복구.
             _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
 
-            # 활성 도구 스레드가 stdout 을 덮어쓰지 않도록 대기
+            # 1) 경쟁자 제거: 활성 도구 스레드 대기
             _ath = getattr(self, "_active_tool_thread", None)
             if _ath is not None and _ath.is_alive():
                 try:
-                    _ath.join(timeout=3.0)
+                    _ath.join(timeout=5.0)
                 except Exception:
                     pass
-            _time.sleep(0.15)
+
+            # 2) prompt_toolkit 앱 상태 리셋 (있으면)
+            try:
+                _sess = getattr(self, "_session", None)
+                if _sess is not None and getattr(_sess, "app", None) is not None:
+                    _sess.app.reset()
+            except Exception:
+                pass
+
+            # 3) 터미널 근본 치료 (입력 전 필수)
+            self._force_tty_sane()
+            _time.sleep(0.05)
 
             _sys.stdout.write("\r\n")
             _sys.stdout.flush()
@@ -1181,117 +1317,28 @@ class BingoTerminal:
                 "zh": "例: 找管理后台 / 继续SQLi / 试WAF绕过  (只输入「继续」也可以)",
                 "en": "e.g. find admin panel / continue SQLi / try WAF bypass  ('continue' also OK)",
             }.get(_lang, "Type a direction, or just 'continue'")
-            self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]")
-            self.console.print(f"[{THEME['dim']}]{_continue_msg}[/]")
-            self.console.print(f"[{THEME['dim']}]{_hint_tip}[/]\n")
-            self.console.file.flush()
 
-            _got_via_tty = False
+            # Rich 출력도 /dev/tty 경유 전에 한 번 더 sane
+            self._force_tty_sane()
             try:
-                import termios as _termios
-                _tty_ok = _os.path.exists("/dev/tty")
-            except ImportError:
-                _tty_ok = False
-                _termios = None  # type: ignore[assignment]
+                self.console.print(f"\n[{THEME['warn']}]{_pause_msg}[/]")
+                self.console.print(f"[{THEME['dim']}]{_continue_msg}[/]")
+                self.console.print(f"[{THEME['dim']}]{_hint_tip}[/]\n")
+                self.console.file.flush()
+            except Exception:
+                _sys.stderr.write(f"\n{_pause_msg}\n{_continue_msg}\n{_hint_tip}\n")
+                _sys.stderr.flush()
 
-            # ── v6.2.181/182: 캐노니컬 모드 + 터미널 상태 강제 정상화 ───────
-            # "쳐도 안 보이고 Enter 무반응(=완전 먹통)"의 근본 원인:
-            #   이전 도구/스트리밍/크래시가 tty 를 raw(ICANON·ECHO off)로 남김.
-            # 해결: 진입 시 ICANON·ECHO·ISIG·ICRNL·OPOST 강제 ON.
-            # v6.2.182: 종료 시 망가진 old_attr 로 되돌리지 않음.
-            #   (이전엔 치료 후 다시 raw 로 복원해 다음 입력이 또 먹통이 됨)
-            if _tty_ok and _termios is not None:
-                _tty_fd_raw = None
-                _sane_attr = None
-                try:
-                    import termios as _tc
-                    _tty_fd_raw = open("/dev/tty", "r+b", buffering=0)
-                    _fd = _tty_fd_raw.fileno()
-                    _cur = _termios.tcgetattr(_fd)
+            # 4) 메시지 출력 후에도 tty 다시 치료 (Rich가 또 건드렸을 수 있음)
+            self._force_tty_sane()
 
-                    # 정상 라인 입력 모드로 강제 설정 (망가진 상태도 치료)
-                    _sane_attr = list(_cur)
-                    _sane_attr[0] = _sane_attr[0] | _tc.ICRNL | _tc.IXON
-                    _sane_attr[1] = _sane_attr[1] | _tc.OPOST | _tc.ONLCR
-                    _sane_attr[3] = (
-                        _sane_attr[3]
-                        | _tc.ICANON | _tc.ECHO | _tc.ECHOE
-                        | _tc.ECHOK | _tc.ISIG
-                    )
-                    _termios.tcsetattr(_fd, _termios.TCSAFLUSH, _sane_attr)
-
-                    try:
-                        _termios.tcflush(_fd, _termios.TCIFLUSH)
-                    except Exception:
-                        pass
-
-                    _tty_fd_raw.write("💬 hint ❯ ".encode("utf-8"))
-                    _tty_fd_raw.flush()
-
-                    import select as _sel_hint
-                    _rdy2, _, _ = _sel_hint.select([_fd], [], [], 300.0)
-                    if not _rdy2:
-                        _hint_out = None
-                        _got_via_tty = True
-                    else:
-                        _line = _tty_fd_raw.readline()
-                        _h = (_line or b"").decode("utf-8", "replace").strip()
-                        _hint_out = _h if _h else None
-                        _got_via_tty = True
-                except KeyboardInterrupt:
-                    _hint_out = None
-                    _got_via_tty = True
-                except Exception:
-                    _got_via_tty = False
-                finally:
-                    # ★ v6.2.182: 망가진 old raw 상태로 되돌리지 않음.
-                    # hint 종료 후에도 sane(캐노니컬) 유지 → 다음 bingo 프롬프트 생존.
-                    if _sane_attr is not None and _tty_fd_raw is not None:
-                        try:
-                            _termios.tcsetattr(
-                                _tty_fd_raw.fileno(),
-                                _termios.TCSADRAIN,
-                                _sane_attr,
-                            )
-                        except Exception:
-                            pass
-                    if _tty_fd_raw is not None:
-                        try:
-                            _tty_fd_raw.close()
-                        except Exception:
-                            pass
-                    # 백그라운드 도구가 stdout 경합해도 다음 입력이 살도록 한 번 더
-                    try:
-                        _os.system("stty sane < /dev/tty > /dev/tty 2>/dev/null")
-                    except Exception:
-                        pass
-
-            if not _got_via_tty:
-                try:
-                    # 최후 치료: 터미널이 raw 상태로 망가졌으면 stty sane 으로 복원
-                    try:
-                        _os.system("stty sane < /dev/tty > /dev/tty 2>/dev/null")
-                    except Exception:
-                        pass
-                    # stdin 잔여 개행 폐기 시도
-                    try:
-                        import termios as _ti2
-                        if _sys.stdin.isatty():
-                            _ti2.tcflush(_sys.stdin.fileno(), _ti2.TCIFLUSH)
-                    except Exception:
-                        pass
-                    _sys.stdout.write("💬 hint ❯ ")
-                    _sys.stdout.flush()
-                    _h2 = input()
-                    _hint_out = _h2.strip() if _h2.strip() else None
-                except (EOFError, KeyboardInterrupt, Exception):
-                    _hint_out = None
+            # 5) /dev/tty 단독 읽기
+            _hint_out = self._read_hint_line_from_tty(timeout=300.0)
 
             if _hint_out:
                 _hint_out = self._normalize_mid_task_hint(_hint_out)
             return _hint_out
         finally:
-            # ★ v6.2.180: 어떤 return 경로든 SIGINT 핸들러 복구 (이전 버그: tty 성공 시 미복구)
             try:
                 _signal.signal(_signal.SIGINT, _orig_sigint)
             except Exception:
@@ -1302,6 +1349,11 @@ class BingoTerminal:
                 pass
             try:
                 self._hint_input_active.clear()
+            except Exception:
+                pass
+            # 절대 망가진 상태로 두지 않음
+            try:
+                self._force_tty_sane()
             except Exception:
                 pass
 

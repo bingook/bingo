@@ -9182,6 +9182,68 @@ _STRINGS.update({
         "zh": "4) 现在需要立即改变的策略？",
         "en": "4) What strategy must change right now?",
     },
+    # ── full_deep_scan 단계 레이블 ─────────────────────────────────────────────
+    "fds_step1": {
+        "ko": "[1/10] 기술 스택 탐지...",
+        "zh": "[1/10] 技术栈检测...",
+        "en": "[1/10] Tech Stack Detection...",
+    },
+    "fds_step2": {
+        "ko": "[2/10] CVE 자동 스캔...",
+        "zh": "[2/10] CVE 自动扫描...",
+        "en": "[2/10] CVE Auto Scan...",
+    },
+    "fds_step3": {
+        "ko": "[3/10] HTTP 메서드 스캔...",
+        "zh": "[3/10] HTTP 方法扫描...",
+        "en": "[3/10] HTTP Method Scan...",
+    },
+    "fds_step4": {
+        "ko": "[4/10] 파라미터 퍼징 (200개)...",
+        "zh": "[4/10] 参数爆破 (200个)...",
+        "en": "[4/10] Parameter Fuzzing (200)...",
+    },
+    "fds_step5": {
+        "ko": "[5/10] API 보안 스캔...",
+        "zh": "[5/10] API 安全扫描...",
+        "en": "[5/10] API Security Scan...",
+    },
+    "fds_step6_wp": {
+        "ko": "[6/10] WordPress 특화 스캔...",
+        "zh": "[6/10] WordPress 专项扫描...",
+        "en": "[6/10] WordPress Specialized Scan...",
+    },
+    "fds_step7": {
+        "ko": "[7/10] 파라미터 취약점 스캔...",
+        "zh": "[7/10] 参数漏洞扫描...",
+        "en": "[7/10] Parameter Vulnerability Scan...",
+    },
+    # ── tech_fingerprint 출력 레이블 ──────────────────────────────────────────
+    "tech_fp_server": {
+        "ko": "서버: {v}",
+        "zh": "服务器: {v}",
+        "en": "Server: {v}",
+    },
+    "tech_fp_backend": {
+        "ko": "백엔드: {v}",
+        "zh": "后端: {v}",
+        "en": "Backend: {v}",
+    },
+    "tech_fp_cms": {
+        "ko": "CMS: {v}",
+        "zh": "CMS: {v}",
+        "en": "CMS: {v}",
+    },
+    "tech_fp_db": {
+        "ko": "DB: {v}",
+        "zh": "数据库: {v}",
+        "en": "DB: {v}",
+    },
+    "tech_fp_detected": {
+        "ko": "감지된 기술: {v}",
+        "zh": "检测到的技术: {v}",
+        "en": "Detected: {v}",
+    },
 })
 
 

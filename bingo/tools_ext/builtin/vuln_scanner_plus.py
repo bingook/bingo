@@ -984,7 +984,7 @@ def auto_crawl_params(url: str, depth: int = 1, session_headers: Optional[Dict] 
         dict with "targets": List[{"url", "method", "params"}]
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요", "targets": []}
+        return {"success": False, "output": _t("need_requests_install", "requests install required"), "targets": []}
     
     sess = _sess(session_headers)
     targets = []
@@ -1052,7 +1052,7 @@ def xss_scan_plus(
 ) -> Dict[str, Any]:
     """XSS 강화 스캔 (220+ 페이로드, DOM/반사/mXSS/CSP우회)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     sess.headers.update({"X-XSS-Protection": "0"})
@@ -1110,7 +1110,7 @@ def lfi_scan_plus(
 ) -> Dict[str, Any]:
     """LFI 강화 스캔 (180+ 페이로드, PHP래퍼/인코딩/null-byte)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1167,7 +1167,7 @@ def ssrf_scan_plus(
 ) -> Dict[str, Any]:
     """SSRF 강화 스캔 (140+ 페이로드, 클라우드메타/프로토콜/IP우회)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1245,7 +1245,7 @@ def ssti_scan_plus(
 ) -> Dict[str, Any]:
     """SSTI 강화 스캔 (120+ 페이로드, 다양한 템플릿 엔진)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1304,7 +1304,7 @@ def cmdi_scan_plus(
 ) -> Dict[str, Any]:
     """CMDi 강화 스캔 (130+ 페이로드, blind timing 포함)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1368,7 +1368,7 @@ def xxe_scan_plus(
 ) -> Dict[str, Any]:
     """XXE 강화 스캔 (80+ 페이로드)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1418,7 +1418,7 @@ def nosql_scan_plus(
 ) -> Dict[str, Any]:
     """NoSQL 인젝션 강화 스캔 (90+ 페이로드)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1493,7 +1493,7 @@ def header_injection_scan(
 ) -> Dict[str, Any]:
     """HTTP 헤더 주입 취약점 탐지 (Acunetix 핵심 기능)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1555,7 +1555,7 @@ def crlf_scan_plus(
 ) -> Dict[str, Any]:
     """CRLF 인젝션 강화 스캔 (80+ 페이로드)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1613,7 +1613,7 @@ def open_redirect_scan_plus(
 ) -> Dict[str, Any]:
     """Open Redirect 강화 스캔 (100+ 페이로드)"""
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요"}
+        return {"success": False, "output": _t("need_requests_install", "requests install required")}
     
     sess = _sess(session_headers)
     findings = []
@@ -1684,7 +1684,7 @@ def full_site_scan(
         dict with "findings", "summary", "output"
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "output": "requests 설치 필요", "findings": []}
+        return {"success": False, "output": _t("need_requests_install", "requests install required"), "findings": []}
     
     ALL_VULNS = ["xss", "lfi", "ssrf", "ssti", "cmdi", "crlf", "open_redirect", "header", "nosql"]
     vulns = vuln_types or ALL_VULNS
@@ -1708,7 +1708,7 @@ def full_site_scan(
     if not targets:
         return {
             "success": False,
-            "output": f"[FULL_SCAN] 파라미터 없음 — URL에 ?param=value 형식이 없습니다: {url}",
+            "output": _t("full_scan_no_params", "[FULL_SCAN] no params — URL has no ?param=value form: {url}").format(url=url),
             "findings": [],
         }
     
@@ -1793,26 +1793,27 @@ def full_site_scan(
     by_type: Dict[str, List] = {}
     for f in all_findings:
         by_type.setdefault(f.get("vuln_type", "Unknown"), []).append(f)
-    
+
+    _mode = _t("full_scan_mode_parallel", "parallel") if parallel else _t("full_scan_mode_serial", "serial")
     output_lines = [
         f"\n{'═'*60}",
         f"  🎯 FULL SITE SCAN COMPLETE — {url}",
         f"{'═'*60}",
-        f"  파라미터 테스트: {tested_params}개",
-        f"  스캔 작업: {len(scan_tasks)}개 ({('병렬' if parallel else '순차')})",
-        f"  발견된 취약점: {len(all_findings)}개",
+        _t("full_scan_params_tested", "  Params tested: {n}").format(n=tested_params),
+        _t("full_scan_tasks", "  Scan tasks: {n} ({mode})").format(n=len(scan_tasks), mode=_mode),
+        _t("full_scan_vulns_found", "  Vulnerabilities found: {n}").format(n=len(all_findings)),
         "",
     ]
-    
+
     if by_type:
         for vtype, vfindings in sorted(by_type.items()):
-            output_lines.append(f"  ⚠️  [{vtype}] {len(vfindings)}개 발견:")
+            output_lines.append(_t("full_scan_type_count", "  ⚠️  [{vtype}] {n} found:").format(vtype=vtype, n=len(vfindings)))
             for f in vfindings[:3]:
                 payload = f.get("payload", f.get("header", ""))[:70]
                 output_lines.append(f"       param={f.get('param','')} | {payload}")
     else:
-        output_lines.append("  ✅ 주요 취약점 미탐지 (일부 취약점은 수동 검증 필요)")
-    
+        output_lines.append(_t("full_scan_none_found", "  ✅ No major vulns detected (some may need manual verification)"))
+
     output_lines.append(f"{'═'*60}")
     
     print("\n".join(output_lines))
@@ -2285,7 +2286,7 @@ def js_render_crawl(
 
     except Exception as e:
         result["error"] = str(e)
-        result["output"] = f"[JS_CRAWL] ❌ 오류: {e}"
+        result["output"] = _t("js_crawl_error", "[JS_CRAWL] ❌ error: {e}").format(e=e)
         return result
 
     # targets 구성
@@ -2329,11 +2330,11 @@ def js_render_crawl(
 
     output_lines = [
         f"[JS_CRAWL] {url}",
-        f"  타이틀: {title}",
-        f"  폼: {len(result['forms'])}개",
-        f"  파라미터 URL: {len(result['param_urls'])}개",
-        f"  XHR 인터셉트: {len(api_endpoints)}개",
-        f"  총 테스트 타겟: {len(targets)}개",
+        _t("js_crawl_title", "  Title: {title}").format(title=title),
+        _t("js_crawl_forms", "  Forms: {n}").format(n=len(result['forms'])),
+        _t("js_crawl_param_urls", "  Param URLs: {n}").format(n=len(result['param_urls'])),
+        _t("js_crawl_xhr", "  XHR intercepted: {n}").format(n=len(api_endpoints)),
+        _t("js_crawl_targets", "  Total test targets: {n}").format(n=len(targets)),
     ]
     for t in targets[:8]:
         output_lines.append(f"  [{t['method']}] {t['url'][:80]} — {', '.join(t['params'][:5])}")
@@ -2430,28 +2431,28 @@ def auth_session_scan(
             session_cookies = {c["name"]: c["value"] for c in cookies}
             browser.close()
 
-        print(f"  ✅ 로그인 성공 — 쿠키: {list(session_cookies.keys())}")
+        print(_t("auth_scan_login_ok", "  ✅ Login success — cookies: {cookies}").format(cookies=list(session_cookies.keys())))
 
     except ImportError:
-        print("  ⚠️ playwright 미설치 — requests 폼 방식으로 로그인 시도")
+        print(_t("auth_scan_no_playwright", "  ⚠️ playwright not installed — trying requests form login"))
         if _HAS_REQUESTS:
             sess = _sess()
             login_data = {username_field: username, password_field: password}
             try:
                 r = sess.post(login_url, data=login_data, timeout=10, verify=False, allow_redirects=True)
                 session_cookies = dict(r.cookies)
-                print(f"  requests 로그인 쿠키: {list(session_cookies.keys())}")
+                print(_t("auth_scan_login_cookies", "  requests login cookies: {cookies}").format(cookies=list(session_cookies.keys())))
             except Exception as e:
-                print(f"  ❌ 로그인 실패: {e}")
+                print(_t("auth_scan_login_fail_err", "  ❌ login failed: {e}").format(e=e))
 
     except Exception as e:
-        print(f"  ❌ 로그인 오류: {e}")
+        print(_t("auth_scan_login_error", "  ❌ login error: {e}").format(e=e))
 
     if not session_cookies:
         return {
             "success": False,
             "session_cookies": {},
-            "output": "[AUTH_SCAN] ❌ 로그인 실패 — 세션 쿠키 없음",
+            "output": _t("auth_scan_login_fail", "[AUTH_SCAN] ❌ login failed — no session cookies"),
             "findings": [],
         }
 
@@ -2470,7 +2471,7 @@ def auth_session_scan(
 
     output = (
         f"[AUTH_SCAN] {url}\n"
-        f"  세션 쿠키: {list(session_cookies.keys())}\n"
+        + _t("auth_scan_cookies", "  Session cookies: {cookies}\n").format(cookies=list(session_cookies.keys()))
         + scan_result.get("output", "")
     )
 
@@ -2514,7 +2515,7 @@ def fp_verify(
         dict with "confirmed"(bool), "confidence"(0-100), "output"
     """
     if not _HAS_REQUESTS:
-        return {"confirmed": False, "confidence": 0, "output": "requests 필요"}
+        return {"confirmed": False, "confidence": 0, "output": _t("need_requests", "requests required")}
 
     sess = _sess(session_headers)
     print(_banner(_t("fp_verify_banner", "🔬 FP Re-verification [{vuln_type}] — {url} [{param}]").format(vuln_type=vuln_type, url=url, param=param)))
@@ -2582,7 +2583,7 @@ def fp_verify(
         if confirmed_this:
             hits += 1
 
-        print(f"  시도 {i+1}/{repeat}: status={r.status_code} size={len(r.content)}B "
+        print(f"  {_t('fp_verify_attempt', 'Attempt')} {i+1}/{repeat}: status={r.status_code} size={len(r.content)}B "
               f"{'✅' if confirmed_this else '❌'}")
         time.sleep(0.3)
 
@@ -2604,11 +2605,11 @@ def fp_verify(
     status_icon = "✅ CONFIRMED" if confirmed else ("⚠️ POSSIBLE" if confidence >= 33 else "❌ FALSE POSITIVE")
     output = (
         f"[FP_VERIFY] {vuln_type} — {url} [{param}]\n"
-        f"  페이로드: {payload[:80]}\n"
-        f"  히트율: {hits}/{repeat}\n"
-        f"  확신도: {confidence}%\n"
-        f"  판정: {status_icon}\n"
-        + (f"  ⚠️ 베이스라인에서도 시그니처 감지 — False Positive 가능성 높음!\n" if fp_flag else "")
+        + _t("fp_verify_payload", "  Payload: {p}\n").format(p=payload[:80])
+        + _t("fp_verify_hit_rate", "  Hit rate: {hits}/{repeat}\n").format(hits=hits, repeat=repeat)
+        + _t("fp_verify_confidence", "  Confidence: {c}%\n").format(c=confidence)
+        + _t("fp_verify_verdict", "  Verdict: {v}\n").format(v=status_icon)
+        + (_t("fp_verify_baseline_sig", "  ⚠️ Signature also in baseline — high FP chance!\n") if fp_flag else "")
     )
     print(output)
 
@@ -2657,15 +2658,15 @@ def batch_fp_verify(
         if result["confirmed"]:
             f["confidence"] = result["confidence"]
             confirmed.append(f)
-            print(f"  ✅ 확인됨: [{vtype}] {param} @ {url[:50]}")
+            print(_t("batch_fp_confirmed", "  ✅ Confirmed: [{vtype}] {param} @ {url}").format(vtype=vtype, param=param, url=url[:50]))
         else:
             removed.append(f)
-            print(f"  ❌ FP 제거: [{vtype}] {param} @ {url[:50]} (확신도 {result['confidence']}%)")
+            print(_t("batch_fp_removed", "  ❌ FP removed: [{vtype}] {param} @ {url} (confidence {c}%)").format(vtype=vtype, param=param, url=url[:50], c=result['confidence']))
 
     output = (
-        f"[BATCH_FP_VERIFY] 총 {len(findings[:max_verify])}개 검증\n"
-        f"  ✅ 확인된 취약점: {len(confirmed)}개\n"
-        f"  ❌ False Positive 제거: {len(removed)}개\n"
+        _t("batch_fp_summary_total", "[BATCH_FP_VERIFY] Verified {n} total\n").format(n=len(findings[:max_verify]))
+        + _t("batch_fp_summary_ok", "  ✅ Confirmed vulns: {n}\n").format(n=len(confirmed))
+        + _t("batch_fp_summary_rm", "  ❌ False Positives removed: {n}\n").format(n=len(removed))
     )
 
     return {
@@ -2731,7 +2732,7 @@ def full_site_scan_v2(
 
     # Playwright 크롤 (JS SPA)
     if use_playwright:
-        print("  🎭 Playwright JS 렌더링 크롤 실행...")
+        print(_t("v2_pw_crawl_start", "  🎭 Running Playwright JS render crawl..."))
         cookies_dict: Optional[Dict] = None
         if session_headers:
             cookie_str = session_headers.get("Cookie", "")
@@ -2741,9 +2742,10 @@ def full_site_scan_v2(
         pw_result = js_render_crawl(url, session_cookies=cookies_dict)
         if pw_result.get("success"):
             _add_targets(pw_result.get("targets", []))
-            print(f"  Playwright 추가 타겟: {len(pw_result.get('targets', []))}개")
+            print(_t("v2_pw_extra_targets", "  Playwright extra targets: {n}").format(n=len(pw_result.get('targets', []))))
 
-    print(f"\n  📋 총 {sum(len(t.get('params',[])) for t in all_targets[:10])}개 파라미터 ({len(all_targets)}개 URL)")
+    print(_t("v2_total_params", "\n  📋 Total {params} params ({urls} URLs)").format(
+        params=sum(len(t.get('params',[])) for t in all_targets[:10]), urls=len(all_targets)))
 
     # 2단계: 스캔 작업 구성 (full_site_scan 재사용)
     scan_result = full_site_scan(
@@ -2760,11 +2762,11 @@ def full_site_scan_v2(
     # 3단계: FP 재검증
     final_findings = raw_findings
     if auto_fp_verify and raw_findings:
-        print(f"  🔬 FP 재검증 시작 ({min(len(raw_findings), 10)}개)...")
+        print(_t("v2_fp_start", "  🔬 Starting FP re-verify ({n})...").format(n=min(len(raw_findings), 10)))
         fp_result = batch_fp_verify(raw_findings, max_verify=10)
         final_findings = fp_result.get("confirmed_findings", raw_findings)
         removed = fp_result.get("removed_fps", [])
-        print(f"  FP 제거 후: {len(final_findings)}개 (제거: {len(removed)}개)")
+        print(_t("v2_fp_after", "  After FP removal: {n} (removed: {rm})").format(n=len(final_findings), rm=len(removed)))
     else:
         fp_result = {"confirmed_findings": raw_findings, "removed_fps": []}
 
@@ -2777,16 +2779,16 @@ def full_site_scan_v2(
         f"\n{'═'*60}",
         f"  🎯 FULL SITE SCAN v2 COMPLETE — {url}",
         f"{'═'*60}",
-        f"  파라미터 발견: {sum(len(t.get('params',[])) for t in all_targets[:10])}개",
-        f"  원본 취약점: {len(raw_findings)}개",
-        f"  FP 제거 후: {len(final_findings)}개",
+        _t("v2_params_found", "  Params found: {n}").format(n=sum(len(t.get('params',[])) for t in all_targets[:10])),
+        _t("v2_raw_vulns", "  Raw vulns: {n}").format(n=len(raw_findings)),
+        _t("v2_after_fp", "  After FP removal: {n}").format(n=len(final_findings)),
         "",
     ]
     if by_type:
         for vtype, cnt in sorted(by_type.items()):
-            output_lines.append(f"  ⚠️  [{vtype}] {cnt}개")
+            output_lines.append(_t("fds_summary_cat_count", "  ⚠️  [{cat}] {n}").format(cat=vtype, n=cnt))
     else:
-        output_lines.append("  ✅ 주요 취약점 미탐지")
+        output_lines.append(_t("v2_none_found", "  ✅ No major vulns detected"))
     output_lines.append(f"{'═'*60}")
 
     print("\n".join(output_lines))

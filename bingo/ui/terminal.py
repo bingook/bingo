@@ -545,7 +545,16 @@ class BingoTerminal:
             self._stop_crack_flag.set()
             # ★ 메시지는 stderr로 — Live(transient=True) 컨텍스트에 의해 지워지지 않음
             import sys as _sys
-            _sys.stderr.write("\n⚠  Ctrl+C — 스트림 중단 중...\n")
+            _smap = getattr(self, "s", None) or {}
+            _cc_msg = _smap.get("ctrl_c_stream_stopping") if isinstance(_smap, dict) else None
+            if not _cc_msg:
+                _lang_cc = getattr(getattr(self, "config", None), "lang", "en")
+                _cc_msg = {
+                    "ko": "⚠  Ctrl+C — 스트림 중단 중...",
+                    "zh": "⚠  Ctrl+C — 正在中断流...",
+                    "en": "⚠  Ctrl+C — stopping stream...",
+                }.get(_lang_cc, "⚠  Ctrl+C — stopping stream...")
+            _sys.stderr.write(f"\n{_cc_msg}\n")
             _sys.stderr.flush()
 
         signal.signal(signal.SIGINT, _sigint_handler)
@@ -2052,9 +2061,13 @@ class BingoTerminal:
                 for _ci, _cm in enumerate(_recent):
                     _is_protected = _ci >= len(_recent) - _PROTECT_LAST
                     if not _is_protected and len(_cm.content) > _CLIP_LIMIT:
+                        _clip_note = self.s.get(
+                            "context_clip_omitted",
+                            "\n...[context compressed: excess omitted]...",
+                        )
                         _clipped.append(Message(
                             role=_cm.role,
-                            content=_cm.content[:_CLIP_LIMIT] + "\n...[컨텍스트 압축: 초과분 생략]..."
+                            content=_cm.content[:_CLIP_LIMIT] + _clip_note
                         ))
                     else:
                         _clipped.append(_cm)
@@ -2251,7 +2264,7 @@ class BingoTerminal:
         _provider_label = get_provider_label(_provider_info, _lang) if _provider_info else _raw_provider.capitalize()
         _provider_short = _provider_label.split()[0] if _provider_label else _raw_provider.capitalize()
 
-        # 현재 날짜/시간 — 로컬 시스템 시간 사용
+        # 현재 날짜/시간 — 로컬 시스템 시간 사용 (UI 언어 기준)
         _now = datetime.datetime.now()
         _weekday_ko = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"][_now.weekday()]
         _weekday_zh = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][_now.weekday()]
@@ -2260,15 +2273,18 @@ class BingoTerminal:
         _date_str_zh = _now.strftime("%Y年%m月%d日") + f" {_weekday_zh}"
         _date_str_en = _now.strftime("%B %d, %Y") + f" ({_weekday_en})"
         _time_str = _now.strftime("%H:%M")
+        _date_primary = {
+            "ko": _date_str,
+            "zh": _date_str_zh,
+            "en": _date_str_en,
+        }.get(_lang, _date_str_en)
 
         system = (
             f"You are BINGO — an autonomous penetration testing engine.\n"
             f"Your underlying AI model is: {_model_name}\n"
             f"Your AI provider is: {_provider_short}\n\n"
             f"=== CURRENT DATE & TIME (SYSTEM CLOCK) ===\n"
-            f"Korean:  {_date_str} {_time_str}\n"
-            f"Chinese: {_date_str_zh} {_time_str}\n"
-            f"English: {_date_str_en} {_time_str}\n"
+            f"{_date_primary} {_time_str}\n"
             f"IMPORTANT: Use ONLY these values when answering date/time questions. NEVER guess or make up dates.\n\n"
             f"=== GENERAL CONVERSATION MODE ===\n"
             f"The user has asked a general (non-pentest) question.\n"
@@ -3625,11 +3641,11 @@ class BingoTerminal:
             from rich.table import Table
             table = Table(title=self.s.get("wb_result_title", "🔍 화이트박스 분석 결과"),
                           border_style=THEME["primary"], show_lines=True)
-            table.add_column("유형", style="bold red", width=8)
-            table.add_column("신뢰도", width=6)
-            table.add_column("엔드포인트", width=20)
-            table.add_column("파라미터", width=12)
-            table.add_column("증거", overflow="fold")
+            table.add_column(self.s.get("wb_col_type", "Type"), style="bold red", width=8)
+            table.add_column(self.s.get("wb_col_confidence", "Conf"), width=6)
+            table.add_column(self.s.get("wb_col_endpoint", "Endpoint"), width=20)
+            table.add_column(self.s.get("wb_col_param", "Param"), width=12)
+            table.add_column(self.s.get("wb_col_evidence", "Evidence"), overflow="fold")
             for h in result.hints[:20]:
                 table.add_row(
                     h.vuln_type.upper(),
@@ -3641,7 +3657,9 @@ class BingoTerminal:
             self.console.print(table)
             if result.tech_stack:
                 self.console.print(
-                    f"[{THEME['success']}]스택: {', '.join(result.tech_stack)}[/]"
+                    f"[{THEME['success']}]"
+                    f"{self.s.get('wb_stack_label', 'Stack: {stack}').format(stack=', '.join(result.tech_stack))}"
+                    f"[/]"
                 )
             if result.endpoints:
                 self.console.print(
@@ -3687,8 +3705,8 @@ class BingoTerminal:
                 border_style=THEME["primary"]
             )
             table.add_column("ID", width=6)
-            table.add_column("유형", width=35)
-            table.add_column("우선순위", width=10)
+            table.add_column(self.s.get("agent_col_type", "Type"), width=35)
+            table.add_column(self.s.get("agent_col_priority", "Priority"), width=10)
             plan_priority = (self._agent_plan.priority if self._agent_plan else [])
             for vt, name in VULN_TYPES.items():
                 pri = str(plan_priority.index(vt) + 1) if vt in plan_priority else "-"
@@ -3700,8 +3718,9 @@ class BingoTerminal:
                 dispatcher = VulnAgentDispatcher()
                 self._agent_plan = dispatcher.build_plan()
             self.console.print(
-                f"[{THEME['primary']}]실행 순서: "
-                f"{' → '.join(self._agent_plan.priority)}[/]"
+                f"[{THEME['primary']}]"
+                f"{self.s.get('agent_exec_order', 'Execution order: {order}').format(order=' → '.join(self._agent_plan.priority))}"
+                f"[/]"
             )
             if self._agent_plan.context_injection:
                 self.console.print(
@@ -3934,7 +3953,7 @@ class BingoTerminal:
             )
             if result.cookies:
                 self.console.print(
-                    f"[{THEME['accent']}]세션 쿠키 저장:[/] "
+                    f"[{THEME['accent']}]{self.s.get('session_cookies_saved', 'Session cookies saved:')}[/] "
                     f"[white]{'; '.join(f'{k}={v}' for k, v in result.cookies.items())}[/]"
                 )
             self.console.print(
@@ -4428,8 +4447,8 @@ class BingoTerminal:
             return
         t = _T(title="[bold]Snapshots[/bold]", border_style="cyan")
         t.add_column("#",     width=3)
-        t.add_column("시각",  width=10)
-        t.add_column("레이블")
+        t.add_column(self.s.get("snap_col_time", "Time"),  width=10)
+        t.add_column(self.s.get("snap_col_label", "Label"))
         t.add_column("DB",    width=20)
         for i, s in enumerate(snaps):
             t.add_row(
@@ -5485,16 +5504,18 @@ class BingoTerminal:
 
         if _wtf_converted:
             self.console.print(
-                f"[{THEME['warn']}]⚠ [WRONG_TOOL_FORMAT→AUTO_FIX] "
-                f"dict 형식 tool call {len(_wtf_converted)}개 자동 변환 후 실행[/]"
+                f"[{THEME['warn']}]"
+                f"{self.s.get('wrong_tool_format_autofix', '⚠ [WRONG_TOOL_FORMAT→AUTO_FIX] auto-converted {n} dict-format tool call(s) and executing').format(n=len(_wtf_converted))}"
+                f"[/]"
             )
             # 변환된 TOOL_CALL 문자열을 response에 추가하여 아래 TOOL_CALL 처리 블록에서 실행
             response = response + "\n" + "\n".join(_wtf_converted)
         elif _wtf_re.search(r'["\']tool["\']\s*:\s*["\']', response):
             # 알 수 없는 도구명 — 경고만 출력
             self.console.print(
-                f"[{THEME['error']}]⚠ [WRONG_TOOL_FORMAT] dict 형식 tool call 감지 "
-                f"(알 수 없는 도구명 — 무시됨)[/]"
+                f"[{THEME['error']}]"
+                f"{self.s.get('wrong_tool_format_unknown', '⚠ [WRONG_TOOL_FORMAT] dict-format tool call detected (unknown tool — ignored)')}"
+                f"[/]"
             )
         # ══════════════════════════════════════════════════════════════════════
         # TOOL_CALL 없음 → 기존 bash 블록 처리로 진행 (하위 호환)
@@ -6043,12 +6064,12 @@ class BingoTerminal:
                     "    ]\n"
                     "    for _p in _sql_pats:\n"
                     "        if _sg.search(_p, s, _sg.IGNORECASE):\n"
-                    "            print(f'[!] _bingo_sqli_guard [{label}]: SQL 페이로드가 결과로 반환됨 — 서버 응답 파싱 실패')\n"
-                    "            print('[!] 수정: re.search(r\\'<marker>(.+?)</marker>\\', html).group(1) 형태로 실제 데이터 추출 필요')\n"
+                    "            print(f'[!] _bingo_sqli_guard [{label}]: SQL payload returned as result — parse server response')\n"
+                    "            print('[!] fix: re.search(r\\'<marker>(.+?)</marker>\\', html).group(1) to extract real data')\n"
                     "            return None\n"
                     "    # hex 커서 폭발 탐지: 800자 초과 순수 hex 문자열\n"
                     "    if len(s) > 800 and _sg.fullmatch(r'[0-9a-fA-F]+', s):\n"
-                    "        print(f'[!] _bingo_sqli_guard [{label}]: hex 커서 폭발 탐지 ({len(s)}자) — 추출 중단')\n"
+                    "        print(f'[!] _bingo_sqli_guard [{label}]: hex cursor explosion ({len(s)} chars) — abort extract')\n"
                     "        return None\n"
                     "    return val\n\n"
                 )
@@ -7458,7 +7479,9 @@ class BingoTerminal:
                 import signal as _wc_sig
                 import os as _wc_os
                 self.console.print(
-                    f"[bold red]⚠ WALL-CLOCK TIMEOUT ({elapsed}s) — 프로세스 그룹 강제 종료[/]"
+                    f"[bold red]"
+                    f"{_s.get('wall_clock_timeout_kill', '⚠ WALL-CLOCK TIMEOUT ({elapsed}s) — force-killing process group').format(elapsed=elapsed)}"
+                    f"[/]"
                 )
                 with proc_list_lock:
                     for _wp in proc_registry:
@@ -9395,9 +9418,13 @@ class BingoTerminal:
                         ),
                     }.get(_lang, f"⚠️  VPN virtual IP: {', '.join(set(_vpn_ips_found))}")
                     from rich.panel import Panel as _PanelV
+                    _vpn_title = self.s.get(
+                        "vpn_virtual_ip_title",
+                        "VPN_VIRTUAL_IP — false-positive warning",
+                    )
                     self.console.print(_PanelV(
                         _vpn_warn,
-                        title="[bold yellow]VPN_VIRTUAL_IP — 오판 경고[/bold yellow]",
+                        title=f"[bold yellow]{_vpn_title}[/bold yellow]",
                         border_style="yellow",
                     ))
                     # VPN 가상 IP 오판이면 TARGET_FAILED로 중단하지 않고 루프 계속
@@ -12471,7 +12498,7 @@ class BingoTerminal:
             try:
                 from ..core.recon.passive import run_passive
                 self.console.print(
-                    f"[bold cyan]🔍 Passive Recon 시작: {target}[/bold cyan]")
+                    f"[bold cyan]{self.s.get('recon_passive_start', '🔍 Passive Recon starting: {target}').format(target=target)}[/bold cyan]")
                 result = run_passive(
                     domain=target,
                     shodan_key=_os.environ.get("SHODAN_KEY", ""),
@@ -12564,7 +12591,7 @@ class BingoTerminal:
                 from ..core.recon.asset_db import AssetDB
 
                 self.console.print(
-                    f"[bold cyan]🚀 Full Recon 시작: {target}[/bold cyan]")
+                    f"[bold cyan]{self.s.get('recon_full_start', '🚀 Full Recon starting: {target}').format(target=target)}[/bold cyan]")
 
                 # Step 1: Passive
                 self.console.print(f"[dim]{self.s.get('recon_step1', '  Step 1/3  Passive collection in progress...')}[/dim]")
@@ -12578,8 +12605,7 @@ class BingoTerminal:
 
                 # Step 2: Active (passive 서브도메인 활용)
                 self.console.print(
-                    f"[dim]  Step 2/3  Active 수집 중 "
-                    f"(서브도메인 {len(passive.subdomains)}개)...[/dim]")
+                    f"[dim]{self.s.get('recon_step2_active', '  Step 2/3  Active collection ({n} subdomains)...').format(n=len(passive.subdomains))}[/dim]")
                 active = run_active(
                     domain=target,
                     subdomains=passive.all_subdomains() if passive.subdomains else None,
@@ -12610,12 +12636,12 @@ class BingoTerminal:
             try:
                 from ..core.recon.active import mine_js_endpoints
                 self.console.print(
-                    f"[bold cyan]📜 JS Mining 시작: {target}[/bold cyan]")
+                    f"[bold cyan]{self.s.get('recon_js_start', '📜 JS Mining starting: {target}').format(target=target)}[/bold cyan]")
                 endpoints, secrets = mine_js_endpoints(target)
 
                 if endpoints:
                     self.console.print(
-                        f"\n[bold]API Endpoints ({len(endpoints)}개):[/bold]")
+                        f"\n[bold]{self.s.get('recon_api_endpoints_label', 'API Endpoints ({n}):').format(n=len(endpoints))}[/bold]")
                     for ep in endpoints[:40]:
                         self.console.print(f"  {ep}")
                 else:
@@ -12623,7 +12649,7 @@ class BingoTerminal:
 
                 if secrets:
                     self.console.print(
-                        f"\n[bold red]🔑 Potential Secrets ({len(secrets)}개):[/bold red]")
+                        f"\n[bold red]{self.s.get('recon_secrets_label', '🔑 Potential Secrets ({n}):').format(n=len(secrets))}[/bold red]")
                     for sec in secrets[:20]:
                         self.console.print(f"  {sec}")
 

@@ -113,7 +113,7 @@ def tech_fingerprint(
         dict with "technologies" list, "cms", "backend", "db", "server", "output"
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "technologies": [], "output": "requests 필요"}
+        return {"success": False, "technologies": [], "output": _t("need_requests", "requests required")}
 
     print(_banner(_t("tech_stack_start", "🔬 Technology Stack Detection — {url}").format(url=url)))
     sess = _sess(session_headers)
@@ -192,7 +192,7 @@ def cve_scan(
         dict with "findings", "output"
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "findings": [], "output": "requests 필요"}
+        return {"success": False, "findings": [], "output": _t("need_requests", "requests required")}
 
     from .payload_db import LOG4SHELL_DB, SPRING4SHELL_DB, SHELLSHOCK_DB, EL_INJECTION_DB
 
@@ -223,7 +223,7 @@ def cve_scan(
                     "note": f"JNDI 반영 — status={r.status_code}",
                     "severity": "CRITICAL",
                 })
-                print(f"  🔴 Log4Shell 가능성: {hdr}")
+                print(_t("cve_log4shell_possible", "  🔴 Log4Shell possible: {hdr}").format(hdr=hdr))
                 break
         except Exception:
             pass
@@ -292,7 +292,7 @@ def cve_scan(
                 pass
 
     # ── Path Traversal (Rapid detection) ────────────────────────────────────
-    print("  [5/5] Path Traversal (급속 탐지)...")
+    print(_t("cve_path_traversal_step", "  [5/5] Path Traversal (rapid detect)..."))
     traversal_paths = [
         "../../../../etc/passwd",
         "../../../etc/passwd",
@@ -316,7 +316,7 @@ def cve_scan(
             except Exception:
                 pass
 
-    summary = f"[CVE_SCAN] {url} — {len(findings)}개 CVE 발견"
+    summary = _t("cve_findings_summary", "[CVE_SCAN] {url} — {n} CVE(s) found").format(url=url, n=len(findings))
     print(f"\n  {summary}")
 
     return {
@@ -452,7 +452,7 @@ def dom_xss_scan(
                     "els => els.filter(e => e.textContent && e.textContent.includes('DOM_XSS')).map(e => e.tagName)"
                 )
                 if dom_sinks:
-                    print(f"  🟡 DOM sink 감지: {dom_sinks}")
+                    print(_t("dom_sink_detected", "  🟡 DOM sink detected: {sinks}").format(sinks=dom_sinks))
 
             except Exception:
                 pass
@@ -562,7 +562,7 @@ def param_fuzz(
         dict with "found_params", "output"
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "found_params": [], "output": "requests 필요"}
+        return {"success": False, "found_params": [], "output": _t("need_requests", "requests required")}
 
     print(_banner(_t("param_fuzz_banner", "🔍 Parameter Fuzzing — {url}").format(url=url)))
 
@@ -573,7 +573,7 @@ def param_fuzz(
     base_r = _req(sess, method, url)
     baseline_size = len(base_r.content) if base_r else 0
     baseline_status = base_r.status_code if base_r else 200
-    print(f"  베이스라인: {baseline_status} {baseline_size}B")
+    print(_t("param_fuzz_baseline", "  Baseline: {status} {size}B").format(status=baseline_status, size=baseline_size))
 
     found_params: List[Dict] = []
 
@@ -613,8 +613,8 @@ def param_fuzz(
             result = future.result()
             if result:
                 found_params.append(result)
-                print(f"  🟡 파라미터 발견: {result['param']} "
-                      f"(status={result['status']} diff={result['size_diff']}B)")
+                print(_t("param_fuzz_found", "  🟡 Param found: {param} (status={status} diff={diff}B)").format(
+                      param=result['param'], status=result['status'], diff=result['size_diff']))
 
     # 취약점 가능성 있는 파라미터 분류
     ssrf_candidates = [p for p in found_params if p["param"] in
@@ -629,11 +629,11 @@ def param_fuzz(
 
     output = (
         f"[PARAM_FUZZ] {url}\n"
-        f"  테스트: {len(words)}개 파라미터\n"
-        f"  발견: {len(found_params)}개\n"
-        + (f"  SSRF 후보: {[p['param'] for p in ssrf_candidates]}\n" if ssrf_candidates else "")
-        + (f"  LFI 후보: {[p['param'] for p in lfi_candidates]}\n" if lfi_candidates else "")
-        + (f"  SQLi 후보: {[p['param'] for p in sqli_candidates]}\n" if sqli_candidates else "")
+        + _t("param_fuzz_tested", "  Tested: {n} params\n").format(n=len(words))
+        + _t("param_fuzz_discovered", "  Found: {n}\n").format(n=len(found_params))
+        + (_t("param_fuzz_ssrf_cand", "  SSRF candidates: {params}\n").format(params=[p['param'] for p in ssrf_candidates]) if ssrf_candidates else "")
+        + (_t("param_fuzz_lfi_cand", "  LFI candidates: {params}\n").format(params=[p['param'] for p in lfi_candidates]) if lfi_candidates else "")
+        + (_t("param_fuzz_sqli_cand", "  SQLi candidates: {params}\n").format(params=[p['param'] for p in sqli_candidates]) if sqli_candidates else "")
         + "\n".join(f"  {p['param']} → status={p['status']} diff={p['size_diff']}B" for p in found_params[:20])
     )
     print(f"\n{output}")
@@ -666,7 +666,7 @@ def sqli_scan_plus(
         dict with "findings", "db_type", "output"
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "findings": [], "output": "requests 필요"}
+        return {"success": False, "findings": [], "output": _t("need_requests", "requests required")}
 
     from .payload_db import SQLI_DB, SQLI_ERROR_SIGS
 
@@ -765,7 +765,7 @@ def wordpress_scan(
         dict with "findings", "output"
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "findings": [], "output": "requests 필요"}
+        return {"success": False, "findings": [], "output": _t("need_requests", "requests required")}
 
     print(_banner(_t("wp_scan_banner", "🔌 WordPress Specialized Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
@@ -822,7 +822,7 @@ def wordpress_scan(
                     "desc": "XML-RPC admin 인증 성공 (admin/admin)",
                     "severity": "CRITICAL",
                 })
-                print("  🔴 [CRITICAL] XML-RPC 기본 크레덴셜!")
+                print(_t("xmlrpc_default_creds", "  🔴 [CRITICAL] XML-RPC default credentials!"))
         except Exception:
             pass
 
@@ -856,7 +856,7 @@ def http_method_scan(
         dict with "allowed_methods", "findings", "output"
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "findings": [], "output": "requests 필요"}
+        return {"success": False, "findings": [], "output": _t("need_requests", "requests required")}
 
     print(_banner(_t("http_method_banner", "📡 HTTP Method Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
@@ -907,7 +907,7 @@ def http_method_scan(
         r = sess.options(url, timeout=8, verify=False)
         allow = r.headers.get("Allow", r.headers.get("allow", ""))
         if allow:
-            print(f"  Allow 헤더: {allow}")
+            print(_t("allow_header_label", "  Allow header: {allow}").format(allow=allow))
             dangerous = [m for m in ["PUT", "DELETE", "TRACE", "CONNECT"] if m in allow]
             for m in dangerous:
                 findings.append({"method": m, "note": f"Allow 헤더에 위험 메서드: {allow}", "severity": "HIGH"})
@@ -949,7 +949,7 @@ def api_security_scan(
         dict with "findings", "output"
     """
     if not _HAS_REQUESTS:
-        return {"success": False, "findings": [], "output": "requests 필요"}
+        return {"success": False, "findings": [], "output": _t("need_requests", "requests required")}
 
     print(_banner(_t("api_sec_banner", "🔑 API Security Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
@@ -1005,7 +1005,7 @@ def api_security_scan(
             pass
 
     # Rate limiting 테스트 (10회 빠른 요청)
-    print("  ⏱ Rate Limiting 테스트...")
+    print(_t("rate_limit_test", "  ⏱ Rate Limiting test..."))
     try:
         statuses = []
         for _ in range(10):
@@ -1017,7 +1017,7 @@ def api_security_scan(
                 "note": "Rate Limiting 미적용 — 10회 연속 요청 모두 허용",
                 "severity": "MEDIUM",
             })
-            print("  🟡 Rate Limiting 없음")
+            print(_t("rate_limit_none", "  🟡 No Rate Limiting"))
     except Exception:
         pass
 
@@ -1146,24 +1146,24 @@ def full_deep_scan(
 
     # ── 8. DOM XSS 스캔 ───────────────────────────────────────────────────────
     if use_playwright:
-        print("\n[8/10] DOM XSS 스캔 (Playwright)...")
+        print(_t("fds_step8_dom", "\n[8/10] DOM XSS scan (Playwright)..."))
         url_params = list(parse_qs(urlparse(url).query).keys())
         if url_params:
             dom_r = _safe(dom_xss_scan, url, url_params[0], session_headers)
             for f in dom_r.get("findings", []):
                 all_findings.append({**f, "category": "DOM_XSS"})
     else:
-        print("\n[8/10] DOM XSS 스캔 스킵 (playwright 없음)")
+        print(_t("fds_step8_skip", "\n[8/10] DOM XSS scan skipped (no playwright)"))
 
     # ── 9. 헤더 주입 스캔 ────────────────────────────────────────────────────
-    print("\n[9/10] 헤더 주입 스캔...")
+    print(_t("fds_step9_header", "\n[9/10] Header injection scan..."))
     from .vuln_scanner_plus import header_injection_scan
     hdr_r = _safe(header_injection_scan, url, session_headers)
     for f in hdr_r.get("findings", []):
         all_findings.append({**f, "category": "HeaderInjection"})
 
     # ── 10. FP 재검증 ─────────────────────────────────────────────────────────
-    print(f"\n[10/10] False Positive 재검증 ({min(len(all_findings), 10)}개)...")
+    print(_t("fds_step10_fp", "\n[10/10] False Positive re-verify ({n})...").format(n=min(len(all_findings), 10)))
     from .vuln_scanner_plus import batch_fp_verify
     if all_findings:
         fp_r = _safe(batch_fp_verify, all_findings, 10)
@@ -1190,16 +1190,16 @@ def full_deep_scan(
         f"\n{'═'*60}",
         f"  🎯 FULL DEEP SCAN COMPLETE — {url}",
         f"{'═'*60}",
-        f"  감지 기술: {', '.join(tech.get('technologies', [])[:5]) or '?'}",
-        f"  총 취약점: {len(final_findings)}개 (FP {len(removed)}개 제거)",
-        f"  심각도: CRITICAL={severity_map['CRITICAL']} HIGH={severity_map['HIGH']} MEDIUM={severity_map['MEDIUM']}",
+        _t("fds_summary_tech", "  Detected tech: {tech}").format(tech=', '.join(tech.get('technologies', [])[:5]) or '?'),
+        _t("fds_summary_vulns", "  Total vulns: {n} (removed {fp} FPs)").format(n=len(final_findings), fp=len(removed)),
+        _t("fds_summary_severity", "  Severity: CRITICAL={c} HIGH={h} MEDIUM={m}").format(c=severity_map['CRITICAL'], h=severity_map['HIGH'], m=severity_map['MEDIUM']),
         "",
     ]
     for cat, cnt in sorted(by_category.items(), key=lambda x: -x[1]):
-        output_lines.append(f"  ⚠️  [{cat}] {cnt}개")
+        output_lines.append(_t("fds_summary_cat_count", "  ⚠️  [{cat}] {n}").format(cat=cat, n=cnt))
 
     if scan_errors:
-        output_lines.append(f"\n  ⚠️ 스캔 오류: {len(scan_errors)}개")
+        output_lines.append(_t("fds_summary_scan_errors", "\n  ⚠️ Scan errors: {n}").format(n=len(scan_errors)))
     output_lines.append(f"{'═'*60}")
 
     print("\n".join(output_lines))

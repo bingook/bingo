@@ -9244,6 +9244,16 @@ _STRINGS.update({
         "zh": "检测到的技术: {v}",
         "en": "Detected: {v}",
     },
+    "sqli_all_same_char": {
+        "ko": "  {tag}⚠ 모든 문자가 '{c}' — oracle 완전 실패 (WAF 전체 TRUE 반환); 추출 중단",
+        "zh": "  {tag}⚠ 所有字符均为 '{c}' — oracle完全失败（WAF全部返回True）; 中止提取",
+        "en": "  {tag}⚠ all chars same ('{c}') — oracle unreliable (WAF returns all-true); aborting extraction",
+    },
+    "sqli_oracle_allsame_disable": {
+        "ko": "  ⚠ Oracle all-same 확인 — 이후 추출에서 boolean oracle 비활성화",
+        "zh": "  ⚠ Oracle全同字符已确认 — 后续提取禁用boolean oracle",
+        "en": "  ⚠ Oracle all-same confirmed — disabling boolean oracle for subsequent extractions",
+    },
 })
 
 

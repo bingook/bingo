@@ -232,17 +232,44 @@ _WAF_SECURITY_REDIRECT = re.compile(
     re.I,
 )
 
-# v4.9.4: Oracle 실패 오탐 억제 패턴
-# 추출된 값이 동일 문자의 반복이면 oracle이 실패한 것 (aaa..., bbb... 등)
+# v4.9.4 / v6.2.174: Oracle 실패 오탐 억제 패턴
+# 추출된 값이 동일 문자 반복이면 oracle 실패 (따옴표 유무·숫자 포함)
 _ORACLE_FAILURE_REPEATED = re.compile(
-    r'[\'"]([a-zA-Z])\1{9,}[\'"]',   # 10개 이상 동일 문자: 'aaaaaaaaaa' 또는 'bbbbbbbbbb'
+    r'(?:'
+    r'[\'"]([a-zA-Z0-9~!@#])\1{7,}[\'"]'   # 'aaaaaaaa' / "00000000" / '~~~~~~~~'
+    r'|(?<![a-zA-Z0-9])([a-zA-Z0-9~!@#])\2{9,}(?![a-zA-Z0-9])'  # 따옴표 없는 aaaa... / 0000...
+    r')'
 )
-# oracle 무효 경고가 명시된 경우
+# oracle 무효 경고가 명시된 경우 (다국어 + 도구 자체 경고)
 _ORACLE_FAILURE_WARNING = re.compile(
-    r'oracle\s*(?:可能)?(?:无效|invalid|unstable|不稳定|失效)'
+    r'oracle\s*(?:可能)?(?:无效|invalid|unstable|不稳定|失效|unreliable|失败|失敗)'
     r'|⚠️\s*oracle'
-    r'|oracle\s*might\s*be\s*invalid',
+    r'|oracle\s*might\s*be\s*invalid'
+    r'|oracle\s*pre-?check\s*(?:fail|FAILED)'
+    r'|Oracle预检失败'
+    r'|TRUE/FALSE\s*(?:无法区分|indistinguishable|구분\s*불가)'
+    r'|SQLI_EXTRACTION_FAILURE'
+    r'|Boolean\s+oracle\s+may\s+be\s+unreliable'
+    r'|WAF\s*(?:全部拦截|全部拦截|屏蔽所有|blocking\s+all)'
+    r'|oracle\s*all-?same'
+    r'|Oracle全同字符',
     re.I
+)
+
+# v6.2.174: 로그인 폼 HTML만 파싱한 경우 credential 오탐 방지
+_LOGIN_FORM_ONLY = re.compile(
+    r'(?:\[LOGIN\s+SIZE\]|\[FORM\]|\[INPUTS\]|loginFrm|login_check\.php'
+    r'|placeholder=["\'](?:아이디|비밀번호|ID|Password|用户名|密码))',
+    re.I,
+)
+# v6.2.174: 깨진 oracle이 만든 가짜 해시/자격증명 (전부 0, 순차 hex 등)
+_FAKE_CRED_VALUE = re.compile(
+    r'(?:'
+    r'\[CREDENTIAL\]\s*\S+\s*:\s*(?:0{8,}|a{8,}|A{8,}|f{8,}|F{8,}|x{8,}|0123456789abcdef)'
+    r'|(?:hash|password|passwd|pwd)\s*[:=]\s*[\'"]?(?:0{8,}|a{8,}|0123456789abcdef)[\'"]?'
+    r'|Hash:\s*(?:0{6,}|0123456789abcdef)'
+    r')',
+    re.I,
 )
 
 _AUTH_BYPASS_PATTERNS = [
@@ -274,7 +301,12 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
         r'|→\s*NOT\s+vulnerable'
         r'|DB\s+errors\s+found:\s*None'
         r'|boolean\s+oracle.*?fail'
-        r'|confirmed\s*[=:]\s*(?:false|0\b|False)',
+        r'|confirmed\s*[=:]\s*(?:false|0\b|False)'
+        r'|SQLI_EXTRACTION_FAILURE'
+        r'|Oracle预检失败'
+        r'|oracle\s*pre-?check\s*FAIL'
+        r'|Boolean\s+字符提取已禁用'
+        r'|Boolean\s+character\s+extraction\s+disabled',
         re.I
     )
     if _NOT_VULN_RE.search(output):
@@ -301,15 +333,52 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
     if _CF_BLOCK_RE.search(output):
         return None
 
+    # ── v6.2.174: WAF/Oracle 실패를 SQLi로 오탐하지 않음 ───────────────────────
+    # 1) TRUE/FALSE 둘 다 동일 소형 응답(예: 490B) → WAF 차단, 취약점 미증명
+    _same_waf_size = re.search(
+        r'(?:TRUE|1=1|2>1).{0,40}?(\d{2,4})B'
+        r'.{0,120}?'
+        r'(?:FALSE|1=0|1=2|1>2).{0,40}?\1B',
+        output, re.I | re.S
+    )
+    if _same_waf_size:
+        return None
+    # 2) UPDATEXML/EXTRACTVALUE "DATA:" 가 페이지 본문(시간/요일/HTML)만 반환
+    #    → XPATH 에러가 아닌 페이지 오염, SQLi 미증명
+    if re.search(r'(?:updatexml|extractvalue)\s*\(', output, re.I):
+        _has_xpath_err = bool(re.search(
+            r'XPATH\s+syntax\s+error|xpath\s+error|~[a-zA-Z0-9_.\-]{2,80}~',
+            output, re.I
+        ))
+        _page_contam = bool(re.search(
+            r'->\s*DATA:\s*.*(?:오전|오후|월요일|화요일|수요일|목요일|금요일|토요일|일요일'
+            r'|<html|<!DOCTYPE|해킹방지|요청이\s*차단)',
+            output, re.I
+        ))
+        _data_empty = bool(re.search(r'->\s*DATA:\s*(?:None|null|\(empty)?\s*$', output, re.I | re.M))
+        if (_page_contam or _data_empty) and not _has_xpath_err:
+            return None
+
     # ── v6.2.16: WAF 보안도메인 302 리다이렉트 조기 종료 ─────────────────────────
     # 302 → igear/securecp/cloudbric 등 보안 도메인 = WAF 페이로드 차단.
     # 이는 취약점 증거가 아님 → 오탐 방지. IP 전체 차단도 아님 (특정 페이로드 차단).
     if _WAF_SECURITY_REDIRECT.search(output.lower()):
         return None
 
-    # ── v4.9.4: Oracle 실패 조기 감지 ─────────────────────────────────────────
-    # 추출된 값이 동일 문자 10개 이상 반복(aaa...) → oracle 실패로 인한 오탐 → 즉시 None
+    # ── v4.9.4 / v6.2.174: Oracle 실패 조기 감지 ─────────────────────────────
+    # 추출된 값이 동일 문자 반복(aaa.../0000..., 따옴표 유무 무관) → 오탐 → None
     if _ORACLE_FAILURE_REPEATED.search(output):
+        return None
+    # 도구/교정기가 oracle 실패를 명시적으로 경고한 경우
+    if _ORACLE_FAILURE_WARNING.search(output):
+        return None
+
+    # ── v6.2.174: 로그인 폼 HTML만 있고 실제 추출 자격증명 없음 → credential 금지 ──
+    _is_login_form_only = bool(_LOGIN_FORM_ONLY.search(output)) and not re.search(
+        r'\[CREDENTIAL\]\s*\S+\s*:\s*(?!0{6,}|a{6,})\S{4,}', output, re.I
+    )
+    # 가짜 해시(전부 0/a) 자격증명 출력 → 전체 finding 억제
+    if _FAKE_CRED_VALUE.search(output):
         return None
 
     # ── v6.2.66: 미니파이 JS 출력 감지 — credential 오탐 방지 ─────────────────
@@ -372,6 +441,9 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
             continue
         # v6.2.66: JS chunk 다운로드 출력 — credential 패턴 건너뜀 (미니파이 JS 오탐 방지)
         if vtype == FINDING_CREDENTIAL and _is_js_chunk_output:
+            continue
+        # v6.2.174: 로그인 폼 파싱만 한 출력 — credential 오탐 방지
+        if vtype == FINDING_CREDENTIAL and _is_login_form_only:
             continue
         # v6.2.145: 서버 자체 생성 alert() 오탐 방지 — XSS 페이로드 미포함 시 건너뜀
         if vtype == FINDING_XSS and _skip_xss:

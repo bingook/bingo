@@ -514,6 +514,17 @@ def _is_error_context(candidate: str, surrounding: str) -> bool:
         if all(b == "00" for b in low_bytes) or all(b == "00" for b in high_bytes):
             return True
 
+    # 6. v6.2.174: 깨진 oracle/플레이스홀더 해시 억제
+    #    전부 동일 문자(0000…/aaaa…) 또는 순차 hex(0123456789abcdef) → 크랙 대상 아님
+    _cl = candidate.lower()
+    if len(_cl) >= 8 and len(set(_cl)) == 1:
+        return True
+    _seq = "0123456789abcdef"
+    if _cl in (_seq, _seq * 2, _seq[:8], _seq[::-1], (_seq * 2)[:32]):
+        return True
+    if _cl.startswith(_seq) and len(_cl) in (16, 32, 40, 64):
+        return True
+
     return False
 
 

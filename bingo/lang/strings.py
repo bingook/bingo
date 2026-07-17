@@ -856,6 +856,11 @@ _STRINGS = {
         "zh": "🧪 [隔离] 无法确认 {vtype} 模式是否来自主动测试 — 已保留供重新验证",
         "en": "🧪 [Quarantine] {vtype} pattern has uncertain active-test context — retained for revalidation",
     },
+    "fe_verification_queued": {
+        "ko": "🔁 후보를 보존하고 독립 검증 대기열에 추가했습니다",
+        "zh": "🔁 已保留候选项并加入独立验证队列",
+        "en": "🔁 Candidate retained and queued for independent verification",
+    },
     "fe_xss_negative_autocorrected": {
         "ko": "🔍 [자동 교정] 브라우저 음성 검증 — XSS 후보를 발견 목록에서 제거",
         "zh": "🔍 [自动校正] 浏览器验证为阴性 — 已从发现列表移除 XSS 候选",

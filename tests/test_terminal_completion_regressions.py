@@ -337,6 +337,52 @@ def test_report_accepts_exact_finding_id(tmp_path: Path) -> None:
     assert errors == []
 
 
+def test_report_rejects_unlabeled_unconfirmed_claim(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    finding = exporter.process(
+        "TRUE 1200B\nFALSE 500B",
+        'curl "https://example.test/item?id=1%20OR%201=1"',
+    )
+    assert finding is not None and finding.confidence == "probable"
+    report = (
+        "# Target: https://example.test\n"
+        "## Vulnerabilities Found\n"
+        f"1. **SQL Injection ({finding.id})**\n- exploitable response difference\n"
+    )
+
+    valid, errors = BingoTerminal._validate_report_finding_ids(
+        report, exporter.findings
+    )
+
+    assert not valid
+    assert f"unconfirmed_claim:{finding.id}" in errors
+
+
+def test_unresolved_candidate_is_queued_for_bounded_verification(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    exporter.process(
+        "HTTP 200\n<script>function notice(){alert('hello')}</script>",
+        "curl -sk https://example.test/docs",
+    )
+    backlog = exporter.verification_backlog()
+
+    assert len(backlog) == 1
+    assert backlog[0]["tier"] == "quarantined"
+    assert backlog[0]["tool"] == "xss_autotest"
+
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._findings_exporter = exporter
+    first = terminal._verification_backlog_context()
+    second = terminal._verification_backlog_context()
+    third = terminal._verification_backlog_context()
+
+    assert "AUTO_VERIFICATION_QUEUE" in first
+    assert "xss_autotest" in first
+    assert "NOT confirmed vulnerabilities" in first
+    assert "AUTO_VERIFICATION_QUEUE" in second
+    assert third == ""
+
+
 def test_negative_verification_removes_potential_finding(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
     payload = "<img src=x onerror=alert(1)>"
@@ -654,3 +700,6 @@ def test_report_fallback_is_written_without_model(tmp_path: Path, monkeypatch) -
     assert "Confirmed: 0" in report
     assert "Probable/Potential: 5" in report
     assert "BINGO-1" in report
+    vuln_section = report.split("## Vulnerabilities Found", 1)[1].split("##", 1)[0]
+    assert "BINGO-1" not in vuln_section
+    assert "Verification Backlog (Unconfirmed)" in report

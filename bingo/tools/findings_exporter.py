@@ -1391,6 +1391,78 @@ class FindingsExporter:
             )
         return "\n".join(lines)
 
+    def verification_backlog(self, limit: int = 5) -> list[dict]:
+        """Return unresolved candidates with a concrete independent verifier."""
+        if limit <= 0:
+            return []
+        profiles = {
+            FINDING_SQLI: (
+                "sqli_autoexploit",
+                "Require a DB-specific error, stable TRUE/FALSE controls, or at least "
+                "3 payload timing samples above the baseline threshold.",
+            ),
+            FINDING_XSS: (
+                "xss_autotest",
+                "Require browser JavaScript execution; reflection alone is not proof.",
+            ),
+            FINDING_SSRF: (
+                "ssrf_autotest",
+                "Require a response absent from baseline and a non-reflected internal-service signature.",
+            ),
+            FINDING_LFI: (
+                "lfi_autotest",
+                "Require exact target file content such as a passwd record, not a path string.",
+            ),
+            FINDING_RCE: (
+                "cmdi_autotest",
+                "Require a unique command canary or exact OS command output from a control comparison.",
+            ),
+            FINDING_AUTH_BYPASS: (
+                "idor_autotest",
+                "Compare authenticated and unauthenticated sessions against the same object and endpoint.",
+            ),
+            FINDING_CREDENTIAL: (
+                "manual_control",
+                "Require a real extracted secret bound to an account or a successful authentication check.",
+            ),
+            FINDING_INFO_DISC: (
+                "manual_control",
+                "Require sensitive response data absent from the normal baseline response.",
+            ),
+        }
+        unresolved = [
+            finding
+            for finding in self._findings
+            if finding.confidence in (CONF_PROBABLE, CONF_POTENTIAL, CONF_INCONCLUSIVE)
+        ] + list(self._quarantined)
+        backlog: list[dict] = []
+        seen_scopes: set[str] = set()
+        for finding in unresolved:
+            dedupe_key = finding.scope_key or f"{finding.vuln_type}|{finding.id}"
+            if dedupe_key in seen_scopes:
+                continue
+            seen_scopes.add(dedupe_key)
+            tool, proof = profiles.get(
+                finding.vuln_type,
+                ("manual_control", "Repeat the request with a negative control and require a reproducible difference."),
+            )
+            try:
+                _, endpoint, parameter = finding.scope_key.split("|", 2)
+            except ValueError:
+                endpoint, parameter = self.target or "unknown", "unknown"
+            backlog.append({
+                "id": finding.id,
+                "type": finding.vuln_type,
+                "tier": finding.confidence,
+                "endpoint": endpoint if endpoint != "unknown" else self.target or "unknown",
+                "parameter": parameter,
+                "tool": tool,
+                "required_evidence": proof,
+            })
+            if len(backlog) >= limit:
+                break
+        return backlog
+
     def evidence_flags(self) -> dict:
         """next_steps 필터용 — probable/potential SQLi는 계속 추적."""
         texts = " ".join(

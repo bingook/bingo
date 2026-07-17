@@ -9001,6 +9001,7 @@ class BingoTerminal:
                 current_response[:16_384],
                 execution_context=getattr(self, "_last_execution_context", None),
             )
+            verification_context = self._verification_backlog_context()
             if len(raw_results) > 3000:
                 trimmed = (
                     raw_results[:1500]
@@ -9018,6 +9019,7 @@ class BingoTerminal:
 
             self._parse_agent_state(raw_results)
             state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
+            state_summary += verification_context
             # v3.2.74: 프록시 상태를 state_summary에 포함
             if self._proxy.enabled:
                 _pe = self._proxy.current()
@@ -10431,6 +10433,48 @@ class BingoTerminal:
         except (KeyError, ValueError):
             message = str(message)
         self.console.print(f"[{THEME['dim']}]{message}[/]")
+        queued = self.s.get(
+            "fe_verification_queued",
+            "Candidate retained and queued for independent verification",
+        )
+        self.console.print(f"[{THEME['dim']}]{queued}[/]")
+
+    def _verification_backlog_context(self, limit: int = 3) -> str:
+        """Build bounded verifier tasks without suppressing the attack path."""
+        exporter = getattr(self, "_findings_exporter", None)
+        if exporter is None or not hasattr(exporter, "verification_backlog"):
+            return ""
+        attempts = getattr(self, "_verification_queue_attempts", None)
+        if not isinstance(attempts, dict):
+            attempts = {}
+            self._verification_queue_attempts = attempts
+        selected = []
+        for item in exporter.verification_backlog(limit=10):
+            finding_id = str(item.get("id", ""))
+            if not finding_id or attempts.get(finding_id, 0) >= 2:
+                continue
+            attempts[finding_id] = attempts.get(finding_id, 0) + 1
+            selected.append(item)
+            if len(selected) >= limit:
+                break
+        if not selected:
+            return ""
+
+        lines = [
+            "\n[AUTO_VERIFICATION_QUEUE]",
+            "These are unresolved candidates, NOT confirmed vulnerabilities.",
+            "Run the independent verifier now while continuing exploration.",
+            "A deterministic negative result may reject the candidate; a timeout/error must retain it.",
+            "Never promote from descriptive text, HTTP status, reflection, or process elapsed alone.",
+        ]
+        for item in selected:
+            lines.append(
+                f"- {item['id']} tier={item['tier']} type={item['type']} "
+                f"endpoint={item['endpoint']} param={item['parameter']} "
+                f"verifier={item['tool']} required={item['required_evidence']}"
+            )
+        lines.append("[/AUTO_VERIFICATION_QUEUE]\n")
+        return "\n".join(lines)
 
     def _auto_analyze_findings(
         self,
@@ -10451,6 +10495,7 @@ class BingoTerminal:
             # 타겟이 변경됐으면 새 exporter 생성
             from ..tools.findings_exporter import FindingsExporter
             self._findings_exporter = FindingsExporter(target=_target)
+            self._verification_queue_attempts = {}
 
         # ── 발견 탐지 ─────────────────────────────────────────────────
         finding = self._findings_exporter.process(
@@ -10820,6 +10865,10 @@ class BingoTerminal:
             if getattr(finding, "confidence", "") not in ("blocked", "quarantined")
         ]
         allowed_ids = {str(getattr(finding, "id", "")) for finding in active}
+        findings_by_id = {
+            str(getattr(finding, "id", "")): finding
+            for finding in active
+        }
         allowed_types = {str(getattr(finding, "vuln_type", "")) for finding in active}
         aliases = {
             "sqli": r'sqli|sql\s*(?:injection|注入|인젝션)',
@@ -10855,6 +10904,22 @@ class BingoTerminal:
                 unsupported.append(f"missing_finding_id:{title[:40]}")
             elif not ids.issubset(allowed_ids):
                 unsupported.append(f"unknown_finding_id:{','.join(sorted(ids - allowed_ids))}")
+            else:
+                unresolved_ids = {
+                    finding_id
+                    for finding_id in ids
+                    if getattr(findings_by_id[finding_id], "confidence", "") != "confirmed"
+                }
+                explicitly_unconfirmed = bool(_report_re.search(
+                    r'\b(?:potential|probable|unconfirmed|candidate)\b'
+                    r'|미확정|잠재|추정|待验证|潜在|未确认',
+                    segment,
+                    _report_re.I,
+                ))
+                if unresolved_ids and not explicitly_unconfirmed:
+                    unsupported.append(
+                        f"unconfirmed_claim:{','.join(sorted(unresolved_ids))}"
+                    )
         if not allowed_ids and item_pattern.search(report or ""):
             unsupported.append("claims_without_findings")
         return not unsupported, sorted(set(unsupported))
@@ -10966,15 +11031,34 @@ class BingoTerminal:
             "\n".join(f"- {item}" for item in session_credentials)
             if session_credentials else no_creds.get(lang, no_creds["en"])
         )
-        truth = ground_truth.strip()[:4000] or "- No findings recorded"
+        truth_lines = [
+            line.strip()
+            for line in ground_truth.splitlines()
+            if line.strip().startswith("- id=")
+        ]
+        confirmed_truth = [line for line in truth_lines if "tier=confirmed" in line]
+        backlog_truth = [line for line in truth_lines if "tier=confirmed" not in line]
+        no_verified = {
+            "ko": "- 확인된 취약점 없음",
+            "zh": "- 未确认漏洞",
+            "en": "- No verified vulnerabilities",
+        }.get(lang, "- No verified vulnerabilities")
+        backlog_label = {
+            "ko": "검증 대기 항목 (취약점 미확정)",
+            "zh": "待验证项目（未确认漏洞）",
+            "en": "Verification Backlog (Unconfirmed)",
+        }.get(lang, "Verification Backlog (Unconfirmed)")
+        verified_text = "\n".join(confirmed_truth) or no_verified
+        backlog_text = "\n".join(backlog_truth) or "- None"
         return (
             f"# Target: {target}\n"
             f"## {summary}\n"
             f"{fallback_note}\n"
             f"- {metrics[0]}: {confirmed_count}\n"
             f"- {metrics[1]}: {potential_count}\n\n"
-            f"## {vulns}\n{truth}\n\n"
-            f"## {evidence}\n{truth}\n\n"
+            f"## {vulns}\n{verified_text}\n\n"
+            f"## {evidence}\n{verified_text}\n\n"
+            f"## {backlog_label}\n{backlog_text}\n\n"
             f"## {creds}\n{credential_lines}\n\n"
             f"## {fixes}\n{fix_lines}"
         )
@@ -11108,8 +11192,8 @@ class BingoTerminal:
                     + _fe.ground_truth_block()
                     + "EVIDENCE LADDER RULES:\n"
                     + "1) tier=confirmed ONLY → MAY write 已确认/Confirmed/Critical Confirmed.\n"
-                    + "2) tier=probable → MUST keep vulnerability as Probable/潜在; NEVER drop; NEVER 已确认.\n"
-                    + "3) tier=potential → keep as Potential; NEVER 已确认.\n"
+                    + "2) tier=probable → list ONLY as an unconfirmed verification item; never in confirmed vulnerabilities.\n"
+                    + "3) tier=potential → list ONLY as an unconfirmed verification item; never in confirmed vulnerabilities.\n"
                     + "4) tier=quarantined → unresolved candidate; never claim as vuln, never discard.\n"
                     + "5) tier=blocked → WAF/oracle event only; NOT proven vuln.\n"
                     + "6) Fake hashes / login forms are NEVER credentials.\n"
@@ -11155,6 +11239,8 @@ class BingoTerminal:
                 f"## {_h('fix')}\n\n"
                 f"Every vulnerability item MUST include its exact BINGO finding ID. "
                 f"Do not add a vulnerability type, URL, parameter, or evidence absent from FINDINGS GROUND TRUTH.\n"
+                f"The vulnerabilities section may contain tier=confirmed items ONLY. "
+                f"Put probable/potential items in the evidence section and label each explicitly Unconfirmed/Potential.\n"
                 f"NO code blocks. Plain markdown only. Be concise."
             )
         )

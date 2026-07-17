@@ -831,6 +831,21 @@ _STRINGS = {
     "report_fallback_used": {"ko": "⚠ 보고서 모델 응답 없음 — 로컬 증거 기반 fallback 보고서를 저장합니다",
                                "zh": "⚠ 报告模型无响应 — 正在保存基于本地证据的 fallback 报告",
                                "en": "⚠ Report model unavailable — saving a local-evidence fallback report"},
+    "doom_progress_autocorrected": {
+        "ko": "🔄 [자동 교정] 새 엔드포인트/파라미터 발견 — 무진전 카운터 초기화",
+        "zh": "🔄 [自动校正] 发现新端点/参数 — 已重置无进展计数器",
+        "en": "🔄 [Auto-correct] New endpoint/parameter found — no-progress counter reset",
+    },
+    "fe_pattern_fp_autocorrected": {
+        "ko": "🔍 [자동 교정] 일반 페이지 스크립트 패턴 — XSS 발견에서 제외",
+        "zh": "🔍 [自动校正] 普通页面脚本模式 — 已从 XSS 发现中排除",
+        "en": "🔍 [Auto-correct] Generic page script pattern — excluded from XSS findings",
+    },
+    "fe_candidate_detected": {
+        "ko": "검증 필요 후보",
+        "zh": "待验证候选",
+        "en": "Candidate Requires Verification",
+    },
     "severity_critical":   {"ko": "위험 (Critical)",     "zh": "严重 (Critical)",  "en": "Critical"},
     "severity_high":       {"ko": "높음 (High)",         "zh": "高危 (High)",      "en": "High"},
     "severity_medium":     {"ko": "중간 (Medium)",       "zh": "中危 (Medium)",    "en": "Medium"},
@@ -8550,11 +8565,6 @@ _STRINGS.update({
         "ko": "📋 루프 중단 완료 — 지금 최종 보고서를 생성합니다.",
         "zh": "📋 循环已停止 — 现在生成最终报告。",
         "en": "📋 Loop stopped — generating the final report now.",
-    },
-    "doom_loop_report_stop": {
-        "ko": "⛔ 전략 전환 3회 후에도 진전 없음 — 중단하고 보고서를 생성합니다.",
-        "zh": "⛔ 三次策略切换后仍无进展 — 停止并生成报告。",
-        "en": "⛔ No progress after three strategy changes — stopping and generating report.",
     },
     # ── v6.2.139: 취약점 강화 스캐너 ──────────────────────────────────────────
     "full_scan_start": {

@@ -371,7 +371,6 @@ class BingoTerminal:
         # 최근 도구 호출 시그니처 목록 (이름+인자 해시) — 반복 패턴 감지용
         self._dl_tool_sigs: list[str] = []
         self._dl_no_progress: int = 0       # 연속 "진전 없음" 루프 수
-        self._dl_escape_count: int = 0      # 전략 전환 경고 누적 횟수
         # ── v6.2.151 2-pass Compaction 상태 ──────────────────────────────
         self._compaction_summary: str = ""  # 배경 LLM 생성 요약
         self._compaction_lock = __import__("threading").Lock()
@@ -8837,8 +8836,13 @@ class BingoTerminal:
             if not _dl_has_progress:
                 self._dl_no_progress += 1
             else:
+                if self._dl_no_progress > 0:
+                    _progress_msg = self.s.get(
+                        "doom_progress_autocorrected",
+                        "Auto-corrected: new reconnaissance evidence resets the no-progress counter",
+                    )
+                    self.console.print(f"[{THEME['success']}]{_progress_msg}[/]")
                 self._dl_no_progress = 0
-                self._dl_escape_count = 0
             if _dl_doom_detected or self._dl_no_progress >= 8:
                 from ..i18n import t as _t_dl, get_lang as _gl_dl
                 _dl_escape_map = {
@@ -8875,15 +8879,6 @@ class BingoTerminal:
                 self.history.append(Message(role="user", content=_dl_msg))
                 self._dl_tool_sigs.clear()
                 self._dl_no_progress = 0
-                self._dl_escape_count += 1
-                if self._dl_escape_count >= 3:
-                    _doom_stop = self.s.get(
-                        "doom_loop_report_stop",
-                        "Repeated strategy changes made no progress — stopping and generating report",
-                    )
-                    self.console.print(f"\n[{THEME['warn']}]{_doom_stop}[/]")
-                    self._loop_limit_hit = True
-                    self._agent_stop_flag.set()
             # ─────────────────────────────────────────────────────────────────
 
             # ── v6.2.159 Self-Reflection 주기적 자기평가 (Type A) ─────────────
@@ -10199,6 +10194,12 @@ class BingoTerminal:
             code_snippet=code_snippet[:500] if code_snippet else "",
         )
         if not finding:
+            if getattr(self._findings_exporter, "last_autocorrection", ""):
+                _fp_msg = self.s.get(
+                    "fe_pattern_fp_autocorrected",
+                    "Auto-corrected: generic page script is not an XSS finding",
+                )
+                self.console.print(f"[{THEME['dim']}]{_fp_msg}[/]")
             return
 
         # ── v6.2.76/175: 취약점 알림 박스 (blocked는 별도 톤) ──────────
@@ -10210,7 +10211,7 @@ class BingoTerminal:
         else:
             _sev_map = {
                 "CRITICAL": ("#ff1744", "POTENTIAL CRITICAL" if _conf == "potential" else "CRITICAL"),
-                "HIGH":     ("#ffd600", "HIGH"),
+                "HIGH":     ("#ffd600", "POTENTIAL HIGH" if _conf == "potential" else "HIGH"),
                 "LOW":      ("#4a4a4a", "LOW"),
             }
             _sev_color, _sev_label = _sev_map.get(
@@ -10226,6 +10227,11 @@ class BingoTerminal:
                 "zh": "WAF/阻断事件 (SQLi未证明)",
                 "en": "WAF/Block Event (SQLi unproven)",
             }
+        elif _conf == "potential":
+            _fe_title = self.s.get(
+                "fe_candidate_detected",
+                {"ko": "검증 필요 후보", "zh": "待验证候选", "en": "Candidate Requires Verification"},
+            )
         _fe_title_str = _fe_title.get(_lang, _fe_title.get("en", "Finding Detected")) \
             if isinstance(_fe_title, dict) else str(_fe_title)
 
@@ -11838,8 +11844,10 @@ class BingoTerminal:
             r"(?:자격증명|비밀번호|계정)\s*(?:발견|추출|[:=])",
             r"(?:凭据|密码|用户名)\s*(?:发现|提取|[:：=])",
             r"(?:database|table|column|endpoint)\s+(?:name\s+)?(?:extracted|enumerated)",
+            r"(?:^|\n)\s*(?:https?://\S+|/[A-Za-z0-9_./-]+)\s*->\s*[A-Za-z_][A-Za-z0-9_]*",
             r"(?:DB|테이블|컬럼|엔드포인트)\s*(?:추출|열거|확인)",
             r"(?:数据库|表名|列名|端点)\s*(?:提取|枚举|确认)",
+            r"(?:발견|发现|found)\s*[:：]?\s*(?:새로운?\s*)?(?:endpoint|parameter|엔드포인트|파라미터|端点|参数)",
             r"(?:shell|RCE)\s*(?:obtained|confirmed|verified)",
             r"(?:셸|RCE)\s*(?:획득|확인)",
             r"(?:Shell|RCE)\s*(?:获取|确认)",

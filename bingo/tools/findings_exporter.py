@@ -176,6 +176,11 @@ _XSS_PAYLOAD_IN_CODE = re.compile(
     r'(?:<script|alert\s*\(|onerror\s*=|javascript:|<img[^>]+on\w+=|<svg[^>]+on\w+=|%3cscript|%3ealert)',
     re.I,
 )
+_XSS_TEST_EVIDENCE = re.compile(
+    r'(?:bINg0XsS\w*|BINGO[_-]?XSS|PAYLOAD[_ -]?REFLECTED|'
+    r'XSS.{0,40}(?:confirmed|reflected|executed|browser\s+verified))',
+    re.I,
+)
 
 _XSS_URL_PATTERN = re.compile(
     r'https?://[^\s"\'<>]+(?:%3C|<)(?:script|img|svg|body)[^\s"\'<>]*',
@@ -654,6 +659,7 @@ class FindingsExporter:
         self._findings: list[Finding] = []
         self._finding_hashes: set[str] = set()   # 중복 방지
         self._blocked_reasons: set[str] = set()  # v6.2.175: blocked reason 중복 방지
+        self.last_autocorrection: str = ""
 
         if output_dir:
             self._dir = Path(output_dir)
@@ -705,6 +711,7 @@ class FindingsExporter:
         if not output or len(output.strip()) < 10:
             return None
 
+        self.last_autocorrection = ""
         verdict = _evidence_ladder(output, code_snippet=code_snippet)
         if verdict.tier == CONF_NONE:
             return None
@@ -776,6 +783,17 @@ class FindingsExporter:
             if verdict.tier == CONF_POTENTIAL:
                 return None
             vtype, severity = FINDING_SQLI, SEVERITY_HIGH
+
+        # v6.2.187: generic page JavaScript/server alert is not an XSS finding.
+        # Potential XSS requires an attempted payload or a scanner/browser marker.
+        if (
+            verdict.tier == CONF_POTENTIAL
+            and vtype == FINDING_XSS
+            and not _XSS_PAYLOAD_IN_CODE.search(code_snippet or "")
+            and not _XSS_TEST_EVIDENCE.search(output)
+        ):
+            self.last_autocorrection = "xss_pattern_without_test_payload"
+            return None
 
         # ladder → confidence / confirmed / severity 매핑
         if verdict.tier == CONF_CONFIRMED:

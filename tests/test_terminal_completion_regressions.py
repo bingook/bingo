@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from bingo.ui.terminal import BingoTerminal
+from bingo.tools.findings_exporter import FindingsExporter
 
 
 class _Console:
@@ -23,6 +24,42 @@ def test_generic_http_output_is_not_meaningful_progress() -> None:
     assert BingoTerminal._has_meaningful_loop_progress(
         "Credentials extracted: username=admin password=secret"
     )
+
+
+def test_discovered_endpoint_parameter_is_meaningful_progress() -> None:
+    output = (
+        "/main/contents.do -> idx\n"
+        "/main/clinic/view.do -> mc_idx\n"
+        "https://example.test/main/center/view.do -> mc_idx\n"
+    )
+    assert BingoTerminal._has_meaningful_loop_progress(output)
+
+
+def test_generic_homepage_script_is_not_an_xss_finding(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    homepage = (
+        "HTTP/1.1 200 OK\n"
+        "<html><script>function goBack(){ alert('page notice'); history.back(); }</script></html>"
+    )
+
+    finding = exporter.process(homepage, code_snippet="curl -sk https://example.test/")
+
+    assert finding is None
+    assert exporter.last_autocorrection == "xss_pattern_without_test_payload"
+
+
+def test_attempted_xss_payload_remains_a_candidate(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    payload = "<img src=x onerror=alert(1)>"
+
+    finding = exporter.process(
+        f"HTTP 200\nreflected={payload}",
+        code_snippet=f"curl 'https://example.test/?q={payload}'",
+    )
+
+    assert finding is not None
+    assert finding.vuln_type == "xss"
+    assert finding.confidence == "potential"
 
 
 def test_error_identifier_is_not_cracked_as_hash() -> None:

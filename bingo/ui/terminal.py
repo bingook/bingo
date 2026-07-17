@@ -761,7 +761,13 @@ class BingoTerminal:
             return
         try:
             ts = datetime.now().strftime("%H:%M:%S")
-            label = "**YOU**" if role == "user" else "**bingo**"
+            # v6.2.172: tool_result 역할 추가 → TOOL_RESULT 누락 버그 수정
+            if role == "user":
+                label = "**YOU**"
+            elif role == "tool_result":
+                label = "**TOOL_RESULT**"
+            else:
+                label = "**bingo**"
             # v6.2.169: 쿠키/토큰 평문 마스킹 후 저장
             _safe_content = BingoTerminal._mask_sensitive_in_log(content)
             with open(self._session_log_path, "a", encoding="utf-8") as f:
@@ -2036,15 +2042,19 @@ class BingoTerminal:
                     role="assistant",
                     content=_compaction_prefix + self._compaction_summary,
                 )
-                # v6.2.171: 보존된 최근 메시지 중 단일 거대 메시지 클리핑
-                # (툴 결과 HTML 등 대형 내용이 컨텍스트를 차지하는 것 방지)
+                # v6.2.172: 스마트 클리핑 — 가장 최신 4개는 절대 보호,
+                # 그 이전 메시지만 크기 기준으로 잘라내기.
+                # (방금 실행한 툴 결과가 잘려 AI가 방금 한 작업을 모르는 현상 방지)
                 _recent = non_sys[-_keep_recent:]
+                _PROTECT_LAST = 4   # 최신 N개는 클리핑 금지
+                _CLIP_LIMIT = 3000  # 보호 대상 외 메시지 최대 길이
                 _clipped = []
-                for _cm in _recent:
-                    if len(_cm.content) > 3000:
+                for _ci, _cm in enumerate(_recent):
+                    _is_protected = _ci >= len(_recent) - _PROTECT_LAST
+                    if not _is_protected and len(_cm.content) > _CLIP_LIMIT:
                         _clipped.append(Message(
                             role=_cm.role,
-                            content=_cm.content[:3000] + "\n...[컨텍스트 압축: 초과분 생략]..."
+                            content=_cm.content[:_CLIP_LIMIT] + "\n...[컨텍스트 압축: 초과분 생략]..."
                         ))
                     else:
                         _clipped.append(_cm)
@@ -2648,6 +2658,44 @@ class BingoTerminal:
         if self._agent_stop_flag.is_set():
             self._agent_stop_flag.clear()
             return
+
+        # v6.2.172: Grok 403 bypass 3회 전부 실패 → fallback 모델 자동 전환
+        # _last_stream_error 에 "HTTP 403" 포함 + 현재 모델이 grok 계열이면
+        # 등록된 다음 모델 중 grok이 아닌 첫 번째로 1회 재시도
+        _last_err = getattr(self, "_last_stream_error", "")
+        _is_grok_provider = (
+            "grok" in model_cfg.provider.lower()
+            or "xai" in model_cfg.provider.lower()
+            or "x.ai" in getattr(model_cfg, "base_url", "").lower()
+        )
+        if not full_response and "403" in _last_err and _is_grok_provider:
+            try:
+                # BingoConfig.models 목록에서 grok이 아닌 첫 모델로 fallback
+                _all_cfgs = list(getattr(self.config, "models", []) or [])
+                _fb_cfg = next(
+                    (c for c in _all_cfgs
+                     if c is not model_cfg
+                     and "grok" not in getattr(c, "provider", "").lower()
+                     and "xai" not in getattr(c, "provider", "").lower()
+                     and "x.ai" not in getattr(c, "base_url", "").lower()),
+                    None
+                )
+                if _fb_cfg:
+                    from ..models.registry import ModelRegistry as _MR_fb
+                    _fb_model = _MR_fb.build(_fb_cfg)
+                    _lang_fb = getattr(self.config, "lang", "en")
+                    _fb_name = getattr(_fb_cfg, "name", None) or getattr(_fb_cfg, "provider", "fallback")
+                    _fb_notice = {
+                        "ko": f"⚡ Grok 403 우회 실패 → {_fb_name} fallback 재시도",
+                        "zh": f"⚡ Grok 403绕过失败 → 切换至 {_fb_name} 重试",
+                        "en": f"⚡ Grok 403 bypass failed → fallback to {_fb_name}",
+                    }.get(_lang_fb, f"⚡ Grok 403 bypass failed → {_fb_name}")
+                    self.console.print(f"[bold yellow]{_fb_notice}[/bold yellow]")
+                    full_response = self._stream_response(
+                        _fb_model.chat_stream(self._build_messages(skill_context))
+                    )
+            except Exception:
+                pass
 
         # 거부 감지 → 재구성 후 재시도 (이전 출력은 이미 표시됨 — 새 시도만 추가 출력)
         if full_response and detect_refusal(full_response):
@@ -7581,6 +7629,12 @@ class BingoTerminal:
             # 코드 실행 (코드 블록이 있으면 반드시 실행)
             results_text = self._run_code_blocks(current_response, _loaded_skills)
 
+            # v6.2.172: TOOL_RESULT 세션 로그 기록 (이전엔 TOOL_RESULT=0 버그)
+            if results_text:
+                for _tr_log in results_text:
+                    if _tr_log and _tr_log.strip():
+                        self._append_to_session_log("tool_result", _tr_log[:4000])
+
             # ── v4.9.0: 텍스트 레벨 환각 스캐너 ────────────────────────────────
             # Gap 1 수정: 코드 블록 밖 텍스트에서 미실행 결과 서술 탐지
             # 상황: LLM이 ```python 코드 없이 텍스트로 "DB명이 X로 확인됨" 같은 환각을 서술
@@ -10079,6 +10133,13 @@ class BingoTerminal:
                 _ot.append(_now_ts, style=THEME["dim"])
                 from rich.panel import Panel as _OkPanel
                 self.console.print(_OkPanel(_ot, border_style=THEME["success"], padding=(0, 2)))
+
+                # v6.2.172: 보고서 ↔ findings ↔ 세션 로그 자동 수렴
+                try:
+                    self._converge_session_artifacts(report_path, target)
+                except Exception:
+                    pass
+
                 # ── 보고서 직후 인터랙티브 다음 단계 선택지 표시 ────
                 self._suggest_next_steps()
 
@@ -10109,6 +10170,180 @@ class BingoTerminal:
                     border_style=THEME["secondary"],
                     padding=(0, 2),
                 ))
+                # findings 저장 후에도 수렴 인덱스 갱신
+                try:
+                    self._converge_session_artifacts(report_path, target, findings_path=_fe_path)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _converge_session_artifacts(
+        self,
+        report_path: "Path | None",
+        target: str,
+        findings_path: "Path | None" = None,
+    ) -> None:
+        """v6.2.172: 보고서 / findings JSON / 세션 로그를 하나의 INDEX로 자동 수렴.
+
+        문제: 보고서·findings·session.md 가 따로 생성되어 구 보고서가 신규 증거를 누락.
+        해결: INDEX 파일을 갱신하고, 보고서/세션에 cross-link + findings 요약을 덧붙임.
+        """
+        from pathlib import Path as _P
+        import json as _json
+        import time as _t
+
+        _fe = getattr(self, "_findings_exporter", None)
+        # findings_path가 없으면 재저장하지 않음 (중복 JSON 생성 방지)
+        # 메모리 상의 findings 스냅샷만 사용
+
+        _session = getattr(self, "_session_log_path", None)
+        _sum = ""
+        _findings_brief = []
+        if _fe is not None:
+            try:
+                _sum = _fe.summary() or ""
+                for _f in list(_fe.findings)[:30]:
+                    _findings_brief.append({
+                        "id": getattr(_f, "id", ""),
+                        "severity": getattr(_f, "severity", ""),
+                        "vuln_type": getattr(_f, "vuln_type", ""),
+                        "title": (getattr(_f, "title", "") or "")[:120],
+                        "confirmed": bool(getattr(_f, "confirmed", False)),
+                    })
+            except Exception:
+                pass
+
+        # INDEX 저장 위치: report와 같은 dump 폴더, 없으면 세션 폴더
+        _index_dir = None
+        if report_path is not None:
+            _index_dir = _P(report_path).parent
+        elif findings_path is not None:
+            _index_dir = _P(findings_path).parent
+        elif _session is not None:
+            _index_dir = _P(_session).parent
+        else:
+            return
+
+        try:
+            _index_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            return
+
+        _safe = (target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:40]
+        _index_path = _index_dir / f"INDEX_{_safe}.md"
+        _index_json = _index_dir / f"INDEX_{_safe}.json"
+
+        _rp = str(_P(report_path).absolute()) if report_path else ""
+        _fp = str(_P(findings_path).absolute()) if findings_path else ""
+        _sp = str(_P(_session).absolute()) if _session else ""
+
+        _md = (
+            f"# Bingo Session Index\n\n"
+            f"- target: `{target}`\n"
+            f"- updated: `{_t.strftime('%Y-%m-%d %H:%M:%S')}`\n"
+            f"- report: `{_rp or 'N/A'}`\n"
+            f"- findings: `{_fp or 'N/A'}`\n"
+            f"- session: `{_sp or 'N/A'}`\n"
+            f"- summary: {_sum or 'no findings'}\n\n"
+            f"## Findings Snapshot\n\n"
+        )
+        if _findings_brief:
+            for _fb in _findings_brief:
+                _conf = "CONFIRMED" if _fb.get("confirmed") else "unconfirmed"
+                _md += (
+                    f"- [{_fb.get('severity','?')}] {_fb.get('vuln_type','?')} "
+                    f"— {_fb.get('title','')} ({_conf})\n"
+                )
+        else:
+            _md += "- (none)\n"
+
+        try:
+            _index_path.write_text(_md, encoding="utf-8")
+        except Exception:
+            pass
+
+        try:
+            _index_json.write_text(_json.dumps({
+                "target": target,
+                "updated_at": _t.strftime("%Y-%m-%d %H:%M:%S"),
+                "report": _rp,
+                "findings": _fp,
+                "session": _sp,
+                "summary": _sum,
+                "findings_snapshot": _findings_brief,
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+        # 보고서에 findings 요약 + cross-link append/갱신
+        if report_path is not None:
+            try:
+                _rp_obj = _P(report_path)
+                if _rp_obj.exists():
+                    _cur = _rp_obj.read_text(encoding="utf-8", errors="replace")
+                    _append = (
+                        f"\n\n---\n## Converged Artifacts\n\n"
+                        f"- INDEX: `{_index_path}`\n"
+                        f"- Findings JSON: `{_fp or 'N/A'}`\n"
+                        f"- Session log: `{_sp or 'N/A'}`\n"
+                        f"- Summary: {_sum or 'no findings'}\n"
+                    )
+                    if _findings_brief:
+                        _append += "\n### Findings Snapshot\n\n"
+                        for _fb in _findings_brief:
+                            _conf = "CONFIRMED" if _fb.get("confirmed") else "unconfirmed"
+                            _append += (
+                                f"- [{_fb.get('severity','?')}] {_fb.get('vuln_type','?')} "
+                                f"— {_fb.get('title','')} ({_conf})\n"
+                            )
+                    if "## Converged Artifacts" in _cur:
+                        # 기존 섹션 교체 (findings 경로 갱신)
+                        import re as _re_cv
+                        _cur = _re_cv.sub(
+                            r"\n---\n## Converged Artifacts[\s\S]*$",
+                            _append.rstrip() + "\n",
+                            _cur,
+                            count=1,
+                        )
+                        _rp_obj.write_text(_cur, encoding="utf-8")
+                    else:
+                        _rp_obj.write_text(_cur + _append, encoding="utf-8")
+            except Exception:
+                pass
+
+        # 세션 로그에도 수렴 포인터 기록 (중복 방지)
+        if _session is not None:
+            try:
+                _sp_obj = _P(_session)
+                _already = False
+                if _sp_obj.exists():
+                    _already = "=== CONVERGED ARTIFACTS ===" in _sp_obj.read_text(
+                        encoding="utf-8", errors="replace"
+                    )[-3000:]
+                if not _already:
+                    self._append_to_session_log(
+                        "tool_result",
+                        (
+                            f"=== CONVERGED ARTIFACTS ===\n"
+                            f"INDEX: {_index_path}\n"
+                            f"REPORT: {_rp or 'N/A'}\n"
+                            f"FINDINGS: {_fp or 'N/A'}\n"
+                            f"SUMMARY: {_sum or 'no findings'}\n"
+                            f"=== END CONVERGED ==="
+                        ),
+                    )
+            except Exception:
+                pass
+
+        _lang = getattr(self.config, "lang", "en")
+        _msg = {
+            "ko": f"📎 산출물 자동 수렴: {_index_path}",
+            "zh": f"📎 产物已自动汇总: {_index_path}",
+            "en": f"📎 Artifacts converged: {_index_path}",
+        }.get(_lang, f"📎 Artifacts converged: {_index_path}")
+        try:
+            self.console.print(f"[{THEME['dim']}]{_msg}[/]")
         except Exception:
             pass
 

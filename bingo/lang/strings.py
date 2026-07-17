@@ -2216,6 +2216,18 @@ _STRINGS.update({
                                   "zh": "(直接回车或再按Ctrl+C → 完全停止)",
                                   "en": "(press Enter or Ctrl+C again → stop completely)"},
 
+    "hint_waiting_tool":        {"ko": "⏳ 실행 중인 도구가 정리되기를 잠시 기다리는 중...",
+                                  "zh": "⏳ 正在等待运行中的工具结束...",
+                                  "en": "⏳ Waiting briefly for the active tool to stop..."},
+
+    "hint_tool_detached":       {"ko": "⚠ 도구가 백그라운드에서 마무리 중입니다 — 출력은 힌트 보호를 위해 숨김 처리됨",
+                                  "zh": "⚠ 工具仍在后台结束中 — 为保护提示输入，其输出已静音",
+                                  "en": "⚠ Tool is still finishing in the background — output muted to protect hint input"},
+
+    "hint_input_timeout":       {"ko": "⚠ 힌트 입력 시간이 초과되어 에이전트 루프를 중단합니다",
+                                  "zh": "⚠ 提示输入超时，正在停止代理循环",
+                                  "en": "⚠ Hint input timed out — stopping the agent loop"},
+
     "stream_interrupted":       {"ko": "⏸ 응답 중단됨",
                                   "zh": "⏸ 已中断",
                                   "en": "⏸ Interrupted"},

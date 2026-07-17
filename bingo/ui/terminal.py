@@ -43,6 +43,40 @@ from ..lang.strings import get_strings, get_slash_commands, SUPPORTED_LANGS
 from ..i18n import t
 from ..proxy import ProxyManager
 
+
+class _ToolThreadOutput:
+    """Forward output except for one muted tool thread.
+
+    ``sys.stdout`` is process-global, so the proxy must continue forwarding
+    writes from the UI/main thread while suppressing only its owning worker.
+    """
+
+    def __init__(self, stream, owner: threading.Thread,
+                 hint_active: threading.Event, muted: threading.Event) -> None:
+        self._stream = stream
+        self._owner = owner
+        self._hint_active = hint_active
+        self._muted = muted
+
+    def _suppress(self) -> bool:
+        return (
+            threading.current_thread() is self._owner
+            and (self._hint_active.is_set() or self._muted.is_set())
+        )
+
+    def write(self, data):
+        if self._suppress():
+            return len(data)
+        return self._stream.write(data)
+
+    def flush(self) -> None:
+        if not self._suppress():
+            self._stream.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
 # ── 응답 인코딩 자동 감지 유틸 ──────────────────────────────────────
 def _decode_response(resp) -> str:
     """
@@ -276,6 +310,9 @@ class BingoTerminal:
         # v6.2.182: hint 입력 중 — 백그라운드 도구/heartbeat 콘솔 출력 억제
         self._hint_input_active = threading.Event()
         self._active_tool_thread: threading.Thread | None = None
+        # A cancelled Python worker cannot be killed safely. Serialize workers
+        # so an old one must finish before a resumed loop starts another tool.
+        self._tool_execution_lock = threading.Lock()
         # Agent 누적 상태 — 슬라이딩 윈도우에 잘려도 보존
         # v6.0.1: 프로세스 PID별 독립 파일 → 다중 터미널 동시 실행 시 상태 오염 방지
         import os as _os
@@ -1198,7 +1235,7 @@ class BingoTerminal:
             f"Emit the next TOOL_CALL or bash block NOW."
         )
 
-    def _read_hint_line_from_tty(self, timeout: float = 300.0) -> "str | None":
+    def _read_hint_line_from_tty(self, timeout: float = 60.0) -> "str | None":
         """/dev/tty 에서 한 줄을 읽는다. 반드시 sane 모드에서만 호출.
 
         Returns:
@@ -1232,6 +1269,16 @@ class BingoTerminal:
             if not _rdy:
                 _f.write(b"\r\n")
                 _f.flush()
+                _lang = getattr(self.config, "lang", "en")
+                _msg = get_strings(_lang).get(
+                    "hint_input_timeout",
+                    "Hint input timed out — stopping the loop",
+                )
+                try:
+                    self.console.print(f"[{THEME['warn']}]{_msg}[/]")
+                except Exception:
+                    _sys.stderr.write(f"{_msg}\n")
+                    _sys.stderr.flush()
                 return None
             _line = _f.readline()
             _h = (_line or b"").decode("utf-8", "replace").strip()
@@ -1260,7 +1307,7 @@ class BingoTerminal:
     def _prompt_mid_task_hint(self) -> "str | None":
         """Ctrl+C 후 hint 입력. 빈 입력/취소 → None, 텍스트 → 주입 후 루프 계속.
 
-        v6.2.183 근본 처리 (100%):
+        v6.2.184 처리:
           1) hint 진입 전: 도구 스레드 join + hint_input_active 로 모든 경쟁 출력 차단
           2) _force_tty_sane(): raw 잔재를 ICANON+ECHO 로 강제 치료 + 검증
           3) /dev/tty 단독 라인 읽기 (prompt_toolkit/Rich/stdin 오염 우회)
@@ -1275,15 +1322,36 @@ class BingoTerminal:
         self._hint_input_active.set()
 
         try:
-            _signal.signal(_signal.SIGINT, _signal.SIG_DFL)
+            # SIG_DFL terminates the whole process (exit 130). Convert the
+            # second Ctrl+C into KeyboardInterrupt so the line reader returns
+            # None and the agent loop stops without killing bingo.
+            def _cancel_hint(_sig, _frame):
+                raise KeyboardInterrupt
+
+            _signal.signal(_signal.SIGINT, _cancel_hint)
 
             # 1) 경쟁자 제거: 활성 도구 스레드 대기
             _ath = getattr(self, "_active_tool_thread", None)
             if _ath is not None and _ath.is_alive():
+                _lang = getattr(self.config, "lang", "en")
+                _wait_msg = get_strings(_lang).get(
+                    "hint_waiting_tool",
+                    "Waiting briefly for the active tool to stop...",
+                )
+                self.console.print(f"[{THEME['dim']}]{_wait_msg}[/]")
                 try:
                     _ath.join(timeout=5.0)
                 except Exception:
                     pass
+                if _ath.is_alive():
+                    _mute = getattr(_ath, "_bingo_mute_output", None)
+                    if _mute is not None:
+                        _mute.set()
+                    _bg_msg = get_strings(_lang).get(
+                        "hint_tool_detached",
+                        "Tool is still finishing in the background; its output is muted",
+                    )
+                    self.console.print(f"[{THEME['warn']}]{_bg_msg}[/]")
 
             # 2) prompt_toolkit 앱 상태 리셋 (있으면)
             try:
@@ -1333,7 +1401,7 @@ class BingoTerminal:
             self._force_tty_sane()
 
             # 5) /dev/tty 단독 읽기
-            _hint_out = self._read_hint_line_from_tty(timeout=300.0)
+            _hint_out = self._read_hint_line_from_tty(timeout=60.0)
 
             if _hint_out:
                 _hint_out = self._normalize_mid_task_hint(_hint_out)
@@ -5556,9 +5624,34 @@ class BingoTerminal:
                 _t0 = __import__("time").time()
                 # 실행 중 heartbeat — 화면이 不动처럼 보이는 핵심 원인 제거
                 _box: dict = {}
+                _mute_tool_output = _thr_tool.Event()
 
                 def _run_one(_n=_tool_name, _a=_tool_args):
+                    _lock = getattr(self, "_tool_execution_lock", None)
+                    if _lock is None:
+                        _lock = _thr_tool.Lock()
+                        self._tool_execution_lock = _lock
+                    while not _lock.acquire(timeout=0.25):
+                        if self._agent_stop_flag.is_set():
+                            _box["r"] = {
+                                "success": False,
+                                "output": "INTERRUPTED before tool start",
+                                "exit_code": -1,
+                            }
+                            return
+
+                    _owner = _thr_tool.current_thread()
+                    _stdout = _sys_flush.stdout
+                    _stderr = _sys_flush.stderr
+                    _stdout_proxy = _ToolThreadOutput(
+                        _stdout, _owner, self._hint_input_active, _mute_tool_output
+                    )
+                    _stderr_proxy = _ToolThreadOutput(
+                        _stderr, _owner, self._hint_input_active, _mute_tool_output
+                    )
                     try:
+                        _sys_flush.stdout = _stdout_proxy
+                        _sys_flush.stderr = _stderr_proxy
                         _box["r"] = execute_tool(_n, _a)
                     except Exception as _ex:
                         _box["r"] = {
@@ -5566,8 +5659,15 @@ class BingoTerminal:
                             "output": f"execute_tool exception: {_ex}",
                             "exit_code": -1,
                         }
+                    finally:
+                        if _sys_flush.stdout is _stdout_proxy:
+                            _sys_flush.stdout = _stdout
+                        if _sys_flush.stderr is _stderr_proxy:
+                            _sys_flush.stderr = _stderr
+                        _lock.release()
 
                 _th = _thr_tool.Thread(target=_run_one, daemon=True)
+                _th._bingo_mute_output = _mute_tool_output
                 self._active_tool_thread = _th
                 _th.start()
                 _wait_s = 0
@@ -5592,6 +5692,10 @@ class BingoTerminal:
                         _flush_ui()
 
                 if self._agent_stop_flag.is_set() and _th.is_alive():
+                    # The worker may be inside a blocking library call. Keep it
+                    # serialized, but permanently mute its direct output so it
+                    # cannot overwrite the hint prompt or resumed AI stream.
+                    _mute_tool_output.set()
                     tool_results.append(
                         f"=== TOOL_RESULT: {_tool_name} ===\n"
                         f"exit_code=-1  success=false  elapsed={_wait_s}s\n"

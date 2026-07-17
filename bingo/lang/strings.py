@@ -831,6 +831,11 @@ _STRINGS = {
     "report_fallback_used": {"ko": "⚠ 보고서 모델 응답 없음 — 로컬 증거 기반 fallback 보고서를 저장합니다",
                                "zh": "⚠ 报告模型无响应 — 正在保存基于本地证据的 fallback 报告",
                                "en": "⚠ Report model unavailable — saving a local-evidence fallback report"},
+    "report_ground_truth_autocorrected": {
+        "ko": "🔍 [자동 교정] 보고서 내용이 실제 Finding ID와 불일치 — 증거 기반 보고서로 교체",
+        "zh": "🔍 [自动校正] 报告内容与实际 Finding ID 不一致 — 已替换为证据报告",
+        "en": "🔍 [Auto-correct] Report claims did not match Finding IDs — replaced with evidence report",
+    },
     "doom_progress_autocorrected": {
         "ko": "🔄 [자동 교정] 새 엔드포인트/파라미터 발견 — 무진전 카운터 초기화",
         "zh": "🔄 [自动校正] 发现新端点/参数 — 已重置无进展计数器",
@@ -2320,6 +2325,11 @@ _STRINGS.update({
     "syntax_precheck_warn":      {"ko": "⚠ [SYNTAX PRECHECK #{n}] 문법 오류 감지 — 자동 수정 실패. f-string 백슬래시 또는 dict 키 따옴표 충돌 확인 필요.",
                                    "zh": "⚠ [SYNTAX PRECHECK #{n}] 检测到语法错误 — 自动修复失败。请检查f-string反斜杠或dict下标引号冲突。",
                                    "en": "⚠ [SYNTAX PRECHECK #{n}] SyntaxError detected — auto-fix failed. Check f-string backslash or dict subscript issues."},
+    "bash_syntax_preflight_blocked": {
+        "ko": "⚠ Bash 문법 사전 검사 실패 — 실행을 차단하고 run_python 재작성을 요청합니다",
+        "zh": "⚠ Bash 语法预检失败 — 已阻止执行并请求改写为 run_python",
+        "en": "⚠ Bash syntax preflight failed — execution blocked; rewrite requested with run_python",
+    },
 
     # ── 인코딩 자동 감지 ──────────────────────────────────────────────
     "encoding_auto_detected":    {"ko": "🔤 인코딩 자동 감지: {enc} (EUC-KR/UTF-8/등 구형 사이트 대응)",

@@ -8,6 +8,14 @@ from types import SimpleNamespace
 from bingo.ui.terminal import BingoTerminal
 from bingo.tools.findings_exporter import FindingsExporter
 from bingo.tools.playwright_engine import PlaywrightEngine
+from bingo.tools_ext import autoexploit_modules
+from bingo.tools_ext.pentest_tools import (
+    TOOL_REGISTRY,
+    _inject_post_exploit_notice,
+    _inject_sqli_trigger_notice,
+    execute_tool,
+    ssrf_chain_exploit,
+)
 
 
 class _Console:
@@ -18,6 +26,45 @@ class _Console:
 
     def print(self, *args, **_kwargs) -> None:
         self.messages.append(" ".join(str(arg) for arg in args))
+
+
+def test_sqli_notice_ignores_descriptive_text_and_wrapper_elapsed() -> None:
+    output = (
+        "=== Testing login.do for SQL injection ===\n"
+        "Login page: 200\nelapsed=31.11s\n1200B baseline, 980B response"
+    )
+
+    assert "SQLI_TRIGGER_DETECTED" not in _inject_sqli_trigger_notice(output)
+
+
+def test_sqli_notice_accepts_real_database_error() -> None:
+    output = "HTTP 500\nYou have an error in your SQL syntax near quote"
+
+    assert "SQLI_TRIGGER_DETECTED" in _inject_sqli_trigger_notice(output)
+
+
+def test_sqli_notice_requires_verified_structured_timing() -> None:
+    weak = "[TIME_BASED] baseline=0.2 payload=3.3 threshold=2.0 samples=1"
+    verified = "[TIME_BASED] baseline=0.2 payload=3.3 threshold=2.0 samples=3"
+
+    assert "SQLI_TRIGGER_DETECTED" not in _inject_sqli_trigger_notice(weak)
+    assert "SQLI_TRIGGER_DETECTED" in _inject_sqli_trigger_notice(verified)
+
+
+def test_ssrf_chain_rejects_identical_200_responses(monkeypatch) -> None:
+    body = "generic application page"
+
+    monkeypatch.setattr(
+        "bingo.tools_ext.pentest_tools._run",
+        lambda _cmd, _timeout: {
+            "output": f"{body}\n---HTTP_STATUS:200---SIZE:{len(body)}---TIME:0.1---"
+        },
+    )
+
+    result = ssrf_chain_exploit("https://example.test/fetch", "url")
+
+    assert result["found_count"] == 0
+    assert not any(item["success"] for item in result["results"].values())
 
 
 def test_generic_http_output_is_not_meaningful_progress() -> None:
@@ -127,6 +174,167 @@ def test_active_security_tests_remain_candidates(tmp_path: Path) -> None:
         assert finding.confidence == "potential"
         assert finding.severity != "CRITICAL"
         assert exporter.last_autocorrection == ""
+
+
+def test_process_runtime_elapsed_is_not_time_based_sqli(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    output = (
+        "=== TOOL_RESULT: run_python ===\n"
+        "exit_code=0 success=True elapsed=14.42s\n"
+        "[200] ERROR (598B): LENGTH=1"
+    )
+    code = (
+        "import time\n"
+        "requests.get('https://example.test/item?id=1')\n"
+        "time.sleep(0.1)"
+    )
+
+    exporter.process(output, code)
+
+    assert exporter.stats()["probable"] == 0
+
+
+def test_failed_time_measurement_invalidates_probable_sqli(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    code = (
+        'TOOL_CALL:{"name":"sqli_autoexploit","args":'
+        '{"url":"https://example.test/item","param":"id"}}'
+    )
+    probable = exporter.process("TRUE 1200B\nFALSE 500B", code)
+    assert probable is not None and probable.confidence == "probable"
+
+    exporter.process(
+        "基准响应时间: 0.68s\n"
+        "[sleep] 响应时间: 0.35s (阈值: 2.18s)\n"
+        "[sleep_num] 响应时间: 0.31s (阈值: 2.18s)",
+        code,
+    )
+
+    assert not any(f.confidence == "probable" for f in exporter.findings)
+    assert any(
+        q.reason_code == "invalidated_by_time_based_threshold_failed"
+        for q in exporter.quarantined
+    )
+
+
+def test_structured_time_measurement_requires_repeated_passes(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    code = "curl 'https://example.test/item?id=1%20SLEEP(5)'"
+
+    finding = exporter.process(
+        "[TIME_BASED] baseline=0.40s payload=5.30s threshold=4.40s samples=3",
+        code,
+    )
+
+    assert finding is not None
+    assert finding.confidence == "probable"
+    assert finding.reason_code == "time_based_delay"
+
+
+def test_admin_path_is_not_a_credential(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    output = "HTTP 302\n/admin/main.do size=0B"
+
+    finding = exporter.process(output, "requests.get('https://example.test/admin/main.do')")
+
+    assert finding is None
+    assert not any(q.vuln_type == "credential" for q in exporter.quarantined)
+
+
+def test_server_header_does_not_trigger_post_exploit() -> None:
+    output = "HTTP/1.1 200 OK\nServer: Apache\nContent-Type: text/html"
+    assert _inject_post_exploit_notice(output) == output
+
+
+def test_ssrf_payload_echo_is_not_a_finding(monkeypatch) -> None:
+    class Response:
+        status_code = 200
+
+        def __init__(self, text: str):
+            self.text = text
+
+    responses = iter([
+        Response("<html>normal login page</html>"),
+        Response(
+            "<html>prepage=http://metadata.google.internal/"
+            "computeMetadata/v1/project/project-id</html>"
+        ),
+    ])
+    monkeypatch.setattr(autoexploit_modules, "_SSRF_PAYLOADS", [
+        "http://metadata.google.internal/computeMetadata/v1/project/project-id"
+    ])
+    monkeypatch.setattr(
+        autoexploit_modules,
+        "_SSRF_CLOUD_SIGNATURES",
+        ["computeMetadata", "project-id"],
+    )
+    monkeypatch.setattr(autoexploit_modules, "_sess", lambda _headers: object())
+    monkeypatch.setattr(autoexploit_modules, "_req", lambda *_args, **_kwargs: next(responses))
+
+    result = autoexploit_modules.ssrf_autotest(
+        "https://example.test/login", "prepage"
+    )
+
+    assert result["completed"] is True
+    assert result["success"] is False
+    assert result["findings"] == []
+
+
+def test_normal_tool_completion_has_zero_exit_code(monkeypatch) -> None:
+    monkeypatch.setitem(
+        TOOL_REGISTRY,
+        "test_no_findings",
+        lambda: {"success": False, "output": "scan complete: zero findings"},
+    )
+
+    result = execute_tool("test_no_findings", {})
+
+    assert result["completed"] is True
+    assert result["exit_code"] == 0
+    assert result["success"] is False
+
+
+def test_report_rejects_claims_without_finding_ids(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    exporter.process(
+        "TRUE 1200B\nFALSE 500B",
+        'curl "https://example.test/item?id=1%20OR%201=1"',
+    )
+    report = (
+        "# Target: https://example.test\n"
+        "## Vulnerabilities Found\n"
+        "1. **Reflected XSS (High)**\n- payload executed\n"
+        "2. **SQL Injection (High)**\n- response differed\n"
+    )
+
+    valid, errors = BingoTerminal._validate_report_finding_ids(
+        report, exporter.findings
+    )
+
+    assert not valid
+    assert "unsupported_type:xss" in errors
+    assert any(error.startswith("missing_finding_id:") for error in errors)
+
+
+def test_report_accepts_exact_finding_id(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    finding = exporter.process(
+        "TRUE 1200B\nFALSE 500B",
+        'curl "https://example.test/item?id=1%20OR%201=1"',
+    )
+    assert finding is not None
+    report = (
+        "# Target: https://example.test\n"
+        "## Vulnerabilities Found\n"
+        f"1. **SQL Injection ({finding.id})**\n- probable response difference\n"
+    )
+
+    valid, errors = BingoTerminal._validate_report_finding_ids(
+        report, exporter.findings
+    )
+
+    assert valid
+    assert errors == []
 
 
 def test_negative_verification_removes_potential_finding(tmp_path: Path) -> None:

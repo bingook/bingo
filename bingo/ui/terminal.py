@@ -2717,7 +2717,7 @@ class BingoTerminal:
                 # ── v6.2.159 Task Graph 초기화 (새 타겟 설정 시) ────────────
                 if getattr(self, "_intel_ready", False):
                     try:
-                        self._task_graph.load_template(user_input)
+                        self._task_graph.load_template(text)
                         self._self_reflector._last_reflect_loop = 0
                         self._self_reflector._reflect_count = 0
                         _tg_render = self._task_graph.render()
@@ -3351,7 +3351,159 @@ class BingoTerminal:
 
         self.console.print(tbl)
 
-    # ── (MVVS removed in v6.2.20) ────────────────────────────────────────────
+    # ── FP-ZERO compatibility validators ─────────────────────────────────────
+    # Runtime findings are owned by FindingsExporter. These patterns remain as
+    # a narrow compatibility surface for release-time FP/TP regression checks.
+    _MVVS_SIGNALS: "dict[str, list[tuple[str, str]]]" = {
+        "sqli": [
+            (r"(?:you have an error in your )?sql\s*(?:syntax|error|inject)|ORA-\d{4,}|mysql_fetch|pg_query", "SQL error message"),
+            (r"80040e14|80040e07|80040e01|ODBC.*SQL|OLE DB.*SQL", "OLEDB/ODBC SQL error"),
+            (r"(?:WAITFOR|pg_sleep|SLEEP)\s*\([^)]+\).*?(?:took|response took)\s*\d+(?:\.\d+)?\s*(?:sec|s)\b", "Time-based SQLi delay"),
+            (r"(?:size\s*:\s*\d+\s*vs\s*size\s*:\s*\d+|length|response).*?differ(?:ence|ed)?(?:\s+\d+B)?", "Response size difference"),
+            (r"1=1.*?(?:size|byte|len|length|differ|!=|<>).*?1=2|boolean.{0,30}differ|true.*false.*differ", "Boolean-based difference"),
+        ],
+        "xss": [
+            (r"<script[^>]*>\s*alert", "XSS script-alert reflected"),
+            (r"onerror\s*=\s*(?:alert|eval|document|window|fetch|location)", "XSS event handler reflected"),
+            (r"onload\s*=\s*(?:alert|eval|document|window|fetch|location)", "XSS onload reflected"),
+            (r"javascript\s*:\s*(?:alert|eval|document\.|window\.|location\.href|fetch\s*\(|XMLHttp)", "XSS javascript pseudo-protocol"),
+            (r"<(?:script|img|svg|body)[^>]*>.*?(?:alert|confirm|prompt)\s*\(", "XSS executable payload"),
+        ],
+        "idor": [
+            (r"(?:user|member|account|customer)_?(?:id|no|seq)\s*[=:]\s*\d+.{0,100}(?:name|email|phone|address)", "IDOR other-user data"),
+            (r"(?:unauthorized|forbidden|403).{0,80}(?:bypass|우회|bypassed|circumvent).{0,80}(?:200|success|ok\b)", "Authorization bypass confirmed"),
+        ],
+        "rce": [
+            (r"uid=\d+\([^)]+\)|root:\w*:\d+:\d+|/etc/(?:passwd|shadow)", "RCE system identity output"),
+            (r"/bin/(?:sh|bash)\s*[-#\$]|/bin/sh.*executed|shell.*\$\s*(?:id|whoami|uname)", "RCE shell output"),
+            (r"(?:whoami|id\s*:?\s*root|hostname)\s*[=:]\s*[\w-]+|os\.(?:popen|system)\s*\(", "RCE command output with proof"),
+        ],
+        "ssrf": [
+            (r"169\.254\.169\.254|metadata\.google\.internal|100\.100\.100\.200", "Cloud metadata access"),
+            (r"(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}).{0,60}(?:200\b|open\b|connect)", "SSRF private IP accessed"),
+        ],
+        "path_traversal": [
+            (r"root:x:0:0|daemon:x:|/etc/passwd.*root", "Path traversal passwd content"),
+            (r"\[boot\s+loader\]|C:\\Windows\\System32", "Path traversal system file"),
+        ],
+    }
+
+    _BINGO_SIGNAL_PREFIX = "BINGO_SIGNAL:"
+
+    def _parse_bingo_signals(self, output: str) -> "list[tuple[str, str, str]]":
+        """Parse and validate explicit structured vulnerability evidence."""
+        import json as _json
+
+        found: list[tuple[str, str, str]] = []
+        type_map = {
+            "sqli_boolean": "sqli",
+            "sqli_error": "sqli",
+            "sqli_time": "sqli",
+            "xss": "xss",
+            "rce": "rce",
+            "ssrf": "ssrf",
+            "idor": "idor",
+            "path_traversal": "path_traversal",
+        }
+        for line in (output or "").splitlines():
+            line = line.strip()
+            if not line.startswith(self._BINGO_SIGNAL_PREFIX):
+                continue
+            try:
+                data = _json.loads(line[len(self._BINGO_SIGNAL_PREFIX):])
+            except (_json.JSONDecodeError, TypeError, ValueError):
+                continue
+            stype = str(data.get("type", "")).lower()
+            evidence = data.get("evidence", {})
+            if not isinstance(evidence, dict):
+                continue
+            valid, description, summary = self._validate_bingo_signal(stype, evidence)
+            if valid and stype in type_map:
+                found.append((type_map[stype], description, summary))
+        return found
+
+    @staticmethod
+    def _validate_bingo_signal(stype: str, evidence: dict) -> "tuple[bool, str, str]":
+        """Validate BINGO_SIGNAL evidence against type-specific thresholds."""
+        import ipaddress
+        import re as _signal_re
+
+        try:
+            if stype == "sqli_boolean":
+                size_true = int(evidence.get("size_true", 0))
+                size_false = int(evidence.get("size_false", 0))
+                diff = abs(size_true - size_false)
+                pct = diff / max(size_true, size_false, 1) * 100
+                valid = diff >= 100 and pct >= 10
+                return valid, "Boolean SQLi size difference", f"diff={diff}B ({pct:.1f}%)"
+
+            if stype == "sqli_error":
+                error = str(evidence.get("db_error", ""))
+                valid = bool(_signal_re.search(
+                    r"ORA-\d{4,}|mysql_fetch|pg_query|80040e14|ODBC.*SQL|sql\s*(?:syntax|error)",
+                    error,
+                    _signal_re.IGNORECASE,
+                ))
+                return valid, "SQL error message", error[:80]
+
+            if stype == "sqli_time":
+                delay = float(evidence.get("delay_sec", 0))
+                expected = float(evidence.get("expected_sec", 5))
+                valid = delay >= max(expected * 0.8, 3.0)
+                return valid, "Time-based SQLi delay", f"delay={delay:.2f}s"
+
+            if stype == "xss":
+                payload = str(evidence.get("payload", ""))
+                reflected = evidence.get("reflected") is True
+                executable = bool(_signal_re.search(
+                    r"<script|alert\s*\(|onerror\s*=|javascript:\s*(?:alert|eval|document)",
+                    payload,
+                    _signal_re.IGNORECASE,
+                ))
+                return reflected and executable, "XSS payload reflected", payload[:80]
+
+            if stype == "rce":
+                proof = str(evidence.get("proof", ""))
+                valid = bool(_signal_re.search(
+                    r"uid=\d+\([^)]+\)|root:\w*:\d+:\d+|/etc/(?:passwd|shadow)|whoami\s*=\s*[\w-]+",
+                    proof,
+                    _signal_re.IGNORECASE,
+                ))
+                return valid, "OS command execution proof", proof[:80]
+
+            if stype == "ssrf":
+                address = str(evidence.get("ip_accessed", ""))
+                if address == "metadata.google.internal":
+                    valid = True
+                else:
+                    ip = ipaddress.ip_address(address)
+                    valid = any(
+                        ip in ipaddress.ip_network(network)
+                        for network in (
+                            "10.0.0.0/8",
+                            "172.16.0.0/12",
+                            "192.168.0.0/16",
+                            "169.254.0.0/16",
+                        )
+                    )
+                return valid, "Private or metadata address accessed", address
+
+            if stype == "idor":
+                other_id = evidence.get("other_user_id")
+                valid = other_id is not None and evidence.get("data_returned") is True
+                return valid, "Other-user data returned", f"user_id={other_id}"
+
+            if stype == "path_traversal":
+                content = str(evidence.get("content", ""))
+                valid = bool(_signal_re.search(
+                    r"root:x:0:0|daemon:x:|/bin/(?:sh|bash)\s*$",
+                    content,
+                    _signal_re.MULTILINE,
+                ))
+                return valid, "System file content returned", content[:80]
+        except (TypeError, ValueError):
+            pass
+        return False, "", "insufficient evidence"
 
     def _collapse_code_blocks(self, text: str) -> str:
         """Python/bash 코드 블록을 접어서 한 줄 요약으로 교체.
@@ -5737,10 +5889,15 @@ class BingoTerminal:
                 _out = _result.get("output", "")
                 _ok  = _result.get("success", False)
                 _ec  = _result.get("exit_code", -1)
+                _completed = bool(_result.get("completed", False)) and _ec == 0
 
                 # 화면에 결과 미리보기 출력 (v5.2.7: 스마트 필터 적용)
-                _color = THEME["success"] if _ok else THEME["warn"]
-                _status_icon = "✔" if _ok else "✘"
+                if _ok and _ec == 0:
+                    _color, _status_icon = THEME["success"], "✔"
+                elif _completed:
+                    _color, _status_icon = THEME["dim"], "∅"
+                else:
+                    _color, _status_icon = THEME["warn"], "✘"
                 if not (getattr(self, "_hint_input_active", None) and self._hint_input_active.is_set()):
                     self.console.print(
                         f"[{THEME['dim']}]└─[/][{_color}]{_status_icon} exit={_ec}[/]"
@@ -7156,6 +7313,20 @@ class BingoTerminal:
 
         # ── v4.9.5: bash 블록 → .sh 파일 저장 후 실행 (multi-line curl+python3 지원) ──
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
+
+        def _repair_python_regex_quotes(source: str) -> str:
+            """Use triple quotes for generated raw regexes containing quote classes."""
+            repaired_lines: list[str] = []
+            for line in source.splitlines():
+                if "re." in line and "r'" in line and "\\'" in line:
+                    start = line.find("r'")
+                    end = line.rfind("',")
+                    if start >= 0 and end > start + 2:
+                        pattern = line[start + 2:end]
+                        line = line[:start] + 'r"""' + pattern + '"""' + line[end + 1:]
+                repaired_lines.append(line)
+            return "\n".join(repaired_lines)
+
         _BASH_ALLOWED = {
             # HTTP / 스캔
             "curl", "nmap", "nikto", "ffuf", "gobuster", "nuclei",
@@ -7174,7 +7345,7 @@ class BingoTerminal:
         history_text = " ".join(m.content for m in self.history if m.role == "user")
         import shlex as _shlex_bash
         for _bash_i, block in enumerate(bash_blocks):
-            script = block.strip()
+            script = _repair_python_regex_quotes(block.strip())
             if not script:
                 continue
             # 첫 번째 실행 명령 추출 (파이프 앞 부분, 주석 제외)
@@ -7273,6 +7444,25 @@ class BingoTerminal:
                     continue
             # ── v5.1.7: 스크립트 전처리 (curl 타임아웃 + while 카운터 자동 주입) ──
             script = _sanitize_script(script)
+            _bash_check = subprocess.run(
+                ["bash", "-n"],
+                input=script,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if _bash_check.returncode != 0:
+                _syntax_detail = (_bash_check.stderr or "bash syntax error").strip()[:240]
+                _syntax_msg = self.s.get(
+                    "bash_syntax_preflight_blocked",
+                    "Bash syntax preflight blocked execution; rewrite with run_python",
+                )
+                self.console.print(f"[{THEME['warn']}]{_syntax_msg}: {_syntax_detail}[/]")
+                _hallucination_msgs.append(
+                    f"BASH_SYNTAX_PREFLIGHT_FAILED: {_syntax_detail}. "
+                    "Use TOOL_CALL run_python for HTML/regex parsing."
+                )
+                continue
             # ── multi-line .sh 파일로 저장 ──
             _sh_path = tmp_dir / f"agent_bash_{len(tasks)}.sh"
             _sh_path.write_text(script, encoding="utf-8")
@@ -7351,7 +7541,7 @@ class BingoTerminal:
 
         python_raw_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
         for _py_i, py_block in enumerate(python_raw_blocks):
-            py_script = _fix_indent(py_block.strip())   # v6.2.3: 자동 교정
+            py_script = _fix_indent(_repair_python_regex_quotes(py_block.strip()))
             if not py_script:
                 continue
             _py_dedup_key = py_script[:60]
@@ -10620,6 +10810,56 @@ class BingoTerminal:
         )
 
     @staticmethod
+    def _validate_report_finding_ids(report: str, findings: list) -> tuple[bool, list[str]]:
+        """Reject report claims that are not backed by an active Finding ID."""
+        import re as _report_re
+
+        active = [
+            finding
+            for finding in findings
+            if getattr(finding, "confidence", "") not in ("blocked", "quarantined")
+        ]
+        allowed_ids = {str(getattr(finding, "id", "")) for finding in active}
+        allowed_types = {str(getattr(finding, "vuln_type", "")) for finding in active}
+        aliases = {
+            "sqli": r'sqli|sql\s*(?:injection|注入|인젝션)',
+            "xss": r'\bxss\b|cross.?site|跨站脚本|크로스.?사이트',
+            "ssrf": r'\bssrf\b|服务端请求伪造|서버.?사이드.?요청',
+            "lfi": r'\b(?:lfi|rfi)\b|文件包含|파일.?포함',
+            "rce": r'\brce\b|remote.?code.?execution|远程代码执行|원격.?코드.?실행',
+            "auth_bypass": r'auth.?bypass|认证绕过|인증.?우회',
+            "credential": r'credential|凭据|자격.?증명',
+            "info_disclosure": r'information.?disclosure|信息泄露|정보.?노출',
+            "open_redirect": r'open.?redirect|开放重定向|오픈.?리다이렉트',
+            "idor": r'\bidor\b|水平越权|수평.?권한',
+            "cors": r'\bcors\b',
+            "csrf": r'\bcsrf\b',
+        }
+        unsupported: list[str] = []
+        item_pattern = _report_re.compile(
+            r'(?ms)^\s*\d+[.)]\s*\*\*(.+?)\*\*(.*?)(?=^\s*\d+[.)]\s*\*\*|^##\s|\Z)'
+        )
+        for match in item_pattern.finditer(report or ""):
+            title, body = match.group(1), match.group(2)
+            segment = title + "\n" + body
+            item_types = {
+                vtype
+                for vtype, pattern in aliases.items()
+                if _report_re.search(pattern, title, _report_re.I)
+            }
+            for vtype in item_types:
+                if vtype not in allowed_types:
+                    unsupported.append(f"unsupported_type:{vtype}")
+            ids = set(_report_re.findall(r'BINGO-(?:Q)?\d{4}', segment, _report_re.I))
+            if not ids:
+                unsupported.append(f"missing_finding_id:{title[:40]}")
+            elif not ids.issubset(allowed_ids):
+                unsupported.append(f"unknown_finding_id:{','.join(sorted(ids - allowed_ids))}")
+        if not allowed_ids and item_pattern.search(report or ""):
+            unsupported.append("claims_without_findings")
+        return not unsupported, sorted(set(unsupported))
+
+    @staticmethod
     def _filter_next_steps_by_evidence(options: list, flags: dict) -> list:
         """v6.2.175/176 Type A: 증거 없는 고위험 next_steps 제거.
         SQLi potential/confirmed 검증·WAF 우회 제안은 절대 제거하지 않음.
@@ -10849,12 +11089,14 @@ class BingoTerminal:
         _fe_confirmed_n = 0
         _fe_potential_n = 0
         _fe_snap_block = ""
+        _fe_report_findings: list = []
         try:
             _fe = getattr(self, "_findings_exporter", None)
             if _fe is not None and hasattr(_fe, "ground_truth_block"):
                 if hasattr(_fe, "revalidate_quarantined"):
                     _fe.revalidate_quarantined()
                 _stats = _fe.stats() if hasattr(_fe, "stats") else {}
+                _fe_report_findings = list(getattr(_fe, "findings", []))
                 _fe_confirmed_n = int(_stats.get("confirmed", 0) or 0)
                 _fe_potential_n = int(
                     (_stats.get("probable", 0) or 0)
@@ -10911,6 +11153,8 @@ class BingoTerminal:
                 f"## {_h('evidence')}\n"
                 f"## {_h('creds')}\n"
                 f"## {_h('fix')}\n\n"
+                f"Every vulnerability item MUST include its exact BINGO finding ID. "
+                f"Do not add a vulnerability type, URL, parameter, or evidence absent from FINDINGS GROUND TRUTH.\n"
                 f"NO code blocks. Plain markdown only. Be concise."
             )
         )
@@ -10958,6 +11202,26 @@ class BingoTerminal:
                 "Report model unavailable — writing local evidence fallback",
             )
             self.console.print(f"[{THEME['warn']}]{_fallback_msg}[/]")
+            full = self._build_fallback_report(
+                target=target,
+                lang=_lang,
+                confirmed_count=_fe_confirmed_n,
+                potential_count=_fe_potential_n,
+                ground_truth=_fe_snap_block,
+                session_credentials=list(_session_creds),
+            )
+
+        report_valid, report_errors = BingoTerminal._validate_report_finding_ids(
+            full, _fe_report_findings
+        )
+        if not report_valid:
+            _invalid_msg = self.s.get(
+                "report_ground_truth_autocorrected",
+                "Report claims did not match Finding IDs; using deterministic evidence report",
+            )
+            self.console.print(
+                f"[{THEME['warn']}]{_invalid_msg}: {', '.join(report_errors[:4])}[/]"
+            )
             full = self._build_fallback_report(
                 target=target,
                 lang=_lang,

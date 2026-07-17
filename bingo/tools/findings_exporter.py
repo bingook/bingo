@@ -78,6 +78,7 @@ REASON_DB_TABLE_EXTRACT      = "db_table_extract"
 REASON_REAL_CREDENTIAL       = "real_credential_extract"
 REASON_RCE_PROOF             = "rce_command_output"
 REASON_TIME_BASED            = "time_based_delay"
+REASON_TIME_PRECHECK_FAIL    = "time_based_threshold_failed"
 REASON_XSS_BROWSER           = "xss_browser_confirmed"
 REASON_STRONG_OVERRIDE       = "strong_proof_overrides_fp"
 REASON_PATTERN_MATCH         = "pattern_match_unverified"
@@ -115,6 +116,7 @@ class Finding:
     # confirmed|probable|potential|blocked|inconclusive
     confidence: str = CONF_POTENTIAL
     reason_code: str = ""
+    scope_key: str = ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -223,7 +225,7 @@ _ACTIVE_TEST_PAYLOADS = {
         re.I,
     ),
     FINDING_CREDENTIAL: re.compile(
-        r'(?:credential|password|passwd|hash|login|dump|extract|\bsqli\b|sql.?inject)',
+        r'(?:credential|password|passwd|hash|dump|extract|\bsqli\b|sql.?inject)',
         re.I,
     ),
 }
@@ -240,6 +242,53 @@ def _execution_code(code_snippet: str, execution_context: dict | None) -> str:
         if structured.strip():
             return structured
     return code_snippet or ""
+
+
+def _finding_scope(
+    vtype: str,
+    output: str,
+    code_snippet: str,
+    execution_context: dict | None = None,
+) -> str:
+    """Build a stable endpoint/parameter identity for reversible verdicts."""
+    from urllib.parse import parse_qs, urlsplit
+
+    code = _execution_code(code_snippet, execution_context)
+    combined = code + "\n" + output[:1000]
+    url_match = re.search(r'https?://[^\s\'"<>]+', combined, re.I)
+    endpoint = ""
+    query_param = ""
+    if url_match:
+        raw_url = url_match.group(0).rstrip("),.;}")
+        parsed = urlsplit(raw_url)
+        endpoint = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}{parsed.path}"
+        query = parse_qs(parsed.query)
+        if query:
+            query_param = next(iter(query))
+
+    param_match = re.search(
+        r'[\'\"](?:param|parameter)[\'\"]\s*:\s*[\'\"]([A-Za-z_][\w-]*)'
+        r'|\bparam(?:eter)?\s*[=:]\s*[\'\"]?([A-Za-z_][\w-]*)',
+        combined,
+        re.I,
+    )
+    param = next((group for group in (param_match.groups() if param_match else ()) if group), "")
+    param = param or query_param
+    return f"{vtype}|{endpoint or 'unknown'}|{param or 'unknown'}"
+
+
+def _scopes_compatible(left: str, right: str) -> bool:
+    try:
+        left_type, left_endpoint, left_param = left.split("|", 2)
+        right_type, right_endpoint, right_param = right.split("|", 2)
+    except ValueError:
+        return left == right
+    endpoint_match = (
+        left_endpoint == right_endpoint
+        or "unknown" in (left_endpoint, right_endpoint)
+    )
+    param_match = left_param == right_param or "unknown" in (left_param, right_param)
+    return left_type == right_type and endpoint_match and param_match
 
 
 def _potential_disposition(
@@ -319,7 +368,11 @@ _CRED_PATTERNS = [
     # v6.2.66: JS 미니파이 오탐 방지 — 값에 JS 구문 문자({}()[]) 포함 시 매칭 제외, 최소 6자
     re.compile(r'(?<!\.)(?:password|passwd|pwd)\s*[=:]\s*[\'"]([^\'"]{6,})[\'"]', re.I),   # 따옴표 감싼 값
     re.compile(r'(?<!\.)(?:password|passwd|pwd)\s*=\s*([a-zA-Z0-9@._\-!$%^&*+]{6,})(?!\s*[+|&(;])', re.I),  # = 할당만 (JS 연산자 후속 제외)
-    re.compile(r'(?:admin|root|sa)\s*[/|:]\s*([a-zA-Z0-9@._\-!$%^&*+]{6,})', re.I),
+    re.compile(
+        r'(?:^|\s|\[CREDENTIAL\]\s*)(?:admin|root|sa)\s*:\s*'
+        r'([a-zA-Z0-9@._\-!$%^&*+]{6,})(?=\s|$)',
+        re.I,
+    ),
     re.compile(r'\$2[aby]\$\d+\$[./A-Za-z0-9]{53}'),          # bcrypt hash (very specific)
     # v6.2.10: MD5/SHA 해시 — 세션쿠키 오탐 억제를 위해 "password" 또는 "hash" 컨텍스트 필요
     re.compile(r'(?:hash|passwd|md5|sha1|sha256)\s*[:=]\s*([0-9a-f]{32,64})', re.I),
@@ -432,6 +485,52 @@ _AUTH_BYPASS_PATTERNS = [
 ]
 
 
+def _time_based_measurement(output: str) -> tuple[bool, str] | None:
+    """Parse explicit request timing measurements, never process runtime elapsed."""
+    structured = re.search(
+        r'\[TIME_BASED\].{0,240}?baseline\s*[=:]\s*(\d+(?:\.\d+)?)\s*s?'
+        r'.{0,120}?payload\s*[=:]\s*(\d+(?:\.\d+)?)\s*s?'
+        r'.{0,120}?threshold\s*[=:]\s*(\d+(?:\.\d+)?)\s*s?'
+        r'.{0,80}?samples?\s*[=:]\s*(\d+)',
+        output,
+        re.I | re.S,
+    )
+    if structured:
+        baseline, payload, threshold = map(float, structured.group(1, 2, 3))
+        samples = int(structured.group(4))
+        verified = samples >= 3 and payload >= threshold and payload >= baseline + 2.0
+        return verified, (
+            f"baseline={baseline:.2f}s payload={payload:.2f}s "
+            f"threshold={threshold:.2f}s samples={samples}"
+        )
+
+    baseline_match = re.search(
+        r'(?:baseline(?:\s+(?:response\s+)?time)?|基准响应时间|기준\s*응답\s*시간)'
+        r'\s*[=:：]\s*(\d+(?:\.\d+)?)\s*s',
+        output,
+        re.I,
+    )
+    measurements = re.findall(
+        r'\[(?:sleep|sleep_num|sleep_cmmt|benchmark)[^]]*\].{0,80}?'
+        r'(?:response\s*time|响应时间|응답\s*시간|elapsed|耗时)\s*[=:：]\s*'
+        r'(\d+(?:\.\d+)?)\s*s.{0,80}?'
+        r'(?:threshold|阈值|임계값)\s*[=:：]\s*(\d+(?:\.\d+)?)\s*s',
+        output,
+        re.I,
+    )
+    if baseline_match and measurements:
+        baseline = float(baseline_match.group(1))
+        values = [(float(value), float(threshold)) for value, threshold in measurements]
+        passing = [value for value, threshold in values if value >= threshold and value >= baseline + 2.0]
+        verified = len(passing) >= 2
+        detail = (
+            f"baseline={baseline:.2f}s passing={len(passing)}/{len(values)} "
+            f"max={max(value for value, _ in values):.2f}s"
+        )
+        return verified, detail
+    return None
+
+
 def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
     """v6.2.177 Type A — Evidence Ladder 단일 판정 엔진.
 
@@ -492,6 +591,21 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
     ) and not _FAKE_CRED_VALUE.search(output):
         return EvidenceVerdict(CONF_CONFIRMED, REASON_REAL_CREDENTIAL, FINDING_CREDENTIAL, "real cred")
 
+    # Explicit negative verification outranks heuristic probable signals.
+    if _ORACLE_FAILURE_REPEATED.search(output) or _ORACLE_FAILURE_WARNING.search(output):
+        return EvidenceVerdict(CONF_BLOCKED, REASON_ORACLE_PRECHECK_FAIL, FINDING_SQLI, "oracle fail")
+
+    timing = _time_based_measurement(output)
+    if timing:
+        if timing[0]:
+            return EvidenceVerdict(CONF_PROBABLE, REASON_TIME_BASED, FINDING_SQLI, timing[1])
+        return EvidenceVerdict(
+            CONF_BLOCKED,
+            REASON_TIME_PRECHECK_FAIL,
+            FINDING_SQLI,
+            timing[1],
+        )
+
     # ═══════════════ TIER 4: PROBABLE (실 oracle, Confirmed 아님) ═══════════════
     _m_t = re.search(
         r'(?:TRUE|1\s*=\s*1|2\s*>\s*1).{0,60}?(\d{2,6})\s*B',
@@ -511,16 +625,6 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
                 )
         except ValueError:
             pass
-
-    if (
-        re.search(r'(?:SLEEP|BENCHMARK|WAITFOR\s+DELAY)\s*\(', blob, re.I)
-        and re.search(
-            r'(?:delay|elapsed|took|응답\s*시간|耗时)\s*[=: ]*\s*(?:[5-9]|[1-9]\d+)(?:\.\d+)?\s*s'
-            r'|time.?based.{0,40}(?:confirm|success|취약|vulnerable)',
-            output, re.I
-        )
-    ):
-        return EvidenceVerdict(CONF_PROBABLE, REASON_TIME_BASED, FINDING_SQLI, "time-based")
 
     # ═══════════════ TIER 1: BLOCKED (확정 금지, 이벤트만) ═══════════════
     # CONFIRMED/PROBABLE가 없을 때만 적용 — 실탐을 FP로 덮지 않음
@@ -593,9 +697,6 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
 
     if _WAF_SECURITY_REDIRECT.search(output.lower()):
         return EvidenceVerdict(CONF_BLOCKED, REASON_WAF_REDIRECT, "", "waf redirect")
-
-    if _ORACLE_FAILURE_REPEATED.search(output) or _ORACLE_FAILURE_WARNING.search(output):
-        return EvidenceVerdict(CONF_BLOCKED, REASON_ORACLE_PRECHECK_FAIL, FINDING_SQLI, "oracle fail")
 
     if _FAKE_CRED_VALUE.search(output):
         return EvidenceVerdict(CONF_BLOCKED, REASON_PLACEHOLDER_HASH, FINDING_CREDENTIAL, "fake hash")
@@ -832,9 +933,24 @@ class FindingsExporter:
         import hashlib
         evidence = output[:2000]
         payload = (code_snippet or _extract_payload(output))[:500]
+        hinted_type = verdict.vuln_hint or FINDING_SQLI
+        scope_key = _finding_scope(
+            hinted_type, output, code_snippet, execution_context
+        )
 
         # ── BLOCKED: 차단 이벤트만 ──────────────────────────────────────────
         if verdict.tier == CONF_BLOCKED:
+            if verdict.reason_code in (
+                REASON_BLOCKED_WAF_SAME_SIZE,
+                REASON_ORACLE_PRECHECK_FAIL,
+                REASON_TIME_PRECHECK_FAIL,
+                REASON_NOT_VULNERABLE,
+            ):
+                self._invalidate_probable_findings(
+                    FINDING_SQLI,
+                    scope_key,
+                    f"invalidated_by_{verdict.reason_code}",
+                )
             if verdict.reason_code in self._blocked_reasons:
                 return None
             _sqli_ctx = bool(
@@ -873,6 +989,7 @@ class FindingsExporter:
                 notes=extra_notes or f"ladder:blocked:{verdict.reason_code}",
                 confidence=CONF_BLOCKED,
                 reason_code=verdict.reason_code,
+                scope_key=scope_key,
             )
             self._findings.append(finding)
             return finding
@@ -897,6 +1014,8 @@ class FindingsExporter:
                 return None
             vtype, severity = FINDING_SQLI, SEVERITY_HIGH
 
+        scope_key = _finding_scope(vtype, output, code_snippet, execution_context)
+
         # Pattern-only candidates use a fail-open quarantine. Only deterministic
         # false positives are rejected; unknown execution styles remain reviewable.
         if verdict.tier == CONF_POTENTIAL:
@@ -914,6 +1033,7 @@ class FindingsExporter:
                     reason=reason,
                     extra_notes=extra_notes,
                     execution_context=execution_context,
+                    scope_key=scope_key,
                 )
                 return None
 
@@ -933,11 +1053,29 @@ class FindingsExporter:
                 # Pattern-only evidence can never carry CRITICAL severity.
                 severity = SEVERITY_HIGH
 
+        scoped_existing = next(
+            (
+                finding
+                for finding in self._findings
+                if finding.vuln_type == vtype
+                and finding.scope_key == scope_key
+                and finding.confidence != CONF_BLOCKED
+            ),
+            None,
+        )
+        if scoped_existing:
+            self._promote_to_tier(
+                vtype, confidence, confirmed, verdict.reason_code, evidence, scope_key
+            )
+            return None
+
         _hash = hashlib.md5(
             (f"{verdict.tier}:{vtype}:" + evidence[:200]).encode("utf-8", errors="ignore")
         ).hexdigest()[:12]
         if _hash in self._finding_hashes:
-            self._promote_to_tier(vtype, confidence, confirmed, verdict.reason_code, evidence)
+            self._promote_to_tier(
+                vtype, confidence, confirmed, verdict.reason_code, evidence, scope_key
+            )
             return None
         self._finding_hashes.add(_hash)
 
@@ -952,9 +1090,12 @@ class FindingsExporter:
             confirmed=confirmed,
             confidence=confidence,
             reason_code=verdict.reason_code or REASON_PATTERN_MATCH,
+            scope_key=scope_key,
         )
         self._findings.append(finding)
-        self._promote_to_tier(vtype, confidence, confirmed, verdict.reason_code, evidence)
+        self._promote_to_tier(
+            vtype, confidence, confirmed, verdict.reason_code, evidence, scope_key
+        )
         return finding
 
     def _quarantine_candidate(
@@ -965,6 +1106,7 @@ class FindingsExporter:
         reason: str,
         extra_notes: str,
         execution_context: dict | None,
+        scope_key: str,
     ) -> None:
         import hashlib
         evidence = output[:2000]
@@ -988,6 +1130,7 @@ class FindingsExporter:
             confirmed=False,
             confidence=CONF_QUARANTINED,
             reason_code=reason,
+            scope_key=scope_key,
         )
         self._quarantined.append(finding)
 
@@ -999,7 +1142,7 @@ class FindingsExporter:
         proven_types = {
             f.vuln_type
             for f in self._findings
-            if f.confidence in (CONF_CONFIRMED, CONF_PROBABLE)
+            if f.confidence == CONF_CONFIRMED
         }
         before = len(self._quarantined)
         if proven_types:
@@ -1021,6 +1164,36 @@ class FindingsExporter:
         self.autocorrection_counts[reason] = self.autocorrection_counts.get(reason, 0) + 1
         if reason not in self.autocorrections:
             self.autocorrections.append(reason)
+
+    def _invalidate_probable_findings(
+        self,
+        vtype: str,
+        scope_key: str,
+        reason: str,
+    ) -> int:
+        """Move contradicted probable findings into quarantine."""
+        invalidated = [
+            finding
+            for finding in self._findings
+            if finding.vuln_type == vtype
+            and finding.confidence == CONF_PROBABLE
+            and _scopes_compatible(finding.scope_key, scope_key)
+        ]
+        for finding in invalidated:
+            self._findings.remove(finding)
+            finding.id = f"BINGO-Q{len(self._quarantined)+1:04d}"
+            finding.confidence = CONF_QUARANTINED
+            finding.confirmed = False
+            finding.severity = SEVERITY_LOW
+            finding.reason_code = reason
+            finding.notes = (finding.notes or "") + f" | {reason}"
+            self._quarantined.append(finding)
+            self.last_quarantine_reason = reason
+            self.quarantine_counts[reason] = self.quarantine_counts.get(reason, 0) + 1
+        if invalidated:
+            self._finding_hashes.clear()
+            self._record_autocorrection(reason)
+        return len(invalidated)
 
     def reject_finding(self, finding: Finding, reason: str) -> bool:
         """Remove a candidate after a deterministic negative verification."""
@@ -1044,11 +1217,14 @@ class FindingsExporter:
         confirmed: bool,
         reason_code: str,
         evidence: str,
+        scope_key: str = "",
     ) -> None:
         """하위 티어(blocked/potential) finding을 상위 ladder로 승격."""
         new_rank = _LADDER_RANK.get(confidence, 0)
         for f in self._findings:
             if f.vuln_type != vtype:
+                continue
+            if scope_key and f.scope_key and not _scopes_compatible(f.scope_key, scope_key):
                 continue
             old_rank = _LADDER_RANK.get(f.confidence, 0)
             if new_rank <= old_rank:

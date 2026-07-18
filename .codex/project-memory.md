@@ -8,7 +8,7 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.codex/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after latest bash codeblock execution work: `6.2.203`.
+- Current stable version after public execution-policy hardening: `6.2.204`.
 - Codex project memory is automatic:
   - At every Codex session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/codex-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Codex must silently run `scripts/codex-memory-sync.sh`.
@@ -18,7 +18,7 @@
   - `ruff check --select F821,F811 ...`
   - `git diff --check`
   - `pytest -q`
-- Recent full-suite status after latest bash codeblock work: `216 passed`.
+- Recent full-suite status after public execution-policy hardening: `217 passed`.
 - Recent target-log decisions for `mjh.or.kr`:
   - LFI broad-token false positive fixed: `nginx`/`mysql` words and response-size deltas are candidates only, not confirmed LFI.
   - XSS blocked-payload false positive fixed: `NOT REFLECTED`, `被过滤/不存在`, `403/404`, and `Location=N/A` contexts must not produce `XSS_TRIGGER_DETECTED` or potential findings.
@@ -32,25 +32,29 @@
 - Latest bash codeblock execution issue:
   - Bash blocks starting with `for` loops or variable assignments could be silently skipped even when they contained allowed `curl`/`python3` commands.
   - Fixed by scanning the whole block for allowed executable commands while still ignoring comments and non-exec wrappers like `echo`.
+- Latest root execution-policy issue:
+  - Public/default GitHub builds must not auto-execute arbitrary raw markdown ```bash/```python codeblocks from model prose.
+  - Default execution policy is now TOOL_CALL-only. Raw markdown codeblock execution is disabled unless explicitly opted in with `BINGO_ALLOW_CODEBLOCK_EXEC=1`.
+  - Model prompts/retry nudges must ask for `TOOL_CALL` (`http_get`, `run_bash`, `run_python`, structured scanners), not raw code fences.
 
 <!-- codex-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T01:41:13+08:00
+- Last synced: 2026-07-19T02:03:55+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.codex/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T01:41:13+08:00
+- Captured: 2026-07-19T02:03:55+08:00
 
 ### Status
 ```text
 M .codex/project-memory.md
  M AGENTS.md
  M bingo/__init__.py
+ M bingo/models/system_prompt.py
  M bingo/ui/terminal.py
- M scripts/git-hooks/post-commit
  M tests/test_change_memory.py
  M tests/test_terminal_completion_regressions.py
 ?? scripts/codex-memory-autostart.sh
@@ -63,11 +67,73 @@ M .codex/project-memory.md
 ```text
 AGENTS.md                                     |   2 +-
  bingo/__init__.py                             |   2 +-
- bingo/ui/terminal.py                          |  74 +++++++++++---
- scripts/git-hooks/post-commit                 |  13 ++-
- tests/test_change_memory.py                   | 139 ++++++++++++++++++++++++++
- tests/test_terminal_completion_regressions.py | 135 +++++++++++++++++++++++++
- 6 files changed, 350 insertions(+), 15 deletions(-)
+ bingo/models/system_prompt.py                 | 134 +++++------------
+ bingo/ui/terminal.py                          | 205 ++++++++++++++++----------
+ tests/test_change_memory.py                   | 139 +++++++++++++++++
+ tests/test_terminal_completion_regressions.py | 161 +++++++++++++++++++-
+ 6 files changed, 466 insertions(+), 177 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.204"`
+- `║  일반 Markdown bash/python 코드블록은 기본값에서 실행되지 않는다.          ║`
+- `║  1. 실행은 TOOL_CALL 로만 요청할 것                                        ║`
+- `║  4. custom Python/bash/외부 도구는 run_python/run_bash TOOL_CALL로 실행    ║`
+- `║  🚨 EXECUTION STANDARD v6.2.204 — TOOL_CALL ONLY BY DEFAULT                 ║`
+- `║  Public/default runtime: raw '''bash / '''python blocks are documentation    ║`
+- `║  only and are NOT executed. Use TOOL_CALL for every executable action.        ║`
+- `║  Local legacy opt-in exists only with BINGO_ALLOW_CODEBLOCK_EXEC=1.          ║`
+- `║  ✅ CANONICAL PATTERNS — copy one TOOL_CALL at a time:              ║`
+- `║  TOOL_CALL:{"name":"http_get","args":{"url":"https://TARGET/path?param=VALUE","timeout":15}} ║`
+- `║  TOOL_CALL:{"name":"run_bash","args":{"script":"curl -sk -m 15 -H 'User-Agent: Mozilla/5.0' 'https://TARGET/path?param=VALUE'"}} ║`
+- `║  TOOL_CALL:{"name":"run_python","args":{"code":"import requests\nr=requests.get('https://TARGET/',timeout=15,verify=False)\nprint(r.status_code, len(r.text)); print(r.text[:500])`
+- `║  🚨 MULTI-LINE PYTHON → run_python TOOL_CALL 필수:                  ║`
+- `║  ✅ TIME-BASED BLIND SQLi — use structured tools first:             ║`
+- `║  TOOL_CALL:{"name":"sqli_timebased","args":{"url":"https://REAL_TARGET/","param":"id","payload":"1 AND SLEEP(5)--","sleep_time":5}} ║`
+- `║  If custom timing is required, wrap curl timing in run_bash TOOL_CALL.║`
+- `║  ✅ BLIND BIT EXTRACTION — use bool_oracle_extract first:           ║`
+- `║  TOOL_CALL:{"name":"bool_oracle_extract","args":{"url":"https://REAL_TARGET/?id=1","param":"id","true_condition":"1=1","extract_expr":"@@version"}} ║`
+- `║  If custom bit loops are required, wrap the loop in run_python TOOL_CALL. ║`
+- `║  WHY: bingo executes TOOL_CALL operations and returns TOOL_RESULT.   ║`
+- `║  run_bash has curl access; run_python can parse raw response bytes.  ║`
+- `║  IF YOU NEED SHELL/PYTHON → USE run_bash/run_python TOOL_CALL.      ║`
+- `║  ✅ CORRECT PATTERN — ALWAYS use TOOL_CALL:                         ║`
+- `║  TOOL_CALL:{"name":"http_get","args":{"url":"https://REAL_TARGET/path","timeout":15}} ║`
+- `║  For custom curl, wrap it in run_bash TOOL_CALL.                    ║`
+- `║  WHY YOU THINK YOU CAN'T: You are WRONG. bingo runs TOOL_CALLs on   ║`
+- `║  a machine with network/tool access. Test it through TOOL_CALL.      ║`
+- `║  run_bash subprocesses have network connectivity when used.          ║`
+- `Output: plain text plus exactly one TOOL_CALL for execution. Raw bash/python code blocks are documentation only by default.`
+- `1. MANDATORY: Immediately emit a TOOL_CALL to verify the candidates.`
+<!-- working-tree:end -->
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:5c446e876b280d3fa212b64bd211a6883723243c -->
+## Code change: fix: execute looped bash codeblocks
+- Commit: `5c446e876b28`
+- Recorded: 2026-07-19T01:43:27+08:00
+- Committed: 2026-07-19T01:43:26+08:00
+
+### Files
+```text
+M	.codex/project-memory.md
+M	AGENTS.md
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
+M	scripts/git-hooks/post-commit
+```
+
+### Diff Stat
+```text
+5c446e876 fix: execute looped bash codeblocks
+ .codex/project-memory.md      | 95 +++++++++++++++++++++++++++++++++++--------
+ AGENTS.md                     |  2 +-
+ bingo/__init__.py             |  2 +-
+ bingo/ui/terminal.py          | 74 +++++++++++++++++++++++++++------
+ scripts/git-hooks/post-commit | 13 +++++-
+ 5 files changed, 155 insertions(+), 31 deletions(-)
 ```
 
 ### Added Highlights
@@ -101,7 +167,6 @@ AGENTS.md                                     |   2 +-
 - `continue`
 - `try:`
 - `parts = _shlex_bash.split(stripped.split("|", 1)[0].split("&&", 1)[0])`
-<!-- working-tree:end -->
 
 # Workspace Memory
 

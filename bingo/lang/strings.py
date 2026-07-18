@@ -861,6 +861,36 @@ _STRINGS = {
         "zh": "[报告请求已转交] 已跳过模型直接编写的报告文件。输出 TASK_COMPLETE 后，Bingo 将依据 Finding ID 生成报告。",
         "en": "[Report request deferred] Manual model-authored report artifact skipped. Emit TASK_COMPLETE and Bingo will generate it from Finding IDs.",
     },
+    "sqli_adaptive_profile": {
+        "ko": "[적응형 SQLi] 후보={count}, WAF={waf}, 반복 표본={samples}",
+        "zh": "[自适应 SQLi] 候选={count}，WAF={waf}，重复样本={samples}",
+        "en": "[Adaptive SQLi] candidates={count}, WAF={waf}, repeated samples={samples}",
+    },
+    "sqli_oracle_calibrated": {
+        "ko": "[Oracle 보정 완료] 표본={samples}, 본문 유사도={similarity:.3f}",
+        "zh": "[Oracle 校准完成] 样本={samples}，正文相似度={similarity:.3f}",
+        "en": "[Oracle calibrated] samples={samples}, body similarity={similarity:.3f}",
+    },
+    "sqli_dbms_detected": {
+        "ko": "[DBMS 프로필] 감지={dbms}, 힌트={hint}",
+        "zh": "[DBMS 配置] 检测={dbms}，提示={hint}",
+        "en": "[DBMS profile] detected={dbms}, hint={hint}",
+    },
+    "sqli_checkpoint_restored": {
+        "ko": "[SQLi 체크포인트] 재검증 후 복원: oracle={oracle}, DBMS={dbms}",
+        "zh": "[SQLi 检查点] 重新验证并恢复：oracle={oracle}，DBMS={dbms}",
+        "en": "[SQLi checkpoint] revalidated and restored: oracle={oracle}, DBMS={dbms}",
+    },
+    "sqli_external_handoff": {
+        "ko": "[외부 교차검증] 보정된 요청 프로필을 sqlmap/ghauri에 전달할 준비가 완료되었습니다.",
+        "zh": "[外部交叉验证] 已准备将校准后的请求配置传递给 sqlmap/ghauri。",
+        "en": "[External cross-check] Calibrated request profile is ready for sqlmap/ghauri.",
+    },
+    "sqli_candidate_only": {
+        "ko": "[SQLi 후보 유지] 안정적인 대조는 확인했지만 추출 증거가 부족합니다. 후보를 유지하고 외부 교차검증을 준비했습니다.",
+        "zh": "[保留 SQLi 候选] 对照稳定，但提取证据不足。候选已保留并准备外部交叉验证。",
+        "en": "[SQLi candidate retained] Controls are stable, but extraction proof is incomplete. External cross-check is prepared.",
+    },
     "doom_progress_autocorrected": {
         "ko": "🔄 [자동 교정] 새 엔드포인트/파라미터 발견 — 무진전 카운터 초기화",
         "zh": "🔄 [自动校正] 发现新端点/参数 — 已重置无进展计数器",

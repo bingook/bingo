@@ -3779,6 +3779,14 @@ This section overrides conflicting older instructions above.
     resource and request was blocked by a recorded baseline without that change.
 12. Never write an ad-hoc report JSON/Markdown file. Emit TASK_COMPLETE and let the
     internal Finding-ID report generator create the sole authoritative report.
+13. For SQLi, preserve the complete request profile: method, query/body format,
+    cookies, CSRF value, headers, redirects, and content type. Never rebuild a
+    session-sensitive request from only URL+parameter.
+14. Use the adaptive SQLi profile and its DBMS-specific expressions. Accept an
+    oracle only after repeated stable controls; reuse only revalidated checkpoints.
+15. A stable oracle without DB metadata or extracted values remains probable.
+    Use the generated sqlmap/ghauri handoff for bounded cross-validation, and only
+    promote after deterministic extraction evidence.
 """.strip()
 
 def get_pentest_system_prompt(provider: str) -> str:

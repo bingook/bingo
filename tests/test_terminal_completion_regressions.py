@@ -20,15 +20,25 @@ from bingo.orchestrator.engine import _board_value_anchored, _goal_completion_al
 from bingo.tools_ext import autoexploit_modules
 from bingo.tools_ext.pentest_tools import (
     TOOL_REGISTRY,
+    _build_adaptive_boolean_candidates,
     _boolean_probe_is_blocked,
     _boolean_probe_pair_is_eligible,
+    _calibrate_boolean_oracle,
+    _classify_dbms_with_oracle,
     _fix_bash_script,
+    _load_sqli_checkpoint,
+    _save_sqli_checkpoint,
     _inject_post_exploit_notice,
     _inject_sqli_trigger_notice,
     execute_tool,
     run_python,
+    run_ghauri,
+    run_sqlmap,
+    sqli_autoexploit,
     ssrf_chain_exploit,
 )
+from bingo.tools.http_probe import ProbeResult
+from bingo.tools.waf_bypass import WafBypassEngine, WafDetector
 
 
 class _Console:
@@ -289,9 +299,7 @@ def test_system_prompt_ends_with_evidence_driven_offense_contract() -> None:
         "Reports contain verified vulnerabilities only. Probable/potential candidates stay\n"
         "   in the verification backlog and continue to drive attacks."
     ) in prompt
-    assert prompt.rstrip().endswith(
-        "internal Finding-ID report generator create the sole authoritative report."
-    )
+    assert prompt.rstrip().endswith("promote after deterministic extraction evidence.")
     assert "sqlmap is PERMANENTLY BANNED" not in prompt
 
 
@@ -320,6 +328,226 @@ def test_boolean_oracle_rejects_block_pages_and_status_transitions() -> None:
     assert _boolean_probe_is_blocked(200, "Request was blocked by WAF")
     assert _boolean_probe_pair_is_eligible(200, "true page", 200, "false page")
     assert not _boolean_probe_pair_is_eligible(403, "blocked", 200, "normal")
+
+
+def test_boolean_oracle_calibration_accepts_stable_body_only_difference() -> None:
+    counter = {"value": 0}
+
+    def probe(payload: str):
+        counter["value"] += 1
+        marker = "X" * 40 if "1=1" in payload else "Y" * 40
+        token = f"{counter['value']:032x}"
+        body = f"same-size result={marker} request={token}"
+        return len(body), body, 200
+
+    calibrated = _calibrate_boolean_oracle(probe, "id AND 1=1", "id AND 1=2", 3)
+
+    assert calibrated["eligible"] is True
+    assert calibrated["samples"] == 3
+    assert calibrated["true_stability"] >= 0.90
+    assert calibrated["cross_similarity"] <= 0.92
+
+
+def test_boolean_oracle_calibration_rejects_mixed_block_status() -> None:
+    def probe(payload: str):
+        if "1=1" in payload:
+            return 199, "request blocked", 403
+        return 598, "normal response", 200
+
+    calibrated = _calibrate_boolean_oracle(probe, "id AND 1=1", "id AND 1=2", 3)
+
+    assert calibrated["eligible"] is False
+    assert calibrated["blocked"] is True
+
+
+def test_adaptive_candidates_prioritize_learned_and_vendor_profiles() -> None:
+    learned = _build_adaptive_boolean_candidates(
+        "1", waf_hint="Cloudflare", preferred="AND_comment"
+    )
+    vendor = _build_adaptive_boolean_candidates("1", waf_hint="Cloudflare")
+
+    assert learned[0][0] == "AND_comment"
+    assert len(vendor) <= 24
+    assert any("adaptive:" in label for label, _true, _false in vendor)
+    assert len({(true, false) for _label, true, false in vendor}) == len(vendor)
+
+
+def test_dbms_classifier_requires_vendor_negative_control() -> None:
+    def mysql_oracle(expr: str) -> bool:
+        if "DATABASE() IS NULL AND" in expr:
+            return False
+        return expr == "DATABASE() IS NOT NULL"
+
+    assert _classify_dbms_with_oracle(mysql_oracle) == "mysql"
+    assert _classify_dbms_with_oracle(lambda _expr: True) == ""
+
+
+def test_sqli_checkpoint_round_trip(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("BINGO_SQLI_STATE_DIR", str(tmp_path))
+    state = {"oracle_op": "AND_comment", "dbms": "mysql", "db_name": "app"}
+
+    assert _save_sqli_checkpoint("POST|https://example.test|id|1", state)
+    restored = _load_sqli_checkpoint("POST|https://example.test|id|1")
+
+    assert restored == state
+
+
+def test_sqli_post_profile_preserves_json_csrf_cookies_and_redirects(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class Response:
+        status_code = 403
+        text = "request blocked"
+        content = text.encode()
+
+    class Session:
+        def __init__(self):
+            self.headers = {}
+            self.cookies = {}
+            self.verify = True
+
+        def get(self, *_args, **kwargs):
+            calls.append(kwargs)
+            return Response()
+
+        def post(self, *_args, **kwargs):
+            calls.append(kwargs)
+            return Response()
+
+    monkeypatch.setattr("requests.Session", Session)
+
+    result = sqli_autoexploit(
+        "https://example.test/api",
+        "id",
+        method="POST",
+        post_data='{"id":"1","scope":"all"}',
+        extra_params={"route": "v2"},
+        cookies={"SESSION": "abc"},
+        csrf_param="csrf",
+        csrf_token="token123",
+        content_type="application/json",
+        follow_redirects=False,
+        oracle_samples=3,
+        resume=False,
+    )
+
+    assert result["success"] is False
+    assert result["candidate"] is False
+    assert result["evidence_tier"] == "blocked"
+    assert any("STAGE 2.6" in line for line in result["log"])
+    assert calls
+    assert all(call["params"] == {"route": "v2"} for call in calls)
+    assert all(call["json"]["csrf"] == "token123" for call in calls)
+    assert all(call["json"]["scope"] == "all" for call in calls)
+    assert all(call["allow_redirects"] is False for call in calls)
+    sqlmap_args = result["external_handoff"]["sqlmap_args"]
+    assert sqlmap_args["url"] == "https://example.test/api?route=v2"
+    assert json.loads(sqlmap_args["post_data"]) == {
+        "id": "1",
+        "scope": "all",
+        "csrf": "token123",
+    }
+    assert sqlmap_args["headers"]["Content-Type"] == "application/json"
+    assert sqlmap_args["follow_redirects"] is False
+
+
+def test_external_tools_receive_calibrated_request_profile(monkeypatch) -> None:
+    captured: list[list[str]] = []
+    monkeypatch.setattr(
+        "bingo.tools_ext.pentest_tools._find_sqlmap", lambda: ["sqlmap"]
+    )
+    monkeypatch.setattr(
+        "bingo.tools_ext.pentest_tools._find_tool", lambda _name: ["ghauri"]
+    )
+    monkeypatch.setattr(
+        "bingo.tools_ext.pentest_tools._run",
+        lambda cmd, timeout: captured.append(cmd) or {
+            "success": True,
+            "output": "ok",
+            "elapsed": 0,
+        },
+    )
+
+    run_sqlmap(
+        "https://example.test/api",
+        "id",
+        cookies={"SESSION": "abc"},
+        dbms="mysql",
+        technique="BT",
+        csrf_token="csrf",
+        csrf_url="https://example.test/form",
+        follow_redirects=False,
+    )
+    run_ghauri(
+        "https://example.test/api",
+        "id",
+        cookies={"SESSION": "abc"},
+        dbms="mysql",
+    )
+
+    sqlmap_cmd, ghauri_cmd = captured
+    assert "--cookie" in sqlmap_cmd and "SESSION=abc" in sqlmap_cmd
+    assert "--dbms" in sqlmap_cmd and "mysql" in sqlmap_cmd
+    assert "--csrf-token" in sqlmap_cmd and "csrf" in sqlmap_cmd
+    assert "--technique" in sqlmap_cmd and "BT" in sqlmap_cmd
+    assert "--ignore-redirects" in sqlmap_cmd
+    assert "--cookie" in ghauri_cmd and "SESSION=abc" in ghauri_cmd
+    assert "--redirects" not in ghauri_cmd
+    assert "run_ghauri" in TOOL_REGISTRY
+
+
+def test_waf_detector_does_not_infer_vendor_from_generic_403(monkeypatch) -> None:
+    class Probe:
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, url: str, timeout: int = 0):
+            self.calls += 1
+            if self.calls == 1:
+                return ProbeResult(url, 200, "normal", {}, 0.01)
+            return ProbeResult(url, 403, "Access denied: request blocked", {}, 0.01)
+
+    monkeypatch.setattr("bingo.tools.waf_bypass.time.sleep", lambda _delay: None)
+
+    detected = WafDetector(Probe()).detect("https://example.test/")
+
+    assert detected.detected is True
+    assert detected.waf_type == "generic"
+
+
+def test_waf_bypass_requires_exact_blocked_control_and_semantic_difference() -> None:
+    engine = WafBypassEngine.__new__(WafBypassEngine)
+    engine._blocked_response = ProbeResult(
+        url="https://example.test/?id=blocked",
+        status=403,
+        body="request blocked",
+        headers={},
+        elapsed=0,
+    )
+    engine._baseline_response = ProbeResult(
+        url="https://example.test/?id=1",
+        status=200,
+        body="normal page",
+        headers={},
+        elapsed=0,
+    )
+    same_as_clean = ProbeResult(
+        url="https://example.test/?id=variant",
+        status=200,
+        body="normal page",
+        headers={},
+        elapsed=0,
+    )
+    semantic_change = ProbeResult(
+        url="https://example.test/?id=variant2",
+        status=200,
+        body="query result changed",
+        headers={},
+        elapsed=0,
+    )
+
+    assert not engine._is_bypassed(same_as_clean)
+    assert engine._is_bypassed(semantic_change)
 
 
 def test_localized_oracle_rejection_triggers_cross_vector_pivot(tmp_path: Path) -> None:
@@ -1154,6 +1382,12 @@ def test_new_runtime_messages_have_all_languages() -> None:
             "report_manual_artifact_blocked",
             "sqli_oracle_rejected",
             "ae_xss_candidate",
+            "sqli_adaptive_profile",
+            "sqli_oracle_calibrated",
+            "sqli_dbms_detected",
+            "sqli_checkpoint_restored",
+            "sqli_external_handoff",
+            "sqli_candidate_only",
         ):
             assert strings[key].strip()
 

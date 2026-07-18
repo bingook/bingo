@@ -9,6 +9,7 @@ import time
 import random
 import urllib.parse
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from .http_probe import HttpProbe, ProbeResult
@@ -102,6 +103,17 @@ WAF_SIGNATURES: dict[str, dict] = {
         "status": [403, 406, 501],
         "body": ["access denied", "forbidden", "blocked", "security", "firewall"],
     },
+}
+
+_WAF_STRATEGY_MEMORY: dict[str, dict[str, int]] = {}
+_GENERIC_WAF_BODY_MARKERS = {
+    "access denied",
+    "forbidden",
+    "request blocked",
+    "this request has been blocked",
+    "you have been blocked",
+    "bad request",
+    "invalid request",
 }
 
 
@@ -336,28 +348,58 @@ class WafDetector:
             return WafDetectResult(detected=False, waf_type="none",
                                    confidence="high", evidence="정상 응답")
 
-        # WAF 종류 판별
-        sample = waf_responses[0]
-        body_lower = sample.body.lower()
-        headers = {k.lower(): v.lower() for k, v in sample.headers.items()}
-
+        # Score all responses. Header/body fingerprints outrank generic status
+        # codes so an early 403 cannot incorrectly force a vendor profile.
+        ranked: list[tuple[int, str, list[str], int]] = []
         for waf_name, sig in WAF_SIGNATURES.items():
-            # 헤더 체크
-            if "header_key" in sig and sig["header_key"] in headers:
-                return self._make_result(waf_name, "high",
-                    f"Header: {sig['header_key']}", sample.status)
-            # Body 체크
-            for kw in sig.get("body", []):
-                if kw in body_lower:
-                    return self._make_result(waf_name, "high",
-                        f"Body keyword: {kw}", sample.status)
-            # 상태코드 체크
-            if sample.status in sig.get("status", []):
-                confidence = "medium"
-                return self._make_result(waf_name, confidence,
-                    f"Status: {sample.status}", sample.status)
+            if waf_name == "generic":
+                continue
+            score = 0
+            fingerprint_score = 0
+            evidence: list[str] = []
+            status = waf_responses[0].status
+            for response in waf_responses:
+                body_lower = response.body.lower()
+                headers = {k.lower(): str(v).lower() for k, v in response.headers.items()}
+                if "header_key" in sig and sig["header_key"] in headers:
+                    score += 5
+                    fingerprint_score += 5
+                    evidence.append(f"header:{sig['header_key']}")
+                for header_name, expected_values in sig.get("header_val", {}).items():
+                    actual = headers.get(header_name.lower(), "")
+                    if any(value.lower() in actual for value in expected_values):
+                        score += 4
+                        fingerprint_score += 4
+                        evidence.append(f"header:{header_name}={actual[:40]}")
+                body_hits = [
+                    keyword for keyword in sig.get("body", [])
+                    if keyword in body_lower
+                    and keyword.lower() not in _GENERIC_WAF_BODY_MARKERS
+                ]
+                if body_hits:
+                    score += 3 + min(len(body_hits), 2)
+                    fingerprint_score += 3 + min(len(body_hits), 2)
+                    evidence.append(f"body:{body_hits[0]}")
+                if response.status in sig.get("status", []):
+                    score += 1
+                    status = response.status
+            # Status codes overlap heavily between products. They can support a
+            # fingerprint, but cannot identify a vendor by themselves.
+            if fingerprint_score:
+                ranked.append((score, waf_name, evidence, status))
+
+        if ranked:
+            score, waf_name, evidence, status = max(ranked, key=lambda item: item[0])
+            confidence = "high" if score >= 5 else "medium"
+            return self._make_result(
+                waf_name,
+                confidence,
+                ", ".join(dict.fromkeys(evidence)) or f"Status: {status}",
+                status,
+            )
 
         # 탐지됐지만 종류 불명
+        sample = waf_responses[0]
         return WafDetectResult(
             detected=True, waf_type="generic", confidence="medium",
             evidence=f"Status {sample.status} for attack payload",
@@ -422,6 +464,8 @@ class BypassAttempt:
     response_body_preview: str
     bypassed: bool
     evidence: str = ""
+    evidence_tier: str = "verified_transport"
+    blocked_baseline_status: int = 0
 
 
 class WafBypassEngine:
@@ -435,6 +479,7 @@ class WafBypassEngine:
         self.detector = WafDetector(probe)
         self.log = on_progress or (lambda s: None)
         self._baseline_response: ProbeResult | None = None
+        self._blocked_response: ProbeResult | None = None
 
     def auto_bypass(
         self,
@@ -455,23 +500,52 @@ class WafBypassEngine:
             self.log("  [WAF] WAF 없음 — 직접 공격 가능")
             return True, None
 
+        # Record the exact original request as the blocked control. A response
+        # from a different generic detector payload is not sufficient proof.
+        exact_control = self._send(url, payload, method, param, post_data)
+        if not self._response_is_blocked(exact_control):
+            self.log("  [WAF] 원본 요청이 차단되지 않음 — 변형 불필요")
+            return True, None
+        self._blocked_response = exact_control
+
         self.log(f"  [WAF] 탐지됨: {detect.waf_type} (신뢰도: {detect.confidence})")
-        self.log(f"  [WAF] 우선 우회 전략: {detect.bypass_priority}")
+        host = urllib.parse.urlsplit(url).netloc.lower()
+        memory_key = f"{host}|{detect.waf_type}"
+        learned = _WAF_STRATEGY_MEMORY.setdefault(memory_key, {})
+        priorities = sorted(
+            detect.bypass_priority,
+            key=lambda strategy: (-learned.get(strategy, 0), detect.bypass_priority.index(strategy)),
+        )
+        self.log(f"  [WAF] 우선 우회 전략: {priorities}")
 
         # 2. 우선순위 순서대로 우회 시도
-        for strategy in detect.bypass_priority:
+        for strategy in priorities:
             success, attempt = self._try_strategy(
                 strategy, url, payload, method, param, post_data, detect.waf_type
             )
             if success:
+                learned[strategy] = learned.get(strategy, 0) + 2
+                attempt.evidence = (
+                    f"exact blocked control HTTP {exact_control.status} -> "
+                    f"distinct HTTP {attempt.response_status} response"
+                )
+                attempt.evidence_tier = "verified_transport"
+                attempt.blocked_baseline_status = exact_control.status
                 self.log(f"  [WAF✓] 우회 성공: {strategy} → {attempt.technique}")
                 return True, attempt
+            learned[strategy] = learned.get(strategy, 0) - 1
             time.sleep(0.5)
 
         # 3. 전략별로 안 되면 조합 시도
         self.log("  [WAF] 단일 기법 실패 — 조합 시도...")
         success, attempt = self._try_combined(url, payload, method, param, post_data)
         if success:
+            attempt.evidence = (
+                f"exact blocked control HTTP {exact_control.status} -> "
+                f"distinct HTTP {attempt.response_status} response"
+            )
+            attempt.evidence_tier = "verified_transport"
+            attempt.blocked_baseline_status = exact_control.status
             self.log(f"  [WAF✓] 조합 우회 성공: {attempt.technique}")
             return True, attempt
 
@@ -683,18 +757,21 @@ class WafBypassEngine:
                 except ImportError:
                     return False, None
 
-                # WAF 우회 판정
-                if status not in (403, 406, 501, 503):
-                    blocked_kw = ["access denied", "forbidden", "blocked",
-                                  "not acceptable", "security violation"]
-                    if not any(k in body.lower() for k in blocked_kw):
-                        return True, BypassAttempt(
-                            technique=f"chunked:chunk_size={chunk_size}",
-                            payload_original=payload, payload_modified=body_str,
-                            headers_used=ch_headers, response_status=status,
-                            response_body_preview=body[:100],
-                            bypassed=True,
-                        )
+                candidate = ProbeResult(
+                    url=url,
+                    status=status,
+                    body=body,
+                    headers=headers_r,
+                    elapsed=0.0,
+                )
+                if self._is_bypassed(candidate):
+                    return True, BypassAttempt(
+                        technique=f"chunked:chunk_size={chunk_size}",
+                        payload_original=payload, payload_modified=body_str,
+                        headers_used=ch_headers, response_status=status,
+                        response_body_preview=body[:100],
+                        bypassed=True,
+                    )
                 WafBypassLib.safe_delay(0.5, 1.2)
         except Exception:
             pass
@@ -790,10 +867,15 @@ class WafBypassEngine:
             return self.probe.post(url, data, headers=extra_headers)
 
     def _is_bypassed(self, r: ProbeResult) -> bool:
-        """WAF 차단 아님 + baseline과 다른 응답 = 우회 후보."""
-        if r.status in (403, 406, 501, 503):
+        """Require an exact blocked control plus a distinct semantic response."""
+        if self._response_is_blocked(r):
             return False
-        if r.error:
+        blocked = self._blocked_response
+        if blocked is None or not self._response_is_blocked(blocked):
+            return False
+        def normalize(body: str) -> str:
+            return re.sub(r"\s+", " ", body or "").strip()[:4096]
+        if r.status == blocked.status and normalize(r.body) == normalize(blocked.body):
             return False
         blocked_kw = ["access denied", "forbidden", "blocked", "not acceptable",
                       "security violation", "잘못된 접근", "차단"]
@@ -802,11 +884,23 @@ class WafBypassEngine:
             return False
         baseline = self._baseline_response
         if baseline is not None and r.status == baseline.status:
-            # A public 200 baseline echoed unchanged is not a WAF bypass.
-            normalize = lambda body: re.sub(r"\s+", " ", body or "").strip()[:4096]
+            # Passing the transport layer is not enough. The transformed
+            # request must also differ from the clean application baseline.
             if normalize(r.body) == normalize(baseline.body):
                 return False
         return True
+
+    @staticmethod
+    def _response_is_blocked(r: ProbeResult) -> bool:
+        if r.error or r.status in (0, 400, 401, 403, 406, 429, 501, 503):
+            return True
+        return bool(re.search(
+            r"access\s+denied|forbidden|request\s+(?:was\s+)?blocked|"
+            r"not\s+acceptable|security\s+violation|waf|잘못된\s*접근|차단|"
+            r"请求.*拦截|访问.*拒绝",
+            r.body or "",
+            re.I,
+        ))
 
     def get_bypass_summary(self, waf_type: str) -> str:
         """DeepSeek V4 Pro 전달용 — WAF 우회 전략 상세 설명"""

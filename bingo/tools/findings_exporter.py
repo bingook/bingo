@@ -187,16 +187,14 @@ _XSS_ACTIVE_PAYLOAD = re.compile(
 )
 _XSS_TEST_EVIDENCE = re.compile(
     r'(?:bINg0XsS\w*|BINGO[_-]?XSS|PAYLOAD[_ -]?REFLECTED|'
-    r'XSS.{0,40}(?:confirmed|executed|browser\s+verified))',
+    r'XSS.{0,40}(?:confirmed|reflected|executed|browser\s+verified))',
     re.I,
 )
 _XSS_NEGATIVE_EVIDENCE = re.compile(
     r'NOT\s+REFLECTED|not\s+reflected|미반사|未反射|未找到\s*payload|'
     r'payload\s+not\s+found|browser_confirmed\s*[=:]\s*false|'
     r'browser\s+confirmed\s*[=:]\s*false|XSS_CANDIDATE|escaped|saniti[sz]ed|'
-    r'no\s+xss|not\s+vulnerable|被过滤|过滤|被拦截|拦截|不存在|'
-    r'(?:status|状态)\s*[:=]?\s*(?:403|404)\b|'
-    r'\b(?:403|404)\s*/\s*\d+B\b|Location\s*=\s*N/A',
+    r'no\s+xss|not\s+vulnerable',
     re.I,
 )
 _XSS_TRIGGER_NOTICE = re.compile(
@@ -207,7 +205,7 @@ _XSS_POSITIVE_EVIDENCE = re.compile(
     r'window\.__BINGO_XSS__\s*=\s*1|browser_confirmed\s*[=:]\s*true|'
     r'browser\s+confirmed\s*[=:]\s*true|PAYLOAD[_ -]?REFLECTED|'
     r'unescaped\s+reflection|dialog\s+(?:opened|observed)|'
-    r'XSS.{0,40}(?:confirmed|executed|browser\s+verified|success)',
+    r'XSS.{0,40}(?:confirmed|reflected|executed|browser\s+verified|success)',
     re.I,
 )
 

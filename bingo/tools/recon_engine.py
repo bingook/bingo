@@ -89,6 +89,7 @@ class ReconEngine:
     # ── DNS 조회 ──────────────────────────────────────────────────────────────
     def resolve_ip(self, host: str) -> str | None:
         """VPN 우회 DNS 조회 — dig @8.8.8.8 사용 (v3.6.7)."""
+        import subprocess, re as _re
         for ns in ("8.8.8.8", "1.1.1.1"):
             try:
                 out = subprocess.check_output(
@@ -96,7 +97,7 @@ class ReconEngine:
                     timeout=10, text=True, stderr=subprocess.DEVNULL,
                 ).strip()
                 ips = [ln for ln in out.splitlines()
-                       if re.match(r"^\d+\.\d+\.\d+\.\d+$", ln)]
+                       if _re.match(r"^\d+\.\d+\.\d+\.\d+$", ln)]
                 if ips:
                     return ips[0]
             except Exception:

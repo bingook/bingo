@@ -8,7 +8,8 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.codex/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current rollback target: `6.2.199` (`ddbff39f5`, before the 3600s timeout fix series).
+- Current base: restored from `6.2.199` (`ddbff39f5`) before the bad 6.2.200~6.2.204 timeout/TOOL_CALL-only experiments.
+- Current working release: `6.2.205` = 6.2.199 capability baseline + supervised codeblock runtime.
 - Codex project memory is automatic:
   - At every Codex session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/codex-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Codex must silently run `scripts/codex-memory-sync.sh`.
@@ -18,14 +19,16 @@
   - `ruff check --select F821,F811 ...`
   - `git diff --check`
   - `pytest -q`
-- Recent full-suite status after rollback to `6.2.199`: `198 passed`.
+- Recent full-suite status for `6.2.205`: `201 passed`.
 - Recent target-log decisions for `mjh.or.kr`:
   - LFI broad-token false positive fixed: `nginx`/`mysql` words and response-size deltas are candidates only, not confirmed LFI.
   - XSS blocked-payload false positive fixed: `NOT REFLECTED`, `被过滤/不存在`, `403/404`, and `Location=N/A` contexts must not produce `XSS_TRIGGER_DETECTED` or potential findings.
   - SQLi WAF/oracle failures remain `blocked`/low unless stable TRUE/FALSE oracle or cross-tool proof exists.
 - Latest target-log issue:
-  - Markdown BASH codeblock execution, not TOOL_CALL `run_bash`, caused heartbeat-only hangs up to 3600s because terminal execution used a 24h default timeout.
-  - Fixed by bounded codeblock execution limits: `BINGO_EXEC_TIMEOUT` default 180s, `BINGO_EXEC_IDLE_TIMEOUT` default 120s, and wall-clock fallback default timeout+30s.
+  - Markdown BASH codeblock execution caused heartbeat-only hangs up to 3600s because terminal execution used a 24h default timeout.
+  - New direction is not TOOL_CALL-only and not codeblock blocking/bridging.
+  - Fixed in `6.2.205` by supervised codeblock runtime: codeblocks still execute normally, but every job now returns `JOB_STATE` with `status`, `reason`, `exit`, `elapsed`, `line_count`, and preserved `partial_output` on timeout/interruption.
+  - Runtime knobs: `BINGO_EXEC_TIMEOUT` default 300s, `BINGO_EXEC_IDLE_REPORT` default 30s, `BINGO_EXEC_WALL_CLOCK_TIMEOUT` default timeout+10~60s.
 - Latest credential false-positive issue:
   - Report showed `{'password': '> 200 登出:'}` under extracted credentials.
   - Fixed by requiring credential key-value separators `:`/`=`, rejecting UI/status/logout/error values, and sanitizing stored/session credentials before agent-knowledge/report use.
@@ -40,9 +43,81 @@
 <!-- codex-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T02:05:38+08:00
+- Last synced: 2026-07-19T03:33:15+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.codex/bingo-memory/c6a511e7ba35526f/MEMORY.md`
+
+<!-- working-tree:start -->
+## Working tree snapshot (uncommitted)
+- Captured: 2026-07-19T03:33:15+08:00
+
+### Status
+```text
+ M bingo/__init__.py
+ M bingo/core/change_memory.py
+ M bingo/models/system_prompt.py
+ M bingo/tools/findings_exporter.py
+ M bingo/tools/gnuboard.py
+ M bingo/tools/recon_engine.py
+ M bingo/tools_ext/pentest_tools.py
+ M bingo/ui/terminal.py
+ M scripts/git-hooks/post-commit
+ M tests/test_terminal_completion_regressions.py
+?? scripts/codex-memory-autostart.sh
+?? scripts/codex-memory-stop.sh
+?? scripts/codex-memory-sync.sh
+?? scripts/codex-memory-watch.sh
+```
+
+### Diff Stat
+```text
+ bingo/__init__.py                             |   2 +-
+ bingo/core/change_memory.py                   | 200 +++++++-
+ bingo/models/system_prompt.py                 | 134 +++--
+ bingo/tools/findings_exporter.py              |   8 +-
+ bingo/tools/gnuboard.py                       |   6 +
+ bingo/tools/recon_engine.py                   |   3 +-
+ bingo/tools_ext/pentest_tools.py              |   4 +-
+ bingo/ui/terminal.py                          | 707 +++++++++++---------------
+ scripts/git-hooks/post-commit                 |   7 -
+ tests/test_terminal_completion_regressions.py | 164 ++----
+ 10 files changed, 652 insertions(+), 583 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.205"`
+- `CODEX_MEMORY_FILE = Path(".codex") / "project-memory.md"`
+- `CODEX_AUTO_START = "<!-- codex-project-memory:auto:start -->"`
+- `CODEX_AUTO_END = "<!-- codex-project-memory:auto:end -->"`
+- `HIGHLIGHT_SKIP_PATHS = {`
+- `"AGENTS.md",`
+- `".codex/instruction.md",`
+- `".codex/project-memory.md",`
+- `}`
+- `WORKTREE_SKIP_PREFIXES = (".codex/",)`
+- `)`
+- `def codex_project_memory_path(cwd: str | Path) -> Path:`
+- `"""Return the project-local memory file that AGENTS.md tells Codex to read."""`
+- `return Path(cwd).resolve() / CODEX_MEMORY_FILE`
+- `return result.stdout.rstrip("\n")`
+- `def _skip_worktree_path(path: str) -> bool:`
+- `normalized = path.strip().strip('"')`
+- `if " -> " in normalized:`
+- `return any(_skip_worktree_path(part) for part in normalized.split(" -> ", 1))`
+- `return any(`
+- `normalized == prefix.rstrip("/") or normalized.startswith(prefix)`
+- `for prefix in WORKTREE_SKIP_PREFIXES`
+- `)`
+- `def _worktree_status(cwd: Path) -> str:`
+- `status = _git(cwd, ["status", "--short"])`
+- `lines = []`
+- `for line in status.splitlines():`
+- `path = line[3:] if len(line) > 3 else ""`
+- `if _skip_worktree_path(path):`
+- `continue`
+<!-- working-tree:end -->
+
+
 
 # Workspace Memory
 

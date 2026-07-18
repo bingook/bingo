@@ -6,10 +6,9 @@ python_bin=${PYTHON:-python3}
 hook_source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 bingo_root=$(CDPATH= cd -- "$hook_source_dir/../.." && pwd)
 memory_script="$bingo_root/bingo/core/change_memory.py"
-memory_root="$repo_root/.codex/bingo-memory"
+memory_root="$repo_root/.bingo/memory"
 
 "$python_bin" "$memory_script" \
   --cwd "$repo_root" \
   --commit HEAD \
-  --memory-root "$memory_root" \
-  --sync-codex-memory >/dev/null 2>&1 || true
+  --memory-root "$memory_root" >/dev/null 2>&1 || true

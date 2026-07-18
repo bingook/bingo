@@ -2,7 +2,7 @@
 set -eu
 
 repo_root=$(git rev-parse --show-toplevel)
-pid_file="$repo_root/.codex/codex-memory-watch.pid"
+pid_file="$repo_root/.bingo/bingo-memory-watch.pid"
 
 if [ ! -f "$pid_file" ]; then
   exit 0

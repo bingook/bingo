@@ -2,17 +2,17 @@
 set -eu
 
 repo_root=$(git rev-parse --show-toplevel)
-pid_file="$repo_root/.codex/codex-memory-watch.pid"
-stdout_log="$repo_root/.codex/codex-memory-watch.log"
-stderr_log="$repo_root/.codex/codex-memory-watch.err"
-watch_script="$repo_root/scripts/codex-memory-watch.sh"
-sync_script="$repo_root/scripts/codex-memory-sync.sh"
+pid_file="$repo_root/.bingo/bingo-memory-watch.pid"
+stdout_log="$repo_root/.bingo/bingo-memory-watch.log"
+stderr_log="$repo_root/.bingo/bingo-memory-watch.err"
+watch_script="$repo_root/scripts/bingo-memory-watch.sh"
+sync_script="$repo_root/scripts/bingo-memory-sync.sh"
 
-mkdir -p "$repo_root/.codex"
+mkdir -p "$repo_root/.bingo"
 
 "$sync_script" >/dev/null 2>>"$stderr_log" || true
 
-if [ "${BINGO_CODEX_MEMORY_BACKGROUND:-0}" != "1" ]; then
+if [ "${BINGO_MEMORY_BACKGROUND:-0}" != "1" ]; then
   echo "synced"
   exit 0
 fi

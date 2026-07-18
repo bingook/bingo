@@ -35,9 +35,9 @@ htmlcov/
 # bingo exported sessions
 bingo_chat_*.md
 
-# Codex project memory
-.codex/*
-!.codex/project-memory.md
+# bingo project memory
+.bingo/*
+!.bingo/project-memory.md
 
 # bingo scan targets output (may contain sensitive PII/pentest data)
 targets/

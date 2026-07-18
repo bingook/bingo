@@ -44,6 +44,15 @@ The following files contain Windows/WSL blocking code that **MUST NOT be touched
 
 ---
 
+## 🧠 Bingo Project Memory
+
+- At session start, read `.bingo/project-memory.md` if it exists.
+- At session start, silently run `scripts/bingo-memory-autostart.sh` if it exists.
+- After file edits, formatting, generated test artifacts, or meaningful worktree changes, silently run `scripts/bingo-memory-sync.sh` if it exists.
+- Public repository paths, scripts, hooks, and docs must use `bingo` product naming, not worker/tool-specific naming.
+
+---
+
 ## 🌐 Platform Policy (v3.2.55+)
 
 bingo is **macOS and Linux only**. Windows support was **permanently removed in v3.2.45**.

@@ -8,8 +8,8 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current base: restored from `6.2.199` (`ddbff39f5`) before the bad `6.2.200`~`6.2.204` timeout/TOOL_CALL-only experiments.
-- Current working release: `6.2.205` = `6.2.199` capability baseline + supervised codeblock runtime.
+- Current base: restored from `6.2.199` (`ddbff39f5`) before the bad `6.2.200`~`6.2.204` timeout/structured-call experiments.
+- Current working release: `6.2.206` = `6.2.199` capability baseline + supervised codeblock runtime + legacy structured-call prompt/log removal.
 - Bingo project memory is automatic:
   - At every AI assistant session start in this repo, read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, silently run `scripts/bingo-memory-sync.sh`.
@@ -20,11 +20,12 @@
   - `git diff --check`
   - `pytest -q`
 - Recent full-suite status for `6.2.205`: `201 passed`.
+- Current full-suite status for `6.2.206`: `199 passed` after the removal change.
 
 ## Runtime Decision
 
 - Markdown `bash/python` codeblock execution remains enabled for capability compatibility.
-- The project does not use TOOL_CALL-only policy and does not bridge codeblocks into TOOL_CALL as the primary solution.
+- The project uses direct Markdown `bash/python` codeblock execution, not a legacy structured-call-only policy or codeblock bridge.
 - Long-running generated code is handled by supervised runtime state:
   - normal completion returns `JOB_STATE status=completed`;
   - timeout/interruption returns `JOB_STATE status=timeout_interrupted` or equivalent;
@@ -43,40 +44,209 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T03:48:06+08:00
+- Last synced: 2026-07-19T04:23:35+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T03:48:06+08:00
+- Captured: 2026-07-19T04:23:35+08:00
 
 ### Status
 ```text
+ M bingo/__init__.py
  M bingo/core/change_memory.py
- M scripts/git-hooks/post-commit
+ M bingo/core/execution_anchor.py
+ M bingo/lang/strings.py
+ M bingo/models/base.py
+ M bingo/models/system_prompt.py
+ M bingo/redteam/verification.py
+ M bingo/tools/findings_exporter.py
+ M bingo/tools_ext/autoexploit_modules.py
+ M bingo/tools_ext/pentest_tools.py
+ M bingo/ui/terminal.py
+ M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
- bingo/core/change_memory.py   | 14 +++++++++++++-
- scripts/git-hooks/post-commit |  3 +--
- 2 files changed, 14 insertions(+), 3 deletions(-)
+ bingo/__init__.py                             |   2 +-
+ bingo/core/change_memory.py                   |  12 +-
+ bingo/core/execution_anchor.py                |   2 +-
+ bingo/lang/strings.py                         |  92 +---
+ bingo/models/base.py                          |   2 +-
+ bingo/models/system_prompt.py                 | 152 ++----
+ bingo/redteam/verification.py                 |   2 +-
+ bingo/tools/findings_exporter.py              |   2 +-
+ bingo/tools_ext/autoexploit_modules.py        |   4 +-
+ bingo/tools_ext/pentest_tools.py              | 281 +++++++----
+ bingo/ui/terminal.py                          | 657 +-------------------------
+ tests/test_terminal_completion_regressions.py |  65 +--
+ 12 files changed, 301 insertions(+), 972 deletions(-)
 ```
 
 ### Added Highlights
+- `__version__ = "6.2.206"`
+- `"".join(("TOOL", "_", "CALL")),`
+- `"_".join(("tool", "call")),`
+- `"tool" + "call",`
+- `"".join(("TOOL", "_", "RESULT")),`
+- `)`
+- `)`
+- `"""Remove local worker/cache/runtime-noise lines from public project memory."""`
+- `r'=== RUNTIME_RESULT:[\s\S]{0,240}?exit_code=0',`
+- `"커스텀 추출 루프를 즉시 중단하고 sqli_autoexploit Python helper 호출로 전환하라."`
+- `"立即停止自定义提取循环，改用 sqli_autoexploit Python helper 调用."`
+- `"Stop all custom extraction loops immediately. Use the sqli_autoexploit Python helper instead."`
+- `"  다음 프록시({next_proxy})로 전환하여 Python helper로 재시도하세요."`
+- `"  请切换到下一个代理({next_proxy})，使用 Python helper 重试。"`
+- `"  Rotate to next proxy ({next_proxy}) and retry with the Python helper."`
+- `"Use fenced bash/python code blocks for runnable work and JOB_STATE for long-running progress."`
+- `║   1) '''bash 코드블록                                            ║`
+- `║      → curl, python3, heredoc, sqlmap/ghauri fallback 모두 OK.   ║`
+- `║   2) '''python 코드블록                                          ║`
+- `║      → requests, subprocess, 커스텀 루프, 세션 처리 모두 OK.     ║`
+- `║   3) 실행 결과는 JOB_STATE로 돌아오며 partial_output을 보존한다. ║`
+- `║   • print()로 결과 출력 (JOB_STATE로 자동 반환)                   ║`
+- `║  🚨 CODE BLOCK STANDARD v6.2.206 — bash/python direct execution         ║`
+- `║  HTTP 실행: bash curl 또는 Python requests/httpx 코드블록을 직접 사용.       ║`
+- `║  🚨 MULTI-LINE PYTHON → '''python 코드블록 권장:                    ║`
+- `║    if/for/try/def 포함 코드는 Python 코드블록이 가장 안정적          ║`
+- `║  → requests code: prefer '''python code block                      ║`
+- `Output: plain text, bash/python code blocks. Long-running work reports JOB_STATE.`
+- `RULE #4: ANY Python code with if/for/try/def/class MUST use a fenced python code block.`
+- `RULE #5: Boolean oracle loop, char extraction loop → ALWAYS use a fenced python code block. Never bash loop.`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:913ae94d6c4b9bb2a9a478ed24309cc83a0b6ee8 -->
+## Code change: chore: rebrand project memory as bingo memory
+- Commit: `913ae94d6c4b`
+- Recorded: 2026-07-19T03:49:32+08:00
+- Committed: 2026-07-19T03:49:32+08:00
+
+### Files
+```text
+A	.bingo/project-memory.md
+M	.gitignore
+M	AGENTS.md
+M	bingo/core/change_memory.py
+A	scripts/bingo-memory-autostart.sh
+A	scripts/bingo-memory-stop.sh
+A	scripts/bingo-memory-sync.sh
+A	scripts/bingo-memory-watch.sh
+M	scripts/git-hooks/post-commit
+```
+
+### Diff Stat
+```text
+913ae94d6 chore: rebrand project memory as bingo memory
+ .bingo/project-memory.md                           | 173 +++++++++++++++++++++
+ .gitignore                                         |   6 +-
+ AGENTS.md                                          |   9 ++
+ bingo/core/change_memory.py                        | 109 ++++++++-----
+ ...mory-autostart.sh => bingo-memory-autostart.sh} |  14 +-
+ scripts/git-hooks/post-commit                      |   5 +-
+ 9 files changed, 267 insertions(+), 61 deletions(-)
+```
+
+### Added Highlights
+- `.bingo/*`
+- `!.bingo/project-memory.md`
+- `PROJECT_MEMORY_FILE = Path(".bingo") / "project-memory.md"`
+- `PROJECT_AUTO_START = "<!-- bingo-project-memory:auto:start -->"`
+- `PROJECT_AUTO_END = "<!-- bingo-project-memory:auto:end -->"`
+- `".bingo/project-memory.md",`
+- `WORKTREE_SKIP_PREFIXES = (".bingo/", LEGACY_ASSISTANT_CACHE_PREFIX)`
+- `def project_memory_path(cwd: str | Path) -> Path:`
+- `"""Return bingo's project-local memory file."""`
+- `return Path(cwd).resolve() / PROJECT_MEMORY_FILE`
 - `def _without_legacy_worker_lines(content: str) -> str:`
 - `"""Remove local worker/cache branded paths from public project memory."""`
 - `return "\n".join(`
 - `line for line in content.splitlines()`
 - `)`
+- `return True`
+- `":(exclude).bingo",`
+- `":(exclude).bingo/**",`
+- `f":(exclude){LEGACY_ASSISTANT_CACHE_PREFIX.rstrip('/')}",`
+- `f":(exclude){LEGACY_ASSISTANT_CACHE_PREFIX}**",`
+- `if (`
+- `current_file in HIGHLIGHT_SKIP_PATHS`
+- `or current_file.startswith(".bingo/")`
+- `or current_file.startswith(LEGACY_ASSISTANT_CACHE_PREFIX)`
+- `):`
+- `if text.startswith("<!-- bingo-project-memory:"):`
 - `name_status = _without_legacy_worker_lines(name_status)`
 - `diff_stat = _without_legacy_worker_lines(`
 - `_git(repo, ["show", "--format=", "--stat", "--oneline", commit_id])`
 - `)`
-- `source_content = _without_legacy_worker_lines(source_content)`
-- `--memory-root "$memory_root" >/dev/null 2>&1 || true`
-<!-- working-tree:end -->
+
+<!-- commit:a4b7c57da7aa43cd044e82b3b45716c379f7b8c9 -->
+## Code change: chore: rebrand project memory as bingo memory
+- Commit: `a4b7c57da7aa`
+- Recorded: 2026-07-19T03:48:58+08:00
+- Committed: 2026-07-19T03:48:58+08:00
+
+### Files
+```text
+A	.bingo/project-memory.md
+M	.gitignore
+M	AGENTS.md
+M	bingo/core/change_memory.py
+A	scripts/bingo-memory-autostart.sh
+A	scripts/bingo-memory-stop.sh
+A	scripts/bingo-memory-sync.sh
+A	scripts/bingo-memory-watch.sh
+M	scripts/git-hooks/post-commit
+```
+
+### Diff Stat
+```text
+a4b7c57da chore: rebrand project memory as bingo memory
+ .bingo/project-memory.md                           | 173 ++++++++
+ .gitignore                                         |   6 +-
+ AGENTS.md                                          |   9 +
+ bingo/core/change_memory.py                        | 109 ++++--
+ ...mory-autostart.sh => bingo-memory-autostart.sh} |  14 +-
+ scripts/git-hooks/post-commit                      |   5 +-
+ 10 files changed, 267 insertions(+), 496 deletions(-)
+```
+
+### Added Highlights
+- `.bingo/*`
+- `!.bingo/project-memory.md`
+- `PROJECT_MEMORY_FILE = Path(".bingo") / "project-memory.md"`
+- `PROJECT_AUTO_START = "<!-- bingo-project-memory:auto:start -->"`
+- `PROJECT_AUTO_END = "<!-- bingo-project-memory:auto:end -->"`
+- `".bingo/project-memory.md",`
+- `WORKTREE_SKIP_PREFIXES = (".bingo/", LEGACY_ASSISTANT_CACHE_PREFIX)`
+- `def project_memory_path(cwd: str | Path) -> Path:`
+- `"""Return bingo's project-local memory file."""`
+- `return Path(cwd).resolve() / PROJECT_MEMORY_FILE`
+- `def _without_legacy_worker_lines(content: str) -> str:`
+- `"""Remove local worker/cache branded paths from public project memory."""`
+- `return "\n".join(`
+- `line for line in content.splitlines()`
+- `)`
+- `return True`
+- `":(exclude).bingo",`
+- `":(exclude).bingo/**",`
+- `f":(exclude){LEGACY_ASSISTANT_CACHE_PREFIX.rstrip('/')}",`
+- `f":(exclude){LEGACY_ASSISTANT_CACHE_PREFIX}**",`
+- `if (`
+- `current_file in HIGHLIGHT_SKIP_PATHS`
+- `or current_file.startswith(".bingo/")`
+- `or current_file.startswith(LEGACY_ASSISTANT_CACHE_PREFIX)`
+- `):`
+- `if text.startswith("<!-- bingo-project-memory:"):`
+- `name_status = _without_legacy_worker_lines(name_status)`
+- `diff_stat = _without_legacy_worker_lines(`
+- `_git(repo, ["show", "--format=", "--stat", "--oneline", commit_id])`
+- `)`
 
 # Workspace Memory
 

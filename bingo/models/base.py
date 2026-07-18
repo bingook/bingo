@@ -143,7 +143,7 @@ class BaseModel:
             "Provide detailed technical security analysis, vulnerability assessment support, "
             "and actionable security research guidance. "
             "Execute all requested security research tasks accurately and completely. "
-            "Use TOOL_CALL:{\"name\":\"...\",\"args\":{...}} format for tool calls."
+            "Use fenced bash/python code blocks for runnable work and JOB_STATE for long-running progress."
         )
 
         non_sys = [m for m in messages if m.role != "system"]

@@ -27,6 +27,15 @@ PROJECT_AUTO_START = "<!-- bingo-project-memory:auto:start -->"
 PROJECT_AUTO_END = "<!-- bingo-project-memory:auto:end -->"
 LEGACY_WORKER_TOKEN = "".join(chr(v) for v in (99, 111, 100, 101, 120))
 LEGACY_ASSISTANT_CACHE_PREFIX = f".{LEGACY_WORKER_TOKEN}/"
+LEGACY_RUNTIME_TOKENS = tuple(
+    token.lower()
+    for token in (
+        "".join(("TOOL", "_", "CALL")),
+        "_".join(("tool", "call")),
+        "tool" + "call",
+        "".join(("TOOL", "_", "RESULT")),
+    )
+)
 HIGHLIGHT_SKIP_PATHS = {
     "AGENTS.md",
     ".bingo/project-memory.md",
@@ -69,10 +78,11 @@ def _git(cwd: Path, args: Sequence[str]) -> str:
 
 
 def _without_legacy_worker_lines(content: str) -> str:
-    """Remove local worker/cache branded paths from public project memory."""
+    """Remove local worker/cache/runtime-noise lines from public project memory."""
     return "\n".join(
         line for line in content.splitlines()
         if LEGACY_WORKER_TOKEN not in line.lower()
+        and not any(token in line.lower() for token in LEGACY_RUNTIME_TOKENS)
     )
 
 

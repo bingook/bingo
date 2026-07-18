@@ -406,7 +406,7 @@ class VerificationEngine:
     def should_pivot(self) -> tuple[bool, str]:
         return self._fatigue.should_pivot()
 
-    def record_tool_call(self, tool: str):
+    def record_helper_run(self, tool: str):
         self._fatigue.record_call(tool)
 
     def record_finding(self):

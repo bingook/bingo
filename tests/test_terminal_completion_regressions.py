@@ -7,7 +7,6 @@ from types import SimpleNamespace
 
 from bingo.ui.terminal import (
     BingoTerminal,
-    _normalize_tool_call_response,
     _repair_mixed_bash_python,
     _supervised_exec_limits,
 )
@@ -98,36 +97,6 @@ def test_preexecution_claim_downgrade_preserves_attack_code() -> None:
     assert code in corrected
 
 
-def test_dict_tool_call_is_normalized_before_code_execution() -> None:
-    response = (
-        "```python\n"
-        "{'name': 'http_get', 'arguments': {'url': 'https://example.test/'}}\n"
-        "```"
-    )
-
-    normalized, count = _normalize_tool_call_response(response)
-
-    assert count == 1
-    assert normalized.startswith("TOOL_CALL:")
-    assert '"name": "http_get"' in normalized
-    assert "```python" not in normalized
-    assert "WRONG_TOOL_FORMAT" not in normalized
-
-
-def test_flat_dict_tool_call_is_normalized_silently() -> None:
-    response = (
-        "```python\n"
-        "{'name': 'http_get', 'url': 'https://example.test/', 'timeout': 7}\n"
-        "```"
-    )
-
-    normalized, count = _normalize_tool_call_response(response)
-
-    assert count == 1
-    assert '"args": {"url": "https://example.test/", "timeout": 7}' in normalized
-    assert "AUTO_FIX" not in normalized
-
-
 def _code_test_terminal() -> BingoTerminal:
     terminal = BingoTerminal.__new__(BingoTerminal)
     terminal.console = _Console()
@@ -192,7 +161,7 @@ def test_supervised_codeblock_reports_partial_state_on_timeout(monkeypatch) -> N
     assert "blocked" not in combined.lower()
 
 
-def test_dict_tool_call_executes_without_autofix_warning(monkeypatch) -> None:
+def test_dict_literal_codeblock_is_not_interpreted_as_helper_call(monkeypatch) -> None:
     terminal = _code_test_terminal()
     monkeypatch.setitem(
         TOOL_REGISTRY,
@@ -211,8 +180,10 @@ def test_dict_tool_call_executes_without_autofix_warning(monkeypatch) -> None:
     )
 
     visible = "\n".join(terminal.console.messages)
-    assert results and "value=ok" in results[0]
-    assert "WRONG_TOOL_FORMAT" not in visible
+    combined = "\n".join(results)
+    assert "=== JOB_STATE: job_1 ===" in combined
+    assert "status=completed" in combined
+    assert "value=ok" not in combined
     assert "AUTO_FIX" not in visible
 
 
@@ -362,7 +333,10 @@ def test_repeated_inconclusive_attack_automatically_pivots(tmp_path: Path) -> No
     terminal._findings_exporter = FindingsExporter(
         target="https://example.test", output_dir=str(tmp_path)
     )
-    code = 'TOOL_CALL:{"name":"sqli_autoexploit","args":{"url":"https://example.test/item","param":"id"}}'
+    code = (
+        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
+        "sqli_autoexploit(url='https://example.test/item', param='id')"
+    )
     output = "oracle inconclusive: same-size responses"
 
     first = terminal._adaptive_attack_pivot_context(code, output)
@@ -609,7 +583,10 @@ def test_localized_oracle_rejection_triggers_cross_vector_pivot(tmp_path: Path) 
     terminal._findings_exporter = FindingsExporter(
         target="https://example.test", output_dir=str(tmp_path)
     )
-    code = 'TOOL_CALL:{"name":"sqli_autoexploit","args":{"param":"id"}}'
+    code = (
+        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
+        "sqli_autoexploit(param='id')"
+    )
     output = "[SQLI_ORACLE_REJECTED] TRUE/FALSE 대조가 차단되었습니다."
 
     assert terminal._adaptive_attack_pivot_context(code, output) == ""
@@ -780,7 +757,7 @@ def test_active_security_tests_remain_candidates(tmp_path: Path) -> None:
 def test_process_runtime_elapsed_is_not_time_based_sqli(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
     output = (
-        "=== TOOL_RESULT: run_python ===\n"
+        "=== RUNTIME_RESULT: python ===\n"
         "exit_code=0 success=True elapsed=14.42s\n"
         "[200] ERROR (598B): LENGTH=1"
     )
@@ -798,8 +775,8 @@ def test_process_runtime_elapsed_is_not_time_based_sqli(tmp_path: Path) -> None:
 def test_failed_time_measurement_invalidates_probable_sqli(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
     code = (
-        'TOOL_CALL:{"name":"sqli_autoexploit","args":'
-        '{"url":"https://example.test/item","param":"id"}}'
+        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
+        "sqli_autoexploit(url='https://example.test/item', param='id')"
     )
     probable = exporter.process("TRUE 1200B\nFALSE 500B", code)
     assert probable is not None and probable.confidence == "probable"
@@ -820,7 +797,10 @@ def test_failed_time_measurement_invalidates_probable_sqli(tmp_path: Path) -> No
 
 def test_waf_control_pair_is_blocked_not_probable(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
-    code = "TOOL_CALL:{\"name\":\"sqli_autoexploit\",\"args\":{\"url\":\"https://example.test/item\",\"param\":\"id\"}}"
+    code = (
+        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
+        "sqli_autoexploit(url='https://example.test/item', param='id')"
+    )
 
     finding = exporter.process(
         "TRUE 403 199B request blocked\nFALSE 200 598B generic error page",
@@ -845,7 +825,10 @@ def test_equal_waf_controls_are_blocked_not_probable(tmp_path: Path) -> None:
 
 def test_finding_ids_are_monotonic_across_invalidation(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
-    code = "TOOL_CALL:{\"name\":\"sqli_autoexploit\",\"args\":{\"url\":\"https://example.test/item\",\"param\":\"id\"}}"
+    code = (
+        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
+        "sqli_autoexploit(url='https://example.test/item', param='id')"
+    )
 
     first = exporter.process("TRUE 1200B\nFALSE 500B", code)
     assert first is not None and first.id == "BINGO-0001"

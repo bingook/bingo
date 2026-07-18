@@ -198,7 +198,7 @@ _XSS_NEGATIVE_EVIDENCE = re.compile(
     re.I,
 )
 _XSS_TRIGGER_NOTICE = re.compile(
-    r'\[XSS_TRIGGER_DETECTED\]|TOOL_CALL:\{[^}\n]*"xss_autotest"',
+    r'\[XSS_TRIGGER_DETECTED\]',
     re.I,
 )
 _XSS_POSITIVE_EVIDENCE = re.compile(

@@ -30,6 +30,7 @@ from bingo.tools_ext.pentest_tools import (
     _save_sqli_checkpoint,
     _inject_post_exploit_notice,
     _inject_sqli_trigger_notice,
+    _inject_vuln_trigger_notice,
     execute_tool,
     run_python,
     run_ghauri,
@@ -1206,6 +1207,116 @@ def test_attempted_xss_payload_remains_a_candidate(tmp_path: Path) -> None:
     assert finding is not None
     assert finding.vuln_type == "xss"
     assert finding.confidence == "potential"
+
+
+def test_xss_trigger_ignores_not_reflected_payload_text(tmp_path: Path) -> None:
+    payload = '"><script>alert(1)</script>'
+    output = (
+        "HTTP 200\n"
+        f"[NOT REFLECTED] payload: {payload}\n"
+        "browser_confirmed=false\n"
+    )
+
+    assert "XSS_TRIGGER_DETECTED" not in _inject_vuln_trigger_notice(output)
+
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    assert exporter.process(output, code_snippet="run_python xss smoke") is None
+    assert exporter.findings == []
+
+
+def test_xss_trigger_ignores_filtered_or_403_payload_text(tmp_path: Path) -> None:
+    output = (
+        "=== XSS 反射测试 ===\n"
+        "url=javascript:alert(1): 403 Location=N/A\n"
+        "url=data:text/html,<script>alert(1)</script>: 403 Location=N/A\n"
+        "被过滤/不存在: <script>alert(1)</script> | 199B\n"
+        "被过滤/不存在: <img src=x onerror=alert(1)> | 199B\n"
+    )
+
+    assert "XSS_TRIGGER_DETECTED" not in _inject_vuln_trigger_notice(output)
+
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    assert exporter.process(output, code_snippet="run_python xss blocked smoke") is None
+    assert exporter.findings == []
+
+
+def test_exporter_rejects_stale_xss_trigger_notice_without_proof(tmp_path: Path) -> None:
+    output = (
+        "被过滤/不存在: <script>alert(1)</script> | 199B\n"
+        "[XSS_TRIGGER_DETECTED] XSS reflected/stored pattern detected\n"
+        "-> TOOL_CALL:{\"name\":\"xss_autotest\",\"args\":{\"url\":\"<URL>\",\"param\":\"<PARAM>\"}}\n"
+    )
+
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    assert exporter.process(output, code_snippet="run_python xss blocked smoke") is None
+    assert exporter.findings == []
+
+
+def test_xss_trigger_still_detects_reflected_payload_text() -> None:
+    payload = "<img src=x onerror=alert(1)>"
+    output = f"HTTP 200\nPAYLOAD_REFLECTED {payload}\n"
+
+    assert "XSS_TRIGGER_DETECTED" in _inject_vuln_trigger_notice(output)
+
+
+def test_lfi_autotest_does_not_confirm_generic_nginx_mysql_text(monkeypatch) -> None:
+    baseline = "<html><title>hospital</title>nginx mysql maintenance notice</html>"
+    dynamic_non_file_page = baseline + ("A" * 900) + " nginx mysql"
+
+    def fake_req(_sess, _method, _url, params=None, data=None, timeout=15):
+        request_params = params or data or {}
+        value = request_params.get("page", "")
+        if value in {"/etc/nginx/nginx.conf", "/etc/mysql/my.cnf"}:
+            return SimpleNamespace(text=dynamic_non_file_page)
+        return SimpleNamespace(text=baseline)
+
+    monkeypatch.setattr(autoexploit_modules, "_HAS_REQUESTS", True)
+    monkeypatch.setattr(autoexploit_modules, "_sess", lambda _headers=None: object())
+    monkeypatch.setattr(autoexploit_modules, "_req", fake_req)
+    monkeypatch.setattr(
+        autoexploit_modules,
+        "_LFI_PAYLOADS",
+        ["/etc/nginx/nginx.conf", "/etc/mysql/my.cnf"],
+    )
+    monkeypatch.setattr(autoexploit_modules, "_LFI_SIGNATURES", ["nginx", "mysql"])
+
+    result = autoexploit_modules.lfi_autotest(
+        "https://example.test/main.do",
+        "page",
+    )
+
+    assert result["success"] is False
+    assert result["findings"] == []
+    assert result["candidates"]
+    assert "CANDIDATE:" in result["output"]
+
+
+def test_lfi_autotest_confirms_structured_passwd(monkeypatch, tmp_path: Path) -> None:
+    passwd_body = (
+        "root:x:0:0:root:/root:/bin/bash\n"
+        "daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n"
+    )
+
+    def fake_req(_sess, _method, _url, params=None, data=None, timeout=15):
+        request_params = params or data or {}
+        if request_params.get("page") == "../../etc/passwd":
+            return SimpleNamespace(text=passwd_body)
+        return SimpleNamespace(text="<html>normal page</html>")
+
+    monkeypatch.setattr(autoexploit_modules, "_HAS_REQUESTS", True)
+    monkeypatch.setattr(autoexploit_modules, "_sess", lambda _headers=None: object())
+    monkeypatch.setattr(autoexploit_modules, "_req", fake_req)
+    monkeypatch.setattr(autoexploit_modules, "_LFI_PAYLOADS", ["../../etc/passwd"])
+    monkeypatch.setattr(autoexploit_modules, "_save", lambda _filename, _content: str(tmp_path / _filename))
+
+    result = autoexploit_modules.lfi_autotest(
+        "https://example.test/main.do",
+        "page",
+    )
+
+    assert result["success"] is True
+    assert result["findings"]
+    assert "etc_passwd_structured" in result["findings"][0]["signatures"]
 
 
 def test_error_identifier_is_not_cracked_as_hash() -> None:

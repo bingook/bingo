@@ -190,6 +190,30 @@ _XSS_TEST_EVIDENCE = re.compile(
     r'XSS.{0,40}(?:confirmed|reflected|executed|browser\s+verified))',
     re.I,
 )
+_XSS_NEGATIVE_EVIDENCE = re.compile(
+    r'NOT\s+REFLECTED|not\s+reflected|미반사|未反射|未找到\s*payload|'
+    r'payload\s+not\s+found|browser_confirmed\s*[=:]\s*false|'
+    r'browser\s+confirmed\s*[=:]\s*false|XSS_CANDIDATE|escaped|saniti[sz]ed|'
+    r'no\s+xss|not\s+vulnerable',
+    re.I,
+)
+_XSS_TRIGGER_NOTICE = re.compile(
+    r'\[XSS_TRIGGER_DETECTED\]|TOOL_CALL:\{[^}\n]*"xss_autotest"',
+    re.I,
+)
+_XSS_POSITIVE_EVIDENCE = re.compile(
+    r'window\.__BINGO_XSS__\s*=\s*1|browser_confirmed\s*[=:]\s*true|'
+    r'browser\s+confirmed\s*[=:]\s*true|PAYLOAD[_ -]?REFLECTED|'
+    r'unescaped\s+reflection|dialog\s+(?:opened|observed)|'
+    r'XSS.{0,40}(?:confirmed|reflected|executed|browser\s+verified|success)',
+    re.I,
+)
+
+
+def _xss_negative_only(output: str) -> bool:
+    return bool(_XSS_NEGATIVE_EVIDENCE.search(output)) and not bool(
+        _XSS_POSITIVE_EVIDENCE.search(output)
+    )
 
 _ACTIVE_HTTP_TEST = re.compile(
     r'\b(?:curl|wget|httpx|requests\.(?:get|post|request)|'
@@ -300,6 +324,10 @@ def _potential_disposition(
     """Return keep/quarantine/reject for pattern-only evidence."""
     code = _execution_code(code_snippet, execution_context)
     if vtype == FINDING_XSS:
+        if _xss_negative_only(output):
+            return "reject", "xss_negative_verification"
+        if _XSS_TRIGGER_NOTICE.search(output) and not _XSS_POSITIVE_EVIDENCE.search(output):
+            return "reject", "xss_trigger_notice_without_evidence"
         if _XSS_TEST_EVIDENCE.search(output):
             return "keep", ""
         if _ACTIVE_HTTP_TEST.search(code) and _XSS_ACTIVE_PAYLOAD.search(code):
@@ -820,6 +848,8 @@ def _detect_vuln_type_raw(output: str, code_snippet: str = "") -> tuple[str, str
 
     _skip_xss = False
     if _SERVER_ALERT_PATTERN.search(output) and not _XSS_PAYLOAD_IN_CODE.search(code_snippet):
+        _skip_xss = True
+    if _xss_negative_only(output):
         _skip_xss = True
     if not _XSS_PAYLOAD_IN_CODE.search(code_snippet) and not _XSS_PAYLOAD_IN_CODE.search(output):
         _skip_xss = True

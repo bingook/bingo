@@ -7942,9 +7942,14 @@ _STRINGS.update({
 
     # ── v6.2.53: 자동화 공격 모듈 다국어 키 ──────────────────────────────────────
     "ae_lfi_found": {
-        "ko": "🗂  LFI 취약점 발견! {n}개 페이로드 성공",
-        "zh": "🗂  发现 LFI 漏洞！{n} 个载荷成功",
-        "en": "🗂  LFI vulnerability found! {n} payload(s) succeeded",
+        "ko": "🗂  LFI 확인! {n}개 페이로드에서 파일별 증거 반환",
+        "zh": "🗂  LFI 已确认！{n} 个载荷返回文件特异证据",
+        "en": "🗂  LFI confirmed! {n} payload(s) returned file-specific proof",
+    },
+    "ae_lfi_candidate_only": {
+        "ko": "🗂  LFI 확정 없음 — 약한 후보 {n}개는 검토용으로 보관",
+        "zh": "🗂  未确认 LFI；{n} 个弱候选已保留待复核",
+        "en": "🗂  No confirmed LFI; {n} weak candidate(s) retained for review",
     },
     "ae_lfi_not_found": {
         "ko": "🗂  LFI 취약점 미발견",
@@ -8174,6 +8179,11 @@ _STRINGS.update({
         "ko": "🟡 크기 변화 {diff}B — payload={payload}",
         "zh": "🟡 响应大小变化 {diff}B — payload={payload}",
         "en": "🟡 Size change {diff}B — payload={payload}",
+    },
+    "ae_lfi_stats": {
+        "ko": "테스트: {tested}개 | 확인: {confirmed}개 | 후보: {candidate}개",
+        "zh": "测试: {tested}个 | 已确认: {confirmed}个 | 候选: {candidate}个",
+        "en": "Tested: {tested} | Confirmed: {confirmed} | Candidate: {candidate}",
     },
     "ae_stats": {
         "ko": "테스트: {tested}개 | 발견: {found}개",

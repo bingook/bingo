@@ -8,7 +8,7 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.codex/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after latest execution watchdog work: `6.2.201`.
+- Current stable version after latest credential false-positive work: `6.2.202`.
 - Codex project memory is automatic:
   - At every Codex session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/codex-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Codex must silently run `scripts/codex-memory-sync.sh`.
@@ -26,25 +26,26 @@
 - Latest target-log issue:
   - Markdown BASH codeblock execution, not TOOL_CALL `run_bash`, caused heartbeat-only hangs up to 3600s because terminal execution used a 24h default timeout.
   - Fixed by bounded codeblock execution limits: `BINGO_EXEC_TIMEOUT` default 180s, `BINGO_EXEC_IDLE_TIMEOUT` default 120s, and wall-clock fallback default timeout+30s.
+- Latest credential false-positive issue:
+  - Report showed `{'password': '> 200 登出:'}` under extracted credentials.
+  - Fixed by requiring credential key-value separators `:`/`=`, rejecting UI/status/logout/error values, and sanitizing stored/session credentials before agent-knowledge/report use.
 
 <!-- codex-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-18T23:43:35+08:00
+- Last synced: 2026-07-19T00:46:47+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.codex/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-18T23:43:35+08:00
+- Captured: 2026-07-19T00:46:47+08:00
 
 ### Status
 ```text
-M .gitignore
+M .codex/project-memory.md
  M AGENTS.md
  M bingo/__init__.py
- M bingo/cli.py
- M bingo/core/change_memory.py
  M bingo/lang/strings.py
  M bingo/tools/gnuboard.py
  M bingo/tools/recon_engine.py
@@ -60,19 +61,81 @@ M .gitignore
 
 ### Diff Stat
 ```text
-.gitignore                                    |   4 +
- AGENTS.md                                     | 383 ++++++++++++++++++++++++--
+AGENTS.md                                     |   2 +-
  bingo/__init__.py                             |   2 +-
- bingo/cli.py                                  |   2 +-
- bingo/core/change_memory.py                   | 201 +++++++++++++-
  bingo/lang/strings.py                         |   4 +
  bingo/tools/gnuboard.py                       |   6 -
  bingo/tools/recon_engine.py                   |   3 +-
- bingo/ui/terminal.py                          | 141 +++++++---
+ bingo/ui/terminal.py                          | 235 ++++++++++++++++++++------
  scripts/git-hooks/post-commit                 |  13 +-
- tests/test_change_memory.py                   | 139 ++++++++++
- tests/test_terminal_completion_regressions.py |  36 +++
- 12 files changed, 844 insertions(+), 90 deletions(-)
+ tests/test_change_memory.py                   | 139 +++++++++++++++
+ tests/test_terminal_completion_regressions.py |  98 +++++++++++
+ 9 files changed, 438 insertions(+), 64 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.202"`
+- `"script_killed_idle_timeout": {`
+- `"ko": "[스크립트_종료: 유휴_타임아웃]\n스크립트가 {sec}초 동안 출력을 내지 않아 강제 종료되었습니다.\n요청별 타임아웃을 추가하거나, 루프를 줄이거나, 스크립트를 더 작은 블록으로 나누세요.",`
+- `"zh": "[脚本已终止: 空闲超时]\n脚本连续{sec}秒没有输出，已被强制终止。\n请为单个请求添加超时、减少循环或将脚本拆分为更小的块。",`
+- `"en": "[SCRIPT_KILLED: IDLE_TIMEOUT]\nScript produced no output for {sec}s and was forcibly terminated.\nAdd per-request timeouts, reduce loops, or split the script into smaller bl`
+- `if re.match(r"^\d+\.\d+\.\d+\.\d+$", ln)]`
+- `def _positive_int_env(`
+- `name: str,`
+- `default: int,`
+- `minimum: int = 1,`
+- `maximum: int = 86_400,`
+- `) -> int:`
+- `"""Return a bounded positive integer from the environment."""`
+- `raw = os.environ.get(name)`
+- `if raw is None:`
+- `return default`
+- `try:`
+- `value = int(str(raw).strip())`
+- `except (TypeError, ValueError):`
+- `return default`
+- `return max(minimum, min(value, maximum))`
+- `def _codeblock_exec_limits() -> tuple[int, int, int]:`
+- `"""Execution limits for markdown Python/Bash code blocks."""`
+- `script_timeout = _positive_int_env("BINGO_EXEC_TIMEOUT", 180)`
+- `idle_timeout = _positive_int_env(`
+- `"BINGO_EXEC_IDLE_TIMEOUT",`
+- `120,`
+- `maximum=script_timeout,`
+- `)`
+- `wall_clock_timeout = _positive_int_env(`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:4e7a7e601e061febaa7b5c3b565c4567c9fc3bee -->
+## Code change: fix: bound codeblock execution watchdog
+- Commit: `4e7a7e601e06`
+- Recorded: 2026-07-19T00:07:54+08:00
+- Committed: 2026-07-19T00:07:54+08:00
+
+### Files
+```text
+A	.codex/project-memory.md
+M	.gitignore
+M	AGENTS.md
+M	bingo/__init__.py
+M	bingo/cli.py
+M	bingo/core/change_memory.py
+```
+
+### Diff Stat
+```text
+4e7a7e601 fix: bound codeblock execution watchdog
+ .codex/project-memory.md    | 179 +++++++++++++++++++++
+ .gitignore                  |   4 +
+ AGENTS.md                   | 383 +++++++++++++++++++++++++++++++++++++++++---
+ bingo/__init__.py           |   2 +-
+ bingo/cli.py                |   2 +-
+ bingo/core/change_memory.py | 201 +++++++++++++++++++++--
+ 6 files changed, 735 insertions(+), 36 deletions(-)
 ```
 
 ### Added Highlights
@@ -106,16 +169,6 @@ M .gitignore
 - `lines = []`
 - `for line in status.splitlines():`
 - `path = line[3:] if len(line) > 3 else ""`
-<!-- working-tree:end -->
-
-
-
-
-
-
-
-
-
 
 # Workspace Memory
 

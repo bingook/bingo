@@ -44,6 +44,41 @@ from ..i18n import t
 from ..proxy import ProxyManager
 
 
+def _positive_int_env(
+    name: str,
+    default: int,
+    *,
+    minimum: int = 1,
+    maximum: int = 86_400,
+) -> int:
+    """Return a bounded positive integer from the environment."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(value, maximum))
+
+
+def _codeblock_exec_limits() -> tuple[int, int, int]:
+    """Execution limits for markdown Python/Bash code blocks."""
+    script_timeout = _positive_int_env("BINGO_EXEC_TIMEOUT", 180)
+    idle_timeout = _positive_int_env(
+        "BINGO_EXEC_IDLE_TIMEOUT",
+        120,
+        maximum=script_timeout,
+    )
+    wall_clock_timeout = _positive_int_env(
+        "BINGO_EXEC_WALL_CLOCK_TIMEOUT",
+        script_timeout + 30,
+        minimum=script_timeout,
+        maximum=86_430,
+    )
+    return script_timeout, idle_timeout, wall_clock_timeout
+
+
 def _tool_call_from_mapping(
     value: object,
     known_tools: set[str],
@@ -5773,7 +5808,7 @@ class BingoTerminal:
 
     def _run_code_blocks(self, response: str, _loaded_skills: set) -> list[str]:
         """AI 응답에서 Python/Bash 블록 추출 후 병렬 실행.
-        타임아웃 없음 — 성공할 때까지 실행. 모든 블록 동시 실행 후 결과 수집.
+        bounded timeout/idle watchdog 적용. 모든 블록 동시 실행 후 결과 수집.
 
         v5.2.0: TOOL_CALL 아키텍처 — bash 블록보다 우선 처리.
         LLM이 TOOL_CALL:{"name":"...","args":{...}} 형식으로 호출하면
@@ -7740,6 +7775,7 @@ class BingoTerminal:
         # ── 병렬 실행 ────────────────────────────────────────────────
         results_text: list[str] = [""] * len(tasks)
         _lock = threading.Lock()
+        _SCRIPT_TIMEOUT, _IDLE_TIMEOUT, _WALL_CLOCK_MAX = _codeblock_exec_limits()
 
         def _run_task(task: dict, slot: int) -> None:
             try:
@@ -7847,7 +7883,9 @@ class BingoTerminal:
                 _last_stripped = None
                 _killed_reason: str | None = None
                 _start_ts = __import__("time").time()
-                _SCRIPT_TIMEOUT = 86400  # 24시간 (사실상 무제한) [v6.2.30: 타임아웃 제거]
+                _last_output_ts = _start_ts
+                task["started_ts"] = _start_ts
+                task["last_output_ts"] = _last_output_ts
                 _MAX_CONSEC_DUP = 100   # 동일 줄 100회 연속 → 루프 감지 [v3.2.54: 오탐 방지 강화]
                 _MAX_CONSEC_SCAN = 500  # 스캔 결과 줄은 500회까지 허용 (XSS 반사 등)
                 # 합법적 반복이 발생하는 스캔 결과 prefix — 더 높은 임계값 적용
@@ -7875,39 +7913,54 @@ class BingoTerminal:
                 # ── 하드 워치독: stdout 출력 없는 블로킹(pymssql 등)도 강제 종료 ──
                 _watchdog_fired = threading.Event()
 
-                def _hard_watchdog(proc: subprocess.Popen, deadline: float,
-                                   fired: threading.Event) -> None:
-                    """stdout 스트림에 관계없이 deadline 이후 프로세스 그룹 전체를 강제 종료.
+                def _kill_process_group(proc: subprocess.Popen) -> None:
+                    import os as _wd_os
+                    import signal as _wd_sig
+                    try:
+                        pgid = _wd_os.getpgid(proc.pid)
+                        _wd_os.killpg(pgid, _wd_sig.SIGKILL)
+                    except Exception:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                    # stdout 파이프 강제 닫기 — 자식 프로세스 잔존 시 readline 해제
+                    try:
+                        proc.stdout.close()
+                    except Exception:
+                        pass
+
+                def _hard_watchdog(proc: subprocess.Popen, fired: threading.Event) -> None:
+                    """stdout 스트림에 관계없이 timeout/idle 이후 프로세스 그룹 전체를 강제 종료.
                     v5.1.6: proc.kill() → os.killpg() — bash 자식 프로세스(curl 등) 고아 방지.
                     proc.kill()은 bash만 종료하고 자식 curl 프로세스가 stdout 파이프를
                     유지해 스레드가 종료되지 않는 버그 수정."""
-                    remaining = deadline - __import__("time").time()
-                    if remaining > 0:
-                        fired.wait(timeout=remaining)
-                    if not fired.is_set():
-                        import os as _wd_os
-                        import signal as _wd_sig
-                        try:
-                            pgid = _wd_os.getpgid(proc.pid)
-                            _wd_os.killpg(pgid, _wd_sig.SIGKILL)
-                        except Exception:
-                            try:
-                                proc.kill()
-                            except Exception:
-                                pass
-                        # stdout 파이프 강제 닫기 — 자식 프로세스 잔존 시 readline 해제
-                        try:
-                            proc.stdout.close()
-                        except Exception:
-                            pass
+                    nonlocal _killed_reason
+                    import time as _wd_time
+                    while not fired.wait(timeout=0.5):
+                        now = _wd_time.time()
+                        reason: str | None = None
+                        if now - _start_ts >= _SCRIPT_TIMEOUT:
+                            reason = f"TIMEOUT_{_SCRIPT_TIMEOUT}s"
+                        elif _IDLE_TIMEOUT > 0 and now - _last_output_ts >= _IDLE_TIMEOUT:
+                            reason = f"IDLE_TIMEOUT_{_IDLE_TIMEOUT}s"
+                        if reason:
+                            _killed_reason = reason
+                            task["killed_reason"] = reason
+                            _kill_process_group(proc)
+                            return
 
-                _watchdog_deadline = _start_ts + _SCRIPT_TIMEOUT
                 _watchdog_th = threading.Thread(
                     target=_hard_watchdog,
-                    args=(p, _watchdog_deadline, _watchdog_fired),
+                    args=(p, _watchdog_fired),
                     daemon=True,
                 )
                 _watchdog_th.start()
+
+                def _mark_output_activity() -> None:
+                    nonlocal _last_output_ts
+                    _last_output_ts = __import__("time").time()
+                    task["last_output_ts"] = _last_output_ts
 
                 def _flush_tb_compressed(n_buf: int) -> None:
                     """v3.2.23: 버퍼링된 Traceback 블록을 1줄로 압축 출력."""
@@ -8086,6 +8139,7 @@ class BingoTerminal:
                 # ──────────────────────────────────────────────
 
                 for raw_line in p.stdout:
+                    _mark_output_activity()
                     line = raw_line.decode("utf-8", "replace").rstrip()
                     if not line:
                         continue
@@ -8122,20 +8176,8 @@ class BingoTerminal:
                     # 전체 타임아웃 체크 [v5.1.6: p.terminate()→os.killpg() — 자식 curl 포함 종료]
                     if __import__("time").time() - _start_ts > _SCRIPT_TIMEOUT:
                         _killed_reason = f"TIMEOUT_{_SCRIPT_TIMEOUT}s"
-                        import os as _tmo_os
-                        import signal as _tmo_sig
-                        try:
-                            pgid = _tmo_os.getpgid(p.pid)
-                            _tmo_os.killpg(pgid, _tmo_sig.SIGKILL)
-                        except Exception:
-                            try:
-                                p.terminate()
-                            except Exception:
-                                pass
-                        try:
-                            p.stdout.close()
-                        except Exception:
-                            pass
+                        task["killed_reason"] = _killed_reason
+                        _kill_process_group(p)
                         break
 
                     # 연속 중복 감지 (스캔 결과 라인은 더 높은 임계값 적용)
@@ -8156,6 +8198,7 @@ class BingoTerminal:
                 _watchdog_fired.set()
 
                 # 워치독이 kill 했는지 확인 (stdout 없는 블로킹 타임아웃)
+                _killed_reason = _killed_reason or task.get("killed_reason")
                 if not _killed_reason and (
                     __import__("time").time() - _start_ts >= _SCRIPT_TIMEOUT - 1
                 ):
@@ -8196,8 +8239,17 @@ class BingoTerminal:
                             "STOP using FOR loops with TOP 1 and no cursor.\n"
                         )
                     else:
-                        _k_timeout = t("script_killed_timeout", "[SCRIPT_KILLED: TIMEOUT]\nScript exceeded {sec}s timeout and was forcibly terminated.\nSplit the script into smaller blocks or optimize the loop.").replace("{sec}", str(_SCRIPT_TIMEOUT))
-                        _kill_suffix = f"\n{_k_timeout}\n"
+                        if _killed_reason.startswith("IDLE_TIMEOUT_"):
+                            _k_idle = t(
+                                "script_killed_idle_timeout",
+                                "[SCRIPT_KILLED: IDLE_TIMEOUT]\n"
+                                "Script produced no output for {sec}s and was forcibly terminated.\n"
+                                "Add per-request timeouts, reduce loops, or split the script into smaller blocks.",
+                            ).replace("{sec}", str(_IDLE_TIMEOUT))
+                            _kill_suffix = f"\n{_k_idle}\n"
+                        else:
+                            _k_timeout = t("script_killed_timeout", "[SCRIPT_KILLED: TIMEOUT]\nScript exceeded {sec}s timeout and was forcibly terminated.\nSplit the script into smaller blocks or optimize the loop.").replace("{sec}", str(_SCRIPT_TIMEOUT))
+                            _kill_suffix = f"\n{_k_timeout}\n"
                 if output.strip():
                     # v3.2.23: AI 컨텍스트 전달 시 잔여 Traceback도 압축
                     _ai_out, _, _ = _filter_traceback(output)
@@ -8241,9 +8293,8 @@ class BingoTerminal:
         elapsed = 0
         _heartbeat_print_interval = 30  # 화면 출력은 30초에 한 번
         # v5.1.6: wall-clock 안전 타임아웃 — 워치독이 bash만 kill하고 자식 curl이 살아남아
-        # 스레드가 종료되지 않는 경우에 대한 2차 방어선 (_SCRIPT_TIMEOUT + 60s)
-        # v6.2.30: 사실상 무제한 (24h + 60s)
-        _WALL_CLOCK_MAX = 86460  # _SCRIPT_TIMEOUT(86400) + 60s 버퍼
+        # 스레드가 종료되지 않는 경우에 대한 2차 방어선.
+        # v6.2.201: 24h 기본 대기를 제거하고 BINGO_EXEC_TIMEOUT 기반으로 제한.
         while any(_th.is_alive() for _th in threads):
             for _th in threads:
                 _th.join(timeout=HEARTBEAT)
@@ -11572,10 +11623,13 @@ class BingoTerminal:
 
         # ── 세션 구분 정보 수집 (보고서 환각 방지) ──────────────────────
         _session_tables  = getattr(self, "_session_tables", [])
-        _session_creds   = getattr(self, "_session_credentials", [])
+        _session_creds   = self._sanitize_credentials(
+            getattr(self, "_session_credentials", [])
+        )
         _session_fresh   = getattr(self, "_session_fresh", True)
         # 이전 세션 복원이면 어떤 항목이 이전 세션에서 왔는지 구분
         _prev_tables = [t for t in _state.get("tables", []) if t not in _session_tables]
+        _state["credentials"] = self._sanitize_credentials(_state.get("credentials", []))
         _prev_creds  = [c for c in _state.get("credentials", []) if c not in _session_creds]
         _session_origin_note = ""
         if not _session_fresh and (_prev_tables or _prev_creds):
@@ -12522,16 +12576,37 @@ class BingoTerminal:
                     self._agent_state["columns"]["g5_member"].append(c)
 
         # 자격증명
+        # v6.2.202: separator must be ':' or '='.  The older [: \s =]+ pattern
+        # captured UI/status text such as "password > 200 登出:" as a password.
         cred_match = re.findall(
-            r"(mb_id|mb_password|username|password)[:\s=]+([^\n\r,\]]{3,80})", text, re.IGNORECASE
+            r"\b(mb_id|mb_password|username|password)\b\s*[:=]\s*"
+            r"(?:['\"]([^'\"]{3,160})['\"]|([^\s,\]\}<>&;]{3,160}))",
+            text,
+            re.IGNORECASE,
         )
         if cred_match:
-            cred = {k.lower(): v.strip() for k, v in cred_match
-                    if v.strip() and "~" not in v and "?" not in v and len(v.strip()) > 2}
+            cred = {}
+            for k, quoted, bare in cred_match:
+                v = (quoted or bare or "").strip()
+                if "~" in v or "?" in v:
+                    continue
+                if self._credential_value_is_plausible(k, v):
+                    cred[k.lower()] = v.strip().strip("'\"`.,;:()[]{}")
             if cred:
-                self._agent_state["credentials"].append(cred)
+                self._agent_state["credentials"] = self._sanitize_credentials(
+                    [*self._agent_state.get("credentials", []), cred]
+                )
                 # 현재 세션 추적 (보고서 환각 방지)
-                self._session_credentials.append(cred)
+                self._session_credentials = self._sanitize_credentials(
+                    [*getattr(self, "_session_credentials", []), cred]
+                )
+        else:
+            self._agent_state["credentials"] = self._sanitize_credentials(
+                self._agent_state.get("credentials", [])
+            )
+            self._session_credentials = self._sanitize_credentials(
+                getattr(self, "_session_credentials", [])
+            )
 
         # WAF
         m = re.search(r"WAF.*?detected.*?([Cc]loudflare|[Aa]WS|[Mm]od[Ss]ecurity|[Ww]ordfence)", text)
@@ -12715,8 +12790,9 @@ class BingoTerminal:
             if s.get("columns"):
                 for tbl, cols in s.get("columns", {}).items():
                     lines.append(f"✅ Columns ({tbl}): {', '.join(cols)}")
-            if s.get("credentials"):
-                lines.append(f"✅ Credentials found: {s.get('credentials')}")
+            credentials = self._sanitize_credentials(s.get("credentials", []))
+            if credentials:
+                lines.append(f"✅ Credentials found: {credentials}")
                 lines.append("⚡ NEXT: crack/verify these credentials")
             else:
                 if s.get("columns"):
@@ -12732,6 +12808,59 @@ class BingoTerminal:
             return "\n".join(lines) + "\n"
         except Exception:
             return ""
+
+    @staticmethod
+    def _credential_value_is_plausible(key: str, value: object) -> bool:
+        """Reject UI/status text accidentally captured as credential values."""
+        import re as _re_cred
+
+        v = str(value or "").strip().strip("'\"`.,;:()[]{}")
+        if len(v) < 3 or len(v) > 160:
+            return False
+        if _re_cred.search(r"[\s<>]", v):
+            return False
+        if _re_cred.match(r"^[=:/\\-]+$", v):
+            return False
+        lower = v.lower()
+        if _re_cred.fullmatch(r"(?:\d{3}|true|false|null|none|undefined|ok)", lower):
+            return False
+        negative_terms = (
+            "logout", "log-out", "signout", "sign-out", "forbidden",
+            "permission", "denied", "error", "exception", "enabled",
+            "disabled", "allow:", "http/", "html", "body", "script",
+            "로그아웃", "로그인", "권한", "오류", "에러", "登出", "登录", "错误",
+            "禁止", "权限",
+        )
+        if any(term in lower for term in negative_terms):
+            return False
+        if str(key).lower() in {"password", "mb_password"} and lower.startswith(("type=", "name=", "id=")):
+            return False
+        return True
+
+    @classmethod
+    def _sanitize_credentials(cls, credentials: object) -> list[dict]:
+        """Normalize and deduplicate session credential records."""
+        if not isinstance(credentials, list):
+            return []
+        cleaned: list[dict] = []
+        seen: set[tuple[tuple[str, str], ...]] = set()
+        allowed = {"mb_id", "mb_password", "username", "password"}
+        for item in credentials:
+            if not isinstance(item, dict):
+                continue
+            record: dict[str, str] = {}
+            for raw_key, raw_value in item.items():
+                key = str(raw_key).lower()
+                if key not in allowed:
+                    continue
+                value = str(raw_value or "").strip().strip("'\"`.,;:()[]{}")
+                if cls._credential_value_is_plausible(key, value):
+                    record[key] = value
+            marker = tuple(sorted(record.items()))
+            if record and marker not in seen:
+                seen.add(marker)
+                cleaned.append(record)
+        return cleaned
 
     @staticmethod
     def _has_meaningful_loop_progress(text: str) -> bool:

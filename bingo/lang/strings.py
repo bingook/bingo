@@ -9510,6 +9510,11 @@ _STRINGS.update({
         "zh": "⚠ [WRONG_TOOL_FORMAT] 检测到 dict 格式 tool call（未知工具名 — 已忽略）",
         "en": "⚠ [WRONG_TOOL_FORMAT] dict-format tool call detected (unknown tool — ignored)",
     },
+    "silent_code_autorepair": {
+        "ko": "혼합 코드와 도구 호출 형식을 실행 전에 자동 정규화합니다.",
+        "zh": "在执行前自动规范化混合代码和工具调用格式。",
+        "en": "Normalize mixed code and tool-call formats before execution.",
+    },
     "wall_clock_timeout_kill": {
         "ko": "⚠ WALL-CLOCK TIMEOUT ({elapsed}s) — 프로세스 그룹 강제 종료",
         "zh": "⚠ WALL-CLOCK TIMEOUT ({elapsed}s) — 强制终止进程组",

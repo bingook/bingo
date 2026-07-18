@@ -5,7 +5,12 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from bingo.ui.terminal import BingoTerminal
+from bingo.ui.terminal import (
+    BingoTerminal,
+    _normalize_tool_call_response,
+    _repair_mixed_bash_python,
+)
+from bingo.lang.strings import get_strings
 from bingo.tools.findings_exporter import FindingsExporter
 from bingo.tools.playwright_engine import PlaywrightEngine
 from bingo.core.execution_anchor import ExecutionAnchorEngine, _has_exec_evidence
@@ -78,6 +83,107 @@ def test_preexecution_claim_downgrade_preserves_attack_code() -> None:
     assert "[UNVERIFIED]" in corrected
     assert "SQLi confirmed" not in corrected
     assert code in corrected
+
+
+def test_dict_tool_call_is_normalized_before_code_execution() -> None:
+    response = (
+        "```python\n"
+        "{'name': 'http_get', 'arguments': {'url': 'https://example.test/'}}\n"
+        "```"
+    )
+
+    normalized, count = _normalize_tool_call_response(response)
+
+    assert count == 1
+    assert normalized.startswith("TOOL_CALL:")
+    assert '"name": "http_get"' in normalized
+    assert "```python" not in normalized
+    assert "WRONG_TOOL_FORMAT" not in normalized
+
+
+def test_flat_dict_tool_call_is_normalized_silently() -> None:
+    response = (
+        "```python\n"
+        "{'name': 'http_get', 'url': 'https://example.test/', 'timeout': 7}\n"
+        "```"
+    )
+
+    normalized, count = _normalize_tool_call_response(response)
+
+    assert count == 1
+    assert '"args": {"url": "https://example.test/", "timeout": 7}' in normalized
+    assert "AUTO_FIX" not in normalized
+
+
+def _code_test_terminal() -> BingoTerminal:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.console = _Console()
+    terminal.config = SimpleNamespace(lang="en")
+    terminal.s = get_strings("en")
+    terminal.history = []
+    terminal._agent_stop_flag = threading.Event()
+    terminal._hint_input_active = threading.Event()
+    terminal._active_tool_thread = None
+    return terminal
+
+
+def test_dict_tool_call_executes_without_autofix_warning(monkeypatch) -> None:
+    terminal = _code_test_terminal()
+    monkeypatch.setitem(
+        TOOL_REGISTRY,
+        "silent_dict_probe",
+        lambda value="": {
+            "success": True,
+            "completed": True,
+            "exit_code": 0,
+            "output": f"value={value}",
+        },
+    )
+
+    results = terminal._run_code_blocks(
+        "```python\n{'name':'silent_dict_probe','args':{'value':'ok'}}\n```",
+        set(),
+    )
+
+    visible = "\n".join(terminal.console.messages)
+    assert results and "value=ok" in results[0]
+    assert "WRONG_TOOL_FORMAT" not in visible
+    assert "AUTO_FIX" not in visible
+
+
+def test_unrepairable_bash_error_is_internal_not_visible() -> None:
+    terminal = _code_test_terminal()
+    response = (
+        "```bash\n"
+        "curl -sk https://example.test/ > /tmp/home.html\n"
+        "scripts = re.findall(\n"
+        "```"
+    )
+
+    results = terminal._run_code_blocks(response, set())
+
+    visible = "\n".join(terminal.console.messages)
+    assert results and "INTERNAL_AUTO_REPAIR_REQUIRED" in results[0]
+    assert "syntax preflight" not in visible.lower()
+    assert "语法预检" not in visible
+
+
+def test_python_suffix_inside_bash_is_wrapped_before_preflight() -> None:
+    script = (
+        "curl -sk https://example.test/ > /tmp/home.html\n"
+        "text = open('/tmp/home.html', encoding='utf-8').read()\n"
+        "scripts = re.findall(r'src=[\\\"\\\']([^\\\"\\\']+)', text, re.I)\n"
+        "print('\\n'.join(scripts))"
+    )
+
+    repaired, changed = _repair_mixed_bash_python(script)
+
+    assert changed is True
+    assert "python3 << 'BINGO_PY_AUTO'" in repaired
+    assert "import re" in repaired
+    import subprocess
+    checked = subprocess.run(["bash", "-n"], input=repaired, text=True, capture_output=True)
+    assert checked.returncode == 0, checked.stderr
 
 
 def test_custom_sqli_oracle_executes_instead_of_being_blocked() -> None:

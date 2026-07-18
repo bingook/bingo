@@ -44,6 +44,167 @@ from ..i18n import t
 from ..proxy import ProxyManager
 
 
+def _tool_call_from_mapping(
+    value: object,
+    known_tools: set[str],
+    *,
+    allow_flat: bool = False,
+) -> str | None:
+    """Convert a model-emitted tool mapping to Bingo's canonical wire format."""
+    if not isinstance(value, dict):
+        return None
+    name = value.get("tool") or value.get("tool_name") or value.get("name")
+    if not isinstance(name, str) or name not in known_tools:
+        return None
+    has_explicit_args = "args" in value or "arguments" in value or "parameters" in value
+    # A generic API response may legitimately contain a top-level ``name``.
+    # Require an argument wrapper unless the mapping explicitly says ``tool``.
+    if "tool" not in value and "tool_name" not in value and not has_explicit_args and not allow_flat:
+        return None
+    if has_explicit_args:
+        args = value.get("args", value.get("arguments", value.get("parameters", {})))
+    else:
+        args = {
+            key: item
+            for key, item in value.items()
+            if key not in {"tool", "tool_name", "name"}
+        }
+    if not isinstance(args, dict):
+        args = {}
+    import json
+    return "TOOL_CALL:" + json.dumps({"name": name, "args": args}, ensure_ascii=False)
+
+
+def _normalize_tool_call_response(response: str) -> tuple[str, int]:
+    """Silently normalize fenced dict/XML tool calls before execution parsing."""
+    import ast
+    import json
+    import re
+
+    try:
+        from ..tools_ext.pentest_tools import TOOL_REGISTRY
+        known_tools = set(TOOL_REGISTRY)
+    except Exception:
+        known_tools = set()
+    if not known_tools:
+        return response, 0
+
+    converted = 0
+
+    def _parse_mapping(raw: str) -> object | None:
+        try:
+            return json.loads(raw)
+        except Exception:
+            try:
+                return ast.literal_eval(raw)
+            except Exception:
+                return None
+
+    # The common failure mode is a Python/JSON fenced block containing only a
+    # tool mapping. Replace the entire block so it is never treated as code.
+    fence_pattern = re.compile(
+        r"```(?:python|json)?[ \t]*\n(?P<body>.*?)```",
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    def _replace_fence(match: re.Match) -> str:
+        nonlocal converted
+        call = _tool_call_from_mapping(
+            _parse_mapping(match.group("body").strip()),
+            known_tools,
+            allow_flat=True,
+        )
+        if call is None:
+            return match.group(0)
+        converted += 1
+        return call
+
+    response = fence_pattern.sub(_replace_fence, response)
+
+    # Also accept a response that consists solely of a dict-form tool call.
+    stripped = response.strip()
+    if not re.search(r"TOOL_CALL\s*:", stripped):
+        call = _tool_call_from_mapping(_parse_mapping(stripped), known_tools, allow_flat=True)
+        if call is not None:
+            return call, converted + 1
+    return response, converted
+
+
+def _repair_mixed_bash_python(script: str) -> tuple[str, bool]:
+    """Wrap a valid Python suffix accidentally emitted inside a Bash block."""
+    import ast
+    import re
+
+    lines = script.splitlines()
+    if len(lines) < 2:
+        return script, False
+
+    protected: set[int] = set()
+    heredoc_end: str | None = None
+    python_quote: str | None = None
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if heredoc_end is not None:
+            protected.add(index)
+            if stripped == heredoc_end:
+                heredoc_end = None
+            continue
+        if python_quote is not None:
+            protected.add(index)
+            if stripped in {python_quote, python_quote + ";"}:
+                python_quote = None
+            continue
+        heredoc = re.search(r"\bpython3?\s+<<\s*['\"]?(\w+)['\"]?\s*$", line)
+        if heredoc:
+            heredoc_end = heredoc.group(1)
+            protected.add(index)
+            continue
+        inline = re.search(r"\bpython3?\s+-c\s+(['\"])", line)
+        if inline:
+            quote = inline.group(1)
+            remainder = line[inline.end():]
+            protected.add(index)
+            if quote not in remainder:
+                python_quote = quote
+
+    python_only = re.compile(
+        r"^(?:"
+        r"import\s+|from\s+\S+\s+import\s+|def\s+\w+\s*\(|class\s+\w+|"
+        r"try\s*:|except\b|finally\s*:|with\s+.+:|for\s+.+\s+in\s+.+:|"
+        r"if\s+.+:|elif\s+.+:|else\s*:|return\b|raise\b|assert\b|"
+        r"print\s*\(|[A-Za-z_]\w*(?:\[[^]]+\])?\s+=\s+|"
+        r"[A-Za-z_]\w*\s*,\s*[A-Za-z_]\w*\s*=\s+|"
+        r"(?:re|json|requests|httpx|os|sys)\."
+        r")"
+    )
+
+    for start, line in enumerate(lines):
+        if start in protected or not python_only.match(line.strip()):
+            continue
+        if start > 0 and lines[start - 1].rstrip().endswith("|"):
+            continue
+        python_source = "\n".join(lines[start:]).strip()
+        try:
+            ast.parse(python_source)
+        except SyntaxError:
+            continue
+        imports: list[str] = []
+        for module in ("re", "json", "os", "sys"):
+            if re.search(rf"\b{module}\.", python_source) and not re.search(
+                rf"(?:^|\n)\s*(?:import\s+[^\n]*\b{module}\b|from\s+{module}\s+import\b)",
+                python_source,
+            ):
+                imports.append(f"import {module}")
+        if imports:
+            python_source = "\n".join(imports) + "\n" + python_source
+        marker = "BINGO_PY_AUTO"
+        while marker in script:
+            marker += "_X"
+        wrapped = lines[:start] + [f"python3 << '{marker}'", python_source, marker]
+        return "\n".join(wrapped), True
+    return script, False
+
+
 class _ToolThreadOutput:
     """Forward output except for one muted tool thread.
 
@@ -5641,6 +5802,7 @@ class BingoTerminal:
                 text = _xml_tc_pat.sub(_replace_tc, text)
             return text
         response = _convert_xml_toolcall(response)
+        response, _silent_tool_fixes = _normalize_tool_call_response(response)
 
         # v5.2.0 ── TOOL_CALL 파서 (bash 블록 처리 이전에 실행)
         # 형식: TOOL_CALL:{"name":"sqli_timebased","args":{"url":"...","param":"id"}}
@@ -5794,14 +5956,11 @@ class BingoTerminal:
                         import os as _os
                         if _os.environ.get("BINGO_DEBUG"):
                             self.console.print(f"[dim red]  [TOOL_CALL DEBUG] raw={_raw_json!r}[/dim red]")
-                        self.console.print(
-                            f"[{THEME['error']}]⚠ TOOL_CALL JSON parse error: {_je}[/]"
-                        )
+                            self.console.print(f"[dim red]TOOL_CALL JSON parse error: {_je}[/dim red]")
                         continue
-                    # 복구 성공
-                    self.console.print(
-                        f"[{THEME['warn']}]{self.s.get('tool_call_json_recovered', '⚠ TOOL_CALL JSON auto-recovered ({name})').format(name=_tool_name)}[/]"
-                    )
+                    # 복구 성공은 정상 실행 경로로 취급한다. 상세 정보는 디버그에서만 노출.
+                    if __import__("os").environ.get("BINGO_DEBUG"):
+                        self.console.print(f"[dim]TOOL_CALL JSON recovered: {_tool_name}[/dim]")
 
                 if _tools_executed >= _MAX_TOOLS_PER_TURN:
                     _deferred_names.append(_tool_name or "?")
@@ -6098,92 +6257,6 @@ class BingoTerminal:
                     "response_bytes": sum(len(item) for item in tool_results),
                 }
                 return tool_results
-        # ══════════════════════════════════════════════════════════════════════
-        # v6.2.152 Type A 자동교정기: AI가 잘못된 dict 형식으로 tool call 시도 시
-        # 자동으로 TOOL_CALL 형식으로 변환하여 즉시 실행 (경고만 출력 → 실행까지)
-        # 패턴 1: {"tool": "waf_detect", "args": {...}}
-        # 패턴 2: {"tool": "waf_detect", "url": "...", ...}  (args 래퍼 없는 flat dict)
-        # ══════════════════════════════════════════════════════════════════════
-        import re as _wtf_re, json as _wtf_json
-        # 전체 dict 블록 추출 (중첩 고려 위해 brace-counting)
-        def _extract_dict_tool_calls(text: str) -> list[str]:
-            """응답 텍스트에서 {"tool": "..."} 패턴의 dict 블록 전체를 추출."""
-            _blocks = []
-            _i = 0
-            while _i < len(text):
-                if text[_i] == '{':
-                    _depth = 0
-                    _start = _i
-                    while _i < len(text):
-                        if text[_i] == '{':
-                            _depth += 1
-                        elif text[_i] == '}':
-                            _depth -= 1
-                            if _depth == 0:
-                                _blocks.append(text[_start:_i+1])
-                                break
-                        _i += 1
-                _i += 1
-            return _blocks
-
-        _wtf_known_tools: set[str] = set()
-        try:
-            from ..tools_ext.pentest_tools import TOOL_REGISTRY as _TR
-            _wtf_known_tools = set(_TR.keys()) if _TR else set()
-        except Exception:
-            pass
-        _wtf_known_tools |= {
-            "http_get","run_python","run_bash","waf_detect","web_tech_detect",
-            "dir_fuzz","sqli_autoexploit","bool_oracle_extract","detect_waf",
-            "waf_sqli_db","sqli_timebased","analyze_response_lang","http_post",
-            "crack_hash","check_login","find_admin","port_scan","subdomain_scan",
-            "js_secret_scan","api_fuzz","ssrf_check","lfi_check","rce_check",
-        }
-
-        _wtf_converted: list[str] = []  # 변환된 TOOL_CALL 문자열 목록
-
-        for _blk in _extract_dict_tool_calls(response):
-            try:
-                # 작은따옴표 → 큰따옴표 변환 후 파싱 시도
-                _blk_norm = _blk.replace("'", '"')
-                _parsed = _wtf_json.loads(_blk_norm)
-            except Exception:
-                try:
-                    import ast as _wtf_ast
-                    _parsed = _wtf_ast.literal_eval(_blk)
-                except Exception:
-                    continue
-
-            if not isinstance(_parsed, dict):
-                continue
-            _tool_name = _parsed.get("tool") or _parsed.get("name") or _parsed.get("tool_name")
-            if not _tool_name or _tool_name not in _wtf_known_tools:
-                continue
-
-            # args 추출: "args" 키가 있으면 그대로, 없으면 tool/name 제외 나머지 키
-            _args = _parsed.get("args") or _parsed.get("arguments") or {}
-            if not _args:
-                _args = {k: v for k, v in _parsed.items()
-                         if k not in ("tool", "name", "tool_name", "args", "arguments")}
-
-            _tc_str = _wtf_json.dumps({"name": _tool_name, "args": _args}, ensure_ascii=False)
-            _wtf_converted.append(f"TOOL_CALL:{_tc_str}")
-
-        if _wtf_converted:
-            self.console.print(
-                f"[{THEME['warn']}]"
-                f"{self.s.get('wrong_tool_format_autofix', '⚠ [WRONG_TOOL_FORMAT→AUTO_FIX] auto-converted {n} dict-format tool call(s) and executing').format(n=len(_wtf_converted))}"
-                f"[/]"
-            )
-            # 변환된 TOOL_CALL 문자열을 response에 추가하여 아래 TOOL_CALL 처리 블록에서 실행
-            response = response + "\n" + "\n".join(_wtf_converted)
-        elif _wtf_re.search(r'["\']tool["\']\s*:\s*["\']', response):
-            # 알 수 없는 도구명 — 경고만 출력
-            self.console.print(
-                f"[{THEME['error']}]"
-                f"{self.s.get('wrong_tool_format_unknown', '⚠ [WRONG_TOOL_FORMAT] dict-format tool call detected (unknown tool — ignored)')}"
-                f"[/]"
-            )
         # ══════════════════════════════════════════════════════════════════════
         # TOOL_CALL 없음 → 기존 bash 블록 처리로 진행 (하위 호환)
         # ══════════════════════════════════════════════════════════════════════
@@ -7401,6 +7474,7 @@ class BingoTerminal:
         import shlex as _shlex_bash
         for _bash_i, block in enumerate(bash_blocks):
             script = _repair_python_regex_quotes(block.strip())
+            script, _mixed_python_fixed = _repair_mixed_bash_python(script)
             if not script:
                 continue
             # 첫 번째 실행 명령 추출 (파이프 앞 부분, 주석 제외)
@@ -7449,9 +7523,6 @@ class BingoTerminal:
             _heredoc_end = None     # heredoc 종료 마커
             _cleaned_lines = []
             _removed_any = False
-            _bclean_lang = getattr(self.config, "lang", "en")
-            _bclean_s = get_strings(_bclean_lang)
-            _bclean_msg = _bclean_s.get("bash_cleanup_py_removed", "⚠ [BASH CLEANUP] Standalone Python statement removed")
             for _bline in script.splitlines():
                 _bstripped = _bline.strip()
                 # heredoc 내부 → Python 코드 그대로 보존
@@ -7487,9 +7558,6 @@ class BingoTerminal:
                     continue
                 # 최상위 bash 레벨에서만 Python 전용 구문 제거
                 if _bstripped and _PY_ONLY_RE.match(_bstripped):
-                    self.console.print(
-                        f"[{THEME['warn']}]{_bclean_msg}: {_bstripped[:60]}[/]"
-                    )
                     _removed_any = True
                     continue
                 _cleaned_lines.append(_bline)
@@ -7508,11 +7576,6 @@ class BingoTerminal:
             )
             if _bash_check.returncode != 0:
                 _syntax_detail = (_bash_check.stderr or "bash syntax error").strip()[:240]
-                _syntax_msg = self.s.get(
-                    "bash_syntax_preflight_blocked",
-                    "Bash syntax preflight blocked execution; rewrite with run_python",
-                )
-                self.console.print(f"[{THEME['warn']}]{_syntax_msg}: {_syntax_detail}[/]")
                 _hallucination_msgs.append(
                     f"BASH_SYNTAX_PREFLIGHT_FAILED: {_syntax_detail}. "
                     "Use TOOL_CALL run_python for HTML/regex parsing."
@@ -7615,6 +7678,13 @@ class BingoTerminal:
             })
 
         if not tasks:
+            if _hallucination_msgs:
+                return [
+                    "[INTERNAL_AUTO_REPAIR_REQUIRED]\n"
+                    + "\n".join(_hallucination_msgs)
+                    + "\nRegenerate the operation as canonical TOOL_CALL run_python or valid Bash. "
+                    "Do not explain the correction and do not repeat the malformed block."
+                ]
             return []
 
         # ── 병렬 실행 ────────────────────────────────────────────────

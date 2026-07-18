@@ -29,6 +29,27 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
+
+def _board_value_anchored(value: Any, exec_output: str) -> bool:
+    """Accept blackboard facts only when their concrete value is in real output."""
+    if not exec_output.strip():
+        return False
+    if isinstance(value, (str, int, float, bool)):
+        token = str(value).strip()
+        return len(token) >= 3 and token.lower() in exec_output.lower()
+    if isinstance(value, dict):
+        concrete = [str(item).strip() for item in value.values() if str(item).strip()]
+        return bool(concrete) and all(item.lower() in exec_output.lower() for item in concrete)
+    if isinstance(value, (list, tuple, set)):
+        concrete = [str(item).strip() for item in value if str(item).strip()]
+        return bool(concrete) and all(item.lower() in exec_output.lower() for item in concrete)
+    return False
+
+
+def _goal_completion_allowed(goal_done: bool, exec_output: str, evidence_blocked: bool) -> bool:
+    """A model completion flag is advisory until execution returned evidence."""
+    return bool(goal_done and exec_output.strip() and not evidence_blocked)
+
 # ── 결정용 시스템 프롬프트 ──────────────────────────────────────────────
 def _get_orch_system(lang: str = "ko") -> str:
     """Return the orchestrator system prompt with language-appropriate command examples."""
@@ -213,7 +234,7 @@ class OrchestratorEngine:
     # ── 시작 / 중지 ────────────────────────────────────────────────────
     def start(
         self,
-        send_fn: Callable[[str], None],
+        send_fn: Callable[[str], Any],
         console: Any,
     ) -> None:
         if self.running:
@@ -471,17 +492,14 @@ Respond ONLY in JSON."""
                     )
                     continue
 
-            # 5. Blackboard 업데이트
-            for k, v in board_upd.items():
-                board.upsert(str(k), v)
-                _print(f"[dim]  📌 board ← {k}: {v}[/dim]")
+            # 5. Blackboard 업데이트는 실제 실행 증거 확인 후 지연 적용한다.
 
             # 6. AttackChain 기록
             chain.add(step_type, action, detail=reason, target=self._target)
 
             # 7. 로그 저장
             orch_step = OrchStep(
-                self._step, action, step_type, reason, command, conf, goal_done
+                self._step, action, step_type, reason, command, conf, False
             )
             self._log.append(orch_step)
 
@@ -505,6 +523,7 @@ Respond ONLY in JSON."""
                     pass
 
             # 8. 실제 명령 실행
+            _exec_result = ""
             if command and not self._stop_evt.is_set():
                 # ── 타겟 URL 하드 주입 guardrail ──────────────────────────────
                 # LLM이 command에 타겟 URL을 빠뜨린 경우 강제로 삽입.
@@ -518,27 +537,25 @@ Respond ONLY in JSON."""
                     command = _target_prefix + command
                 _cmd_disp = f"{command[:120]}..." if len(command) > 120 else command
                 _print(f"[cyan]{_s.get('orch_ui_executing', '▶ Executing: {cmd}').format(cmd=_cmd_disp)}[/cyan]")
-                _exec_result = str(raw_decision) if raw_decision else ""
                 try:
-                    send_fn(command)
+                    _send_result = send_fn(command)
+                    if _send_result is not None:
+                        _exec_result = str(_send_result)
                 except Exception as e:
                     self._error = str(e)
                     _print(f"[red]{_s.get('orch_ui_exec_error', '❌ Execution error: {err}').format(err=e)}[/red]")
-
-                # ── v4.1.0: ZeroHal FactRegistry에 실행 결과 사전 등록 ────────
-                # decision 자체를 exec_output 대용으로 등록 (action/reason에 숫자 포함 시)
-                if _zh_engine is not None:
-                    _zh_engine.register_exec(raw_decision)
 
                 # ★ v3.5.15: send_fn 완료 후 정지 요청 확인 → 즉시 루프 탈출
                 if self._stop_evt.is_set():
                     break
 
             # ── v4.1.0: decision LLM 응답에 ZeroHal 검증 적용 ────────────────
+            _evidence_gate_blocked = False
             if _zh_engine is not None and raw_decision:
                 try:
-                    _zh_result = _zh_engine.process(raw_decision, exec_output=action)
+                    _zh_result = _zh_engine.process(raw_decision, exec_output=_exec_result)
                     if _zh_result.blocked:
+                        _evidence_gate_blocked = True
                         _print(
                             f"[red]{_s.get('zerohal_blocked', '⛔ [ZERO-HAL] Blocked: {reason}').format(reason=_zh_result.block_reason)}[/red]"
                         )
@@ -547,7 +564,7 @@ Respond ONLY in JSON."""
                             f"[yellow][ZERO-HAL WARN] {_zh_result.inject_message[:120]}[/yellow]"
                         )
                 except Exception:
-                    pass
+                    _evidence_gate_blocked = True
 
             # ── v4.3.0: ExecutionAnchor — 추측 언어 + 기술 주장 하드 차단 ─────
             if _exec_anchor is not None and raw_decision:
@@ -557,6 +574,7 @@ Respond ONLY in JSON."""
                         exec_output=_exec_result if command else "",
                     )
                     if _anchor_result.blocked:
+                        _evidence_gate_blocked = True
                         _print(
                             f"[bold red]{_s.get('anchor_blocked', '⛔ [EXEC-ANCHOR] 0-환각 위반 차단: {reason}').format(reason=_anchor_result.block_reason)}[/bold red]"
                         )
@@ -564,8 +582,22 @@ Respond ONLY in JSON."""
                             _print(
                                 f"[dim]{_anchor_result.inject_message[:200]}[/dim]"
                             )
+                    elif _anchor_result.warned and _anchor_result.inject_message:
+                        _print(f"[yellow]{_anchor_result.inject_message[:200]}[/yellow]")
                 except Exception:
-                    pass
+                    _evidence_gate_blocked = True
+
+            # Apply only board values that were observed in the actual execution output.
+            if not _evidence_gate_blocked:
+                for k, v in board_upd.items():
+                    if _board_value_anchored(v, _exec_result):
+                        board.upsert(str(k), v)
+                        _print(f"[dim]  📌 board ← {k}: {v}[/dim]")
+
+            goal_done = _goal_completion_allowed(
+                goal_done, _exec_result, _evidence_gate_blocked
+            )
+            orch_step.goal_achieved = goal_done
 
             # 9. 목표 달성 확인
             if goal_done:

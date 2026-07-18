@@ -2993,6 +2993,46 @@ class BingoTerminal:
             # AI 응답에 해시가 있으면 자동 크랙 알림
             self._notify_hashes_found(full_response)
 
+    @staticmethod
+    def _sanitize_preexecution_claims(text: str) -> str:
+        """Downgrade pre-execution narrative claims while preserving code exactly."""
+        import re as _pre_re
+
+        claim_pattern = _pre_re.compile(
+            r'(?:SQLi?|SQL\s*injection|XSS|RCE|SSRF|IDOR|LFI|vulnerability|취약점|漏洞)'
+            r'.{0,80}(?:confirmed|verified|found|detected|successful|success|확인|발견|성공|已确认|确认|发现|成功)',
+            _pre_re.IGNORECASE,
+        )
+        credential_pattern = _pre_re.compile(
+            r'(?:username|password|passwd|hash|用户名|密码|아이디|비밀번호)\s*[:：]\s*\S+',
+            _pre_re.IGNORECASE,
+        )
+        certainty_tokens = _pre_re.compile(
+            r'\b(?:confirmed|verified|found|detected|successful|success)\b'
+            r'|확인됨|확인|발견됨|발견|성공|已确认|确认|发现|成功',
+            _pre_re.IGNORECASE,
+        )
+        parts = _pre_re.split(r'(```[\s\S]*?```)', text)
+        for index in range(0, len(parts), 2):
+            corrected: list[str] = []
+            for line in parts[index].splitlines(keepends=True):
+                ending = "\n" if line.endswith("\n") else ""
+                content = line.rstrip("\r\n")
+                if credential_pattern.search(content):
+                    corrected.append(
+                        "[UNVERIFIED CREDENTIAL CLAIM REMOVED — awaiting execution evidence]"
+                        + ending
+                    )
+                elif claim_pattern.search(content):
+                    downgraded = certainty_tokens.sub(
+                        "candidate-pending-execution", content
+                    )
+                    corrected.append(f"[UNVERIFIED] {downgraded}{ending}")
+                else:
+                    corrected.append(line)
+            parts[index] = "".join(corrected)
+        return "".join(parts)
+
     def _intercept_text_hallucination(
         self,
         full_response: str,
@@ -3015,6 +3055,7 @@ class BingoTerminal:
 
         stripped = full_response.strip()
         _has_code_block = "```" in full_response
+        _narrative = _re.sub(r'```[\s\S]*?```', '', full_response)
 
         # ── 패턴 1: JSON plan 응답 감지 ──────────────────────────────────
         _is_json_plan = False
@@ -3061,9 +3102,8 @@ class BingoTerminal:
             r"(密码|password|passwd)\s*[:：].{3,30}",
             r"(密码哈希|hash|md5|sha1)\s*[:：]\s*[a-fA-F0-9\*]{20,}",
         ]
-        _has_fake_creds = (
-            not _has_code_block
-            and any(_re.search(p, full_response, _re.IGNORECASE) for p in _cred_patterns)
+        _has_fake_creds = any(
+            _re.search(p, _narrative, _re.IGNORECASE) for p in _cred_patterns
         )
 
         # ── 패턴 4: 증거 없는 결론 (코드블록 없이 공격 성공/취약점 발견 주장) ──
@@ -3083,10 +3123,25 @@ class BingoTerminal:
             r"(获取|提取|拿到).{0,20}(密码|账号|凭证|数据库|hash)",
             r"(注入成功|绕过成功|攻击成功|漏洞确认)",
         ]
-        _has_unproven_conclusion = (
-            not _has_code_block
-            and any(_re.search(p, full_response, _re.IGNORECASE) for p in _conclusion_patterns)
+        _has_unproven_conclusion = any(
+            _re.search(p, _narrative, _re.IGNORECASE) for p in _conclusion_patterns
         )
+
+        # A valid attack block must not be discarded because its preamble
+        # overclaimed success. Downgrade only the narrative, then execute the
+        # original code through the normal evidence pipeline.
+        if (
+            _has_code_block
+            and (_has_fake_creds or _has_unproven_conclusion)
+            and not _is_json_plan
+            and not _is_confession
+        ):
+            message = self.s.get(
+                "preexecution_claim_downgraded",
+                "Pre-execution claim downgraded; attack code will still run",
+            )
+            self.console.print(f"[{THEME['warn']}]{message}[/]")
+            return self._sanitize_preexecution_claims(full_response)
 
         # ── 환각 감지 시 차단 및 강제 재실행 요구 ────────────────────────
         _reasons = []
@@ -7228,7 +7283,7 @@ class BingoTerminal:
                     "print(t[:1500])\n"
                     "\"\n"
                     "```\n"
-                    "NO Python blocks. NO JSON. Use bash+curl ONLY."
+                    "Use runnable bash+curl or TOOL_CALL run_python. Do not return fake JSON results."
                 )
             return [_hall_feedback]
 
@@ -9002,6 +9057,9 @@ class BingoTerminal:
                 execution_context=getattr(self, "_last_execution_context", None),
             )
             verification_context = self._verification_backlog_context()
+            adaptive_pivot_context = self._adaptive_attack_pivot_context(
+                current_response, raw_results
+            )
             if len(raw_results) > 3000:
                 trimmed = (
                     raw_results[:1500]
@@ -9019,7 +9077,7 @@ class BingoTerminal:
 
             self._parse_agent_state(raw_results)
             state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
-            state_summary += verification_context
+            state_summary += verification_context + adaptive_pivot_context
             # v3.2.74: 프록시 상태를 state_summary에 포함
             if self._proxy.enabled:
                 _pe = self._proxy.current()
@@ -10475,6 +10533,151 @@ class BingoTerminal:
             )
         lines.append("[/AUTO_VERIFICATION_QUEUE]\n")
         return "\n".join(lines)
+
+    def _adaptive_attack_pivot_context(self, code: str, output: str) -> str:
+        """Pivot after repeated inconclusive attempts without dropping candidates."""
+        import re as _pivot_re
+
+        blob = f"{code}\n{output}".lower()
+        vector_patterns = [
+            ("sqli", r'sqli|sql\s*inject|union\s+(?:all\s+)?select|sleep\s*\(|sqlmap|ghauri|boolean.?oracle'),
+            ("xss", r'\bxss\b|<script|onerror\s*=|javascript\s*:'),
+            ("ssrf", r'\bssrf\b|169\.254\.169\.254|metadata\.google|gopher://'),
+            ("lfi", r'\blfi\b|path.?travers|\.\./\.\./|/etc/passwd'),
+            ("rce", r'\brce\b|command.?inject|cmdi|whoami|uid=\d+\('),
+            ("idor", r'\bidor\b|bola|other_user_id|horizontal.?privilege'),
+            ("auth", r'auth.?bypass|login.?bypass|session.?fix|jwt'),
+        ]
+        vector = next(
+            (name for name, pattern in vector_patterns if _pivot_re.search(pattern, blob, _pivot_re.I)),
+            "",
+        )
+        if not vector:
+            return ""
+
+        profiles = {
+            "sqli": [
+                ("built_in_auto", "sqli_autoexploit with preserved URL/method/param/session"),
+                ("error", "DB-specific error probes with negative controls"),
+                ("boolean", "stable TRUE/FALSE oracle with repeated samples"),
+                ("time", "baseline plus 3+ time-delay samples"),
+                ("union", "UNION column-count and typed extraction"),
+                ("custom_oracle", "custom run_python oracle with calibration"),
+                ("external", "sqlmap and ghauri using the same request/session/tamper profile"),
+            ],
+            "xss": [
+                ("reflection", "context-aware reflection probe"),
+                ("attribute", "attribute/event-handler context breakout"),
+                ("dom", "DOM sink/source tracing with browser execution"),
+                ("stored", "stored-XSS write/read verification"),
+                ("browser", "xss_autotest plus Playwright dialog proof"),
+            ],
+            "ssrf": [
+                ("direct", "direct internal URL with baseline comparison"),
+                ("redirect", "same-host redirect chain to internal address"),
+                ("encoding", "IPv6/dword/octal/DNS address variants"),
+                ("oob", "DNS/HTTP out-of-band callback verification"),
+                ("protocol", "gopher/file protocol capability checks"),
+            ],
+            "lfi": [
+                ("traversal", "depth and encoding traversal matrix"),
+                ("wrapper", "language wrapper/filter variants"),
+                ("log", "log/session file inclusion verification"),
+                ("tool", "lfi_autotest with exact file signatures"),
+            ],
+            "rce": [
+                ("canary", "unique command canary with negative control"),
+                ("separator", "shell separator and newline variants"),
+                ("blind", "time and out-of-band command proof"),
+                ("tool", "cmdi_autotest with OS-specific payloads"),
+            ],
+            "idor": [
+                ("object", "same endpoint with controlled object-ID changes"),
+                ("session", "two-session owner/non-owner comparison"),
+                ("method", "GET/POST/PUT method and body-location variants"),
+                ("tool", "idor_autotest with response-structure comparison"),
+            ],
+            "auth": [
+                ("session", "authenticated vs unauthenticated session control"),
+                ("parameter", "role/user parameter and mass-assignment checks"),
+                ("token", "JWT algorithm/key/claim validation"),
+                ("workflow", "password-reset and OAuth state/redirect checks"),
+            ],
+        }
+
+        if vector == "sqli":
+            technique_checks = [
+                ("external", r'\bsqlmap\b|\bghauri\b'),
+                ("custom_oracle", r'def\s+(?:oracle|extract_)|string\.printable'),
+                ("union", r'union\s+(?:all\s+)?select'),
+                ("time", r'sleep\s*\(|benchmark\s*\(|waitfor\s+delay'),
+                ("boolean", r'1\s*=\s*1|true.{0,30}false|boolean.?oracle'),
+                ("error", r'extractvalue|updatexml|sqlstate|ora-\d+'),
+                ("built_in_auto", r'sqli_autoexploit|bool_oracle_extract'),
+            ]
+        else:
+            technique_checks = [
+                (name, _pivot_re.escape(name)) for name, _ in profiles[vector]
+            ]
+        technique = next(
+            (name for name, pattern in technique_checks if _pivot_re.search(pattern, blob, _pivot_re.I)),
+            profiles[vector][0][0],
+        )
+
+        # Type-specific proof or an already confirmed finding ends the pivot cycle.
+        finding_types = {
+            "auth": {"auth", "auth_bypass"},
+            "idor": {"idor", "auth_bypass"},
+        }.get(vector, {vector})
+        confirmed = any(
+            getattr(finding, "vuln_type", "") in finding_types
+            and getattr(finding, "confidence", "") == "confirmed"
+            for finding in getattr(getattr(self, "_findings_exporter", None), "findings", [])
+        )
+        proof_patterns = {
+            "sqli": r'\[SQLI_CONFIRMED\]|SQLSTATE\[|ORA-\d{4,}|\[TIME_BASED\][^\n]*samples=(?:[3-9]|\d{2,})',
+            "xss": r'XSS_BROWSER_CONFIRMED|browser execution confirmed',
+            "ssrf": r'AccessKeyId|ami-id|metadata-flavor\s*:\s*google',
+            "lfi": r'(?:^|\n)root:x:0:0:',
+            "rce": r'uid=\d+\([^)]+\).*gid=\d+|RCE_CANARY_',
+            "idor": r'IDOR_CONTROL_VERIFIED',
+            "auth": r'LOGIN_CONTROL_VERIFIED|login_verified\s*=\s*true',
+        }
+        if confirmed or _pivot_re.search(proof_patterns[vector], output, _pivot_re.I):
+            state = getattr(self, "_adaptive_attack_state", {})
+            state.pop(vector, None)
+            self._adaptive_attack_state = state
+            return ""
+
+        state = getattr(self, "_adaptive_attack_state", None)
+        target = getattr(self, "_agent_state", {}).get("target", "")
+        if not isinstance(state, dict) or state.get("_target") != target:
+            state = {"_target": target}
+            self._adaptive_attack_state = state
+        vector_state = state.setdefault(vector, {"counts": {}, "tried": set()})
+        vector_state["tried"].add(technique)
+        count = vector_state["counts"].get(technique, 0) + 1
+        vector_state["counts"][technique] = count
+        if count < 2 or count % 2:
+            return ""
+
+        next_name, next_action = next(
+            (
+                (name, action)
+                for name, action in profiles[vector]
+                if name not in vector_state["tried"]
+            ),
+            profiles[vector][0],
+        )
+        vector_state["tried"].add(next_name)
+        return (
+            "\n[ADAPTIVE_OFFENSE_PIVOT]\n"
+            f"vector={vector} previous={technique} attempts={count} next={next_name}\n"
+            f"ACTION: {next_action}.\n"
+            "Preserve the candidate, target, endpoint, parameter, session, headers, and controls. "
+            "Change technique now; do not repeat the same request and do not stop exploration.\n"
+            "[/ADAPTIVE_OFFENSE_PIVOT]\n"
+        )
 
     def _auto_analyze_findings(
         self,
@@ -13708,8 +13911,16 @@ class BingoTerminal:
                 lang      = _cur_lang,
             )
             set_global_orchestrator(eng)
+
+            def _orchestrator_send(command: str) -> str:
+                # Return only fresh execution output; never let the orchestrator
+                # treat its own decision text as evidence.
+                self._last_exec_result = ""
+                self._send_message(command)
+                return self._last_exec_result
+
             eng.start(
-                send_fn = self._send_message,
+                send_fn = _orchestrator_send,
                 console = self.console,
             )
             self._success(

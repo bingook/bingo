@@ -8,12 +8,18 @@ from types import SimpleNamespace
 from bingo.ui.terminal import BingoTerminal
 from bingo.tools.findings_exporter import FindingsExporter
 from bingo.tools.playwright_engine import PlaywrightEngine
+from bingo.core.execution_anchor import ExecutionAnchorEngine, _has_exec_evidence
+from bingo.core.zero_hal_v5 import ZeroHalEngine
+from bingo.models.system_prompt import get_pentest_system_prompt
+from bingo.orchestrator.engine import _board_value_anchored, _goal_completion_allowed
 from bingo.tools_ext import autoexploit_modules
 from bingo.tools_ext.pentest_tools import (
     TOOL_REGISTRY,
+    _fix_bash_script,
     _inject_post_exploit_notice,
     _inject_sqli_trigger_notice,
     execute_tool,
+    run_python,
     ssrf_chain_exploit,
 )
 
@@ -26,6 +32,128 @@ class _Console:
 
     def print(self, *args, **_kwargs) -> None:
         self.messages.append(" ".join(str(arg) for arg in args))
+
+
+def test_attack_hypothesis_is_warned_but_not_blocked() -> None:
+    engine = ExecutionAnchorEngine(session_target="https://example.test", lang="en")
+
+    result = engine.check("There might be SQLi in the id parameter; test both controls.")
+
+    assert not result.blocked
+    assert result.warned
+    assert result.block_reason == "HYPOTHESIS_REQUIRES_TEST"
+
+
+def test_unexecuted_definite_claim_is_blocked() -> None:
+    engine = ExecutionAnchorEngine(session_target="https://example.test", lang="en")
+
+    result = engine.check("SQLi confirmed and exploitable.")
+
+    assert result.blocked
+    assert result.block_reason == "UNEXECUTED_CLAIM"
+    assert not _has_exec_evidence("code: requests.get(url); print(r.status_code)")
+
+
+def test_zero_hal_requires_type_specific_claim_evidence() -> None:
+    generic = ZeroHalEngine(session_target="https://example.test", lang="en")
+    rejected = generic.process("RCE confirmed", "HTTP/1.1 200 OK\nServer: Apache")
+
+    proven = ZeroHalEngine(session_target="https://example.test", lang="en")
+    accepted = proven.process(
+        "RCE confirmed",
+        "HTTP/1.1 200 OK\nuid=33(www-data) gid=33(www-data)",
+    )
+
+    assert rejected.blocked
+    assert rejected.block_reason == "UNANCHORED_CLAIM"
+    assert not accepted.blocked
+
+
+def test_preexecution_claim_downgrade_preserves_attack_code() -> None:
+    code = "```python\nprint('probe')\n```"
+    response = "SQLi confirmed successfully.\n" + code
+
+    corrected = BingoTerminal._sanitize_preexecution_claims(response)
+
+    assert "[UNVERIFIED]" in corrected
+    assert "SQLi confirmed" not in corrected
+    assert code in corrected
+
+
+def test_custom_sqli_oracle_executes_instead_of_being_blocked() -> None:
+    result = run_python(
+        "import string\n"
+        "def extract_string():\n"
+        "    for c in string.printable:\n"
+        "        return c\n"
+        "print(extract_string())\n",
+        timeout=10,
+    )
+
+    assert result["success"] is True
+    assert "SQLI_CUSTOM_FALLBACK_EXECUTED" in result["output"]
+    assert "SQLI_LOOP_BLOCKED" not in result["output"]
+
+
+def test_external_sqli_fallback_command_is_preserved() -> None:
+    script = "sqlmap -u 'https://example.test/?id=1' -p id --batch --dbs"
+
+    assert _fix_bash_script(script) == script
+
+
+def test_direct_http_sqli_probe_is_not_transport_blocked(monkeypatch) -> None:
+    monkeypatch.setitem(
+        TOOL_REGISTRY,
+        "http_get",
+        lambda **_kwargs: {"success": True, "output": "HTTP/1.1 200 OK"},
+    )
+
+    result = execute_tool(
+        "http_get",
+        {"url": "https://example.test/item?id=1%20OR%201=1--"},
+    )
+
+    assert result["success"] is True
+    assert "HTTP_GET_SQLI_BLOCKED" not in result["output"]
+
+
+def test_system_prompt_ends_with_evidence_driven_offense_contract() -> None:
+    prompt = get_pentest_system_prompt("deepseek")
+
+    assert prompt.rstrip().endswith(
+        "Reports contain verified vulnerabilities only. Probable/potential candidates stay\n"
+        "   in the verification backlog and continue to drive attacks."
+    )
+    assert "sqlmap is PERMANENTLY BANNED" not in prompt
+
+
+def test_repeated_inconclusive_attack_automatically_pivots(tmp_path: Path) -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._agent_state = {"target": "https://example.test"}
+    terminal._findings_exporter = FindingsExporter(
+        target="https://example.test", output_dir=str(tmp_path)
+    )
+    code = 'TOOL_CALL:{"name":"sqli_autoexploit","args":{"url":"https://example.test/item","param":"id"}}'
+    output = "oracle inconclusive: same-size responses"
+
+    first = terminal._adaptive_attack_pivot_context(code, output)
+    second = terminal._adaptive_attack_pivot_context(code, output)
+
+    assert first == ""
+    assert "ADAPTIVE_OFFENSE_PIVOT" in second
+    assert "vector=sqli" in second
+    assert "next=error" in second
+    assert "do not stop exploration" in second
+
+
+def test_orchestrator_rejects_self_authored_evidence_and_completion() -> None:
+    actual = "HTTP/1.1 200 OK\n[CREDENTIAL] admin:real-secret"
+
+    assert _board_value_anchored("admin:real-secret", actual)
+    assert not _board_value_anchored("admin:invented-secret", actual)
+    assert not _goal_completion_allowed(True, "", False)
+    assert not _goal_completion_allowed(True, actual, True)
+    assert _goal_completion_allowed(True, actual, False)
 
 
 def test_sqli_notice_ignores_descriptive_text_and_wrapper_elapsed() -> None:

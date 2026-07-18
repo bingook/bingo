@@ -861,6 +861,11 @@ _STRINGS = {
         "zh": "🔁 已保留候选项并加入独立验证队列",
         "en": "🔁 Candidate retained and queued for independent verification",
     },
+    "preexecution_claim_downgraded": {
+        "ko": "🔍 실행 전 확정 문구를 미확정 후보로 교정했습니다 — 공격 코드는 그대로 실행합니다",
+        "zh": "🔍 已将执行前的确认声明降级为待验证候选 — 攻击代码仍会执行",
+        "en": "🔍 Pre-execution claim downgraded to an unverified candidate — attack code will still run",
+    },
     "fe_xss_negative_autocorrected": {
         "ko": "🔍 [자동 교정] 브라우저 음성 검증 — XSS 후보를 발견 목록에서 제거",
         "zh": "🔍 [自动校正] 浏览器验证为阴性 — 已从发现列表移除 XSS 候选",

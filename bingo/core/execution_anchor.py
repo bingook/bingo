@@ -147,6 +147,29 @@ _TECH_CLAIM_PATTERNS: list[str] = [
 
 _COMPILED_TECH_CLAIMS = [re.compile(p, re.IGNORECASE) for p in _TECH_CLAIM_PATTERNS]
 
+_DEFINITE_CLAIM_PATTERNS = [
+    re.compile(
+        r'(?:SQLi?|SQL\s*injection|XSS|RCE|SSRF|IDOR|LFI|XXE|CSRF)'
+        r'.{0,50}(?:confirmed|verified|found|detected|exploitable|취약|확인|발견|存在|确认|发现)',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'(?:vulnerability|vuln|취약점|漏洞).{0,40}'
+        r'(?:confirmed|verified|found|detected|exists|확인|발견|존재|确认|发现|存在)',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'(?:attack|exploit|bypass|login|공격|우회|로그인|攻击|绕过|登录)'
+        r'.{0,40}(?:successful|succeeded|success|성공|成功)',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'(?:credential|password|hash|자격증명|비밀번호|凭据|密码)'
+        r'.{0,40}(?:extracted|obtained|found|추출|획득|발견|提取|获取|发现)',
+        re.IGNORECASE,
+    ),
+]
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 실행 증거 패턴 — exec_output에서 실제 실행 여부 확인
@@ -158,26 +181,11 @@ _EXEC_EVIDENCE_PATTERNS: list[str] = [
     r'HTTP/[12](?:\.\d)?\s+\d{3}',       # HTTP/1.1 200
     r'<Response\s*\[\d{3}\]>',           # <Response [200]>
     r'\bstatus_code\s*[=:]\s*\d{3}\b',   # status_code = 200
-    r'requests\.\w+\s*\(',               # requests.get(
-    r'\br\.status_code\b',               # r.status_code
-    r'\bresponse\.status_code\b',        # response.status_code
-    r'\bcurl\b.+https?://',              # curl https://...
-    r'\bwget\b.+https?://',              # wget https://...
-    r'发现\s*\d+\s*个',                   # 发现 N 个 (중국어)
-    r'발견\s*\d+\s*개',                   # 발견 N개 (한국어)
     r'\[\d+/\d+\]\s+\[',                 # [001/63] [200/...] (bingo 대량 스캔)
-    r'PAYLOAD\s*[=:]\s*\S+',             # PAYLOAD: xxx (주입 결과)
-    r'INJECT(?:ION)?\s*(?:OK|SUCCESS)',  # INJECTION OK
-    r'LOGIN\s*(?:OK|SUCCESS|200)',       # LOGIN OK
-    r'✅\s+(?:발견|확인|FOUND|CONFIRMED)',  # ✅ 발견
-    r'exec(?:uted|ution)?\s*[=:]\s*\w', # executed = True
-    r'Traceback\s*\(most\s*recent',      # Python 실행 오류 (실행 증거)
-    r'>>>\s*\w',                         # Python REPL 프롬프트 (실행 증거)
-    r'\$\s+(?:python|curl|wget)',        # 터미널 명령 실행 증거
     r'\bPORT\s+\d+\s+(?:OPEN|CLOSED)',  # PORT 80 OPEN (포트 스캔 결과)
     r'\[\d{3}\]\s+\d+\s+bytes',         # [200] 12345 bytes
-    r'Content-Type:\s+\S+',             # HTTP 응답 헤더 (실행 증거)
-    r'Server:\s+\S+',                   # Server: Apache (실행 증거)
+    r'---HTTP_STATUS:\d{3}---SIZE:\d+---TIME:',
+    r'=== TOOL_RESULT:[\s\S]{0,240}?exit_code=0',
 ]
 
 _COMPILED_EXEC_EVIDENCE = [re.compile(p, re.IGNORECASE) for p in _EXEC_EVIDENCE_PATTERNS]
@@ -197,6 +205,11 @@ def _has_tech_claim(text: str) -> bool:
         if pat.search(text):
             return True
     return False
+
+
+def _has_definite_claim(text: str) -> bool:
+    """Return True only for a claimed result, not an attack hypothesis."""
+    return any(pattern.search(text) for pattern in _DEFINITE_CLAIM_PATTERNS)
 
 
 def _has_exec_evidence(exec_output: str) -> bool:
@@ -313,8 +326,8 @@ class UnexecutedClaimBlocker:
         # exec_output이 있으면 ZeroHalEngine이 처리 → 여기서는 스킵
         if _has_exec_evidence(exec_output):
             return False
-        # exec_output이 비어있거나 실행 증거 없음 + 기술 주장 있음 = 차단
-        return _has_tech_claim(response_text)
+        # 공격 가설/테스트 계획은 허용하고, 실행 결과를 단정한 경우만 차단한다.
+        return _has_definite_claim(response_text)
 
     def block_msg(self, target: str, lang: str = "ko") -> str:
         msgs = {
@@ -415,8 +428,8 @@ class ExecutionAnchorEngine:
         LLM 응답을 검사하고 AnchorResult 반환.
 
         우선순위:
-          1. SPECULATION_CLAIM  — 추측 언어 + 기술 주장 (exec_output 유무 무관)
-          2. UNEXECUTED_CLAIM   — 실행 증거 없는 기술 주장
+          1. UNEXECUTED_CLAIM — 실행 증거 없는 확정 주장
+          2. HYPOTHESIS       — 공격 가설은 허용하되 즉시 검증 요구
 
         Args:
             response_text: LLM 응답 텍스트 전체
@@ -427,19 +440,7 @@ class ExecutionAnchorEngine:
         """
         self._total_checked += 1
 
-        # ── Layer A: 추측 언어 + 기술 주장 ──────────────────────────────────
-        if self._speculation_filter.check(response_text):
-            self._speculation_blocks += 1
-            return AnchorResult(
-                blocked=True,
-                block_reason="SPECULATION_CLAIM",
-                inject_message=(
-                    "[EXECUTION_ANCHOR: SPECULATION_CLAIM]\n"
-                    + self._speculation_filter.block_msg(self._target, self._lang)
-                ),
-            )
-
-        # ── Layer B: 실행 증거 없는 기술 주장 ───────────────────────────────
+        # ── Layer A: 실행 증거 없는 확정 주장 ───────────────────────────────
         if self._unexecuted_blocker.check(response_text, exec_output):
             self._unexecuted_blocks += 1
             return AnchorResult(
@@ -448,6 +449,20 @@ class ExecutionAnchorEngine:
                 inject_message=(
                     "[EXECUTION_ANCHOR: UNEXECUTED_CLAIM]\n"
                     + self._unexecuted_blocker.block_msg(self._target, self._lang)
+                ),
+            )
+
+        # ── Layer B: 공격 가설은 차단하지 않고 실행 검증을 요구 ─────────────
+        if self._speculation_filter.check(response_text):
+            self._speculation_blocks += 1
+            return AnchorResult(
+                blocked=False,
+                warned=True,
+                block_reason="HYPOTHESIS_REQUIRES_TEST",
+                inject_message=(
+                    "[EXECUTION_ANCHOR: HYPOTHESIS_ACCEPTED]\n"
+                    "Keep this attack hypothesis and execute a type-specific positive/negative "
+                    "control now. Do not claim confirmation and do not abandon the vector."
                 ),
             )
 

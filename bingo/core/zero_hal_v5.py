@@ -206,18 +206,18 @@ class FactRegistry:
 # Layer 2: ClaimAnchorValidator
 # ══════════════════════════════════════════════════════════════════════════════
 
-# LLM이 취약점을 "발견/확인"했다고 주장하는 패턴
-_CLAIM_PATTERNS: list[re.Pattern] = [
-    re.compile(r'(SQLi?|SQL\s*injection)\s+(?:found|detected|confirmed|발견|확인|존재|验证|发现)', re.IGNORECASE),
-    re.compile(r'(XSS)\s+(?:found|detected|confirmed|발견|확인|존재|验证|发现)', re.IGNORECASE),
-    re.compile(r'(RCE|Remote\s*Code\s*Execution)\s+(?:found|detected|confirmed|발견|확인|존재)', re.IGNORECASE),
-    re.compile(r'(SSRF)\s+(?:found|detected|confirmed|발견|확인)', re.IGNORECASE),
-    re.compile(r'(IDOR|Insecure\s*Direct\s*Object)', re.IGNORECASE),
-    re.compile(r'(admin|관리자)\s+(?:panel|page|계정|패널)\s+(?:found|accessed|접근|발견)', re.IGNORECASE),
-    re.compile(r'(?:credential|password|비밀번호|자격증명)\s+(?:found|extracted|obtained|발견|추출)', re.IGNORECASE),
-    re.compile(r'(?:login|로그인)\s+(?:successful|success|성공|확인)', re.IGNORECASE),
-    re.compile(r'(?:port|포트)\s+\d{2,5}\s+(?:open|열림|开放)', re.IGNORECASE),
-    re.compile(r'(?:CVE-\d{4}-\d{4,7})\s+(?:confirmed|vulnerable|취약|확인)', re.IGNORECASE),
+# Definite claims only. Hypotheses such as "test possible SQLi" remain executable.
+_CLAIM_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("sqli", re.compile(r'(SQLi?|SQL\s*injection).{0,30}(?:found|detected|confirmed|발견|확인|존재|验证|发现)', re.IGNORECASE)),
+    ("xss", re.compile(r'(XSS).{0,30}(?:found|detected|confirmed|발견|확인|존재|验证|发现)', re.IGNORECASE)),
+    ("rce", re.compile(r'(RCE|Remote\s*Code\s*Execution).{0,30}(?:found|detected|confirmed|발견|확인|존재)', re.IGNORECASE)),
+    ("ssrf", re.compile(r'(SSRF).{0,30}(?:found|detected|confirmed|발견|확인)', re.IGNORECASE)),
+    ("idor", re.compile(r'(IDOR|Insecure\s*Direct\s*Object).{0,30}(?:found|detected|confirmed|발견|확인)', re.IGNORECASE)),
+    ("admin", re.compile(r'(admin|관리자)\s+(?:panel|page|계정|패널)\s+(?:found|accessed|접근|발견)', re.IGNORECASE)),
+    ("credential", re.compile(r'(?:credential|password|비밀번호|자격증명)\s+(?:found|extracted|obtained|발견|추출)', re.IGNORECASE)),
+    ("login", re.compile(r'(?:login|로그인)\s+(?:successful|success|성공|확인)', re.IGNORECASE)),
+    ("port", re.compile(r'(?:port|포트)\s+\d{2,5}\s+(?:open|열림|开放)', re.IGNORECASE)),
+    ("cve", re.compile(r'(?:CVE-\d{4}-\d{4,7})\s+(?:confirmed|vulnerable|취약|확인)', re.IGNORECASE)),
 ]
 
 # 증거 앵커 마커 (실제 증거가 응답에 포함된 경우)
@@ -231,6 +231,25 @@ _EVIDENCE_ANCHORS: list[re.Pattern] = [
     re.compile(r'evidence_hash\s*[:=]'),
     re.compile(r'r\.status_code'),
 ]
+
+_CLAIM_EVIDENCE: dict[str, re.Pattern] = {
+    "sqli": re.compile(
+        r'You have an error in your SQL syntax|ORA-\d{4,}|SQLSTATE\[|'
+        r'\[TIME_BASED\][^\n]*samples=(?:[3-9]|\d{2,})|'
+        r'\[(?:SQLI_CONFIRMED|BOOLEAN_ORACLE)\]|'
+        r'TRUE\s+\d+B[^\n]*FALSE\s+\d+B',
+        re.IGNORECASE,
+    ),
+    "xss": re.compile(r'XSS_BROWSER_CONFIRMED|browser execution confirmed|dialog\s*=\s*alert', re.IGNORECASE),
+    "rce": re.compile(r'uid=\d+\([^)]+\).*gid=\d+|root:x:0:0:[^\n]*:/root:|RCE_CANARY_[A-Za-z0-9_-]+', re.IGNORECASE),
+    "ssrf": re.compile(r'ami-id|instance-id|AccessKeyId|metadata-flavor\s*:\s*google|"subscriptionId"', re.IGNORECASE),
+    "idor": re.compile(r'IDOR_CONTROL_VERIFIED|other_user_id\s*=.+data_returned\s*=\s*true', re.IGNORECASE),
+    "admin": re.compile(r'(?:HTTP_STATUS:200|\[200[^]]*\]).{0,160}/adm(?:in)?/', re.IGNORECASE),
+    "credential": re.compile(r'\[CREDENTIAL\]\s*\S+\s*:\s*\S+', re.IGNORECASE),
+    "login": re.compile(r'LOGIN_CONTROL_VERIFIED|login_verified\s*=\s*true|Set-Cookie:[^\n]+\nLocation:[^\n]+', re.IGNORECASE),
+    "port": re.compile(r'\d{1,5}/tcp\s+open\b|PORT\s+\d+\s+OPEN', re.IGNORECASE),
+    "cve": re.compile(r'CVE_VERIFIED|EXPLOIT_CANARY_VERIFIED', re.IGNORECASE),
+}
 
 
 @dataclass
@@ -266,13 +285,14 @@ class ClaimAnchorValidator:
         # 증거 앵커 존재 여부
         result.has_evidence = any(p.search(exec_output) for p in _EVIDENCE_ANCHORS)
 
-        # 클레임 추출
-        for pat in _CLAIM_PATTERNS:
+        # 클레임마다 같은 취약점 유형의 실행 증거를 요구한다. 일반 HTTP 200이나
+        # 다른 유형의 사실은 현재 클레임을 앵커링하지 못한다.
+        for claim_type, pat in _CLAIM_PATTERNS:
             m = pat.search(response_text)
             if m:
                 claim_text = m.group(0)[:100]
-                # 증거 앵커 있거나 FactRegistry에 포트/IP가 있으면 앵커됨
-                if result.has_evidence or registry.has_any_facts():
+                evidence_pattern = _CLAIM_EVIDENCE[claim_type]
+                if evidence_pattern.search(exec_output):
                     result.anchored_claims.append(claim_text)
                 else:
                     result.unanchored_claims.append(claim_text)

@@ -8,7 +8,7 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.codex/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after public execution-policy hardening: `6.2.204`.
+- Current rollback target: `6.2.199` (`ddbff39f5`, before the 3600s timeout fix series).
 - Codex project memory is automatic:
   - At every Codex session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/codex-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Codex must silently run `scripts/codex-memory-sync.sh`.
@@ -18,7 +18,7 @@
   - `ruff check --select F821,F811 ...`
   - `git diff --check`
   - `pytest -q`
-- Recent full-suite status after public execution-policy hardening: `217 passed`.
+- Recent full-suite status after rollback to `6.2.199`: `198 passed`.
 - Recent target-log decisions for `mjh.or.kr`:
   - LFI broad-token false positive fixed: `nginx`/`mysql` words and response-size deltas are candidates only, not confirmed LFI.
   - XSS blocked-payload false positive fixed: `NOT REFLECTED`, `被过滤/不存在`, `403/404`, and `Location=N/A` contexts must not produce `XSS_TRIGGER_DETECTED` or potential findings.
@@ -32,46 +32,46 @@
 - Latest bash codeblock execution issue:
   - Bash blocks starting with `for` loops or variable assignments could be silently skipped even when they contained allowed `curl`/`python3` commands.
   - Fixed by scanning the whole block for allowed executable commands while still ignoring comments and non-exec wrappers like `echo`.
-- Latest root execution-policy issue:
-  - Public/default GitHub builds must not auto-execute arbitrary raw markdown ```bash/```python codeblocks from model prose.
-  - Default execution policy is now TOOL_CALL-only. Raw markdown codeblock execution is disabled unless explicitly opted in with `BINGO_ALLOW_CODEBLOCK_EXEC=1`.
-  - Model prompts/retry nudges must ask for `TOOL_CALL` (`http_get`, `run_bash`, `run_python`, structured scanners), not raw code fences.
+- Latest rollback decision:
+  - User requested rollback to `6.2.199` after discussing execution-policy tradeoffs.
+  - Code files were restored from commit `ddbff39f5`; project-local Codex memory artifacts are preserved separately.
+  - If recommitting this rollback, do not add `.codex/bingo-memory/`, watcher logs, watcher pid files, or `.codex/instruction.md`.
 
 <!-- codex-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T02:03:55+08:00
+- Last synced: 2026-07-19T02:05:38+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.codex/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
-<!-- working-tree:start -->
-## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T02:03:55+08:00
+# Workspace Memory
 
-### Status
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:7ab37ef23871322b7af8db7cd3a35e40dc199086 -->
+## Code change: fix: default execution to tool calls
+- Commit: `7ab37ef23871`
+- Recorded: 2026-07-19T02:05:38+08:00
+- Committed: 2026-07-19T02:05:38+08:00
+
+### Files
 ```text
-M .codex/project-memory.md
- M AGENTS.md
- M bingo/__init__.py
- M bingo/models/system_prompt.py
- M bingo/ui/terminal.py
- M tests/test_change_memory.py
- M tests/test_terminal_completion_regressions.py
-?? scripts/codex-memory-autostart.sh
-?? scripts/codex-memory-stop.sh
-?? scripts/codex-memory-sync.sh
-?? scripts/codex-memory-watch.sh
+M	.codex/project-memory.md
+M	AGENTS.md
+M	bingo/__init__.py
+M	bingo/models/system_prompt.py
+M	bingo/ui/terminal.py
 ```
 
 ### Diff Stat
 ```text
-AGENTS.md                                     |   2 +-
- bingo/__init__.py                             |   2 +-
- bingo/models/system_prompt.py                 | 134 +++++------------
- bingo/ui/terminal.py                          | 205 ++++++++++++++++----------
- tests/test_change_memory.py                   | 139 +++++++++++++++++
- tests/test_terminal_completion_regressions.py | 161 +++++++++++++++++++-
- 6 files changed, 466 insertions(+), 177 deletions(-)
+7ab37ef23 fix: default execution to tool calls
+ .codex/project-memory.md      |  87 +++++++++++++++---
+ AGENTS.md                     |   2 +-
+ bingo/__init__.py             |   2 +-
+ bingo/models/system_prompt.py | 134 ++++++++-------------------
+ bingo/ui/terminal.py          | 205 ++++++++++++++++++++++++++----------------
+ 5 files changed, 243 insertions(+), 187 deletions(-)
 ```
 
 ### Added Highlights
@@ -105,7 +105,7 @@ AGENTS.md                                     |   2 +-
 - `║  run_bash subprocesses have network connectivity when used.          ║`
 - `Output: plain text plus exactly one TOOL_CALL for execution. Raw bash/python code blocks are documentation only by default.`
 - `1. MANDATORY: Immediately emit a TOOL_CALL to verify the candidates.`
-<!-- working-tree:end -->
+
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.

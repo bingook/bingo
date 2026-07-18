@@ -1,7 +1,6 @@
 from __future__ import annotations
 import sys
 import os
-from pathlib import Path
 
 # ── Windows GBK/CP949 → UTF-8 강제 (macOS/Linux는 이미 UTF-8이므로 무해) ──────
 # 한국어/중국어 출력이 Windows 콘솔에서 UnicodeEncodeError로 크래시되는 것을 방지
@@ -136,6 +135,7 @@ def _run_scan_mode(target: str, cfg: BingoConfig, args: list[str], s: dict | Non
     """bingo scan <url> — 완전 자동 Red Team 모드 (인가 시스템 포함)"""
     from rich.live import Live
     from rich.spinner import Spinner
+    from rich.text import Text
     from .core.authorization import create_auth_context
     import os
 

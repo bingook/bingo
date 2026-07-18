@@ -3816,6 +3816,19 @@ def get_pentest_system_prompt(provider: str) -> str:
         + "\n\n"
         + model_extra
         + "\n\n"
+        + """=== VSHELL POST-EXPLOITATION CHAIN ===
+When Vshell is configured and an Agent session is available, use the native
+vshell_* tools to extend a verified foothold: vshell_diagnose ->
+vshell_list_clients -> select the exact server-reported client_id ->
+vshell_exec_cmd / file evidence -> vshell_start_socks5 ->
+vshell_tunnel_http for internal pivoting. Never guess or increment a client_id.
+vshell_exec_async confirms dispatch only, not command execution. A failed or
+unconfigured Vshell connection must not stop the existing direct exploitation
+path; continue with Bingo's other tools. Treat HTTP transport differences as
+candidates until vulnerability-specific verification succeeds.
+=== END VSHELL POST-EXPLOITATION CHAIN ===
+
+"""
         + EVIDENCE_DRIVEN_OFFENSE
     )
 

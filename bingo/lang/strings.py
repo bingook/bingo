@@ -1030,6 +1030,92 @@ _SLASH_DESC = {
 
 # ── v3.6.0: CVE/KB 메시지 (_STRINGS 에 추가 — get_strings() 반환 대상) ──────
 _STRINGS.update({
+    # ── v6.2.193: Vshell native tool adapter ────────────────────────────────
+    "vshell_not_configured": {
+        "ko": "Vshell이 설정되지 않았습니다. VSHELL_URL, VSHELL_TOKEN, VSHELL_BASICAUTH를 설정하세요.",
+        "zh": "Vshell 尚未配置。请设置 VSHELL_URL、VSHELL_TOKEN 和 VSHELL_BASICAUTH。",
+        "en": "Vshell is not configured. Set VSHELL_URL, VSHELL_TOKEN, and VSHELL_BASICAUTH.",
+    },
+    "vshell_invalid_url": {
+        "ko": "잘못된 VSHELL_URL: {url}",
+        "zh": "无效的 VSHELL_URL：{url}",
+        "en": "Invalid VSHELL_URL: {url}",
+    },
+    "vshell_timeout": {
+        "ko": "Vshell 요청 시간 초과: {path}",
+        "zh": "Vshell 请求超时：{path}",
+        "en": "Vshell request timed out: {path}",
+    },
+    "vshell_http_error": {
+        "ko": "Vshell HTTP 오류 {status}: {path}",
+        "zh": "Vshell HTTP 错误 {status}：{path}",
+        "en": "Vshell HTTP error {status}: {path}",
+    },
+    "vshell_connection_error": {
+        "ko": "Vshell 연결 실패: {error}",
+        "zh": "Vshell 连接失败：{error}",
+        "en": "Vshell connection failed: {error}",
+    },
+    "vshell_invalid_response": {
+        "ko": "Vshell이 객체가 아닌 응답을 반환했습니다.",
+        "zh": "Vshell 返回了非对象响应。",
+        "en": "Vshell returned a non-object response.",
+    },
+    "vshell_file_missing": {
+        "ko": "로컬 파일이 없습니다: {path}",
+        "zh": "本地文件不存在：{path}",
+        "en": "Local file does not exist: {path}",
+    },
+    "vshell_full_path_required": {
+        "ko": "완전한 파일 경로가 필요합니다: {path}",
+        "zh": "需要完整文件路径：{path}",
+        "en": "A complete file path is required: {path}",
+    },
+    "vshell_download_timeout": {
+        "ko": "Vshell 다운로드가 {progress}%에서 시간 초과되었습니다.",
+        "zh": "Vshell 下载在 {progress}% 时超时。",
+        "en": "Vshell download timed out at {progress}%.",
+    },
+    "vshell_no_tunnel_port": {
+        "ko": "10800-10900 범위에 사용 가능한 Vshell 터널 포트가 없습니다.",
+        "zh": "10800-10900 范围内没有可用的 Vshell 隧道端口。",
+        "en": "No free Vshell tunnel port in range 10800-10900.",
+    },
+    "vshell_port_in_use": {
+        "ko": "Vshell 터널 포트가 이미 사용 중입니다: {port}",
+        "zh": "Vshell 隧道端口已被占用：{port}",
+        "en": "Vshell tunnel port is already in use: {port}",
+    },
+    "vshell_tunnel_id_missing": {
+        "ko": "터널이 생성됐지만 Vshell에서 ID를 반환하지 않았습니다.",
+        "zh": "隧道已创建，但 Vshell 未返回其 ID。",
+        "en": "Tunnel was created but its ID was not returned by Vshell.",
+    },
+    "vshell_tunnel_missing": {
+        "ko": "포트 {port}를 사용하는 Vshell 터널이 없습니다.",
+        "zh": "没有 Vshell 隧道使用端口 {port}。",
+        "en": "No Vshell tunnel uses port {port}.",
+    },
+    "vshell_tunnel_inactive": {
+        "ko": "포트 {port}의 Vshell 터널이 활성 상태가 아닙니다.",
+        "zh": "端口 {port} 上的 Vshell 隧道未激活。",
+        "en": "Vshell tunnel is not active on port {port}.",
+    },
+    "vshell_curl_missing": {
+        "ko": "Vshell 터널 HTTP 요청에는 curl이 필요합니다.",
+        "zh": "Vshell 隧道 HTTP 请求需要 curl。",
+        "en": "curl is required for Vshell tunnel HTTP requests.",
+    },
+    "vshell_missing_settings": {
+        "ko": "누락된 Vshell 설정: {settings}",
+        "zh": "缺少 Vshell 设置：{settings}",
+        "en": "Missing Vshell settings: {settings}",
+    },
+    "vshell_deploy_path_required": {
+        "ko": "local_path 또는 remote_path가 필요합니다.",
+        "zh": "需要 local_path 或 remote_path。",
+        "en": "local_path or remote_path is required.",
+    },
 })
 
 # ── 스킬 시스템 / WAF / 자동 분석 추가 문자열 ──────────────────────────────

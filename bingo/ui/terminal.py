@@ -3587,7 +3587,7 @@ class BingoTerminal:
         ],
         "idor": [
             (r"(?:user|member|account|customer)_?(?:id|no|seq)\s*[=:]\s*\d+.{0,100}(?:name|email|phone|address)", "IDOR other-user data"),
-            (r"(?:unauthorized|forbidden|403).{0,80}(?:bypass|우회|bypassed|circumvent).{0,80}(?:200|success|ok\b)", "Authorization bypass confirmed"),
+            (r"(?:owner_only_resource|different_owner|other_user_id).{0,120}(?:data_returned|email|phone|address)", "Authorization bypass ownership proof"),
         ],
         "rce": [
             (r"uid=\d+\([^)]+\)|root:\w*:\d+:\d+|/etc/(?:passwd|shadow)", "RCE system identity output"),
@@ -9576,15 +9576,16 @@ class BingoTerminal:
                         _403_detector = _IPBD403(_403_target)
                         _403_result = _403_detector.check()
                         if not _403_result.blocked:
-                            # 메인 사이트 접근 가능 → API 엔드포인트 403은 인증/권한 문제
+                            # 메인 사이트 접근 가능 → IP 전체 차단은 아님.
+                            # 단, endpoint별 권한 거부/행동형 WAF/rate-state는 모두 가능하다.
                             _lang_403 = getattr(self.config, "lang", "en")
                             _403_fp_msg = self.s.get("forbidden_403_not_ipblock", {
-                                "ko": "⚡ 403 감지됐지만 메인 사이트 접근 가능 — 인증/권한 거부 (IP 차단 아님)",
-                                "zh": "⚡ 检测到403但主站可访问 — 认证/权限拒绝（非IP封锁）",
-                                "en": "⚡ 403 detected but main site accessible — auth/permission denied, NOT IP block",
+                                "ko": "⚡ 403 감지됐지만 메인 사이트 접근 가능 — 전체 IP 차단 아님; endpoint 권한 거부 또는 WAF/rate-state 가능",
+                                "zh": "⚡ 检测到403但主站可访问 — 非全站IP封锁；可能是端点权限拒绝或WAF/rate状态",
+                                "en": "⚡ 403 detected but main site accessible — not a site-wide IP block; endpoint denial or WAF/rate-state possible",
                             })
                             if isinstance(_403_fp_msg, dict):
-                                _403_fp_msg = _403_fp_msg.get(_lang_403, "⚡ 403 auth/permission denial (not IP block)")
+                                _403_fp_msg = _403_fp_msg.get(_lang_403, "⚡ 403 endpoint denial or WAF/rate-state (not site-wide IP block)")
                             self.console.print(f"[dim]{_403_fp_msg}[/]")
                             _403_confirmed = False
                     except Exception:
@@ -11413,20 +11414,6 @@ class BingoTerminal:
             "zh": ("已确认", "推定/潜在"),
             "en": ("Confirmed", "Probable/Potential"),
         }.get(lang, ("Confirmed", "Probable/Potential"))
-        fix_lines = {
-            "ko": (
-                "- 안정적인 대조 oracle로 probable 항목을 재검증하세요.\n"
-                "- WAF 차단 페이지와 일반 응답 크기 차이는 미확정으로 처리하세요.\n"
-            ),
-            "zh": (
-                "- 使用稳定的对照 oracle 重新验证 probable 项目。\n"
-                "- 将 WAF 拦截页和普通响应大小差异视为未确认。\n"
-            ),
-            "en": (
-                "- Re-test probable findings with a stable control oracle.\n"
-                "- Treat WAF block pages and generic response-size differences as unconfirmed.\n"
-            ),
-        }.get(lang, "- Re-test probable findings with a stable control oracle.\n")
         credential_lines = (
             "\n".join(f"- {item}" for item in session_credentials)
             if session_credentials else no_creds.get(lang, no_creds["en"])
@@ -11438,6 +11425,45 @@ class BingoTerminal:
         ]
         confirmed_truth = [line for line in truth_lines if "tier=confirmed" in line]
         backlog_truth = [line for line in truth_lines if "tier=confirmed" not in line]
+        backlog_blob = "\n".join(backlog_truth).lower()
+        lang_strings = get_strings(lang)
+
+        def _report_msg(key: str, default: str) -> str:
+            value = lang_strings.get(key, default)
+            if isinstance(value, dict):
+                return value.get(lang, value.get("en", default))
+            return str(value)
+
+        def _fallback_fix_lines() -> str:
+            if not backlog_truth:
+                return "- " + _report_msg(
+                    "report_fix_no_verified",
+                    "No verified vulnerabilities. Maintain defensive baselines.",
+                ) + "\n"
+            lines: list[str] = []
+            if "tier=blocked" in backlog_blob:
+                lines.append(_report_msg(
+                    "report_fix_blocked",
+                    "Re-establish a clean baseline/session for blocked items.",
+                ))
+            if "xss" in backlog_blob and ("quarantined" in backlog_blob or "potential" in backlog_blob):
+                lines.append(_report_msg(
+                    "report_fix_xss_browser",
+                    "Confirm XSS candidates with browser execution evidence.",
+                ))
+            if "sqli" in backlog_blob and ("tier=probable" in backlog_blob or "tier=potential" in backlog_blob):
+                lines.append(_report_msg(
+                    "report_fix_sqli_crosscheck",
+                    "Re-test SQLi candidates with stable controls.",
+                ))
+            if not lines:
+                lines.append(_report_msg(
+                    "report_fix_backlog_generic",
+                    "Re-test backlog items according to their evidence tier.",
+                ))
+            return "\n".join(f"- {line.lstrip('- ')}" for line in lines) + "\n"
+
+        fix_lines = _fallback_fix_lines()
         no_verified = {
             "ko": "- 확인된 취약점 없음",
             "zh": "- 未确认漏洞",

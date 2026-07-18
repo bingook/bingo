@@ -249,8 +249,8 @@ TP_CASES = [
     # ── IDOR TP ───────────────────────────────────────────────────────────────
     pytest.param(
         "idor",
-        "403 Forbidden → bypass → 200 OK (success)",
-        id="idor-tp-bypass-confirmed",
+        "owner_only_resource=true different_owner=true other_user_id=999 data_returned email=john@victim.com",
+        id="idor-tp-ownership-proof",
     ),
     pytest.param(
         "idor",

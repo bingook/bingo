@@ -836,6 +836,31 @@ _STRINGS = {
         "zh": "🔍 [自动校正] 报告内容与实际 Finding ID 不一致 — 已替换为证据报告",
         "en": "🔍 [Auto-correct] Report claims did not match Finding IDs — replaced with evidence report",
     },
+    "report_fix_no_verified": {
+        "ko": "확정 취약점은 없습니다. 접근 제어, 입력 검증, 로깅/탐지 기준선을 유지하세요.",
+        "zh": "未确认漏洞。继续维护访问控制、输入校验以及日志/检测基线。",
+        "en": "No verified vulnerabilities. Maintain access control, input validation, and logging/detection baselines.",
+    },
+    "report_fix_blocked": {
+        "ko": "WAF/차단 항목은 새 세션 쿠키와 깨끗한 baseline을 만든 뒤 다른 mutation family로 재시도하세요.",
+        "zh": "对被WAF/拦截的项目，先建立干净baseline和新会话cookie，再换mutation family复测。",
+        "en": "For blocked items, re-establish a clean baseline/session and retry with a different mutation family.",
+    },
+    "report_fix_xss_browser": {
+        "ko": "XSS 후보는 브라우저 실행(title/dialog/console 또는 sink 실행)으로만 확정하세요.",
+        "zh": "XSS候选项只能通过浏览器执行证据(title/dialog/console或sink执行)确认。",
+        "en": "Confirm XSS candidates only with browser execution evidence such as title/dialog/console or sink execution.",
+    },
+    "report_fix_sqli_crosscheck": {
+        "ko": "SQLi 후보는 안정 TRUE/FALSE oracle 또는 sqlmap/ghauri 동일 request profile 교차검증으로만 올리세요.",
+        "zh": "SQLi候选项需稳定TRUE/FALSE oracle或sqlmap/ghauri相同request profile交叉验证后再提升。",
+        "en": "Promote SQLi candidates only after a stable TRUE/FALSE oracle or sqlmap/ghauri cross-check with the same request profile.",
+    },
+    "report_fix_backlog_generic": {
+        "ko": "검증 대기 항목은 각 항목의 증거 tier에 맞는 재현 절차로 재검증하세요.",
+        "zh": "按每个待验证项的证据tier执行对应复测流程。",
+        "en": "Re-test backlog items with the verifier required by each evidence tier.",
+    },
     "finding_control_blocked": {
         "ko": "🔍 [자동 교정] 대조 요청이 WAF/보호 페이지로 차단됨 — SQLi 확정에서 제외",
         "zh": "🔍 [自动校正] 对照请求被 WAF/保护页拦截 — 已排除 SQLi 确认",
@@ -7271,9 +7296,9 @@ _STRINGS.update({
         "en": "[v5.2.6] 403 false-positive fix — CORS/auth 403 no longer flagged as IP block; added IPBlockDetector cross-validation",
     },
     "forbidden_403_not_ipblock": {
-        "ko": "⚡ 403 감지됐지만 메인 사이트 접근 가능 — 인증/권한 거부 (IP 차단 아님)",
-        "zh": "⚡ 检测到403但主站可访问 — 认证/权限拒绝（非IP封锁）",
-        "en": "⚡ 403 detected but main site accessible — auth/permission denied, NOT IP block",
+        "ko": "⚡ 403 감지됐지만 메인 사이트 접근 가능 — 전체 IP 차단 아님; endpoint 권한 거부 또는 WAF/rate-state 가능",
+        "zh": "⚡ 检测到403但主站可访问 — 非全站IP封锁；可能是端点权限拒绝或WAF/rate状态",
+        "en": "⚡ 403 detected but main site accessible — not a site-wide IP block; endpoint denial or WAF/rate-state possible",
     },
     # v5.2.7: 스마트 출력 필터 관련 메시지
     "output_html_suppressed": {
@@ -7888,6 +7913,21 @@ _STRINGS.update({
             "(WAF blocking SQL functions or oracle miscalibration). "
             "Stop all custom extraction loops immediately. Use sqli_autoexploit TOOL_CALL instead."
         ),
+    },
+    "sqli_oracle_block_cutoff": {
+        "ko": "  ⚠ Boolean 대조군이 반복 차단됨({n}) — 남은 Boolean 후보군 조기 중단.",
+        "zh": "  ⚠ Boolean 对照请求重复被拦截({n}) — 提前停止剩余 Boolean 候选族。",
+        "en": "  ⚠ Repeated WAF-blocked Boolean controls ({n}) — stopping Boolean candidate family early.",
+    },
+    "sqli_oracle_pivot_fallback": {
+        "ko": "  → Boolean 채널 비활성화; error/time-based fallback 계속 진행.",
+        "zh": "  → Boolean 通道已禁用；继续执行 error/time-based fallback。",
+        "en": "  → Boolean channel disabled; continuing with error/time-based fallback.",
+    },
+    "sqli_all_channels_blocked": {
+        "ko": "[SQLI_NO_VALID_CHANNEL] Boolean, error-based, time-based 대조군 모두 안정적인 oracle을 만들지 못했습니다.",
+        "zh": "[SQLI_NO_VALID_CHANNEL] Boolean、error-based、time-based 对照均未形成稳定 oracle。",
+        "en": "[SQLI_NO_VALID_CHANNEL] Boolean, error-based, and time-based controls did not produce a stable oracle.",
     },
     "autocorrect_runtime_pattern": {
         "ko": "[런타임 패턴 자동 교정 적용]",
@@ -9632,9 +9672,9 @@ _STRINGS.update({
         "en": "requests install required",
     },
     "cve_log4shell_possible": {
-        "ko": "  🔴 Log4Shell 가능성: {hdr}",
-        "zh": "  🔴 可能存在 Log4Shell: {hdr}",
-        "en": "  🔴 Log4Shell possible: {hdr}",
+        "ko": "  🟡 Log4Shell 후보: {hdr}",
+        "zh": "  🟡 Log4Shell 候选: {hdr}",
+        "en": "  🟡 Log4Shell candidate: {hdr}",
     },
     "cve_path_traversal_step": {
         "ko": "  [5/5] Path Traversal (급속 탐지)...",
@@ -9837,9 +9877,9 @@ _STRINGS.update({
         "en": "  ⏱ Rate Limiting test...",
     },
     "rate_limit_none": {
-        "ko": "  🟡 Rate Limiting 없음",
-        "zh": "  🟡 无 Rate Limiting",
-        "en": "  🟡 No Rate Limiting",
+        "ko": "  🟡 Rate Limiting 미관찰 (관찰 항목)",
+        "zh": "  🟡 未观察到 Rate Limiting（仅观察项）",
+        "en": "  🟡 No Rate Limiting observed (observation only)",
     },
     "xmlrpc_default_creds": {
         "ko": "  🔴 [CRITICAL] XML-RPC 기본 크레덴셜!",

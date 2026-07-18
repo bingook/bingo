@@ -364,6 +364,58 @@ def _filter_traceback(output: str):
 class BingoTerminal:
     """Bingo 메인 터미널 UI"""
 
+    @staticmethod
+    def _raw_runtime_mode() -> bool:
+        """Return True for Claude-CLI-style raw execution feedback.
+
+        Default is raw/thin mode: run fenced bash/python blocks, return stdout/stderr,
+        and let the model decide the next action from that evidence.  The legacy
+        heavy auto-analysis path remains available for regression testing via
+        BINGO_RUNTIME_MODE=classic or BINGO_CLAUDE_CLI_MODE=0.
+        """
+        mode = os.environ.get("BINGO_RUNTIME_MODE", "").strip().lower()
+        if mode in {"classic", "legacy", "heavy", "bingo"}:
+            return False
+        if mode in {"raw", "thin", "claude", "claude-cli", "claude_cli"}:
+            return True
+        flag = os.environ.get("BINGO_CLAUDE_CLI_MODE", "1").strip().lower()
+        return flag not in {"0", "false", "no", "off", "classic", "legacy", "heavy"}
+
+    @staticmethod
+    def _build_execution_feedback(
+        trimmed: str,
+        *,
+        state_summary: str = "",
+        ip_block_hint: str = "",
+        waf_redirect_note: str = "",
+        next_action_contract: str = "",
+        raw_mode: bool = True,
+    ) -> str:
+        """Build the feedback message injected after local code execution."""
+        if raw_mode:
+            return (
+                "=== BINGO RAW EXECUTION RESULT ===\n"
+                + trimmed
+                + "\n=== END RAW EXECUTION RESULT ===\n\n"
+                "Use only the stdout/stderr above as evidence. "
+                "Do not mark vulnerabilities, credentials, login, SSRF, SQLi, XSS, RCE, "
+                "or bypasses as CONFIRMED from narrative text or script prose alone. "
+                "If proof is insufficient, write the next verifying bash/python code block. "
+                "Keep using the loaded skills and available tools when relevant."
+            )
+        return (
+            "=== BINGO REAL EXECUTION RESULTS ===\n"
+            + trimmed
+            + ip_block_hint
+            + waf_redirect_note
+            + "\n=== END REAL RESULTS ===\n\n"
+            + state_summary
+            + next_action_contract
+            + "- If WAF blocks: use obfuscation variants\n"
+            "- Output TASK_COMPLETE when all credentials are extracted\n"
+            "- NEVER generate simulated output"
+        )
+
     def __init__(self, config, strings: dict):
         self.config = config
         self.s = strings
@@ -7959,6 +8011,7 @@ class BingoTerminal:
         # ── 메인 에이전트 루프 (while — 재귀 없음) ────────────────────
         current_response = response
         _no_code_retry = 0  # AI가 코드 없이 텍스트만 보낸 횟수
+        _raw_runtime_mode = self._raw_runtime_mode()
 
         while True:
             # 코드 블록 없으면 → AI에게 코드 작성 재촉 (최대 3회)
@@ -7981,7 +8034,10 @@ class BingoTerminal:
 
                 if _no_code_retry >= 3:
                     # 3회 재촉해도 코드 없으면 진짜 완료로 판단
-                    self._auto_generate_report()
+                    if _raw_runtime_mode:
+                        self._suggest_next_steps()
+                    else:
+                        self._auto_generate_report()
                     break
                 _no_code_retry += 1
                 _lang = getattr(self.config, "lang", "en")
@@ -8007,7 +8063,7 @@ class BingoTerminal:
             # must execute another vulnerability vector before retrying SQLi.
             _sqli_state = getattr(self, "_adaptive_attack_state", {}).get("sqli", {})
             _sqli_cooldown = int(_sqli_state.get("cooldown", 0) or 0)
-            if _sqli_cooldown > 0:
+            if _sqli_cooldown > 0 and not _raw_runtime_mode:
                 import re as _pivot_guard_re
                 _code_only = "\n".join(_pivot_guard_re.findall(
                     r'```(?:bash|sh|python)\s*(.*?)```',
@@ -8058,7 +8114,7 @@ class BingoTerminal:
                 import re as _thal_re
                 # 코드 블록 제거해 순수 텍스트만 추출
                 _text_only = _thal_re.sub(r'```[\s\S]*?```', '', current_response).strip()
-                if _text_only and not results_text:
+                if _text_only and not results_text and not _raw_runtime_mode:
                     _TEXT_HAL_RE = _thal_re.compile(
                         r"(?:"
                         # 중국어
@@ -8123,7 +8179,7 @@ class BingoTerminal:
             # ── v3.5.17: VPN 가상 IP(198.18.x.x) 오염 감지 → 실제 IP 자동 조회 ──
             # macOS VPN: DNS → 198.18.0.0/15 가상 IP 반환 → 포트스캔 결과 전부 가짜
             # ★ VPN을 끄라는 게 아님 — VPN 유지한 채 실제 IP를 다른 방법으로 찾아서 계속 진행
-            if _combined_out and results_text:
+            if _combined_out and results_text and not _raw_runtime_mode:
                 try:
                     from ..core.phantom_guard import check_vpn_virtual_ip_contamination as _vpn_check
                     _pg_lang_v = getattr(self.config, "lang", "zh")
@@ -8217,7 +8273,7 @@ class BingoTerminal:
             # CVE/버전 기반 exploit은 AI가 직접 판단해 코드블록으로 실행하도록 위임
 
             # ── v3.5.22: Recon 모듈 자동 탐지 (세션당 1회만 출력) ───────────
-            if _combined_out:
+            if _combined_out and not _raw_runtime_mode:
                 try:
                     if not hasattr(self, '_recon_hints_shown'):
                         self._recon_hints_shown: set = set()
@@ -8277,7 +8333,11 @@ class BingoTerminal:
                             break
                     except Exception:
                         pass
-            if _sqli_size_triggered and not self._bruteforce_abort_triggered:
+            if (
+                _sqli_size_triggered
+                and not self._bruteforce_abort_triggered
+                and not _raw_runtime_mode
+            ):
                 _lang = getattr(self.config, "lang", "en")
                 _size_warn = self.s.get("sqli_size_diff_detected", "")
                 if _size_warn:
@@ -8369,8 +8429,11 @@ class BingoTerminal:
                 if _szr.search(r'(?:login|로그인).*?(?:success|성공|ok\b|200)', _combined_out, _szr.I):
                     self._bruteforce_fail_count = 0
             _BF_ABORT_THRESHOLD = 5  # 5회 누적 실패 → 자동 포기
-            if (self._bruteforce_fail_count >= _BF_ABORT_THRESHOLD
-                    and not self._bruteforce_abort_triggered):
+            if (
+                self._bruteforce_fail_count >= _BF_ABORT_THRESHOLD
+                and not self._bruteforce_abort_triggered
+                and not _raw_runtime_mode
+            ):
                 self._bruteforce_abort_triggered = True
                 _lang = getattr(self.config, "lang", "en")
                 _bf_abort_warn = self.s.get("bruteforce_abort_warn", "")
@@ -8440,7 +8503,7 @@ class BingoTerminal:
                 _sqe_re.search(p, _sqe_combined, _sqe_re.IGNORECASE)
                 for p in _SQL_ECHO_PATTERNS
             )
-            if _sqe_detected:
+            if _sqe_detected and not _raw_runtime_mode:
                 _lang = getattr(self.config, "lang", "en")
                 _sqe_warn = self.s.get("sqli_payload_echo_warn", "")
                 if _sqe_warn:
@@ -8546,7 +8609,7 @@ class BingoTerminal:
                 _sim_re.search(p, _sim_out_combined, _sim_re.IGNORECASE)
                 for p in _SIM_OUTPUT_KWS
             )
-            if _sim_output_detected:
+            if _sim_output_detected and not _raw_runtime_mode:
                 _lang = getattr(self.config, "lang", "en")
                 _sim_warn_ui = self.s.get("simulated_output_intercepted", "⛔ 모의 침투 출력 감지 — 실제 HTTP 실행 강제")
                 self.console.print(f"\n[bold red]{_sim_warn_ui}[/bold red]")
@@ -8616,7 +8679,7 @@ class BingoTerminal:
                 combined = " ".join(outputs).lower()
                 return any(ind.lower() in combined for ind in _real_http_indicators)
 
-            if results_text:
+            if results_text and not _raw_runtime_mode:
                 # 환각 차단 메시지 포함됐을 때 (JSON 코드블록)
                 _is_all_hallucination_blocks = all(
                     "HALLUCINATION DETECTED" in r or "ALL CODE BLOCKS REJECTED" in r
@@ -8675,37 +8738,40 @@ class BingoTerminal:
                     continue
 
             if not results_text:
-                # 코드 블록은 있었지만 실행 결과 없음 → AI에게 알리고 계속
-                _lang = getattr(self.config, "lang", "en")
-                _no_output_msg = {
-                    "ko": (
-                        "[⛔ 스크립트 출력 없음 — 환각 코드 의심]\n"
-                        "스크립트가 실행됐지만 출력이 없습니다. "
-                        "bash 블록에 실제 curl HTTP 요청이 없거나 echo만 있습니다.\n"
-                        "반드시 curl -sk -m 30 'URL' 을 호출하고 파이프로 출력을 확인하세요."
-                    ),
-                    "zh": (
-                        "[⛔ 脚本无输出 — 疑似幻觉代码]\n"
-                        "脚本执行但没有输出。bash块中缺少真实curl HTTP请求或只包含echo。\n"
-                        "必须使用curl -sk -m 30 'URL' 并通过管道查看输出。"
-                    ),
-                    "en": (
-                        "[⛔ SCRIPT NO OUTPUT — HALLUCINATION SUSPECTED]\n"
-                        "Script ran but produced ZERO output. "
-                        "Your bash block has no real curl HTTP calls or contains only echo.\n"
-                        "Add: curl -sk -m 30 'URL' | python3 -c 'import sys; print(sys.stdin.read()[:300])'"
-                    ),
-                }.get(_lang, "Script produced no output. Add curl -sk -m 30 'URL' to the bash block.")
-                self.history.append(Message(role="user", content=f"[EXECUTION RESULT]\n{_no_output_msg}"))
-                model_cfg2 = self.config.get_active_model_config()
-                if not model_cfg2:
-                    break
-                from ..models.registry import ModelRegistry as _MR2
-                _m2 = _MR2.build(model_cfg2)
-                current_response = self._stream_response(_m2.chat_stream(self._build_messages("")))
-                if current_response:
-                    self.history.append(Message(role="assistant", content=current_response))
-                continue
+                if _raw_runtime_mode:
+                    results_text = ["[NO_OUTPUT] Code block executed but produced no stdout/stderr."]
+                else:
+                    # 코드 블록은 있었지만 실행 결과 없음 → AI에게 알리고 계속
+                    _lang = getattr(self.config, "lang", "en")
+                    _no_output_msg = {
+                        "ko": (
+                            "[⛔ 스크립트 출력 없음 — 환각 코드 의심]\n"
+                            "스크립트가 실행됐지만 출력이 없습니다. "
+                            "bash 블록에 실제 curl HTTP 요청이 없거나 echo만 있습니다.\n"
+                            "반드시 curl -sk -m 30 'URL' 을 호출하고 파이프로 출력을 확인하세요."
+                        ),
+                        "zh": (
+                            "[⛔ 脚本无输出 — 疑似幻觉代码]\n"
+                            "脚本执行但没有输出。bash块中缺少真实curl HTTP请求或只包含echo。\n"
+                            "必须使用curl -sk -m 30 'URL' 并通过管道查看输出。"
+                        ),
+                        "en": (
+                            "[⛔ SCRIPT NO OUTPUT — HALLUCINATION SUSPECTED]\n"
+                            "Script ran but produced ZERO output. "
+                            "Your bash block has no real curl HTTP calls or contains only echo.\n"
+                            "Add: curl -sk -m 30 'URL' | python3 -c 'import sys; print(sys.stdin.read()[:300])'"
+                        ),
+                    }.get(_lang, "Script produced no output. Add curl -sk -m 30 'URL' to the bash block.")
+                    self.history.append(Message(role="user", content=f"[EXECUTION RESULT]\n{_no_output_msg}"))
+                    model_cfg2 = self.config.get_active_model_config()
+                    if not model_cfg2:
+                        break
+                    from ..models.registry import ModelRegistry as _MR2
+                    _m2 = _MR2.build(model_cfg2)
+                    current_response = self._stream_response(_m2.chat_stream(self._build_messages("")))
+                    if current_response:
+                        self.history.append(Message(role="assistant", content=current_response))
+                    continue
 
             # 롤백 스냅샷
             self._rollback.save(
@@ -8722,16 +8788,20 @@ class BingoTerminal:
             # ── v4.8.0: 실행 결과 후처리 — 빈값 [VERIFIED] + SLEEP 판정 오류 감지 ──
             raw_results = self._postcheck_exec_output(raw_results)
 
-            # ── v3.2.96: 실시간 발견 자동 저장 + XSS Playwright 자동 검증 ──
-            self._auto_analyze_findings(
-                raw_results,
-                current_response[:16_384],
-                execution_context=getattr(self, "_last_execution_context", None),
-            )
-            verification_context = self._verification_backlog_context()
-            adaptive_pivot_context = self._adaptive_attack_pivot_context(
-                current_response, raw_results
-            )
+            if _raw_runtime_mode:
+                verification_context = ""
+                adaptive_pivot_context = ""
+            else:
+                # ── v3.2.96: 실시간 발견 자동 저장 + XSS Playwright 자동 검증 ──
+                self._auto_analyze_findings(
+                    raw_results,
+                    current_response[:16_384],
+                    execution_context=getattr(self, "_last_execution_context", None),
+                )
+                verification_context = self._verification_backlog_context()
+                adaptive_pivot_context = self._adaptive_attack_pivot_context(
+                    current_response, raw_results
+                )
             if len(raw_results) > 3000:
                 trimmed = (
                     raw_results[:1500]
@@ -8747,11 +8817,14 @@ class BingoTerminal:
                 system_msgs = [m for m in self.history if m.role == "system"]
                 self.history = system_msgs + non_system[-16:]
 
-            self._parse_agent_state(raw_results)
-            state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
-            state_summary += verification_context + adaptive_pivot_context
+            if _raw_runtime_mode:
+                state_summary = ""
+            else:
+                self._parse_agent_state(raw_results)
+                state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
+                state_summary += verification_context + adaptive_pivot_context
             # v3.2.74: 프록시 상태를 state_summary에 포함
-            if self._proxy.enabled:
+            if self._proxy.enabled and not _raw_runtime_mode:
                 _pe = self._proxy.current()
                 if _pe:
                     state_summary += (
@@ -8762,7 +8835,7 @@ class BingoTerminal:
                         f"r = sess.get(url, proxies=PROXIES, verify=False, timeout=15)\n"
                     )
             # ── v6.2.159 Task Graph + SubAgent 상태를 state_summary에 포함 ──
-            if getattr(self, "_intel_ready", False):
+            if getattr(self, "_intel_ready", False) and not _raw_runtime_mode:
                 try:
                     _tg_next = self._task_graph.next_hint()
                     if _tg_next:
@@ -8803,7 +8876,7 @@ class BingoTerminal:
                     )
                     self.console.print(f"[{THEME['success']}]{_progress_msg}[/]")
                 self._dl_no_progress = 0
-            if _dl_doom_detected or self._dl_no_progress >= 8:
+            if not _raw_runtime_mode and (_dl_doom_detected or self._dl_no_progress >= 8):
                 from ..i18n import t as _t_dl, get_lang as _gl_dl
                 _dl_escape_map = {
                     "ko": (
@@ -8842,7 +8915,7 @@ class BingoTerminal:
             # ─────────────────────────────────────────────────────────────────
 
             # ── v6.2.159 Self-Reflection 주기적 자기평가 (Type A) ─────────────
-            if getattr(self, "_intel_ready", False):
+            if getattr(self, "_intel_ready", False) and not _raw_runtime_mode:
                 try:
                     if self._self_reflector.should_reflect(self._exec_loop_count):
                         _hist_texts = [
@@ -8867,7 +8940,7 @@ class BingoTerminal:
                     pass
 
             # ── v6.2.159 SubAgent 완료 결과 수집 → 히스토리 주입 ─────────────
-            if getattr(self, "_intel_ready", False):
+            if getattr(self, "_intel_ready", False) and not _raw_runtime_mode:
                 try:
                     _done_agents = self._subagent_pool.collect_done()
                     if _done_agents:
@@ -8909,7 +8982,7 @@ class BingoTerminal:
             # ── v3.2.71: target memory 자동 업데이트 ──────────────────────────
             # 실행 결과에서 SQLi 포인트, 유저, 엔드포인트를 자동 추출해 저장.
             # 다음 세션 시작 시 _offer_resume 에서 이 데이터를 AI에 주입.
-            if self._tm_available:
+            if self._tm_available and not _raw_runtime_mode:
                 try:
                     import re as _tm_re
                     _tgt_key = self._agent_state.get("target", "")
@@ -8951,7 +9024,7 @@ class BingoTerminal:
             #   - "blocked", "banned", "access denied" 도 맥락 없이 HTML 본문에서
             #     오탐 가능 → HTTP 응답 라인 또는 에러 메시지 패턴에서만 감지
             _ip_block_hint = ""
-            _raw_lower = raw_results.lower()
+            _raw_lower = "" if _raw_runtime_mode else raw_results.lower()
             import re as _bre
 
             # ── v4.6.0: 오탐 제로 IP 차단 감지 ────────────────────────────────
@@ -9160,6 +9233,8 @@ class BingoTerminal:
                     _detected_blocks.append("IP block/ban detected")
             if _has_unavail:
                 _detected_blocks.append("Temporarily unavailable")
+            if _raw_runtime_mode:
+                _detected_blocks = []
 
             # ── v6.2.16: WAF 보안도메인 302 → 페이로드 차단 (IP 차단 아님) ───────────────
             # igear, securecp, cloudbric 등으로 리다이렉트 = WAF가 그 페이로드를 차단한 것.
@@ -9672,17 +9747,13 @@ class BingoTerminal:
                     "Proceed to the next unknown step.\n"
                 )
             )
-            injection = (
-                "=== BINGO REAL EXECUTION RESULTS ===\n"
-                + trimmed
-                + _ip_block_hint
-                + _waf_redirect_note
-                + "\n=== END REAL RESULTS ===\n\n"
-                + state_summary
-                + _next_action_contract
-                + "- If WAF blocks: use obfuscation variants\n"
-                "- Output TASK_COMPLETE when all credentials are extracted\n"
-                "- NEVER generate simulated output"
+            injection = self._build_execution_feedback(
+                trimmed,
+                state_summary=state_summary,
+                ip_block_hint=_ip_block_hint,
+                waf_redirect_note=_waf_redirect_note,
+                next_action_contract=_next_action_contract,
+                raw_mode=_raw_runtime_mode,
             )
             self.history.append(Message(role="user", content=injection))
 
@@ -9704,7 +9775,10 @@ class BingoTerminal:
                         "Loop stopped — generating the final report now",
                     )
                     self.console.print(f"\n[{THEME['warn']}]{_report_msg}[/]")
-                    self._auto_generate_report()
+                    if _raw_runtime_mode:
+                        self._suggest_next_steps()
+                    else:
+                        self._auto_generate_report()
                     break
                 _hint = self._prompt_mid_task_hint()
                 if _hint:
@@ -9771,14 +9845,20 @@ class BingoTerminal:
             # 여기서 나타나는 태그는 실제 코드 실행 결과를 보고 LLM이 판단한 것 → 신뢰
             import re as _re_fp_post
             _followup_lang = getattr(self.config, "lang", "en")
-            if _re_fp_post.search(r'\[CONFIRMED\s*✅?\]', followup_response):
+            if (
+                _re_fp_post.search(r'\[CONFIRMED\s*✅?\]', followup_response)
+                and not _raw_runtime_mode
+            ):
                 _conf_post = {
                     "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
                     "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
                     "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
                 }.get(_followup_lang, "✅ Confirmed.")
                 self.console.print(f"\n[bold green]{_conf_post}[/bold green]")
-            elif _re_fp_post.search(r'\[FALSE\s*POSITIVE\s*❌?\]', followup_response):
+            elif (
+                _re_fp_post.search(r'\[FALSE\s*POSITIVE\s*❌?\]', followup_response)
+                and not _raw_runtime_mode
+            ):
                 _fp_post = {
                     "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
                     "zh": "❌ [FALSE POSITIVE] — 基于执행결果，误报확인",
@@ -9801,6 +9881,9 @@ class BingoTerminal:
             # 타겟 실패 감지 — 더 이상 진행 불가
             if "TARGET_FAILED" in followup_response:
                 _lang = getattr(self.config, "lang", "en")
+                if _raw_runtime_mode:
+                    self._suggest_next_steps()
+                    break
 
                 # ── v6.2.94: VPN 가상 IP 오판 감지 — TARGET_FAILED 전에 체크 ──
                 import re as _re_vpn
@@ -9982,7 +10065,10 @@ class BingoTerminal:
                     continue
                 else:
                     self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
-                    self._auto_generate_report()
+                    if _raw_runtime_mode:
+                        self._suggest_next_steps()
+                    else:
+                        self._auto_generate_report()
                     break
 
             # Stuck 감지 — 최근 5루프 중 3개 동일하면 전략 전환, 5개 전부 동일하면 보고서 후 종료
@@ -9994,6 +10080,9 @@ class BingoTerminal:
             _last5 = self._recent_results
             _is_hard_stuck = len(_last5) >= 5 and len(set(_last5)) == 1
             _is_soft_stuck = len(_last5) >= 3 and len(set(_last5[-3:])) == 1
+            if _raw_runtime_mode:
+                _is_hard_stuck = False
+                _is_soft_stuck = False
 
             if _is_hard_stuck:
                 # 5루프 전부 동일 → 더 이상 진전 불가, 보고서 생성 후 종료

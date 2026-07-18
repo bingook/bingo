@@ -3732,6 +3732,22 @@ This section overrides conflicting older instructions above.
     promote after deterministic extraction evidence.
 """.strip()
 
+RAW_RUNTIME_CONTRACT = """
+=== BINGO RAW RUNTIME CONTRACT ===
+Default runtime behavior is Claude-CLI-style direct execution:
+1. Emit fenced bash/python code blocks for runnable work. Bingo executes them and
+   returns raw stdout/stderr.
+2. Treat stdout/stderr as the only evidence source. Your own prose, script labels,
+   helper print labels, and previous assumptions are not proof.
+3. Do not call login, SSRF, SQLi, XSS, RCE, bypass, credential extraction, or data
+   access CONFIRMED unless the returned output contains deterministic proof for
+   that exact claim.
+4. If evidence is insufficient, keep the candidate and write the next verifier.
+   Do not fabricate a finding and do not discard a viable technique.
+5. Built-in skills and tool knowledge remain available. This contract changes
+   evidence promotion only; it does not remove attack capability.
+""".strip()
+
 def get_pentest_system_prompt(provider: str) -> str:
     """
     [v6.1.0] 직공 전용 — UNIVERSAL_PENTEST_CORE + 모델별 EXTRA 조합.
@@ -3782,6 +3798,8 @@ candidates until vulnerability-specific verification succeeds.
 
 """
         + EVIDENCE_DRIVEN_OFFENSE
+        + "\n\n"
+        + RAW_RUNTIME_CONTRACT
     )
 
 

@@ -51,6 +51,55 @@ class _Console:
         self.messages.append(" ".join(str(arg) for arg in args))
 
 
+def test_raw_runtime_mode_is_default_and_classic_is_opt_in(monkeypatch) -> None:
+    monkeypatch.delenv("BINGO_RUNTIME_MODE", raising=False)
+    monkeypatch.delenv("BINGO_CLAUDE_CLI_MODE", raising=False)
+
+    assert BingoTerminal._raw_runtime_mode()
+
+    monkeypatch.setenv("BINGO_RUNTIME_MODE", "classic")
+    assert not BingoTerminal._raw_runtime_mode()
+
+    monkeypatch.setenv("BINGO_RUNTIME_MODE", "")
+    monkeypatch.setenv("BINGO_CLAUDE_CLI_MODE", "0")
+    assert not BingoTerminal._raw_runtime_mode()
+
+
+def test_raw_execution_feedback_is_thin_and_evidence_only() -> None:
+    feedback = BingoTerminal._build_execution_feedback(
+        "HTTP/1.1 200 OK\nbody",
+        state_summary="AUTO_VERIFICATION_QUEUE\n",
+        ip_block_hint="\n[IP_BLOCK_DETECTED]\n",
+        waf_redirect_note="\n[WAF_PAYLOAD_BLOCK]\n",
+        next_action_contract="Output TASK_COMPLETE when all credentials are extracted\n",
+        raw_mode=True,
+    )
+
+    assert "BINGO RAW EXECUTION RESULT" in feedback
+    assert "Use only the stdout/stderr above as evidence" in feedback
+    assert "AUTO_VERIFICATION_QUEUE" not in feedback
+    assert "IP_BLOCK_DETECTED" not in feedback
+    assert "WAF_PAYLOAD_BLOCK" not in feedback
+    assert "Output TASK_COMPLETE when all credentials are extracted" not in feedback
+
+
+def test_classic_execution_feedback_keeps_legacy_contract() -> None:
+    feedback = BingoTerminal._build_execution_feedback(
+        "result",
+        state_summary="STATE\n",
+        ip_block_hint="\n[IP_BLOCK_DETECTED]\n",
+        waf_redirect_note="\n[WAF_PAYLOAD_BLOCK]\n",
+        next_action_contract="NEXT ACTION: Continue\n",
+        raw_mode=False,
+    )
+
+    assert "BINGO REAL EXECUTION RESULTS" in feedback
+    assert "STATE" in feedback
+    assert "IP_BLOCK_DETECTED" in feedback
+    assert "WAF_PAYLOAD_BLOCK" in feedback
+    assert "Output TASK_COMPLETE when all credentials are extracted" in feedback
+
+
 def test_attack_hypothesis_is_warned_but_not_blocked() -> None:
     engine = ExecutionAnchorEngine(session_target="https://example.test", lang="en")
 
@@ -316,14 +365,15 @@ def test_direct_http_sqli_probe_is_not_transport_blocked(monkeypatch) -> None:
     assert "HTTP_GET_SQLI_BLOCKED" not in result["output"]
 
 
-def test_system_prompt_ends_with_evidence_driven_offense_contract() -> None:
+def test_system_prompt_ends_with_raw_runtime_contract() -> None:
     prompt = get_pentest_system_prompt("deepseek")
 
     assert (
         "Reports contain verified vulnerabilities only. Probable/potential candidates stay\n"
         "   in the verification backlog and continue to drive attacks."
     ) in prompt
-    assert prompt.rstrip().endswith("promote after deterministic extraction evidence.")
+    assert "=== BINGO RAW RUNTIME CONTRACT ===" in prompt
+    assert prompt.rstrip().endswith("it does not remove attack capability.")
     assert "sqlmap is PERMANENTLY BANNED" not in prompt
 
 

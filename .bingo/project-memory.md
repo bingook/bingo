@@ -8,8 +8,8 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current base: restored from `6.2.199` (`ddbff39f5`) before the bad `6.2.200`~`6.2.204` timeout/structured-call experiments.
-- Current working release: `6.2.206` = `6.2.199` capability baseline + supervised codeblock runtime + legacy structured-call prompt/log removal.
+- Rollback point for the clean `6.2.199` baseline: commit `07eefa781` (`revert: restore 6.2.199 baseline`).
+- Current working release: `6.2.207` = `6.2.199` capability baseline + supervised codeblock runtime + legacy structured-call prompt/log removal + default Claude-CLI-style raw feedback.
 - Bingo project memory is automatic:
   - At every AI assistant session start in this repo, read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, silently run `scripts/bingo-memory-sync.sh`.
@@ -20,12 +20,15 @@
   - `git diff --check`
   - `pytest -q`
 - Recent full-suite status for `6.2.205`: `201 passed`.
-- Current full-suite status for `6.2.206`: `199 passed` after the removal change.
+- Current full-suite status for `6.2.207`: `202 passed` after raw feedback change.
 
 ## Runtime Decision
 
 - Markdown `bash/python` codeblock execution remains enabled for capability compatibility.
 - The project uses direct Markdown `bash/python` codeblock execution, not a legacy structured-call-only policy or codeblock bridge.
+- Default runtime mode is raw/thin (`BINGO_RUNTIME_MODE` unset): run fenced code, return stdout/stderr, and do not auto-promote model prose into confirmed findings.
+- Classic heavy mode remains available only by explicit env opt-in: `BINGO_RUNTIME_MODE=classic` or `BINGO_CLAUDE_CLI_MODE=0`.
+- In default raw mode, skills remain enabled; only automatic finding promotion, adaptive pivot injections, IP-block wait/hints, target-memory extraction, and model-prose `[CONFIRMED]` UI promotion are disabled.
 - Long-running generated code is handled by supervised runtime state:
   - normal completion returns `JOB_STATE status=completed`;
   - timeout/interruption returns `JOB_STATE status=timeout_interrupted` or equivalent;
@@ -44,32 +47,95 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T04:23:35+08:00
+- Last synced: 2026-07-19T05:30:23+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T04:23:35+08:00
+- Captured: 2026-07-19T05:30:23+08:00
 
 ### Status
 ```text
  M bingo/__init__.py
- M bingo/core/change_memory.py
- M bingo/core/execution_anchor.py
- M bingo/lang/strings.py
- M bingo/models/base.py
  M bingo/models/system_prompt.py
- M bingo/redteam/verification.py
- M bingo/tools/findings_exporter.py
- M bingo/tools_ext/autoexploit_modules.py
- M bingo/tools_ext/pentest_tools.py
  M bingo/ui/terminal.py
  M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
+ bingo/__init__.py                             |   2 +-
+ bingo/models/system_prompt.py                 |  18 ++
+ bingo/ui/terminal.py                          | 243 ++++++++++++++++++--------
+ tests/test_terminal_completion_regressions.py |  54 +++++-
+ 4 files changed, 237 insertions(+), 80 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.207"`
+- `RAW_RUNTIME_CONTRACT = """`
+- `=== BINGO RAW RUNTIME CONTRACT ===`
+- `Default runtime behavior is Claude-CLI-style direct execution:`
+- `1. Emit fenced bash/python code blocks for runnable work. Bingo executes them and`
+- `returns raw stdout/stderr.`
+- `2. Treat stdout/stderr as the only evidence source. Your own prose, script labels,`
+- `helper print labels, and previous assumptions are not proof.`
+- `3. Do not call login, SSRF, SQLi, XSS, RCE, bypass, credential extraction, or data`
+- `access CONFIRMED unless the returned output contains deterministic proof for`
+- `that exact claim.`
+- `4. If evidence is insufficient, keep the candidate and write the next verifier.`
+- `Do not fabricate a finding and do not discard a viable technique.`
+- `5. Built-in skills and tool knowledge remain available. This contract changes`
+- `evidence promotion only; it does not remove attack capability.`
+- `""".strip()`
+- `+ "\n\n"`
+- `+ RAW_RUNTIME_CONTRACT`
+- `@staticmethod`
+- `def _raw_runtime_mode() -> bool:`
+- `"""Return True for Claude-CLI-style raw execution feedback.`
+- `Default is raw/thin mode: run fenced bash/python blocks, return stdout/stderr,`
+- `and let the model decide the next action from that evidence.  The legacy`
+- `heavy auto-analysis path remains available for regression testing via`
+- `BINGO_RUNTIME_MODE=classic or BINGO_CLAUDE_CLI_MODE=0.`
+- `"""`
+- `mode = os.environ.get("BINGO_RUNTIME_MODE", "").strip().lower()`
+- `if mode in {"classic", "legacy", "heavy", "bingo"}:`
+- `return False`
+- `if mode in {"raw", "thin", "claude", "claude-cli", "claude_cli"}:`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:48a353c3e8053c6bf902b40efcf8df70ff059e89 -->
+## Code change: refactor: remove legacy structured call runtime
+- Commit: `48a353c3e805`
+- Recorded: 2026-07-19T04:24:47+08:00
+- Committed: 2026-07-19T04:24:47+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	bingo/__init__.py
+M	bingo/core/change_memory.py
+M	bingo/core/execution_anchor.py
+M	bingo/lang/strings.py
+M	bingo/models/base.py
+M	bingo/models/system_prompt.py
+M	bingo/redteam/verification.py
+M	bingo/tools/findings_exporter.py
+M	bingo/tools_ext/autoexploit_modules.py
+M	bingo/tools_ext/pentest_tools.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+48a353c3e refactor: remove legacy structured call runtime
+ .bingo/project-memory.md                      | 194 +++++++-
  bingo/__init__.py                             |   2 +-
  bingo/core/change_memory.py                   |  12 +-
  bingo/core/execution_anchor.py                |   2 +-
@@ -82,7 +148,7 @@
  bingo/tools_ext/pentest_tools.py              | 281 +++++++----
  bingo/ui/terminal.py                          | 657 +-------------------------
  tests/test_terminal_completion_regressions.py |  65 +--
- 12 files changed, 301 insertions(+), 972 deletions(-)
+ 13 files changed, 483 insertions(+), 984 deletions(-)
 ```
 
 ### Added Highlights
@@ -116,7 +182,6 @@
 - `Output: plain text, bash/python code blocks. Long-running work reports JOB_STATE.`
 - `RULE #4: ANY Python code with if/for/try/def/class MUST use a fenced python code block.`
 - `RULE #5: Boolean oracle loop, char extraction loop → ALWAYS use a fenced python code block. Never bash loop.`
-<!-- working-tree:end -->
 
 # Workspace Memory
 

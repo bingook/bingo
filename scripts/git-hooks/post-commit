@@ -5,7 +5,18 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 python_bin=${PYTHON:-python3}
 hook_source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 bingo_root=$(CDPATH= cd -- "$hook_source_dir/../.." && pwd)
+
+# This hook may be reached through a global core.hooksPath. Keep the automatic
+# Codex memory write scoped to this repository only.
+if [ "$repo_root" != "$bingo_root" ]; then
+  exit 0
+fi
+
 memory_script="$bingo_root/bingo/core/change_memory.py"
+memory_root="$repo_root/.codex/bingo-memory"
 
 "$python_bin" "$memory_script" \
-  --cwd "$repo_root" --commit HEAD >/dev/null 2>&1 || true
+  --cwd "$repo_root" \
+  --commit HEAD \
+  --memory-root "$memory_root" \
+  --sync-codex-memory >/dev/null 2>&1 || true

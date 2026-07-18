@@ -123,7 +123,7 @@ When detecting these keywords, **ALWAYS start with the forced opener — NEVER r
 ## 📋 LAYER 1 — Project Identity
 
 **bingo** (`bingo-ai` on PyPI) — The #1 AI-Powered Red Team Terminal.
-**Version:** 6.2.202 | **Python:** 3.12+ | **Platform:** macOS & Linux only
+**Version:** 6.2.203 | **Python:** 3.12+ | **Platform:** macOS & Linux only
 
 ```
 pip install bingo-ai

@@ -8,7 +8,7 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.codex/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after latest credential false-positive work: `6.2.202`.
+- Current stable version after latest bash codeblock execution work: `6.2.203`.
 - Codex project memory is automatic:
   - At every Codex session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/codex-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Codex must silently run `scripts/codex-memory-sync.sh`.
@@ -18,7 +18,7 @@
   - `ruff check --select F821,F811 ...`
   - `git diff --check`
   - `pytest -q`
-- Recent full-suite status after latest watchdog/memory work: `211 passed`.
+- Recent full-suite status after latest bash codeblock work: `216 passed`.
 - Recent target-log decisions for `mjh.or.kr`:
   - LFI broad-token false positive fixed: `nginx`/`mysql` words and response-size deltas are candidates only, not confirmed LFI.
   - XSS blocked-payload false positive fixed: `NOT REFLECTED`, `被过滤/不存在`, `403/404`, and `Location=N/A` contexts must not produce `XSS_TRIGGER_DETECTED` or potential findings.
@@ -29,26 +29,26 @@
 - Latest credential false-positive issue:
   - Report showed `{'password': '> 200 登出:'}` under extracted credentials.
   - Fixed by requiring credential key-value separators `:`/`=`, rejecting UI/status/logout/error values, and sanitizing stored/session credentials before agent-knowledge/report use.
+- Latest bash codeblock execution issue:
+  - Bash blocks starting with `for` loops or variable assignments could be silently skipped even when they contained allowed `curl`/`python3` commands.
+  - Fixed by scanning the whole block for allowed executable commands while still ignoring comments and non-exec wrappers like `echo`.
 
 <!-- codex-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T00:46:47+08:00
+- Last synced: 2026-07-19T01:41:13+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.codex/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T00:46:47+08:00
+- Captured: 2026-07-19T01:41:13+08:00
 
 ### Status
 ```text
 M .codex/project-memory.md
  M AGENTS.md
  M bingo/__init__.py
- M bingo/lang/strings.py
- M bingo/tools/gnuboard.py
- M bingo/tools/recon_engine.py
  M bingo/ui/terminal.py
  M scripts/git-hooks/post-commit
  M tests/test_change_memory.py
@@ -63,14 +63,78 @@ M .codex/project-memory.md
 ```text
 AGENTS.md                                     |   2 +-
  bingo/__init__.py                             |   2 +-
- bingo/lang/strings.py                         |   4 +
- bingo/tools/gnuboard.py                       |   6 -
- bingo/tools/recon_engine.py                   |   3 +-
- bingo/ui/terminal.py                          | 235 ++++++++++++++++++++------
- scripts/git-hooks/post-commit                 |  13 +-
- tests/test_change_memory.py                   | 139 +++++++++++++++
- tests/test_terminal_completion_regressions.py |  98 +++++++++++
- 9 files changed, 438 insertions(+), 64 deletions(-)
+ bingo/ui/terminal.py                          |  74 +++++++++++---
+ scripts/git-hooks/post-commit                 |  13 ++-
+ tests/test_change_memory.py                   | 139 ++++++++++++++++++++++++++
+ tests/test_terminal_completion_regressions.py | 135 +++++++++++++++++++++++++
+ 6 files changed, 350 insertions(+), 15 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.203"`
+- `_BASH_CONTROL_WORDS = {`
+- `"for", "while", "until", "if", "then", "elif", "else", "fi",`
+- `"do", "done", "case", "esac", "select", "function",`
+- `}`
+- `_BASH_NON_EXEC_WRAPPERS = {"echo", "printf"}`
+- `def _bash_allowed_command_label(script_text: str) -> str:`
+- `"""Return a display label if a Bash block contains an allowed command.`
+- `v6.2.203: LLM often emits valid scanner loops such as`
+- `'for idx ...; do curl ...; done' or starts scripts with variable`
+- `assignments before the first curl/python command.  The old gate`
+- `checked only line 1, so those blocks were silently skipped.`
+- `"""`
+- `heredoc_end: str | None = None`
+- `cmd_pattern = re.compile(`
+- `r"(?<![A-Za-z0-9_./-])("`
+- `+ "|".join(re.escape(cmd) for cmd in sorted(_BASH_ALLOWED, key=len, reverse=True))`
+- `+ r")(?=$|[\s'\"\\|;&)<])"`
+- `)`
+- `heredoc_open = re.compile(r"<<\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")`
+- `for raw_line in script_text.splitlines():`
+- `stripped = raw_line.strip()`
+- `if not stripped or stripped.startswith("#"):`
+- `continue`
+- `if heredoc_end:`
+- `if stripped == heredoc_end:`
+- `heredoc_end = None`
+- `continue`
+- `try:`
+- `parts = _shlex_bash.split(stripped.split("|", 1)[0].split("&&", 1)[0])`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:cf5ff6575e597944f07bb27dbf3cb9f1962730d6 -->
+## Code change: fix: suppress credential evidence false positives
+- Commit: `cf5ff6575e59`
+- Recorded: 2026-07-19T00:52:18+08:00
+- Committed: 2026-07-19T00:52:18+08:00
+
+### Files
+```text
+M	.codex/project-memory.md
+M	AGENTS.md
+M	bingo/__init__.py
+M	bingo/lang/strings.py
+M	bingo/tools/gnuboard.py
+M	bingo/tools/recon_engine.py
+M	bingo/ui/terminal.py
+```
+
+### Diff Stat
+```text
+cf5ff6575 fix: suppress credential evidence false positives
+ .codex/project-memory.md    | 101 ++++++++++++++-----
+ AGENTS.md                   |   2 +-
+ bingo/__init__.py           |   2 +-
+ bingo/lang/strings.py       |   4 +
+ bingo/tools/gnuboard.py     |   6 --
+ bingo/tools/recon_engine.py |   3 +-
+ bingo/ui/terminal.py        | 235 ++++++++++++++++++++++++++++++++++----------
+ 7 files changed, 266 insertions(+), 87 deletions(-)
 ```
 
 ### Added Highlights
@@ -104,7 +168,6 @@ AGENTS.md                                     |   2 +-
 - `maximum=script_timeout,`
 - `)`
 - `wall_clock_timeout = _positive_int_env(`
-<!-- working-tree:end -->
 
 # Workspace Memory
 

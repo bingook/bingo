@@ -7550,6 +7550,64 @@ class BingoTerminal:
             # Python (로컬 처리)
             "python3", "python",
         }
+        _BASH_CONTROL_WORDS = {
+            "for", "while", "until", "if", "then", "elif", "else", "fi",
+            "do", "done", "case", "esac", "select", "function",
+        }
+        _BASH_NON_EXEC_WRAPPERS = {"echo", "printf"}
+
+        def _bash_allowed_command_label(script_text: str) -> str:
+            """Return a display label if a Bash block contains an allowed command.
+
+            v6.2.203: LLM often emits valid scanner loops such as
+            `for idx ...; do curl ...; done` or starts scripts with variable
+            assignments before the first curl/python command.  The old gate
+            checked only line 1, so those blocks were silently skipped.
+            """
+            heredoc_end: str | None = None
+            cmd_pattern = re.compile(
+                r"(?<![A-Za-z0-9_./-])("
+                + "|".join(re.escape(cmd) for cmd in sorted(_BASH_ALLOWED, key=len, reverse=True))
+                + r")(?=$|[\s'\"\\|;&)<])"
+            )
+            heredoc_open = re.compile(r"<<\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
+            for raw_line in script_text.splitlines():
+                stripped = raw_line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if heredoc_end:
+                    if stripped == heredoc_end:
+                        heredoc_end = None
+                    continue
+
+                try:
+                    parts = _shlex_bash.split(stripped.split("|", 1)[0].split("&&", 1)[0])
+                except Exception:
+                    parts = stripped.split()
+                first = parts[0].split("/")[-1] if parts else ""
+
+                if first in _BASH_ALLOWED:
+                    marker = heredoc_open.search(stripped)
+                    if marker:
+                        heredoc_end = marker.group(1)
+                    return stripped[:120]
+                if first in _BASH_NON_EXEC_WRAPPERS:
+                    continue
+
+                assignment_or_control = (
+                    first in _BASH_CONTROL_WORDS
+                    or bool(re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", stripped))
+                    or "$(" in stripped
+                )
+                if assignment_or_control:
+                    match = cmd_pattern.search(stripped)
+                    if match:
+                        marker = heredoc_open.search(stripped)
+                        if marker:
+                            heredoc_end = marker.group(1)
+                        return stripped[:120]
+            return ""
+
         history_text = " ".join(m.content for m in self.history if m.role == "user")
         import shlex as _shlex_bash
         for _bash_i, block in enumerate(bash_blocks):
@@ -7564,17 +7622,9 @@ class BingoTerminal:
             ]
             if not first_real_lines:
                 continue
-            # 파이프 / && 앞 첫 명령어만 추출하여 allowlist 검사
-            _first_cmd_raw = first_real_lines[0].split("|")[0].split("&&")[0].strip()
-            _first_cmd_raw = _first_cmd_raw.replace("\\\n", " ").rstrip("\\").strip()
-            try:
-                _first_parts = _shlex_bash.split(_first_cmd_raw)
-            except Exception:
-                _first_parts = _first_cmd_raw.split()
-            if not _first_parts:
-                continue
-            _bin_name = _first_parts[0].split("/")[-1]
-            if _bin_name not in _BASH_ALLOWED:
+            # 허용 명령 검사: 첫 줄뿐 아니라 for/while/변수할당 내부의 curl/python도 허용
+            _bash_cmd_label = _bash_allowed_command_label(script)
+            if not _bash_cmd_label:
                 continue
             # 중복 실행 방지
             _dedup_key = script[:60]
@@ -7673,7 +7723,7 @@ class BingoTerminal:
             tasks.append({
                 "type": "bash",
                 "path": str(_sh_path),
-                "cmd": first_real_lines[0][:80],   # 표시용 1줄 요약
+                "cmd": _bash_cmd_label[:80],   # 표시용 1줄 요약
                 "preview": script[:120],
                 "code": script[:16_384],
             })

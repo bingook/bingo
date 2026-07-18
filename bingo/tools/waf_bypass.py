@@ -308,11 +308,13 @@ class WafDetectResult:
 class WafDetector:
     def __init__(self, probe: HttpProbe):
         self.probe = probe
+        self.last_baseline: ProbeResult | None = None
 
     def detect(self, url: str) -> WafDetectResult:
         """다양한 페이로드로 WAF 탐지"""
         # 정상 요청 기준선
         base = self.probe.get(url)
+        self.last_baseline = base
 
         # WAF 유발 페이로드들
         probes = [
@@ -432,6 +434,7 @@ class WafBypassEngine:
         self.probe = probe
         self.detector = WafDetector(probe)
         self.log = on_progress or (lambda s: None)
+        self._baseline_response: ProbeResult | None = None
 
     def auto_bypass(
         self,
@@ -447,6 +450,7 @@ class WafBypassEngine:
         """
         # 1. WAF 탐지
         detect = self.detector.detect(url)
+        self._baseline_response = self.detector.last_baseline
         if not detect.detected:
             self.log("  [WAF] WAF 없음 — 직접 공격 가능")
             return True, None
@@ -786,7 +790,7 @@ class WafBypassEngine:
             return self.probe.post(url, data, headers=extra_headers)
 
     def _is_bypassed(self, r: ProbeResult) -> bool:
-        """WAF 차단 아님 = 우회 성공"""
+        """WAF 차단 아님 + baseline과 다른 응답 = 우회 후보."""
         if r.status in (403, 406, 501, 503):
             return False
         if r.error:
@@ -794,7 +798,15 @@ class WafBypassEngine:
         blocked_kw = ["access denied", "forbidden", "blocked", "not acceptable",
                       "security violation", "잘못된 접근", "차단"]
         body_lower = r.body.lower()
-        return not any(k in body_lower for k in blocked_kw)
+        if any(k in body_lower for k in blocked_kw):
+            return False
+        baseline = self._baseline_response
+        if baseline is not None and r.status == baseline.status:
+            # A public 200 baseline echoed unchanged is not a WAF bypass.
+            normalize = lambda body: re.sub(r"\s+", " ", body or "").strip()[:4096]
+            if normalize(r.body) == normalize(baseline.body):
+                return False
+        return True
 
     def get_bypass_summary(self, waf_type: str) -> str:
         """DeepSeek V4 Pro 전달용 — WAF 우회 전략 상세 설명"""

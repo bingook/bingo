@@ -5637,7 +5637,13 @@ class BingoTerminal:
 
         # agent_state 업데이트 (SQLi 결과 반영)
         sqli = results.get("💉 SQLi") or {}
-        if sqli.get("injectable"):
+        # Multi-agent heuristics alone must not mark target memory as confirmed.
+        # Require an extracted DB artifact or an explicit verified oracle flag.
+        if sqli.get("injectable") and (
+            sqli.get("database")
+            or sqli.get("tables")
+            or sqli.get("oracle_confirmed") is True
+        ):
             self._agent_state["confirmed_sqli"] = True
             self._agent_state["db_name"]  = sqli.get("database")
             self._agent_state["tables"]   = sqli.get("tables", [])
@@ -9313,11 +9319,15 @@ class BingoTerminal:
                     _tgt_key = self._agent_state.get("target", "")
                     _raw_scan = raw_results
                     if _tgt_key and _raw_scan:
-                        # SQLi 확인 키워드 → sqli_point 저장
-                        _sqli_confirmed = bool(_tm_re.search(
-                            r'(?:sql.?inject|sqli|1=1.*200|WAITFOR.*DELAY|시간.*지연|응답.*차이|size.diff)',
-                            _raw_scan, _tm_re.I
-                        ))
+                        # Only the exporter evidence ladder can authorize a
+                        # confirmed SQLi memory entry.  Raw words such as
+                        # "sqli" or "size diff" are candidate evidence only.
+                        _sqli_confirmed = any(
+                            getattr(_f, "vuln_type", "") == "sqli"
+                            and getattr(_f, "confidence", "") == "confirmed"
+                            and bool(getattr(_f, "confirmed", False))
+                            for _f in getattr(self._findings_exporter, "findings", [])
+                        )
                         if _sqli_confirmed:
                             _u = _tm_re.search(r'https?://[^\s\'",]{10,}', _raw_scan)
                             _p = _tm_re.search(r'(?:param(?:eter)?|파라미터)[=:\s]*([a-zA-Z_][a-zA-Z0-9_]{1,30})', _raw_scan, _tm_re.I)
@@ -10724,11 +10734,20 @@ class BingoTerminal:
         if not isinstance(state, dict) or state.get("_target") != target:
             state = {"_target": target}
             self._adaptive_attack_state = state
-        vector_state = state.setdefault(vector, {"counts": {}, "tried": set()})
+        vector_state = state.setdefault(
+            vector, {"counts": {}, "tried": set(), "blocked_attempts": 0}
+        )
+        if _pivot_re.search(
+            r"\b(?:403|598B|199B)\b|waf|blocked|inconclusive|unstable|oracle.*(?:fail|invalid)",
+            output,
+            _pivot_re.I,
+        ):
+            vector_state["blocked_attempts"] = vector_state.get("blocked_attempts", 0) + 1
         vector_state["tried"].add(technique)
         count = vector_state["counts"].get(technique, 0) + 1
         vector_state["counts"][technique] = count
-        if count < 2 or count % 2:
+        blocked_attempts = vector_state.get("blocked_attempts", 0)
+        if (count < 2 or count % 2) and blocked_attempts < 2:
             return ""
 
         next_name, next_action = next(
@@ -10737,7 +10756,10 @@ class BingoTerminal:
                 for name, action in profiles[vector]
                 if name not in vector_state["tried"]
             ),
-            profiles[vector][0],
+            (
+                "cross_vector",
+                "switch to JS/API/IDOR and preserve this SQLi candidate for later verification",
+            ),
         )
         vector_state["tried"].add(next_name)
         return (
@@ -11323,6 +11345,11 @@ class BingoTerminal:
         }.get(lang, "Verification Backlog (Unconfirmed)")
         verified_text = "\n".join(confirmed_truth) or no_verified
         backlog_text = "\n".join(backlog_truth) or "- None"
+        evidence_text = {
+            "ko": "- 확정되지 않은 관찰은 아래 검증 대기 목록에만 표시했습니다.",
+            "zh": "- 未确认的观察仅保留在下面的待验证列表中。",
+            "en": "- Unconfirmed observations are kept only in the verification backlog below.",
+        }.get(lang, "- Unconfirmed observations are kept only in the verification backlog below.")
         return (
             f"# Target: {target}\n"
             f"## {summary}\n"
@@ -11330,7 +11357,7 @@ class BingoTerminal:
             f"- {metrics[0]}: {confirmed_count}\n"
             f"- {metrics[1]}: {potential_count}\n\n"
             f"## {vulns}\n{verified_text}\n\n"
-            f"## {evidence}\n{verified_text}\n\n"
+            f"## {evidence}\n{evidence_text}\n\n"
             f"## {backlog_label}\n{backlog_text}\n\n"
             f"## {creds}\n{credential_lines}\n\n"
             f"## {fixes}\n{fix_lines}"
@@ -11447,6 +11474,7 @@ class BingoTerminal:
         _fe_potential_n = 0
         _fe_snap_block = ""
         _fe_report_findings: list = []
+        _fe = None
         try:
             _fe = getattr(self, "_findings_exporter", None)
             if _fe is not None and hasattr(_fe, "ground_truth_block"):
@@ -11555,6 +11583,12 @@ class BingoTerminal:
             except Exception as e:
                 self._error(f"report error: {e}")
 
+        # With zero confirmed exporter findings, prose from the model is not a
+        # sufficient source of truth.  Force the deterministic snapshot report
+        # so narrative claims cannot reintroduce SQLi/PII hallucinations.
+        if _fe is not None and _fe_confirmed_n == 0:
+            full = ""
+
         if not full.strip():
             _fallback_msg = self.s.get(
                 "report_fallback_used",
@@ -11578,9 +11612,10 @@ class BingoTerminal:
                 "report_ground_truth_autocorrected",
                 "Report claims did not match Finding IDs; using deterministic evidence report",
             )
-            self.console.print(
-                f"[{THEME['warn']}]{_invalid_msg}: {', '.join(report_errors[:4])}[/]"
-            )
+            if _os_report.environ.get("BINGO_DEBUG"):
+                self.console.print(
+                    f"[{THEME['warn']}]{_invalid_msg}: {', '.join(report_errors[:4])}[/]"
+                )
             full = self._build_fallback_report(
                 target=target,
                 lang=_lang,
@@ -12311,8 +12346,14 @@ class BingoTerminal:
         if m2:
             self._agent_state["db_name"] = m2.group(1)
 
-        # Boolean SQLi 확인
-        if re.search(r"[Bb]oolean.{0,30}[Ll]ikely|[Ss]QLi.{0,20}[Cc]onfirmed", text):
+        # Boolean wording is model/tool prose, not proof.  Keep the state flag
+        # synchronized with the exporter evidence ladder instead.
+        if any(
+            getattr(_f, "vuln_type", "") == "sqli"
+            and getattr(_f, "confidence", "") == "confirmed"
+            and bool(getattr(_f, "confirmed", False))
+            for _f in getattr(self._findings_exporter, "findings", [])
+        ):
             self._agent_state["confirmed_sqli"] = True
 
         # 테이블 목록

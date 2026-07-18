@@ -186,6 +186,24 @@ def test_python_suffix_inside_bash_is_wrapped_before_preflight() -> None:
     assert checked.returncode == 0, checked.stderr
 
 
+def test_quote_heavy_multiline_python_pipeline_uses_tempfile(tmp_path: Path) -> None:
+    script = (
+        "curl -sk https://example.test/ | python3 -c \"\n"
+        "import re, sys\n"
+        "js_urls = set(re.findall(r'src=[\\\"'\\\\'\\x60]([^\\\"'\\\\'\\x60 >]+)', html, re.I))\n"
+        "print(js_urls)\n"
+        "\""
+    )
+
+    repaired = _fix_bash_script(script)
+
+    assert "mktemp /tmp/bingo_py_" in repaired
+    assert "| python3 \"${_bingo_pytmp_1}\"" in repaired
+    import subprocess
+    checked = subprocess.run(["bash", "-n"], input=repaired, text=True, capture_output=True)
+    assert checked.returncode == 0, checked.stderr
+
+
 def test_custom_sqli_oracle_executes_instead_of_being_blocked() -> None:
     result = run_python(
         "import string\n"
@@ -449,6 +467,61 @@ def test_failed_time_measurement_invalidates_probable_sqli(tmp_path: Path) -> No
         q.reason_code == "invalidated_by_time_based_threshold_failed"
         for q in exporter.quarantined
     )
+
+
+def test_waf_control_pair_is_blocked_not_probable(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    code = "TOOL_CALL:{\"name\":\"sqli_autoexploit\",\"args\":{\"url\":\"https://example.test/item\",\"param\":\"id\"}}"
+
+    finding = exporter.process(
+        "TRUE 403 199B request blocked\nFALSE 200 598B generic error page",
+        code,
+    )
+
+    assert finding is not None
+    assert finding.confidence == "blocked"
+    assert exporter.stats()["probable"] == 0
+
+
+def test_equal_waf_controls_are_blocked_not_probable(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    code = "curl 'https://example.test/item?id=1' # sqli boolean controls"
+
+    finding = exporter.process("TRUE 403 199B\nFALSE 403 199B", code)
+
+    assert finding is not None
+    assert finding.confidence == "blocked"
+    assert exporter.stats()["probable"] == 0
+
+
+def test_finding_ids_are_monotonic_across_invalidation(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    code = "TOOL_CALL:{\"name\":\"sqli_autoexploit\",\"args\":{\"url\":\"https://example.test/item\",\"param\":\"id\"}}"
+
+    first = exporter.process("TRUE 1200B\nFALSE 500B", code)
+    assert first is not None and first.id == "BINGO-0001"
+    exporter.process(
+        "기준 응답 시간: 0.68s\n[sleep] 응답 시간: 0.35s (임계값: 2.18s)\n"
+        "[sleep_num] 응답 시간: 0.31s (임계값: 2.18s)",
+        code,
+    )
+    second = exporter.process("TRUE 1300B\nFALSE 500B", code)
+
+    assert second is not None and second.id == "BINGO-0003"
+    assert exporter.quarantined[0].id == "BINGO-0001"
+    assert len({f.id for f in exporter.findings + exporter.quarantined}) == 3
+
+
+def test_label_only_personal_page_is_blocked(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    output = "HTTP 200\npersonal=True\n보호자: 환자명\nROWS=0\n예약"
+
+    finding = exporter.process(output, "curl https://example.test/patient")
+
+    assert finding is not None
+    assert finding.vuln_type == "info_disclosure"
+    assert finding.confidence == "blocked"
+    assert not finding.confirmed
 
 
 def test_structured_time_measurement_requires_repeated_passes(tmp_path: Path) -> None:

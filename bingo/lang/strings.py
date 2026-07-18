@@ -836,6 +836,21 @@ _STRINGS = {
         "zh": "🔍 [自动校正] 报告内容与实际 Finding ID 不一致 — 已替换为证据报告",
         "en": "🔍 [Auto-correct] Report claims did not match Finding IDs — replaced with evidence report",
     },
+    "finding_control_blocked": {
+        "ko": "🔍 [자동 교정] 대조 요청이 WAF/보호 페이지로 차단됨 — SQLi 확정에서 제외",
+        "zh": "🔍 [自动校正] 对照请求被 WAF/保护页拦截 — 已排除 SQLi 确认",
+        "en": "🔍 [Auto-correct] Control request was blocked by WAF/protection — excluded from SQLi confirmation",
+    },
+    "finding_labels_only": {
+        "ko": "🔍 [자동 교정] 민감정보 라벨/양식만 확인되고 실제 레코드는 없음",
+        "zh": "🔍 [自动校正] 仅发现敏感字段标签/模板，没有实际记录",
+        "en": "🔍 [Auto-correct] Sensitive labels/templates found without actual records",
+    },
+    "adaptive_cross_vector_pivot": {
+        "ko": "🔁 SQLi 대조가 반복 차단됨 — JS/API/IDOR 벡터로 전환하고 후보는 보류",
+        "zh": "🔁 SQLi 对照请求重复被拦截 — 切换到 JS/API/IDOR，保留候选待验证",
+        "en": "🔁 Repeated SQLi control blocks — pivoting to JS/API/IDOR while preserving the candidate",
+    },
     "doom_progress_autocorrected": {
         "ko": "🔄 [자동 교정] 새 엔드포인트/파라미터 발견 — 무진전 카운터 초기화",
         "zh": "🔄 [自动校正] 发现新端点/参数 — 已重置无进展计数器",

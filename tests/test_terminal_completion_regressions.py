@@ -20,6 +20,8 @@ from bingo.orchestrator.engine import _board_value_anchored, _goal_completion_al
 from bingo.tools_ext import autoexploit_modules
 from bingo.tools_ext.pentest_tools import (
     TOOL_REGISTRY,
+    _boolean_probe_is_blocked,
+    _boolean_probe_pair_is_eligible,
     _fix_bash_script,
     _inject_post_exploit_notice,
     _inject_sqli_trigger_notice,
@@ -204,6 +206,45 @@ def test_quote_heavy_multiline_python_pipeline_uses_tempfile(tmp_path: Path) -> 
     assert checked.returncode == 0, checked.stderr
 
 
+def test_quote_heavy_regex_is_repaired_to_valid_python() -> None:
+    script = (
+        'curl -sk https://example.test/ | python3 -c "\n'
+        "import re, sys\n"
+        "html = sys.stdin.read()\n"
+        'links = re.findall(r"[\"\']([^\"\']+)[\"\']", html)\n'
+        "print(links)\n"
+        '"'
+    )
+
+    repaired = _fix_bash_script(script)
+    python_body = repaired.split("BINGO_PYEOF_1'\n", 1)[1].split(
+        "\nBINGO_PYEOF_1", 1
+    )[0]
+
+    compile(python_body, "<repaired>", "exec")
+    assert r"[^\x22\x27]" in python_body
+
+
+def test_corrupted_href_findall_is_repaired_to_valid_python() -> None:
+    script = (
+        'python3 -c "\n'
+        "import re\n"
+        "html = '<a href=/manager/>x</a>'\n"
+        "links = re.findall(rhref=[\"']([^\"']+)[\"'], html)\n"
+        "print(links)\n"
+        '"'
+    )
+
+    repaired = _fix_bash_script(script)
+    python_body = repaired.split("BINGO_PYEOF_1'\n", 1)[1].split(
+        "\nBINGO_PYEOF_1", 1
+    )[0]
+
+    compile(python_body, "<repaired>", "exec")
+    assert "re.findall" in python_body
+    assert "href=" in python_body
+
+
 def test_custom_sqli_oracle_executes_instead_of_being_blocked() -> None:
     result = run_python(
         "import string\n"
@@ -244,9 +285,12 @@ def test_direct_http_sqli_probe_is_not_transport_blocked(monkeypatch) -> None:
 def test_system_prompt_ends_with_evidence_driven_offense_contract() -> None:
     prompt = get_pentest_system_prompt("deepseek")
 
-    assert prompt.rstrip().endswith(
+    assert (
         "Reports contain verified vulnerabilities only. Probable/potential candidates stay\n"
         "   in the verification backlog and continue to drive attacks."
+    ) in prompt
+    assert prompt.rstrip().endswith(
+        "internal Finding-ID report generator create the sole authoritative report."
     )
     assert "sqlmap is PERMANENTLY BANNED" not in prompt
 
@@ -266,8 +310,32 @@ def test_repeated_inconclusive_attack_automatically_pivots(tmp_path: Path) -> No
     assert first == ""
     assert "ADAPTIVE_OFFENSE_PIVOT" in second
     assert "vector=sqli" in second
-    assert "next=error" in second
+    assert "next=cross_vector" in second
+    assert terminal._adaptive_attack_state["sqli"]["cooldown"] == 2
     assert "do not stop exploration" in second
+
+
+def test_boolean_oracle_rejects_block_pages_and_status_transitions() -> None:
+    assert _boolean_probe_is_blocked(403, "Forbidden")
+    assert _boolean_probe_is_blocked(200, "Request was blocked by WAF")
+    assert _boolean_probe_pair_is_eligible(200, "true page", 200, "false page")
+    assert not _boolean_probe_pair_is_eligible(403, "blocked", 200, "normal")
+
+
+def test_localized_oracle_rejection_triggers_cross_vector_pivot(tmp_path: Path) -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._agent_state = {"target": "https://example.test"}
+    terminal._findings_exporter = FindingsExporter(
+        target="https://example.test", output_dir=str(tmp_path)
+    )
+    code = 'TOOL_CALL:{"name":"sqli_autoexploit","args":{"param":"id"}}'
+    output = "[SQLI_ORACLE_REJECTED] TRUE/FALSE 대조가 차단되었습니다."
+
+    assert terminal._adaptive_attack_pivot_context(code, output) == ""
+    pivot = terminal._adaptive_attack_pivot_context(code, output)
+
+    assert "next=cross_vector" in pivot
+    assert terminal._adaptive_attack_state["sqli"]["cooldown"] == 2
 
 
 def test_orchestrator_rejects_self_authored_evidence_and_completion() -> None:
@@ -935,6 +1003,45 @@ def test_error_identifier_never_enters_pending_crack_queue() -> None:
     assert value in obj._session_cracked_hashes
 
 
+def test_jsessionid_never_enters_pending_crack_queue_even_when_echoed_later() -> None:
+    value = "E9A7C3C2D2404A4C8000226189606120"
+    obj = BingoTerminal.__new__(BingoTerminal)
+    obj._session_cracked_hashes = set()
+    obj._pending_crack_hashes = []
+    obj.config = SimpleNamespace(lang="en")
+    obj.console = _Console()
+
+    BingoTerminal._collect_crack_hashes(obj, f"Set-Cookie: JSESSIONID={value}; Path=/")
+    BingoTerminal._collect_crack_hashes(obj, f"later response echoed {value}")
+
+    assert obj._pending_crack_hashes == []
+    assert value.lower() in obj._session_cracked_hashes
+
+
+def test_structured_xss_requires_execution_not_reflection() -> None:
+    reflected = {
+        "payload": "<img src=x onerror=alert(1)>",
+        "reflected": True,
+    }
+    executed = {**reflected, "browser_executed": True}
+
+    assert not BingoTerminal._validate_bingo_signal("xss", reflected)[0]
+    assert BingoTerminal._validate_bingo_signal("xss", executed)[0]
+
+
+def test_structured_idor_requires_authenticated_ownership_boundary() -> None:
+    public_selector = {"other_user_id": 2, "data_returned": True}
+    owner_boundary = {
+        **public_selector,
+        "authenticated_baseline": True,
+        "owner_only_resource": True,
+        "different_owner": True,
+    }
+
+    assert not BingoTerminal._validate_bingo_signal("idor", public_selector)[0]
+    assert BingoTerminal._validate_bingo_signal("idor", owner_boundary)[0]
+
+
 def test_hash_pipeline_finishes_before_prompt_return() -> None:
     events: list[str] = []
     obj = BingoTerminal.__new__(BingoTerminal)
@@ -973,7 +1080,7 @@ def test_report_fallback_is_written_without_model(tmp_path: Path, monkeypatch) -
 
         @staticmethod
         def ground_truth_block():
-            return "- id=BINGO-1 tier=potential type=sqli\n"
+            return "- id=BINGO-1 tier=potential type=sqli"
 
         @staticmethod
         def save():
@@ -996,6 +1103,18 @@ def test_report_fallback_is_written_without_model(tmp_path: Path, monkeypatch) -
     obj._render_hacker_report = lambda *_args: None
     obj._converge_session_artifacts = lambda *_args, **_kwargs: None
     obj._suggest_next_steps = lambda: None
+    original_fallback = BingoTerminal._build_fallback_report
+    captured: dict[str, str] = {}
+
+    def capture_fallback(**kwargs):
+        captured["ground_truth"] = kwargs["ground_truth"]
+        return original_fallback(**kwargs)
+
+    monkeypatch.setattr(
+        BingoTerminal,
+        "_build_fallback_report",
+        staticmethod(capture_fallback),
+    )
     monkeypatch.setenv("BINGO_REPORTS_DIR", str(tmp_path))
 
     BingoTerminal._auto_generate_report(obj)
@@ -1010,3 +1129,59 @@ def test_report_fallback_is_written_without_model(tmp_path: Path, monkeypatch) -
     vuln_section = report.split("## Vulnerabilities Found", 1)[1].split("##", 1)[0]
     assert "BINGO-1" not in vuln_section
     assert "Verification Backlog (Unconfirmed)" in report
+    assert "type=sqli\nEVIDENCE LADDER RULES" in captured["ground_truth"]
+
+
+def test_chinese_deterministic_report_keeps_zero_confirmed_label() -> None:
+    report = BingoTerminal._build_fallback_report(
+        target="https://example.test",
+        lang="zh",
+        confirmed_count=0,
+        potential_count=2,
+        ground_truth="- id=BINGO-1 tier=blocked type=sqli",
+        session_credentials=[],
+    )
+
+    assert "已确认: 0" in report
+    assert "未确认: 0" not in report
+
+
+def test_new_runtime_messages_have_all_languages() -> None:
+    for lang in ("ko", "zh", "en"):
+        strings = get_strings(lang)
+        for key in (
+            "sqli_cross_vector_guard",
+            "report_manual_artifact_blocked",
+            "sqli_oracle_rejected",
+            "ae_xss_candidate",
+        ):
+            assert strings[key].strip()
+
+
+def test_xss_reflection_output_is_candidate_not_vulnerable(monkeypatch, capsys) -> None:
+    payload = "<img src=x onerror=alert(1)>"
+
+    class Response:
+        text = payload
+
+        def __bool__(self):
+            return True
+
+    class Session:
+        headers: dict = {}
+
+    monkeypatch.setattr(autoexploit_modules, "_XSS_PAYLOADS", [payload])
+    monkeypatch.setattr(autoexploit_modules, "_sess", lambda _headers: Session())
+    monkeypatch.setattr(
+        autoexploit_modules,
+        "_req",
+        lambda *_args, **_kwargs: Response(),
+    )
+    monkeypatch.setattr(autoexploit_modules, "_save", lambda *_args: "/tmp/result")
+
+    result = autoexploit_modules.xss_autotest("https://example.test", "q")
+    visible = capsys.readouterr().out
+
+    assert "[XSS_CANDIDATE]" in result["output"]
+    assert "browser_confirmed=false" in result["output"]
+    assert "XSS Vulnerable" not in visible

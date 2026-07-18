@@ -470,6 +470,7 @@ _ORACLE_FAILURE_WARNING = re.compile(
     r'|oracle\s*pre-?check\s*(?:fail|FAILED)'
     r'|Oracle预检失败'
     r'|TRUE/FALSE\s*(?:无法区分|indistinguishable|구분\s*불가)'
+    r'|SQLI_ORACLE_REJECTED'
     r'|SQLI_EXTRACTION_FAILURE'
     r'|Boolean\s+oracle\s+may\s+be\s+unreliable'
     r'|WAF\s*(?:全部拦截|全部拦截|屏蔽所有|blocking\s+all)'

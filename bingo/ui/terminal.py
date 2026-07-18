@@ -3670,13 +3670,16 @@ class BingoTerminal:
 
             if stype == "xss":
                 payload = str(evidence.get("payload", ""))
-                reflected = evidence.get("reflected") is True
+                browser_executed = (
+                    evidence.get("browser_executed") is True
+                    or evidence.get("sink_executed") is True
+                )
                 executable = bool(_signal_re.search(
                     r"<script|alert\s*\(|onerror\s*=|javascript:\s*(?:alert|eval|document)",
                     payload,
                     _signal_re.IGNORECASE,
                 ))
-                return reflected and executable, "XSS payload reflected", payload[:80]
+                return browser_executed and executable, "XSS browser execution", payload[:80]
 
             if stype == "rce":
                 proof = str(evidence.get("proof", ""))
@@ -3706,7 +3709,13 @@ class BingoTerminal:
 
             if stype == "idor":
                 other_id = evidence.get("other_user_id")
-                valid = other_id is not None and evidence.get("data_returned") is True
+                valid = (
+                    other_id is not None
+                    and evidence.get("data_returned") is True
+                    and evidence.get("authenticated_baseline") is True
+                    and evidence.get("owner_only_resource") is True
+                    and evidence.get("different_owner") is True
+                )
                 return valid, "Other-user data returned", f"user_id={other_id}"
 
             if stype == "path_traversal":
@@ -5994,6 +6003,36 @@ class BingoTerminal:
                     _tool_args["timeout"] = min(max(_to, 3), 10)
                     _http_get_done += 1
 
+                if _tool_name == "run_python":
+                    import re as _report_guard_re
+                    _report_code = str(_tool_args.get("code", "") or "")
+                    _manual_report = bool(
+                        _report_guard_re.search(
+                            r'confirmed_vulnerabilities|security_assessment|'
+                            r'\breport\s*=\s*\{[\s\S]{0,300}\bfindings\b',
+                            _report_code,
+                            _report_guard_re.I,
+                        )
+                        and _report_guard_re.search(
+                            r'write_text\s*\(|json\.dump\s*\(|open\s*\([^)]*["\']w',
+                            _report_code,
+                            _report_guard_re.I,
+                        )
+                    )
+                    if _manual_report:
+                        _deferred_report = self.s.get(
+                            "report_manual_artifact_blocked",
+                            "[REPORT_REQUEST_DEFERRED] Manual model-authored report artifact skipped. "
+                            "Emit TASK_COMPLETE; Bingo will generate the report from Finding IDs.",
+                        )
+                        tool_results.append(
+                            "=== TOOL_RESULT: run_python ===\n"
+                            "exit_code=0 success=true\n--- output ---\n"
+                            + _deferred_report
+                            + "\n=== END TOOL_RESULT ==="
+                        )
+                        continue
+
                 if execute_tool is None:
                     tool_results.append(
                         f"TOOL_RESULT:{{'name':'{_tool_name}','error':'pentest_tools not available','success':false}}"
@@ -7571,6 +7610,11 @@ class BingoTerminal:
                 script = '\n'.join(_cleaned_lines).strip()
                 if not script:
                     continue
+            # Use the same quote-aware repair path as TOOL_CALL run_bash.
+            # This converts multiline python -c blocks to heredoc/tempfiles and
+            # preserves curl pipeline stdin before bash syntax preflight.
+            from ..tools_ext.pentest_tools import _fix_bash_script
+            script = _fix_bash_script(script)
             # ── v5.1.7: 스크립트 전처리 (curl 타임아웃 + while 카운터 자동 주입) ──
             script = _sanitize_script(script)
             _bash_check = subprocess.run(
@@ -8442,7 +8486,51 @@ class BingoTerminal:
 
             _no_code_retry = 0  # 코드 있으면 카운터 리셋
 
-
+            # Repeated blocked SQLi gets a short execution cooldown. The model
+            # must execute another vulnerability vector before retrying SQLi.
+            _sqli_state = getattr(self, "_adaptive_attack_state", {}).get("sqli", {})
+            _sqli_cooldown = int(_sqli_state.get("cooldown", 0) or 0)
+            if _sqli_cooldown > 0:
+                import re as _pivot_guard_re
+                _tool_names = _pivot_guard_re.findall(
+                    r'TOOL_CALL\s*:\s*\{[^{}]*?"name"\s*:\s*"([^"]+)"',
+                    current_response,
+                    _pivot_guard_re.I | _pivot_guard_re.S,
+                )
+                _code_only = "\n".join(_pivot_guard_re.findall(
+                    r'```(?:bash|sh|python)\s*(.*?)```',
+                    current_response,
+                    _pivot_guard_re.I | _pivot_guard_re.S,
+                ))
+                _repeats_sqli = any(
+                    name.lower().startswith(("sqli", "sqlmap", "bool_oracle"))
+                    or name.lower() in {"run_sqlmap", "run_ghauri"}
+                    for name in _tool_names
+                ) or bool(_pivot_guard_re.search(
+                    r'\bsqlmap\b|\bghauri\b|boolean.?oracle|extractvalue\s*\('
+                    r'|updatexml\s*\(|union\s+(?:all\s+)?select|sleep\s*\(',
+                    _code_only,
+                    _pivot_guard_re.I,
+                ))
+                if _repeats_sqli:
+                    _sqli_state["cooldown"] = _sqli_cooldown - 1
+                    _guard_msg = self.s.get(
+                        "sqli_cross_vector_guard",
+                        "[AUTO_PIVOT] Repeated blocked SQLi execution skipped. "
+                        "Run JS/API/IDOR/XSS/LFI/auth verification now.",
+                    )
+                    self.history.append(Message(role="user", content=_guard_msg))
+                    model_cfg_guard = self.config.get_active_model_config()
+                    if not model_cfg_guard:
+                        break
+                    from ..models.registry import ModelRegistry as _MR_guard
+                    current_response = self._stream_response(
+                        _MR_guard.build(model_cfg_guard).chat_stream(self._build_messages(""))
+                    )
+                    if current_response:
+                        self.history.append(Message(role="assistant", content=current_response))
+                    continue
+                _sqli_state["cooldown"] = 0
 
             # 코드 실행 (코드 블록이 있으면 반드시 실행)
             results_text = self._run_code_blocks(current_response, _loaded_skills)
@@ -10065,6 +10153,16 @@ class BingoTerminal:
                     f"  - If CAPTCHA: look for API endpoint that bypasses frontend\n"
                 )
 
+            _next_action_contract = (
+                "NEXT ACTION: Obey ADAPTIVE_OFFENSE_PIVOT and execute a non-SQLi vector now. "
+                "Do not emit sqlmap, sqli_*, Boolean oracle, UNION, error-based, or time-based SQLi.\n"
+                if adaptive_pivot_context and "next=cross_vector" in adaptive_pivot_context
+                else (
+                    "NEXT ACTION: Continue from where you left off. "
+                    "DO NOT re-extract already known facts above. "
+                    "Proceed to the next unknown step.\n"
+                )
+            )
             injection = (
                 "=== BINGO REAL EXECUTION RESULTS ===\n"
                 + trimmed
@@ -10072,10 +10170,8 @@ class BingoTerminal:
                 + _waf_redirect_note
                 + "\n=== END REAL RESULTS ===\n\n"
                 + state_summary
-                + "NEXT ACTION: Continue from where you left off. "
-                "DO NOT re-extract already known facts above. "
-                "Proceed to the next unknown step.\n"
-                "- If WAF blocks: use obfuscation variants\n"
+                + _next_action_contract
+                + "- If WAF blocks: use obfuscation variants\n"
                 "- Output TASK_COMPLETE when all credentials are extracted\n"
                 "- NEVER generate simulated output"
             )
@@ -10738,7 +10834,8 @@ class BingoTerminal:
             vector, {"counts": {}, "tried": set(), "blocked_attempts": 0}
         )
         if _pivot_re.search(
-            r"\b(?:403|598B|199B)\b|waf|blocked|inconclusive|unstable|oracle.*(?:fail|invalid)",
+            r"\b(?:403|598B|199B)\b|waf|blocked|inconclusive|unstable|"
+            r"SQLI_ORACLE_REJECTED|SQLI_EXTRACTION_FAILURE|oracle.*(?:fail|invalid)",
             output,
             _pivot_re.I,
         ):
@@ -10750,24 +10847,32 @@ class BingoTerminal:
         if (count < 2 or count % 2) and blocked_attempts < 2:
             return ""
 
-        next_name, next_action = next(
-            (
-                (name, action)
-                for name, action in profiles[vector]
-                if name not in vector_state["tried"]
-            ),
-            (
+        if vector == "sqli" and blocked_attempts >= 2:
+            next_name, next_action = (
                 "cross_vector",
                 "switch to JS/API/IDOR and preserve this SQLi candidate for later verification",
-            ),
-        )
+            )
+            vector_state["cooldown"] = 2
+        else:
+            next_name, next_action = next(
+                (
+                    (name, action)
+                    for name, action in profiles[vector]
+                    if name not in vector_state["tried"]
+                ),
+                (
+                    "cross_vector",
+                    "switch to JS/API/IDOR and preserve this candidate for later verification",
+                ),
+            )
         vector_state["tried"].add(next_name)
         return (
             "\n[ADAPTIVE_OFFENSE_PIVOT]\n"
             f"vector={vector} previous={technique} attempts={count} next={next_name}\n"
             f"ACTION: {next_action}.\n"
             "Preserve the candidate, target, endpoint, parameter, session, headers, and controls. "
-            "Change technique now; do not repeat the same request and do not stop exploration.\n"
+            "Change technique now; do not repeat the same request and do not stop exploration. "
+            "When next=cross_vector, SQLi tools are temporarily blocked until one non-SQLi vector executes.\n"
             "[/ADAPTIVE_OFFENSE_PIVOT]\n"
         )
 
@@ -11491,7 +11596,7 @@ class BingoTerminal:
                 _fe_snap_block = (
                     f"\n⚠️ FINDINGS GROUND TRUTH (HARD RULE — DO NOT CONTRADICT):\n"
                     + _fe.ground_truth_block()
-                    + "EVIDENCE LADDER RULES:\n"
+                    + "\nEVIDENCE LADDER RULES:\n"
                     + "1) tier=confirmed ONLY → MAY write 已确认/Confirmed/Critical Confirmed.\n"
                     + "2) tier=probable → list ONLY as an unconfirmed verification item; never in confirmed vulnerabilities.\n"
                     + "3) tier=potential → list ONLY as an unconfirmed verification item; never in confirmed vulnerabilities.\n"
@@ -11563,6 +11668,7 @@ class BingoTerminal:
         self.console.print(_HdrPanel(_ht, border_style=THEME["dim"], padding=(0, 2)))
 
         full = ""
+        _deterministic_report = False
         if model_cfg:
             try:
                 model = ModelRegistry.build(model_cfg)
@@ -11603,6 +11709,7 @@ class BingoTerminal:
                 ground_truth=_fe_snap_block,
                 session_credentials=list(_session_creds),
             )
+            _deterministic_report = True
 
         report_valid, report_errors = BingoTerminal._validate_report_finding_ids(
             full, _fe_report_findings
@@ -11624,12 +11731,14 @@ class BingoTerminal:
                 ground_truth=_fe_snap_block,
                 session_credentials=list(_session_creds),
             )
+            _deterministic_report = True
 
-        full = BingoTerminal._sanitize_report_confirmed_claims(
-            full,
-            confirmed_count=_fe_confirmed_n,
-            potential_count=_fe_potential_n,
-        )
+        if not _deterministic_report:
+            full = BingoTerminal._sanitize_report_confirmed_claims(
+                full,
+                confirmed_count=_fe_confirmed_n,
+                potential_count=_fe_potential_n,
+            )
         try:
             report_path.write_text(full.strip(), encoding="utf-8")
         except Exception as _write_err:
@@ -12663,6 +12772,21 @@ class BingoTerminal:
         for _fhm in _fname_hash_re.finditer(text):
             self._session_cracked_hashes.add(_fhm.group(1).lower())
 
+        # Session/cookie tokens can be syntactically identical to MD5/NTLM.
+        # Record them globally for the session before generic hash extraction so
+        # later standalone echoes of the same token are still excluded.
+        _session_token_values = {
+            match.group(1).lower()
+            for match in _re_hf.finditer(
+                r'''(?:JSESSIONID|PHPSESSID|ASP\.NET_SessionId|session(?:_?id)?|'''
+                r'''sessid|SID|csrftoken|auth(?:_token)?|remember_token)'''
+                r'''\s*(?:=|["']?\s*,\s*["'])\s*["']?([0-9a-fA-F]{16,128})''',
+                text,
+                _re_hf.IGNORECASE,
+            )
+        }
+        self._session_cracked_hashes.update(_session_token_values)
+
         raw_hashes    = extract_hashes_from_text(text, strict=False)
         hashes_strict = extract_hashes_from_text(text, strict=True)
         _error_context_hashes = self._hashes_from_error_context(text, hashes_strict)
@@ -12673,6 +12797,9 @@ class BingoTerminal:
         fp_filtered  = [h for h in raw_hashes if h.lower() not in _strict_set]
         fp_filtered.extend(
             h for h in hashes_strict if h.lower() in _error_context_hashes
+        )
+        fp_filtered.extend(
+            h for h in hashes_strict if h.lower() in _session_token_values
         )
         new_hashes   = [
             h for h in hashes_strict

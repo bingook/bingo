@@ -851,6 +851,16 @@ _STRINGS = {
         "zh": "🔁 SQLi 对照请求重复被拦截 — 切换到 JS/API/IDOR，保留候选待验证",
         "en": "🔁 Repeated SQLi control blocks — pivoting to JS/API/IDOR while preserving the candidate",
     },
+    "sqli_cross_vector_guard": {
+        "ko": "[자동 피벗] 반복 차단된 SQLi 실행을 건너뜁니다. 지금 JS/API/IDOR/XSS/LFI/인증 검증을 실행하세요.",
+        "zh": "[自动切换] 已跳过重复受阻的 SQLi 执行。现在执行 JS/API/IDOR/XSS/LFI/认证验证。",
+        "en": "[Auto-pivot] Repeated blocked SQLi execution skipped. Run JS/API/IDOR/XSS/LFI/auth verification now.",
+    },
+    "report_manual_artifact_blocked": {
+        "ko": "[보고서 요청 보류] 모델이 직접 작성한 보고서 파일을 건너뜁니다. TASK_COMPLETE를 출력하면 Bingo가 Finding ID 기준으로 생성합니다.",
+        "zh": "[报告请求已转交] 已跳过模型直接编写的报告文件。输出 TASK_COMPLETE 后，Bingo 将依据 Finding ID 生成报告。",
+        "en": "[Report request deferred] Manual model-authored report artifact skipped. Emit TASK_COMPLETE and Bingo will generate it from Finding IDs.",
+    },
     "doom_progress_autocorrected": {
         "ko": "🔄 [자동 교정] 새 엔드포인트/파라미터 발견 — 무진전 카운터 초기화",
         "zh": "🔄 [自动校正] 发现新端点/参数 — 已重置无进展计数器",
@@ -7520,6 +7530,11 @@ _STRINGS.update({
         "zh": "  Oracle 验证: 1=1→{t},  1=2→{f}",
         "en": "  Oracle verify: 1=1→{t},  1=2→{f}",
     },
+    "sqli_oracle_rejected": {
+        "ko": "[SQLI_ORACLE_REJECTED] TRUE/FALSE 대조가 차단되었거나 불안정합니다. Boolean 추출을 중단하고 다른 취약점 벡터로 전환합니다.",
+        "zh": "[SQLI_ORACLE_REJECTED] TRUE/FALSE 对照被拦截或不稳定。停止布尔提取并切换到其他漏洞向量。",
+        "en": "[SQLI_ORACLE_REJECTED] TRUE/FALSE controls were blocked or unstable. Boolean extraction stopped; pivot to another vulnerability vector.",
+    },
     "sqli_oracle_bad": {
         "ko": "  ⚠ Boolean oracle 불안정(BAD) — boolean 비활성화, error/time-based 전환",
         "zh": "  ⚠ Boolean Oracle 不可靠(BAD) — 禁用布尔注入，切换至错误/时间盲注",
@@ -8189,6 +8204,11 @@ _STRINGS.update({
         "ko": "🔴 XSS 취약!",
         "zh": "🔴 XSS 漏洞！",
         "en": "🔴 XSS Vulnerable!",
+    },
+    "ae_xss_candidate": {
+        "ko": "🟡 XSS 반사 후보(브라우저 실행 검증 필요)",
+        "zh": "🟡 XSS 反射候选（需要浏览器执行验证）",
+        "en": "🟡 XSS reflection candidate (browser execution verification required)",
     },
     "ae_xss_hit": {
         "ko": "XSS 히트 |",

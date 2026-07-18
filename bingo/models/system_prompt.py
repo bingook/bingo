@@ -3769,6 +3769,16 @@ This section overrides conflicting older instructions above.
    family, transport, engine, endpoint, or vulnerability class. Do not stop the mission.
 7. Reports contain verified vulnerabilities only. Probable/potential candidates stay
    in the verification backlog and continue to drive attacks.
+8. HTTP 401/403/406/429/503 or a protection/error page can never be the TRUE side
+   of a Boolean oracle. A status transition alone is filtering, not SQL execution.
+9. A public numeric content selector is not IDOR. IDOR requires an authenticated or
+   owner-only baseline plus unauthorized access to another user's non-public data.
+10. Reflection is an XSS candidate only. Claim XSS only after browser JavaScript
+    execution or an equivalent deterministic sink proof.
+11. A successful response with a cookie/header is not a bypass unless the identical
+    resource and request was blocked by a recorded baseline without that change.
+12. Never write an ad-hoc report JSON/Markdown file. Emit TASK_COMPLETE and let the
+    internal Finding-ID report generator create the sole authoritative report.
 """.strip()
 
 def get_pentest_system_prompt(provider: str) -> str:

@@ -2449,6 +2449,235 @@ class BingoTerminal:
 
         return "\n\n".join(results)
 
+    @staticmethod
+    def _estimate_context_tokens(text: str) -> int:
+        """Cheap token estimate for local context budgeting."""
+        return max(1, len(text or "") // 4)
+
+    @staticmethod
+    def _token_governor_enabled() -> bool:
+        """Return whether model-input token governance is enabled."""
+        import os as _tg_os
+
+        return str(_tg_os.environ.get("BINGO_TOKEN_GOVERNOR", "1")).strip().lower() not in {
+            "0", "false", "off", "no"
+        }
+
+    @staticmethod
+    def _token_governor_int(name: str, default: int) -> int:
+        """Read an integer Token Governor setting with a safe fallback."""
+        import os as _tg_os
+
+        try:
+            return int(_tg_os.environ.get(name, str(default)) or default)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _html_context_digest(content: str) -> str:
+        """Extract model-useful HTML facts without sending the whole page."""
+        import re as _html_re
+
+        if not content or not _html_re.search(r'<(?:html|form|input|script|a)\b', content, _html_re.I):
+            return ""
+        title = ""
+        m_title = _html_re.search(r'<title[^>]*>(.*?)</title>', content, _html_re.I | _html_re.S)
+        if m_title:
+            title = _html_re.sub(r'\s+', ' ', m_title.group(1)).strip()[:160]
+        status = ""
+        m_status = _html_re.search(r'\bHTTP/(?:1\.1|2)\s+(\d{3})\b|STATUS[=:]\s*(\d{3})', content, _html_re.I)
+        if m_status:
+            status = next((g for g in m_status.groups() if g), "")
+        forms = _html_re.findall(r'<form\b[^>]*>', content, _html_re.I)
+        inputs = []
+        for m_input in _html_re.finditer(r'<input\b[^>]*>', content, _html_re.I):
+            tag = m_input.group(0)
+            name_m = _html_re.search(r'\bname\s*=\s*["\']?([^"\'\s>]+)', tag, _html_re.I)
+            type_m = _html_re.search(r'\btype\s*=\s*["\']?([^"\'\s>]+)', tag, _html_re.I)
+            if name_m:
+                name = name_m.group(1)[:80]
+                typ = type_m.group(1)[:30] if type_m else "?"
+                item = f"{name}:{typ}"
+                if item not in inputs:
+                    inputs.append(item)
+        hrefs = []
+        for m_href in _html_re.finditer(r'\bhref\s*=\s*["\']([^"\']+)', content, _html_re.I):
+            href = m_href.group(1).strip()
+            if href and href not in hrefs:
+                hrefs.append(href[:180])
+            if len(hrefs) >= 20:
+                break
+        scripts = []
+        for m_src in _html_re.finditer(r'\bsrc\s*=\s*["\']([^"\']+)', content, _html_re.I):
+            src = m_src.group(1).strip()
+            if src and src not in scripts:
+                scripts.append(src[:180])
+            if len(scripts) >= 12:
+                break
+        params = sorted(set(_html_re.findall(r'[?&]([A-Za-z_][A-Za-z0-9_]{0,40})=', content)))[:40]
+        lines = ["[HTML_SUMMARY]"]
+        if status:
+            lines.append(f"- status: {status}")
+        if title:
+            lines.append(f"- title: {title}")
+        lines.append(f"- forms: {len(forms)}")
+        if inputs:
+            lines.append("- inputs: " + ", ".join(inputs[:40]))
+        if params:
+            lines.append("- params: " + ", ".join(params))
+        if hrefs:
+            lines.append("- hrefs: " + " | ".join(hrefs[:12]))
+        if scripts:
+            lines.append("- scripts: " + " | ".join(scripts[:8]))
+        return "\n".join(lines)
+
+    @staticmethod
+    def _select_evidence_lines(content: str, max_lines: int = 90) -> list[str]:
+        """Keep attack-relevant lines from large logs/tool output."""
+        import re as _line_re
+
+        lines = content.splitlines()
+        keep_patterns = _line_re.compile(
+            r'HTTP/|STATUS|SIZE|LEN|elapsed|timeout|ReadTimeout|Traceback|'
+            r'SyntaxError|NameError|exit_code|TRUE|FALSE|diff=|baseline|threshold|'
+            r'SQLI_|XSS_|LFI|RCE|SSRF|IDOR|WAF|BLOCK|blocked|forbidden|406|403|'
+            r'BINGO-|confirmed|probable|potential|quarantined|oracle|payload|'
+            r'url=|URL:|https?://|param|parameter|bo_table|wr_id|mb_id|'
+            r'Cookie|Set-Cookie|PHPSESSID|csrf|token|hidden|input|form|Location|'
+            r'Server:|Content-Type|title|script|href|admin|login|auth|redirect',
+            _line_re.I,
+        )
+        selected: list[str] = []
+        for line in lines[:12]:
+            stripped = line.strip()
+            if stripped:
+                selected.append(stripped[:500])
+        for line in lines:
+            stripped = line.strip()
+            if stripped and keep_patterns.search(stripped):
+                selected.append(stripped[:700])
+            if len(selected) >= max_lines:
+                break
+        if len(selected) < max_lines:
+            for line in lines[-12:]:
+                stripped = line.strip()
+                if stripped:
+                    selected.append(stripped[:500])
+        deduped: list[str] = []
+        seen: set[str] = set()
+        for line in selected:
+            if line not in seen:
+                deduped.append(line)
+                seen.add(line)
+            if len(deduped) >= max_lines:
+                break
+        return deduped
+
+    def _compress_message_for_model_context(self, msg: Message, index: int, total: int) -> Message:
+        """Compress only the copy sent to the model; never mutates history."""
+        if msg.role == "system":
+            return msg
+        content = msg.content or ""
+        if not content:
+            return msg
+        protect_last = self._token_governor_int("BINGO_TOKEN_GOVERNOR_PROTECT_LAST", 4)
+        soft_limit = self._token_governor_int("BINGO_TOKEN_GOVERNOR_SOFT_CHARS", 6000)
+        hard_limit = self._token_governor_int("BINGO_TOKEN_GOVERNOR_HARD_CHARS", 14000)
+        is_recent = index >= max(0, total - protect_last)
+        limit = hard_limit if is_recent else soft_limit
+        if len(content) <= limit:
+            return msg
+        # Do not trim very recent skill payloads unless they are extreme; skills
+        # affect attack behavior. Older duplicates can be summarized normally.
+        if is_recent and "=== SKILL CONTENT INJECTED" in content and len(content) <= hard_limit * 2:
+            return msg
+
+        html_digest = self._html_context_digest(content)
+        evidence_lines = self._select_evidence_lines(content)
+        omitted = max(0, len(content) - sum(len(line) for line in evidence_lines))
+        header = (
+            "[TOKEN_GOVERNOR_COMPRESSED_CONTEXT]\n"
+            f"- original_chars: {len(content)}\n"
+            f"- est_original_tokens: {self._estimate_context_tokens(content)}\n"
+            f"- omitted_chars_approx: {omitted}\n"
+            "- rule: original output is preserved in session/logs; this is model-input compression only.\n"
+        )
+        body_parts = [header]
+        if html_digest:
+            body_parts.append(html_digest)
+        if evidence_lines:
+            body_parts.append("[EVIDENCE_LINES]\n" + "\n".join(evidence_lines))
+        compressed = "\n\n".join(body_parts)
+        if len(compressed) > limit:
+            compressed = compressed[:limit] + "\n...[token governor clipped model-copy context]..."
+        return Message(role=msg.role, content=compressed)
+
+    def _build_token_governor_ledger(self) -> Message | None:
+        """Short evidence ledger injected into model context when compression is active."""
+        try:
+            state = getattr(self, "_agent_state", {}) or {}
+            lines = ["[BINGO_EVIDENCE_LEDGER]"]
+            target = state.get("target") or getattr(self.config, "target", "") or "unknown"
+            lines.append(f"- target: {target}")
+            for key in ("waf", "db_name", "confirmed_sqli"):
+                if state.get(key) not in (None, "", [], {}):
+                    lines.append(f"- {key}: {state.get(key)}")
+            if state.get("tables"):
+                lines.append(f"- tables: {state.get('tables')[:20]}")
+            creds = BingoTerminal._filter_verified_report_credentials(state.get("credentials", []))
+            if creds:
+                lines.append(f"- verified_credentials: {creds[:5]}")
+            fe = getattr(self, "_findings_exporter", None)
+            if fe is not None:
+                if hasattr(fe, "summary"):
+                    summary = fe.summary()
+                    if summary:
+                        lines.append(f"- findings_summary: {summary}")
+                if hasattr(fe, "ground_truth_block"):
+                    gt = fe.ground_truth_block()
+                    if gt:
+                        lines.append("[FINDINGS_GROUND_TRUTH]\n" + gt[:3000])
+            last_ctx = getattr(self, "_last_execution_context", None)
+            if isinstance(last_ctx, dict):
+                lines.append(
+                    "- last_execution: "
+                    f"source={last_ctx.get('source')} scripts={len(last_ctx.get('scripts', []))} "
+                    f"response_bytes={last_ctx.get('response_bytes')}"
+                )
+            return Message(role="user", content="\n".join(lines)[:5000])
+        except Exception:
+            return None
+
+    def _apply_token_governor(self, history: list[Message]) -> list[Message]:
+        """Reduce model-input tokens without changing execution/history state."""
+        if not self._token_governor_enabled():
+            return history
+        max_total = self._token_governor_int("BINGO_TOKEN_GOVERNOR_MAX_CHARS", 50000)
+        compressed = [
+            self._compress_message_for_model_context(msg, idx, len(history))
+            for idx, msg in enumerate(history)
+        ]
+        # If still too large, keep all messages but clamp older long model-copy
+        # bodies harder.  Latest messages remain protected by the first pass.
+        total_chars = sum(len(m.content or "") for m in compressed)
+        if total_chars > max_total:
+            tightened: list[Message] = []
+            for idx, msg in enumerate(compressed):
+                if idx < max(0, len(compressed) - 6) and len(msg.content) > 3000:
+                    tightened.append(Message(
+                        role=msg.role,
+                        content=msg.content[:3000] + "\n...[token governor global budget clip]...",
+                    ))
+                else:
+                    tightened.append(msg)
+            compressed = tightened
+        self._last_token_governor_stats = {
+            "original_chars": sum(len(m.content or "") for m in history),
+            "model_chars": sum(len(m.content or "") for m in compressed),
+            "messages": len(history),
+        }
+        return compressed
+
     def _build_messages(self, skill_context: str = "") -> list[Message]:
         """시스템 프롬프트 + 스킬 컨텍스트 + 대화 히스토리 합치기.
         history 안에 dict가 섞여 있어도 자동으로 Message 로 변환한다.
@@ -2527,7 +2756,11 @@ class BingoTerminal:
                 with self._compaction_lock:
                     self._compaction_summary = ""  # 소비 완료
 
-        return [self._get_system_message(skill_context)] + safe_history
+        model_history = self._apply_token_governor(safe_history)
+        ledger = self._build_token_governor_ledger() if self._token_governor_enabled() else None
+        if ledger is not None:
+            return [self._get_system_message(skill_context), ledger] + model_history
+        return [self._get_system_message(skill_context)] + model_history
 
     def _trigger_background_compaction(self, non_system_msgs: list) -> None:
         """오래된 히스토리를 백그라운드 스레드에서 LLM으로 요약 (2-pass Compaction Pass 1)."""

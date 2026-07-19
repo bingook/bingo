@@ -8,7 +8,11 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.214`.
+- Current stable version after Bingo memory rebrand: `6.2.215`.
+- Token usage reduction direction as of v6.2.215:
+  - Use Token Governor only on the model-input copy of prior context.
+  - Do not reduce attack execution, embedded skills, tool calls, payload families, target/session state, or raw evidence/session logs.
+  - Large HTML/tool-output context is summarized into `[HTML_SUMMARY]` plus `[EVIDENCE_LINES]`, with `[BINGO_EVIDENCE_LEDGER]` injected so penetration capability and evidence grounding stay intact.
 - Bingo project memory is automatic:
   - At every Bingo session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Bingo must silently run `scripts/bingo-memory-sync.sh`.
@@ -41,32 +45,93 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T21:38:47+08:00
+- Last synced: 2026-07-19T22:17:06+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T21:38:47+08:00
+- Captured: 2026-07-19T22:17:06+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
  M PKG-INFO
  M bingo/__init__.py
- M bingo/tools/findings_exporter.py
  M bingo/ui/terminal.py
  M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |  2 +-
- bingo/__init__.py                             |  2 +-
- bingo/tools/findings_exporter.py              | 37 +++++++++--
- bingo/ui/terminal.py                          | 93 ++++++++++++++++++++++++---
- tests/test_terminal_completion_regressions.py | 68 ++++++++++++++++++++
- 5 files changed, 187 insertions(+), 15 deletions(-)
+PKG-INFO                                      |   2 +-
+ bingo/__init__.py                             |   2 +-
+ bingo/ui/terminal.py                          | 235 +++++++++++++++++++++++++-
+ tests/test_terminal_completion_regressions.py | 133 +++++++++++++++
+ 4 files changed, 369 insertions(+), 3 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.215`
+- `__version__ = "6.2.215"`
+- `@staticmethod`
+- `return max(1, len(text or "") // 4)`
+- `@staticmethod`
+- `import os as _tg_os`
+- `"0", "false", "off", "no"`
+- `}`
+- `@staticmethod`
+- `import os as _tg_os`
+- `try:`
+- `return int(_tg_os.environ.get(name, str(default)) or default)`
+- `except (TypeError, ValueError):`
+- `return default`
+- `@staticmethod`
+- `def _html_context_digest(content: str) -> str:`
+- `"""Extract model-useful HTML facts without sending the whole page."""`
+- `import re as _html_re`
+- `if not content or not _html_re.search(r'<(?:html|form|input|script|a)\b', content, _html_re.I):`
+- `return ""`
+- `title = ""`
+- `m_title = _html_re.search(r'<title[^>]*>(.*?)</title>', content, _html_re.I | _html_re.S)`
+- `if m_title:`
+- `title = _html_re.sub(r'\s+', ' ', m_title.group(1)).strip()[:160]`
+- `status = ""`
+- `m_status = _html_re.search(r'\bHTTP/(?:1\.1|2)\s+(\d{3})\b|STATUS[=:]\s*(\d{3})', content, _html_re.I)`
+- `if m_status:`
+- `status = next((g for g in m_status.groups() if g), "")`
+- `forms = _html_re.findall(r'<form\b[^>]*>', content, _html_re.I)`
+- `inputs = []`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:67451cddbb6613e3ac84d36315d18249e55d29c4 -->
+## Code change: fix: prevent cms fingerprint sql false confirmation
+- Commit: `67451cddbb66`
+- Recorded: 2026-07-19T21:40:39+08:00
+- Committed: 2026-07-19T21:40:39+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/tools/findings_exporter.py
+M	bingo/ui/terminal.py
+```
+
+### Diff Stat
+```text
+67451cddb fix: prevent cms fingerprint sql false confirmation
+ .bingo/project-memory.md         | 83 ++++++++++++++++++++++++++++++++---
+ PKG-INFO                         |  2 +-
+ bingo/__init__.py                |  2 +-
+ bingo/tools/findings_exporter.py | 37 +++++++++++++---
+ bingo/ui/terminal.py             | 93 ++++++++++++++++++++++++++++++++++++----
+ 5 files changed, 196 insertions(+), 21 deletions(-)
 ```
 
 ### Added Highlights
@@ -100,7 +165,6 @@ PKG-INFO                                      |  2 +-
 - `if _db_table_extract and _db_table_code_context:`
 - `r'|SQLI_NO_VALID_CHANNEL'`
 - `if lines and re.match(r'^TOOL_CALL\s*:', lines[0], re.I):`
-<!-- working-tree:end -->
 
 # Workspace Memory
 

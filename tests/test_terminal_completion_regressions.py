@@ -17,6 +17,7 @@ from bingo.tools.playwright_engine import PlaywrightEngine
 from bingo.core.execution_anchor import ExecutionAnchorEngine, _has_exec_evidence
 from bingo.core.zero_hal_v5 import ZeroHalEngine
 from bingo.models.system_prompt import get_pentest_system_prompt
+from bingo.models.base import Message
 from bingo.orchestrator.engine import _board_value_anchored, _goal_completion_allowed
 from bingo.tools_ext import autoexploit_modules
 from bingo.tools_ext.pentest_tools import (
@@ -134,6 +135,17 @@ def test_chinese_fake_final_report_is_intercepted_before_hash_collection() -> No
     assert intercepted.startswith("```bash")
     assert "SinkDB" not in intercepted
     assert "A4B615" not in intercepted
+
+
+def test_tool_call_codeblock_rendering_hides_raw_directive() -> None:
+    terminal = _code_test_terminal()
+    collapsed = terminal._collapse_code_blocks(
+        '```python\nTOOL_CALL:{"name":"_ssl_retry_with_legacy","args":{"url":"https://example.test/"}}\n```'
+    )
+
+    assert "TOOL_CALL" not in collapsed
+    assert "_ssl_retry_with_legacy" not in collapsed
+    assert "bingo action" in collapsed
 
 
 def test_dict_tool_call_is_normalized_before_code_execution() -> None:
@@ -262,6 +274,70 @@ def test_bash_codeblock_execution_obeys_idle_timeout(monkeypatch) -> None:
     assert "\nend\n" not in combined
 
 
+def test_token_governor_compresses_model_copy_without_mutating_history(monkeypatch, tmp_path: Path) -> None:
+    terminal = _code_test_terminal()
+    terminal.config.get_active_model_config = lambda: None
+    terminal._agent_state = {
+        "target": "https://example.test",
+        "waf": "ModSecurity",
+        "credentials": [],
+        "tables": [],
+        "confirmed_sqli": False,
+    }
+    terminal._findings_exporter = FindingsExporter(
+        target="https://example.test",
+        output_dir=str(tmp_path),
+    )
+    terminal._last_execution_context = {
+        "source": "code_block",
+        "scripts": [{"type": "bash"}],
+        "response_bytes": 32000,
+    }
+    huge_html = (
+        "HTTP/1.1 200 OK\n"
+        "Set-Cookie: PHPSESSID=abc123; path=/\n"
+        "<html><head><title>Target Login</title></head><body>"
+        "<form action='/login'><input type='hidden' name='csrf_token' value='tok'>"
+        "<input name='username'><input name='password' type='password'></form>"
+        "<a href='/bbs/board.php?bo_table=news&wr_id=1'>news</a>"
+        + ("<div>noise</div>" * 3000)
+        + "</body></html>"
+    )
+    terminal.history = [Message(role="user", content=huge_html)]
+    original = terminal.history[0].content
+    monkeypatch.setenv("BINGO_TOKEN_GOVERNOR", "1")
+    monkeypatch.setenv("BINGO_TOKEN_GOVERNOR_HARD_CHARS", "4000")
+
+    messages = terminal._build_messages("")
+    joined = "\n".join(m.content for m in messages)
+
+    assert terminal.history[0].content == original
+    assert "[BINGO_EVIDENCE_LEDGER]" in joined
+    assert "[TOKEN_GOVERNOR_COMPRESSED_CONTEXT]" in joined
+    assert "[HTML_SUMMARY]" in joined
+    assert "csrf_token" in joined
+    assert "bo_table" in joined
+    compressed = next(m.content for m in messages if "[TOKEN_GOVERNOR_COMPRESSED_CONTEXT]" in m.content)
+    assert len(compressed) < len(original) // 2
+
+
+def test_token_governor_disabled_keeps_model_context_plain(monkeypatch) -> None:
+    terminal = _code_test_terminal()
+    terminal.config.get_active_model_config = lambda: None
+    terminal._agent_state = {"target": "https://example.test", "waf": "Cloudflare"}
+    huge_output = "HTTP/1.1 403 Forbidden\n" + ("<html><body>blocked</body></html>\n" * 400)
+    terminal.history = [Message(role="user", content=huge_output)]
+    monkeypatch.setenv("BINGO_TOKEN_GOVERNOR", "0")
+
+    messages = terminal._build_messages("")
+    joined = "\n".join(m.content for m in messages)
+
+    assert terminal.history[0].content == huge_output
+    assert huge_output in joined
+    assert "[BINGO_EVIDENCE_LEDGER]" not in joined
+    assert "[TOKEN_GOVERNOR_COMPRESSED_CONTEXT]" not in joined
+
+
 def test_dict_tool_call_executes_without_autofix_warning(monkeypatch) -> None:
     terminal = _code_test_terminal()
     monkeypatch.setitem(
@@ -360,6 +436,26 @@ def test_python_codeblock_injects_missing_random_import() -> None:
     assert "PYTHON EXECUTION" in joined
     assert "NameError" not in joined
     assert "\n1\n" in joined
+
+
+def test_bash_heredoc_repairs_raw_bytes_regex_quote_class() -> None:
+    terminal = _code_test_terminal()
+    response = (
+        "```bash\n"
+        "python3 << 'PY'\n"
+        "import re\n"
+        "head = b'Content-Type: text/html; charset=utf-8'\n"
+        "m = re.search(rb'charset[=]\\s*[\\\"']?([a-zA-Z0-9_-]+)', head)\n"
+        "print(m.group(1).decode())\n"
+        "PY\n"
+        "```"
+    )
+
+    results = terminal._run_code_blocks(response, set())
+    joined = "\n".join(results)
+
+    assert "SyntaxError" not in joined
+    assert "utf-8" in joined
 
 
 def test_python_suffix_inside_bash_is_wrapped_before_preflight() -> None:
@@ -1006,6 +1102,43 @@ def test_equal_waf_controls_are_blocked_not_probable(tmp_path: Path) -> None:
     assert finding is not None
     assert finding.confidence == "blocked"
     assert exporter.stats()["probable"] == 0
+
+
+def test_cms_fingerprint_is_not_db_table_extract_sqli(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    output = (
+        "=== CMS FINGERPRINT ===\n"
+        "  FOUND: g5_\n"
+        "  FOUND: bo_table\n"
+    )
+
+    finding = exporter.process(output, "curl -sk https://example.test/")
+
+    assert finding is None or finding.confidence != "confirmed"
+    assert exporter.stats()["confirmed"] == 0
+    assert not any(f.reason_code == "db_table_extract" for f in exporter.findings)
+
+
+def test_sqli_no_valid_channel_blocks_db_extract_keywords(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    output = (
+        "=== CMS FINGERPRINT ===\n"
+        "FOUND: g5_\n"
+        "[SQLI_NO_VALID_CHANNEL] Boolean、error-based、time-based 对照均未形成稳定 oracle。\n"
+        "SQLI_EXTRACTION_FAILURE\n"
+        "reason=no stable candidate\n"
+    )
+    code = (
+        'TOOL_CALL:{"name":"sqli_autoexploit","args":'
+        '{"url":"https://example.test/bbs/board.php","param":"sca"}}'
+    )
+
+    finding = exporter.process(output, code)
+
+    assert finding is not None
+    assert finding.confidence == "blocked"
+    assert finding.reason_code == "oracle_precheck_failed"
+    assert exporter.stats()["confirmed"] == 0
 
 
 def test_finding_ids_are_monotonic_across_invalidation(tmp_path: Path) -> None:

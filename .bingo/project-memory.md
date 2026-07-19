@@ -53,13 +53,31 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T23:15:14+08:00
+- Last synced: 2026-07-19T23:15:46+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:aa5368b10a5d985e74f3ff6a587af1ef679ba33c -->
+## Code change: feat: allow deleting saved models
+- Commit: `aa5368b10a5d`
+- Recorded: 2026-07-19T23:15:46+08:00
+- Committed: 2026-07-19T23:15:46+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+```
+
+### Diff Stat
+```text
+aa5368b10 feat: allow deleting saved models
+ .bingo/project-memory.md | 37 ++++++++++++++++++++++---------------
+ 1 file changed, 22 insertions(+), 15 deletions(-)
+```
 
 <!-- commit:bd43ff9efcc7196cddfbfa1174a430e9a60ad72d -->
 ## Code change: feat: allow deleting saved models

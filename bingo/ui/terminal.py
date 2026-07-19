@@ -79,12 +79,6 @@ def _codeblock_exec_limits() -> tuple[int, int, int]:
     return script_timeout, idle_timeout, wall_clock_timeout
 
 
-def _codeblock_exec_enabled() -> bool:
-    """Return whether legacy markdown code block execution is explicitly enabled."""
-    raw = os.environ.get("BINGO_ALLOW_CODEBLOCK_EXEC", "")
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
-
-
 def _tool_call_from_mapping(
     value: object,
     known_tools: set[str],
@@ -1431,7 +1425,7 @@ class BingoTerminal:
                 f"目标: {_target or '(见对话历史)'}\n"
                 f"已知: {_find_s or '(见对话历史)'}\n"
                 f"不要从头重来。根据历史结果执行下一步攻击。"
-                f"立即输出下一个 TOOL_CALL。"
+                f"立即输出下一个 TOOL_CALL 或 bash 代码块。"
             )
         if _lang == "ko":
             return (
@@ -1439,14 +1433,14 @@ class BingoTerminal:
                 f"타겟: {_target or '(대화 기록 참고)'}\n"
                 f"알려진 결과: {_find_s or '(대화 기록 참고)'}\n"
                 f"처음부터 다시 하지 말고, 이어서 다음 공격 단계를 실행하세요. "
-                f"즉시 다음 TOOL_CALL을 출력하세요."
+                f"즉시 다음 TOOL_CALL 또는 bash 코드 블록을 출력하세요."
             )
         return (
             f"[RESUME AFTER INTERRUPT]\n"
             f"Target: {_target or '(see chat history)'}\n"
             f"Known: {_find_s or '(see chat history)'}\n"
             f"Do NOT restart from scratch. Continue the next unfinished attack step. "
-            f"Emit the next TOOL_CALL NOW."
+            f"Emit the next TOOL_CALL or bash block NOW."
         )
 
     def _read_hint_line_from_tty(self, timeout: float = 60.0) -> "str | None":
@@ -3363,7 +3357,7 @@ class BingoTerminal:
                 f"╔══════════════════════════════════════════════════════════╗\n"
                 f"║  ⛔ TEXT-LEVEL HALLUCINATION INTERCEPTED                 ║\n"
                 f"║  REASON: {_reason_str[:50]:<50} ║\n"
-                f"║  → FORCING STRUCTURED TOOL EXECUTION                    ║\n"
+                f"║  → FORCING REAL PYTHON HTTP EXECUTION                   ║\n"
                 f"╚══════════════════════════════════════════════════════════╝"
                 f"[/]\n"
             )
@@ -3372,14 +3366,13 @@ class BingoTerminal:
                 "[BINGO RUNTIME INTERCEPTED HALLUCINATION]\n"
                 f"REASON: {_reason_str}\n\n"
                 "RULE: You CANNOT claim vulnerability found / attack success / DB access\n"
-                "      WITHOUT TOOL_RESULT evidence from a TOOL_CALL execution.\n"
-                "MANDATORY: Emit exactly one real TOOL_CALL that PROVES the claim.\n"
+                "      WITHOUT a bash block with curl that produced HTTP evidence.\n"
+                "MANDATORY: Write REAL bash+curl code that PROVES the claim.\n"
                 "DO NOT return JSON plans. DO NOT invent credentials or results.\n"
                 "DO NOT say 'my environment is limited to text'.\n"
-                "EVERY conclusion MUST come from actual HTTP/tool output.\n\n"
+                "EVERY conclusion MUST come from actual curl HTTP response output.\n\n"
                 f"Original task: {original_text[:200]}\n\n"
-                "Now emit one TOOL_CALL. Use http_get/sqli_autoexploit/etc, or "
-                "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}"
+                "Now write a bash block with curl that actually executes and proves the finding:"
             )
             self.history.append(Message(role="user", content=_force_msg))
             _retry = self._stream_response(
@@ -6345,30 +6338,11 @@ class BingoTerminal:
                 }
                 return tool_results
         # ══════════════════════════════════════════════════════════════════════
-        # TOOL_CALL 없음 → legacy markdown code block path.
-        # Public/default builds must not execute arbitrary prose code fences.
-        # Legacy behavior remains available only by explicit local opt-in.
+        # TOOL_CALL 없음 → 기존 bash 블록 처리로 진행 (하위 호환)
         # ══════════════════════════════════════════════════════════════════════
 
         if "```" not in response:
             return []
-
-        if not _codeblock_exec_enabled():
-            self._last_execution_context = {
-                "executed": False,
-                "source": "codeblock_disabled",
-                "scripts": [],
-                "response_bytes": 0,
-            }
-            return [
-                "[CODEBLOCK_EXEC_DISABLED]\n"
-                "Raw markdown code block execution is disabled by default in public builds.\n"
-                "Regenerate the operation as canonical TOOL_CALL only:\n"
-                "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"...\"}}\n"
-                "TOOL_CALL:{\"name\":\"run_python\",\"args\":{\"code\":\"...\"}}\n"
-                "or use a structured tool such as http_get/sqli_autoexploit/xss_autotest.\n"
-                "Local legacy compatibility: set BINGO_ALLOW_CODEBLOCK_EXEC=1."
-            ]
 
         # ── agent_tools 자동 설치 (최초 1회) ─────────────────────────
         _tools_dst = Path.home() / ".bingo" / "agent_tools.py"
@@ -6427,7 +6401,7 @@ class BingoTerminal:
             if len(_non_print) == len(_all_imports) and len(_lines) > 0 and not _has_network:
                 return (
                     "PRINT_ONLY_CODE: Code only has print() statements and imports — "
-                    "no actual HTTP request or logic. Use TOOL_CALL http_get/run_bash/run_python."
+                    "no actual HTTP request or logic. Use a bash block with curl commands."
                 )
 
             # 패턴 4: 도메인/URL 하드코딩 없이 variable placeholder만 있는 코드
@@ -6459,7 +6433,7 @@ class BingoTerminal:
                     "SIMULATED_VAR: Code assigns a simulated/mock/fake response variable "
                     "(simulated_response / 模拟结果 / 가상결과). "
                     "This means NO real HTTP request was made. "
-                    "DELETE the hardcoded data and emit a TOOL_CALL with a real HTTP request."
+                    "DELETE the hardcoded data and use a bash block: curl -sk -m 30 \"URL\" | python3 -c 'import sys; print(sys.stdin.read()[:500])'"
                 )
 
             # 5-B: # 模拟 / # simulate 주석 직후 결과 dict 할당
@@ -7445,14 +7419,24 @@ class BingoTerminal:
                     f"{_fb_now}"
                 )
             else:
-                # v6.2.204: 기본 정책은 TOOL_CALL 재작성 유도
+                # v4.9.5: bash/curl 방식으로 재작성 유도
                 _hall_feedback = (
                     "[⛔ ALL CODE BLOCKS REJECTED — HALLUCINATION DETECTED]\n"
                     + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
-                    + "\n\nYou MUST rewrite as one TOOL_CALL with real HTTP/tool output:\n\n"
-                    "TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://TARGET/path\",\"timeout\":10}}\n"
-                    "or TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 10 -H 'User-Agent: Mozilla/5.0' 'https://TARGET/path'\"}}\n"
-                    "Do not return fake JSON results."
+                    + "\n\nYou MUST rewrite as a bash block with real curl:\n\n"
+                    "```bash\n"
+                    "curl -s -m 10 -k \\\n"
+                    "  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)' \\\n"
+                    "  'https://TARGET/path' \\\n"
+                    "  | /usr/bin/python3 -c \"\n"
+                    "import sys\n"
+                    "d=sys.stdin.buffer.read()\n"
+                    "t=d.decode('utf-8',errors='replace')\n"
+                    "print(f'[STATUS] {len(d)}B')\n"
+                    "print(t[:1500])\n"
+                    "\"\n"
+                    "```\n"
+                    "Use runnable bash+curl or TOOL_CALL run_python. Do not return fake JSON results."
                 )
             return [_hall_feedback]
 
@@ -7566,64 +7550,6 @@ class BingoTerminal:
             # Python (로컬 처리)
             "python3", "python",
         }
-        _BASH_CONTROL_WORDS = {
-            "for", "while", "until", "if", "then", "elif", "else", "fi",
-            "do", "done", "case", "esac", "select", "function",
-        }
-        _BASH_NON_EXEC_WRAPPERS = {"echo", "printf"}
-
-        def _bash_allowed_command_label(script_text: str) -> str:
-            """Return a display label if a Bash block contains an allowed command.
-
-            v6.2.203: LLM often emits valid scanner loops such as
-            `for idx ...; do curl ...; done` or starts scripts with variable
-            assignments before the first curl/python command.  The old gate
-            checked only line 1, so those blocks were silently skipped.
-            """
-            heredoc_end: str | None = None
-            cmd_pattern = re.compile(
-                r"(?<![A-Za-z0-9_./-])("
-                + "|".join(re.escape(cmd) for cmd in sorted(_BASH_ALLOWED, key=len, reverse=True))
-                + r")(?=$|[\s'\"\\|;&)<])"
-            )
-            heredoc_open = re.compile(r"<<\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
-            for raw_line in script_text.splitlines():
-                stripped = raw_line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                if heredoc_end:
-                    if stripped == heredoc_end:
-                        heredoc_end = None
-                    continue
-
-                try:
-                    parts = _shlex_bash.split(stripped.split("|", 1)[0].split("&&", 1)[0])
-                except Exception:
-                    parts = stripped.split()
-                first = parts[0].split("/")[-1] if parts else ""
-
-                if first in _BASH_ALLOWED:
-                    marker = heredoc_open.search(stripped)
-                    if marker:
-                        heredoc_end = marker.group(1)
-                    return stripped[:120]
-                if first in _BASH_NON_EXEC_WRAPPERS:
-                    continue
-
-                assignment_or_control = (
-                    first in _BASH_CONTROL_WORDS
-                    or bool(re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", stripped))
-                    or "$(" in stripped
-                )
-                if assignment_or_control:
-                    match = cmd_pattern.search(stripped)
-                    if match:
-                        marker = heredoc_open.search(stripped)
-                        if marker:
-                            heredoc_end = marker.group(1)
-                        return stripped[:120]
-            return ""
-
         history_text = " ".join(m.content for m in self.history if m.role == "user")
         import shlex as _shlex_bash
         for _bash_i, block in enumerate(bash_blocks):
@@ -7638,9 +7564,17 @@ class BingoTerminal:
             ]
             if not first_real_lines:
                 continue
-            # 허용 명령 검사: 첫 줄뿐 아니라 for/while/변수할당 내부의 curl/python도 허용
-            _bash_cmd_label = _bash_allowed_command_label(script)
-            if not _bash_cmd_label:
+            # 파이프 / && 앞 첫 명령어만 추출하여 allowlist 검사
+            _first_cmd_raw = first_real_lines[0].split("|")[0].split("&&")[0].strip()
+            _first_cmd_raw = _first_cmd_raw.replace("\\\n", " ").rstrip("\\").strip()
+            try:
+                _first_parts = _shlex_bash.split(_first_cmd_raw)
+            except Exception:
+                _first_parts = _first_cmd_raw.split()
+            if not _first_parts:
+                continue
+            _bin_name = _first_parts[0].split("/")[-1]
+            if _bin_name not in _BASH_ALLOWED:
                 continue
             # 중복 실행 방지
             _dedup_key = script[:60]
@@ -7739,7 +7673,7 @@ class BingoTerminal:
             tasks.append({
                 "type": "bash",
                 "path": str(_sh_path),
-                "cmd": _bash_cmd_label[:80],   # 표시용 1줄 요약
+                "cmd": first_real_lines[0][:80],   # 표시용 1줄 요약
                 "preview": script[:120],
                 "code": script[:16_384],
             })
@@ -8472,8 +8406,7 @@ class BingoTerminal:
         _loaded_skills: set | None = None,
     ) -> None:
         """
-        AI가 TOOL_CALL을 제시하면 실행하고 결과를 피드백.
-        일반 markdown 코드블록 실행은 BINGO_ALLOW_CODEBLOCK_EXEC=1에서만 legacy opt-in.
+        AI가 ```python / ```bash 블록을 제시하면 실행하고 결과를 피드백.
         재귀 호출 없이 while 루프로 동작 — Python 콜 스택 쌓이지 않음.
         SKILL_LOAD 체인은 depth로 제한(별도 로직).
         """
@@ -8587,22 +8520,10 @@ class BingoTerminal:
                 _no_code_retry += 1
                 _lang = getattr(self.config, "lang", "en")
                 _nudge = {
-                    "ko": (
-                        "분석을 계속하려면 반드시 TOOL_CALL 형식으로 실행 요청을 출력해야 합니다. "
-                        "예: TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://TARGET/\"}} "
-                        "또는 TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}"
-                    ),
-                    "zh": (
-                        "要继续分析，必须输出 TOOL_CALL 执行请求。"
-                        "例如: TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://TARGET/\"}} "
-                        "或 TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}"
-                    ),
-                    "en": (
-                        "To continue, you MUST emit a TOOL_CALL execution request. "
-                        "Example: TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://TARGET/\"}} "
-                        "or TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}"
-                    ),
-                }.get(_lang, "Emit the next TOOL_CALL now to continue.")
+                    "ko": "분석을 계속하려면 반드시 ```bash 코드 블록(curl 사용)을 포함해야 합니다. 다음 공격 단계의 bash+curl 코드를 즉시 작성하세요.",
+                    "zh": "要继续分析，必须包含 ```bash 代码块（使用curl）。请立即编写下一步攻击的bash+curl代码。",
+                    "en": "To continue, you MUST include a ```bash code block with curl. Write the next attack step as bash+curl NOW.",
+                }.get(_lang, "Write the next ```bash curl block NOW to continue.")
                 self.history.append(Message(role="user", content=f"[CONTINUE REQUIRED]\n{_nudge}"))
                 from ..models.registry import ModelRegistry as _MR
                 _mc = self.config.get_active_model_config()
@@ -8671,42 +8592,6 @@ class BingoTerminal:
                     if _tr_log and _tr_log.strip():
                         self._append_to_session_log("tool_result", _tr_log[:4000])
 
-            if results_text and any("[CODEBLOCK_EXEC_DISABLED]" in _r for _r in results_text):
-                _lang_cb = getattr(self.config, "lang", "en")
-                _toolcall_only_msg = {
-                    "ko": (
-                        "[CODEBLOCK_EXEC_DISABLED]\n"
-                        "일반 마크다운 코드블록 자동 실행은 공개 빌드 기본값에서 비활성화되어 있습니다.\n"
-                        "같은 작업을 반드시 TOOL_CALL 하나로 다시 출력하세요.\n"
-                        "예: TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}\n"
-                        "또는 TOOL_CALL:{\"name\":\"run_python\",\"args\":{\"code\":\"import requests\\n...\"}}"
-                    ),
-                    "zh": (
-                        "[CODEBLOCK_EXEC_DISABLED]\n"
-                        "公开构建默认禁用普通 Markdown 代码块自动执行。\n"
-                        "请把同一操作改写为单个 TOOL_CALL。\n"
-                        "示例: TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}\n"
-                        "或 TOOL_CALL:{\"name\":\"run_python\",\"args\":{\"code\":\"import requests\\n...\"}}"
-                    ),
-                    "en": (
-                        "[CODEBLOCK_EXEC_DISABLED]\n"
-                        "Raw markdown code block auto-execution is disabled by default in public builds.\n"
-                        "Regenerate the same operation as exactly one TOOL_CALL.\n"
-                        "Example: TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}\n"
-                        "or TOOL_CALL:{\"name\":\"run_python\",\"args\":{\"code\":\"import requests\\n...\"}}"
-                    ),
-                }.get(_lang_cb, "Regenerate the operation as exactly one TOOL_CALL.")
-                self.history.append(Message(role="user", content=_toolcall_only_msg))
-                from ..models.registry import ModelRegistry as _MR_cb
-                _mc_cb = self.config.get_active_model_config()
-                if not _mc_cb:
-                    break
-                _m_cb = _MR_cb.build(_mc_cb)
-                current_response = self._stream_response(_m_cb.chat_stream(self._build_messages("")))
-                if current_response:
-                    self.history.append(Message(role="assistant", content=current_response))
-                continue
-
             # ── v4.9.0: 텍스트 레벨 환각 스캐너 ────────────────────────────────
             # Gap 1 수정: 코드 블록 밖 텍스트에서 미실행 결과 서술 탐지
             # 상황: LLM이 ```python 코드 없이 텍스트로 "DB명이 X로 확인됨" 같은 환각을 서술
@@ -8743,25 +8628,25 @@ class BingoTerminal:
                             "ko": (
                                 f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"코드 실행 없이 텍스트로 결과를 서술했습니다: '{_th_snippet}'\n"
-                                f"이것은 실제 실행 결과가 아닙니다. 반드시 TOOL_CALL을 출력하고 "
-                                f"TOOL_RESULT의 실제 HTTP/도구 응답만 근거로 보고하세요."
+                                f"이것은 실제 실행 결과가 아닙니다. 반드시 ```bash 블록으로 "
+                                f"curl 명령을 작성하고 실제 HTTP 응답을 print() 하세요."
                             ),
                             "zh": (
                                 f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"在未执行代码的情况下，通过文字描述了结果: '{_th_snippet}'\n"
-                                f"这不是真实的执行结果。必须输出 TOOL_CALL，"
-                                f"只基于 TOOL_RESULT 的真实 HTTP/工具输出报告。"
+                                f"这不是真实的执行结果。必须用 ```bash 代码块运行curl，"
+                                f"只报告实际HTTP响应输出。"
                             ),
                             "en": (
                                 f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"You described results in text without executing code: '{_th_snippet}'\n"
-                                f"This is not real execution output. You MUST emit a TOOL_CALL "
-                                f"and report only actual HTTP/tool output from TOOL_RESULT."
+                                f"This is not real execution output. You MUST write a ```bash block "
+                                f"with real curl commands and only report actual HTTP response output."
                             ),
                         }.get(_lang_th, (
                             f"[TEXT_HALLUCINATION_DETECTED v4.9.6] "
                             f"Claimed result without code: '{_th_snippet}' — "
-                            f"emit one TOOL_CALL with real execution."
+                            f"Write a ```bash block with real curl calls."
                         ))
                         self.console.print(f"[bold red]⛔ {_th_feedback}[/bold red]")
                         self.history.append(Message(role="user", content=_th_feedback))
@@ -9218,8 +9103,10 @@ class BingoTerminal:
                         "  - '# 실제 네트워크 없어서 가상 결과' 주석 사용\n"
                         "  - print('[模拟] ...') 형태의 가짜 결과 출력\n\n"
                         "■ 지금 즉시:\n"
-                        "  TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/경로'\"}}\n"
-                        "  위 TOOL_CALL 결과의 실제 서버 응답만 분석하세요.\n"
+                        "  ```bash\n"
+                        "  curl -sk -m 30 -D - 'https://TARGET/경로' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
+                        "  ```\n"
+                        "  위 bash+curl 명령으로 실제 서버 응답을 받아 분석하세요.\n"
                         "  bingo는 완전한 인터넷 연결 환경에서 실행됩니다."
                     ),
                     "zh": (
@@ -9230,8 +9117,10 @@ class BingoTerminal:
                         "  - 使用'# 模拟结果'注释\n"
                         "  - print('[模拟]...')输出虚假结果\n\n"
                         "■ 立即执行:\n"
-                        "  TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/路径'\"}}\n"
-                        "  bingo在真实网络环境中运行，必须使用 TOOL_CALL 发送真实HTTP请求!"
+                        "  ```bash\n"
+                        "  curl -sk -m 30 -D - 'https://TARGET/路径' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
+                        "  ```\n"
+                        "  bingo在真实网络环境中运行，必须使用bash+curl发送真实HTTP请求!"
                     ),
                     "en": (
                         "[⛔ SIMULATED OUTPUT INTERCEPTED — BINGO RUNTIME BLOCKED]\n\n"
@@ -9242,10 +9131,12 @@ class BingoTerminal:
                         "  - Using '# simulate/模拟' comment blocks\n"
                         "  - print('[SIMULATED]...') fake output\n\n"
                         "■ DO THIS NOW:\n"
-                        "  TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/real-path'\"}}\n"
-                        "  bingo runs in a REAL network environment. Use TOOL_CALL for real HTTP requests!"
+                        "  ```bash\n"
+                        "  curl -sk -m 30 -D - 'https://TARGET/real-path' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
+                        "  ```\n"
+                        "  bingo runs in a REAL network environment. Use REAL bash+curl commands!"
                     ),
-                }.get(_lang, "[⛔ SIMULATED OUTPUT] Remove hardcoded fake results. Use TOOL_CALL for real HTTP.")
+                }.get(_lang, "[⛔ SIMULATED OUTPUT] Remove hardcoded fake results. Use bash+curl for real HTTP.")
                 self.history.append(Message(role="user", content=f"[SIMULATED_OUTPUT_BLOCKED]\n{_sim_force_msg}"))
                 from ..models.registry import ModelRegistry as _MR_sim
                 _mc_sim = self.config.get_active_model_config()
@@ -9284,25 +9175,37 @@ class BingoTerminal:
                         "ko": (
                             "[⛔ 환각 코드 감지 — 즉시 재작성 필요]\n"
                             "작성한 코드에서 실제 HTTP 응답이 없습니다.\n"
-                            "반드시 아래 형식으로 TOOL_CALL을 다시 작성하세요:\n\n"
-                            "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/실제경로' -H 'User-Agent: Mozilla/5.0'\"}}\n"
+                            "반드시 아래 형식으로 bash 블록을 다시 작성하세요:\n\n"
+                            "```bash\n"
+                            "curl -sk -m 30 -D - 'https://TARGET/실제경로' \\\n"
+                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
+                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(\"[STATUS] 200\"); print(r[:500])'\n"
+                            "```\n"
                             "JSON 딕셔너리({...})나 가짜 출력은 절대 사용 금지."
                         ),
                         "zh": (
                             "[⛔ 检测到幻觉代码 — 必须立即重写]\n"
                             "您的代码没有产生真实的HTTP响应。\n"
-                            "必须按以下 TOOL_CALL 格式重写:\n\n"
-                            "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/真实路径' -H 'User-Agent: Mozilla/5.0'\"}}\n"
+                            "必须按以下bash+curl格式重写所有代码块:\n\n"
+                            "```bash\n"
+                            "curl -sk -m 30 -D - 'https://TARGET/真实路径' \\\n"
+                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
+                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
+                            "```\n"
                             "禁止使用JSON字典({...})或伪造输出。"
                         ),
                         "en": (
                             "[⛔ HALLUCINATION CODE DETECTED — REWRITE REQUIRED]\n"
                             "Your code produced NO real HTTP responses.\n"
-                            "You MUST rewrite as a TOOL_CALL like this:\n\n"
-                            "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/real-path' -H 'User-Agent: Mozilla/5.0'\"}}\n"
+                            "You MUST rewrite ALL code blocks as bash+curl like this:\n\n"
+                            "```bash\n"
+                            "curl -sk -m 30 -D - 'https://TARGET/real-path' \\\n"
+                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
+                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
+                            "```\n"
                             "FORBIDDEN: JSON dicts ({...}), fake output, simulation code."
                         ),
-                    }.get(_lang, "Rewrite with a real TOOL_CALL NOW.")
+                    }.get(_lang, "Rewrite with real bash+curl commands NOW.")
                     self.history.append(Message(role="user", content=_force_rewrite))
                     from ..models.registry import ModelRegistry as _MR_hall
                     _mc_hall = self.config.get_active_model_config()
@@ -9321,21 +9224,21 @@ class BingoTerminal:
                     "ko": (
                         "[⛔ 스크립트 출력 없음 — 환각 코드 의심]\n"
                         "스크립트가 실행됐지만 출력이 없습니다. "
-                        "실제 HTTP 요청이 없거나 echo만 있습니다.\n"
-                        "반드시 TOOL_CALL run_bash/run_python/http_get로 실제 응답을 확인하세요."
+                        "bash 블록에 실제 curl HTTP 요청이 없거나 echo만 있습니다.\n"
+                        "반드시 curl -sk -m 30 'URL' 을 호출하고 파이프로 출력을 확인하세요."
                     ),
                     "zh": (
                         "[⛔ 脚本无输出 — 疑似幻觉代码]\n"
-                        "脚本执行但没有输出，缺少真实HTTP请求或只包含echo。\n"
-                        "必须使用 TOOL_CALL run_bash/run_python/http_get 查看真实响应。"
+                        "脚本执行但没有输出。bash块中缺少真实curl HTTP请求或只包含echo。\n"
+                        "必须使用curl -sk -m 30 'URL' 并通过管道查看输出。"
                     ),
                     "en": (
                         "[⛔ SCRIPT NO OUTPUT — HALLUCINATION SUSPECTED]\n"
                         "Script ran but produced ZERO output. "
-                        "It has no real HTTP calls or contains only echo.\n"
-                        "Use TOOL_CALL run_bash/run_python/http_get to fetch real output."
+                        "Your bash block has no real curl HTTP calls or contains only echo.\n"
+                        "Add: curl -sk -m 30 'URL' | python3 -c 'import sys; print(sys.stdin.read()[:300])'"
                     ),
-                }.get(_lang, "Script produced no output. Use TOOL_CALL to fetch real output.")
+                }.get(_lang, "Script produced no output. Add curl -sk -m 30 'URL' to the bash block.")
                 self.history.append(Message(role="user", content=f"[EXECUTION RESULT]\n{_no_output_msg}"))
                 model_cfg2 = self.config.get_active_model_config()
                 if not model_cfg2:
@@ -10198,7 +10101,7 @@ class BingoTerminal:
                         _wait_secs = 3  # 프록시 교체 시 짧은 대기
                         _proxy_hint_lines = [
                             f"[PROXY_ROTATED: now using {_new_entry}]",
-                            f"Add to your TOOL_CALL run_bash script:",
+                            f"Add to your bash block:",
                             f"  PROXY=\"{_new_entry.url}\"",
                             f"  curl --proxy \"${{PROXY}}\" -sk -m 15 \"${{URL}}\"",
                         ]
@@ -10255,7 +10158,7 @@ class BingoTerminal:
                         _proxy_hint_lines = [
                             "[SILENT_DROP_HEADER_BYPASS_APPLIED: no proxy available]",
                             "CAUSE: WAF is silently dropping your request (timeout, no response body).",
-                            "ACTION: Update your TOOL_CALL run_bash curl script with ALL of the following headers:",
+                            "ACTION: Update your bash block curl command with ALL of the following headers:",
                             f"  curl -sk -m 15 \\",
                             f"    -H 'User-Agent: {_chosen_ua}' \\",
                             f"    -H 'X-Forwarded-For: 127.0.0.1' \\",
@@ -11720,13 +11623,10 @@ class BingoTerminal:
 
         # ── 세션 구분 정보 수집 (보고서 환각 방지) ──────────────────────
         _session_tables  = getattr(self, "_session_tables", [])
-        _session_creds   = self._sanitize_credentials(
-            getattr(self, "_session_credentials", [])
-        )
+        _session_creds   = getattr(self, "_session_credentials", [])
         _session_fresh   = getattr(self, "_session_fresh", True)
         # 이전 세션 복원이면 어떤 항목이 이전 세션에서 왔는지 구분
         _prev_tables = [t for t in _state.get("tables", []) if t not in _session_tables]
-        _state["credentials"] = self._sanitize_credentials(_state.get("credentials", []))
         _prev_creds  = [c for c in _state.get("credentials", []) if c not in _session_creds]
         _session_origin_note = ""
         if not _session_fresh and (_prev_tables or _prev_creds):
@@ -12673,37 +12573,16 @@ class BingoTerminal:
                     self._agent_state["columns"]["g5_member"].append(c)
 
         # 자격증명
-        # v6.2.202: separator must be ':' or '='.  The older [: \s =]+ pattern
-        # captured UI/status text such as "password > 200 登出:" as a password.
         cred_match = re.findall(
-            r"\b(mb_id|mb_password|username|password)\b\s*[:=]\s*"
-            r"(?:['\"]([^'\"]{3,160})['\"]|([^\s,\]\}<>&;]{3,160}))",
-            text,
-            re.IGNORECASE,
+            r"(mb_id|mb_password|username|password)[:\s=]+([^\n\r,\]]{3,80})", text, re.IGNORECASE
         )
         if cred_match:
-            cred = {}
-            for k, quoted, bare in cred_match:
-                v = (quoted or bare or "").strip()
-                if "~" in v or "?" in v:
-                    continue
-                if self._credential_value_is_plausible(k, v):
-                    cred[k.lower()] = v.strip().strip("'\"`.,;:()[]{}")
+            cred = {k.lower(): v.strip() for k, v in cred_match
+                    if v.strip() and "~" not in v and "?" not in v and len(v.strip()) > 2}
             if cred:
-                self._agent_state["credentials"] = self._sanitize_credentials(
-                    [*self._agent_state.get("credentials", []), cred]
-                )
+                self._agent_state["credentials"].append(cred)
                 # 현재 세션 추적 (보고서 환각 방지)
-                self._session_credentials = self._sanitize_credentials(
-                    [*getattr(self, "_session_credentials", []), cred]
-                )
-        else:
-            self._agent_state["credentials"] = self._sanitize_credentials(
-                self._agent_state.get("credentials", [])
-            )
-            self._session_credentials = self._sanitize_credentials(
-                getattr(self, "_session_credentials", [])
-            )
+                self._session_credentials.append(cred)
 
         # WAF
         m = re.search(r"WAF.*?detected.*?([Cc]loudflare|[Aa]WS|[Mm]od[Ss]ecurity|[Ww]ordfence)", text)
@@ -12887,9 +12766,8 @@ class BingoTerminal:
             if s.get("columns"):
                 for tbl, cols in s.get("columns", {}).items():
                     lines.append(f"✅ Columns ({tbl}): {', '.join(cols)}")
-            credentials = self._sanitize_credentials(s.get("credentials", []))
-            if credentials:
-                lines.append(f"✅ Credentials found: {credentials}")
+            if s.get("credentials"):
+                lines.append(f"✅ Credentials found: {s.get('credentials')}")
                 lines.append("⚡ NEXT: crack/verify these credentials")
             else:
                 if s.get("columns"):
@@ -12905,59 +12783,6 @@ class BingoTerminal:
             return "\n".join(lines) + "\n"
         except Exception:
             return ""
-
-    @staticmethod
-    def _credential_value_is_plausible(key: str, value: object) -> bool:
-        """Reject UI/status text accidentally captured as credential values."""
-        import re as _re_cred
-
-        v = str(value or "").strip().strip("'\"`.,;:()[]{}")
-        if len(v) < 3 or len(v) > 160:
-            return False
-        if _re_cred.search(r"[\s<>]", v):
-            return False
-        if _re_cred.match(r"^[=:/\\-]+$", v):
-            return False
-        lower = v.lower()
-        if _re_cred.fullmatch(r"(?:\d{3}|true|false|null|none|undefined|ok)", lower):
-            return False
-        negative_terms = (
-            "logout", "log-out", "signout", "sign-out", "forbidden",
-            "permission", "denied", "error", "exception", "enabled",
-            "disabled", "allow:", "http/", "html", "body", "script",
-            "로그아웃", "로그인", "권한", "오류", "에러", "登出", "登录", "错误",
-            "禁止", "权限",
-        )
-        if any(term in lower for term in negative_terms):
-            return False
-        if str(key).lower() in {"password", "mb_password"} and lower.startswith(("type=", "name=", "id=")):
-            return False
-        return True
-
-    @classmethod
-    def _sanitize_credentials(cls, credentials: object) -> list[dict]:
-        """Normalize and deduplicate session credential records."""
-        if not isinstance(credentials, list):
-            return []
-        cleaned: list[dict] = []
-        seen: set[tuple[tuple[str, str], ...]] = set()
-        allowed = {"mb_id", "mb_password", "username", "password"}
-        for item in credentials:
-            if not isinstance(item, dict):
-                continue
-            record: dict[str, str] = {}
-            for raw_key, raw_value in item.items():
-                key = str(raw_key).lower()
-                if key not in allowed:
-                    continue
-                value = str(raw_value or "").strip().strip("'\"`.,;:()[]{}")
-                if cls._credential_value_is_plausible(key, value):
-                    record[key] = value
-            marker = tuple(sorted(record.items()))
-            if record and marker not in seen:
-                seen.add(marker)
-                cleaned.append(record)
-        return cleaned
 
     @staticmethod
     def _has_meaningful_loop_progress(text: str) -> bool:

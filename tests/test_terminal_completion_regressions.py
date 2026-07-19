@@ -7,8 +7,9 @@ from types import SimpleNamespace
 
 from bingo.ui.terminal import (
     BingoTerminal,
+    _codeblock_exec_limits,
+    _normalize_tool_call_response,
     _repair_mixed_bash_python,
-    _supervised_exec_limits,
 )
 from bingo.lang.strings import get_strings
 from bingo.tools.findings_exporter import FindingsExporter
@@ -30,6 +31,7 @@ from bingo.tools_ext.pentest_tools import (
     _save_sqli_checkpoint,
     _inject_post_exploit_notice,
     _inject_sqli_trigger_notice,
+    _inject_vuln_trigger_notice,
     execute_tool,
     run_python,
     run_ghauri,
@@ -49,102 +51,6 @@ class _Console:
 
     def print(self, *args, **_kwargs) -> None:
         self.messages.append(" ".join(str(arg) for arg in args))
-
-
-def test_raw_runtime_mode_is_default_and_classic_is_opt_in(monkeypatch) -> None:
-    monkeypatch.delenv("BINGO_RUNTIME_MODE", raising=False)
-    monkeypatch.delenv("BINGO_CLAUDE_CLI_MODE", raising=False)
-
-    assert BingoTerminal._raw_runtime_mode()
-
-    monkeypatch.setenv("BINGO_RUNTIME_MODE", "classic")
-    assert not BingoTerminal._raw_runtime_mode()
-
-    monkeypatch.setenv("BINGO_RUNTIME_MODE", "")
-    monkeypatch.setenv("BINGO_CLAUDE_CLI_MODE", "0")
-    assert not BingoTerminal._raw_runtime_mode()
-
-
-def test_raw_execution_feedback_is_thin_and_evidence_only() -> None:
-    feedback = BingoTerminal._build_execution_feedback(
-        "HTTP/1.1 200 OK\nbody",
-        state_summary="AUTO_VERIFICATION_QUEUE\n",
-        ip_block_hint="\n[IP_BLOCK_DETECTED]\n",
-        waf_redirect_note="\n[WAF_PAYLOAD_BLOCK]\n",
-        next_action_contract="Output TASK_COMPLETE when all credentials are extracted\n",
-        raw_mode=True,
-    )
-
-    assert "BINGO RAW EXECUTION RESULT" in feedback
-    assert "Use only the stdout/stderr above as evidence" in feedback
-    assert "AUTO_VERIFICATION_QUEUE" not in feedback
-    assert "IP_BLOCK_DETECTED" not in feedback
-    assert "WAF_PAYLOAD_BLOCK" not in feedback
-    assert "Output TASK_COMPLETE when all credentials are extracted" not in feedback
-
-
-def test_hybrid_attack_assist_is_default_and_can_be_disabled(monkeypatch) -> None:
-    monkeypatch.delenv("BINGO_ATTACK_ASSIST", raising=False)
-    assert BingoTerminal._hybrid_attack_assist_mode()
-
-    monkeypatch.setenv("BINGO_ATTACK_ASSIST", "0")
-    assert not BingoTerminal._hybrid_attack_assist_mode()
-
-
-def test_hybrid_attack_assist_routes_sqli_waf_to_bingo_modules() -> None:
-    terminal = BingoTerminal.__new__(BingoTerminal)
-
-    ctx = terminal._build_bingo_attack_assist_context(
-        "SQLi WAF 403 single quote caused 598B boolean oracle",
-        "",
-    )
-
-    assert "BINGO HYBRID ATTACK ASSIST" in ctx
-    assert "SQLI_WAF_MODULES_REQUIRED" in ctx
-    assert "sqli_autoexploit" in ctx
-    assert "execute_tool(\"detect_waf\"" in ctx
-    assert "execute_tool(\"sqli_boolean\"" in ctx
-    assert "CONFIRMED still requires raw deterministic proof" in ctx
-
-
-def test_raw_execution_feedback_keeps_hybrid_attack_assist() -> None:
-    feedback = BingoTerminal._build_execution_feedback(
-        "403/199B WAF block",
-        attack_assist_context="=== BINGO HYBRID ATTACK ASSIST ===\nsqli_autoexploit\n=== END BINGO HYBRID ATTACK ASSIST ===",
-        raw_mode=True,
-    )
-
-    assert "BINGO RAW EXECUTION RESULT" in feedback
-    assert "BINGO HYBRID ATTACK ASSIST" in feedback
-    assert "sqli_autoexploit" in feedback
-    assert "AUTO_VERIFICATION_QUEUE" not in feedback
-
-
-def test_classic_execution_feedback_keeps_legacy_contract() -> None:
-    feedback = BingoTerminal._build_execution_feedback(
-        "result",
-        state_summary="STATE\n",
-        ip_block_hint="\n[IP_BLOCK_DETECTED]\n",
-        waf_redirect_note="\n[WAF_PAYLOAD_BLOCK]\n",
-        next_action_contract="NEXT ACTION: Continue\n",
-        raw_mode=False,
-    )
-
-    assert "BINGO REAL EXECUTION RESULTS" in feedback
-    assert "STATE" in feedback
-    assert "IP_BLOCK_DETECTED" in feedback
-    assert "WAF_PAYLOAD_BLOCK" in feedback
-    assert "Output TASK_COMPLETE when all credentials are extracted" in feedback
-
-
-def test_raw_loop_limit_messages_do_not_request_auto_report() -> None:
-    stop_msg = BingoTerminal._raw_loop_limit_message(60, "ko")
-    resume_msg = BingoTerminal._raw_loop_limit_resume_message("ko")
-
-    assert "자동 보고서 없이" in resume_msg
-    assert "보고서/확정 결과를 자동 생성하지 않고" in stop_msg
-    assert "TASK_COMPLETE" not in stop_msg
-    assert "보고서 생성" not in resume_msg
 
 
 def test_attack_hypothesis_is_warned_but_not_blocked() -> None:
@@ -193,6 +99,36 @@ def test_preexecution_claim_downgrade_preserves_attack_code() -> None:
     assert code in corrected
 
 
+def test_dict_tool_call_is_normalized_before_code_execution() -> None:
+    response = (
+        "```python\n"
+        "{'name': 'http_get', 'arguments': {'url': 'https://example.test/'}}\n"
+        "```"
+    )
+
+    normalized, count = _normalize_tool_call_response(response)
+
+    assert count == 1
+    assert normalized.startswith("TOOL_CALL:")
+    assert '"name": "http_get"' in normalized
+    assert "```python" not in normalized
+    assert "WRONG_TOOL_FORMAT" not in normalized
+
+
+def test_flat_dict_tool_call_is_normalized_silently() -> None:
+    response = (
+        "```python\n"
+        "{'name': 'http_get', 'url': 'https://example.test/', 'timeout': 7}\n"
+        "```"
+    )
+
+    normalized, count = _normalize_tool_call_response(response)
+
+    assert count == 1
+    assert '"args": {"url": "https://example.test/", "timeout": 7}' in normalized
+    assert "AUTO_FIX" not in normalized
+
+
 def _code_test_terminal() -> BingoTerminal:
     terminal = BingoTerminal.__new__(BingoTerminal)
     terminal.console = _Console()
@@ -205,59 +141,42 @@ def _code_test_terminal() -> BingoTerminal:
     return terminal
 
 
-def test_supervised_exec_limits_are_env_configurable(monkeypatch) -> None:
-    monkeypatch.setenv("BINGO_EXEC_TIMEOUT", "2")
-    monkeypatch.setenv("BINGO_EXEC_IDLE_REPORT", "1")
-    monkeypatch.setenv("BINGO_EXEC_WALL_CLOCK_TIMEOUT", "4")
+def test_codeblock_exec_limits_default_to_bounded_values(monkeypatch) -> None:
+    monkeypatch.delenv("BINGO_EXEC_TIMEOUT", raising=False)
+    monkeypatch.delenv("BINGO_EXEC_IDLE_TIMEOUT", raising=False)
+    monkeypatch.delenv("BINGO_EXEC_WALL_CLOCK_TIMEOUT", raising=False)
 
-    limits = _supervised_exec_limits()
-
-    assert limits == {
-        "script_timeout": 2,
-        "idle_report": 1,
-        "wall_clock": 4,
-    }
+    assert _codeblock_exec_limits() == (180, 120, 210)
 
 
-def test_supervised_codeblock_reports_job_state_on_success() -> None:
+def test_codeblock_exec_limits_clamp_env_values(monkeypatch) -> None:
+    monkeypatch.setenv("BINGO_EXEC_TIMEOUT", "3")
+    monkeypatch.setenv("BINGO_EXEC_IDLE_TIMEOUT", "30")
+    monkeypatch.setenv("BINGO_EXEC_WALL_CLOCK_TIMEOUT", "2")
+
+    assert _codeblock_exec_limits() == (3, 3, 3)
+
+
+def test_bash_codeblock_execution_obeys_idle_timeout(monkeypatch) -> None:
     terminal = _code_test_terminal()
+    monkeypatch.setenv("BINGO_EXEC_TIMEOUT", "10")
+    monkeypatch.setenv("BINGO_EXEC_IDLE_TIMEOUT", "1")
+    monkeypatch.setenv("BINGO_EXEC_WALL_CLOCK_TIMEOUT", "12")
 
     results = terminal._run_code_blocks(
-        "```bash\npython3 -c \"print('ok', flush=True)\"\n```",
+        "```bash\n"
+        "python3 -c \"import time; print('start', flush=True); time.sleep(3); print('end', flush=True)\"\n"
+        "```",
         set(),
     )
 
     combined = "\n".join(results)
-    assert "=== JOB_STATE: job_1 ===" in combined
-    assert "legacy=REAL EXECUTION:" in combined
-    assert "status=completed" in combined
-    assert "--- output ---" in combined
-    assert "ok" in combined
-
-
-def test_supervised_codeblock_reports_partial_state_on_timeout(monkeypatch) -> None:
-    terminal = _code_test_terminal()
-    monkeypatch.setenv("BINGO_EXEC_TIMEOUT", "2")
-    monkeypatch.setenv("BINGO_EXEC_IDLE_REPORT", "1")
-    monkeypatch.setenv("BINGO_EXEC_WALL_CLOCK_TIMEOUT", "4")
-
-    results = terminal._run_code_blocks(
-        "```bash\npython3 -c \"import time; print('start', flush=True); time.sleep(5)\"\n```",
-        set(),
-    )
-
-    combined = "\n".join(results)
-    assert "=== JOB_STATE: job_1 ===" in combined
-    assert "status=timeout_interrupted" in combined
-    assert "reason=execution_budget_elapsed" in combined
-    assert "--- partial_output ---" in combined
-    assert "partial_output_preserved" in combined
+    assert "[SCRIPT_KILLED: IDLE_TIMEOUT]" in combined
     assert "start" in combined
-    assert "SCRIPT_KILLED" not in combined
-    assert "blocked" not in combined.lower()
+    assert "\nend\n" not in combined
 
 
-def test_dict_literal_codeblock_is_not_interpreted_as_helper_call(monkeypatch) -> None:
+def test_dict_tool_call_executes_without_autofix_warning(monkeypatch) -> None:
     terminal = _code_test_terminal()
     monkeypatch.setitem(
         TOOL_REGISTRY,
@@ -276,10 +195,8 @@ def test_dict_literal_codeblock_is_not_interpreted_as_helper_call(monkeypatch) -
     )
 
     visible = "\n".join(terminal.console.messages)
-    combined = "\n".join(results)
-    assert "=== JOB_STATE: job_1 ===" in combined
-    assert "status=completed" in combined
-    assert "value=ok" not in combined
+    assert results and "value=ok" in results[0]
+    assert "WRONG_TOOL_FORMAT" not in visible
     assert "AUTO_FIX" not in visible
 
 
@@ -412,16 +329,14 @@ def test_direct_http_sqli_probe_is_not_transport_blocked(monkeypatch) -> None:
     assert "HTTP_GET_SQLI_BLOCKED" not in result["output"]
 
 
-def test_system_prompt_ends_with_raw_runtime_contract() -> None:
+def test_system_prompt_ends_with_evidence_driven_offense_contract() -> None:
     prompt = get_pentest_system_prompt("deepseek")
 
     assert (
         "Reports contain verified vulnerabilities only. Probable/potential candidates stay\n"
         "   in the verification backlog and continue to drive attacks."
     ) in prompt
-    assert "=== BINGO RAW RUNTIME CONTRACT ===" in prompt
-    assert "Built-in skills and Bingo modules are mandatory first-class assets." in prompt
-    assert prompt.rstrip().endswith("capability or module usage.")
+    assert prompt.rstrip().endswith("promote after deterministic extraction evidence.")
     assert "sqlmap is PERMANENTLY BANNED" not in prompt
 
 
@@ -431,10 +346,7 @@ def test_repeated_inconclusive_attack_automatically_pivots(tmp_path: Path) -> No
     terminal._findings_exporter = FindingsExporter(
         target="https://example.test", output_dir=str(tmp_path)
     )
-    code = (
-        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
-        "sqli_autoexploit(url='https://example.test/item', param='id')"
-    )
+    code = 'TOOL_CALL:{"name":"sqli_autoexploit","args":{"url":"https://example.test/item","param":"id"}}'
     output = "oracle inconclusive: same-size responses"
 
     first = terminal._adaptive_attack_pivot_context(code, output)
@@ -681,10 +593,7 @@ def test_localized_oracle_rejection_triggers_cross_vector_pivot(tmp_path: Path) 
     terminal._findings_exporter = FindingsExporter(
         target="https://example.test", output_dir=str(tmp_path)
     )
-    code = (
-        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
-        "sqli_autoexploit(param='id')"
-    )
+    code = 'TOOL_CALL:{"name":"sqli_autoexploit","args":{"param":"id"}}'
     output = "[SQLI_ORACLE_REJECTED] TRUE/FALSE 대조가 차단되었습니다."
 
     assert terminal._adaptive_attack_pivot_context(code, output) == ""
@@ -855,7 +764,7 @@ def test_active_security_tests_remain_candidates(tmp_path: Path) -> None:
 def test_process_runtime_elapsed_is_not_time_based_sqli(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
     output = (
-        "=== RUNTIME_RESULT: python ===\n"
+        "=== TOOL_RESULT: run_python ===\n"
         "exit_code=0 success=True elapsed=14.42s\n"
         "[200] ERROR (598B): LENGTH=1"
     )
@@ -873,8 +782,8 @@ def test_process_runtime_elapsed_is_not_time_based_sqli(tmp_path: Path) -> None:
 def test_failed_time_measurement_invalidates_probable_sqli(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
     code = (
-        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
-        "sqli_autoexploit(url='https://example.test/item', param='id')"
+        'TOOL_CALL:{"name":"sqli_autoexploit","args":'
+        '{"url":"https://example.test/item","param":"id"}}'
     )
     probable = exporter.process("TRUE 1200B\nFALSE 500B", code)
     assert probable is not None and probable.confidence == "probable"
@@ -895,10 +804,7 @@ def test_failed_time_measurement_invalidates_probable_sqli(tmp_path: Path) -> No
 
 def test_waf_control_pair_is_blocked_not_probable(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
-    code = (
-        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
-        "sqli_autoexploit(url='https://example.test/item', param='id')"
-    )
+    code = "TOOL_CALL:{\"name\":\"sqli_autoexploit\",\"args\":{\"url\":\"https://example.test/item\",\"param\":\"id\"}}"
 
     finding = exporter.process(
         "TRUE 403 199B request blocked\nFALSE 200 598B generic error page",
@@ -923,10 +829,7 @@ def test_equal_waf_controls_are_blocked_not_probable(tmp_path: Path) -> None:
 
 def test_finding_ids_are_monotonic_across_invalidation(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
-    code = (
-        "from bingo.tools_ext.pentest_tools import sqli_autoexploit\n"
-        "sqli_autoexploit(url='https://example.test/item', param='id')"
-    )
+    code = "TOOL_CALL:{\"name\":\"sqli_autoexploit\",\"args\":{\"url\":\"https://example.test/item\",\"param\":\"id\"}}"
 
     first = exporter.process("TRUE 1200B\nFALSE 500B", code)
     assert first is not None and first.id == "BINGO-0001"
@@ -1340,6 +1243,116 @@ def test_attempted_xss_payload_remains_a_candidate(tmp_path: Path) -> None:
     assert finding is not None
     assert finding.vuln_type == "xss"
     assert finding.confidence == "potential"
+
+
+def test_xss_trigger_ignores_not_reflected_payload_text(tmp_path: Path) -> None:
+    payload = '"><script>alert(1)</script>'
+    output = (
+        "HTTP 200\n"
+        f"[NOT REFLECTED] payload: {payload}\n"
+        "browser_confirmed=false\n"
+    )
+
+    assert "XSS_TRIGGER_DETECTED" not in _inject_vuln_trigger_notice(output)
+
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    assert exporter.process(output, code_snippet="run_python xss smoke") is None
+    assert exporter.findings == []
+
+
+def test_xss_trigger_ignores_filtered_or_403_payload_text(tmp_path: Path) -> None:
+    output = (
+        "=== XSS 反射测试 ===\n"
+        "url=javascript:alert(1): 403 Location=N/A\n"
+        "url=data:text/html,<script>alert(1)</script>: 403 Location=N/A\n"
+        "被过滤/不存在: <script>alert(1)</script> | 199B\n"
+        "被过滤/不存在: <img src=x onerror=alert(1)> | 199B\n"
+    )
+
+    assert "XSS_TRIGGER_DETECTED" not in _inject_vuln_trigger_notice(output)
+
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    assert exporter.process(output, code_snippet="run_python xss blocked smoke") is None
+    assert exporter.findings == []
+
+
+def test_exporter_rejects_stale_xss_trigger_notice_without_proof(tmp_path: Path) -> None:
+    output = (
+        "被过滤/不存在: <script>alert(1)</script> | 199B\n"
+        "[XSS_TRIGGER_DETECTED] XSS reflected/stored pattern detected\n"
+        "-> TOOL_CALL:{\"name\":\"xss_autotest\",\"args\":{\"url\":\"<URL>\",\"param\":\"<PARAM>\"}}\n"
+    )
+
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    assert exporter.process(output, code_snippet="run_python xss blocked smoke") is None
+    assert exporter.findings == []
+
+
+def test_xss_trigger_still_detects_reflected_payload_text() -> None:
+    payload = "<img src=x onerror=alert(1)>"
+    output = f"HTTP 200\nPAYLOAD_REFLECTED {payload}\n"
+
+    assert "XSS_TRIGGER_DETECTED" in _inject_vuln_trigger_notice(output)
+
+
+def test_lfi_autotest_does_not_confirm_generic_nginx_mysql_text(monkeypatch) -> None:
+    baseline = "<html><title>hospital</title>nginx mysql maintenance notice</html>"
+    dynamic_non_file_page = baseline + ("A" * 900) + " nginx mysql"
+
+    def fake_req(_sess, _method, _url, params=None, data=None, timeout=15):
+        request_params = params or data or {}
+        value = request_params.get("page", "")
+        if value in {"/etc/nginx/nginx.conf", "/etc/mysql/my.cnf"}:
+            return SimpleNamespace(text=dynamic_non_file_page)
+        return SimpleNamespace(text=baseline)
+
+    monkeypatch.setattr(autoexploit_modules, "_HAS_REQUESTS", True)
+    monkeypatch.setattr(autoexploit_modules, "_sess", lambda _headers=None: object())
+    monkeypatch.setattr(autoexploit_modules, "_req", fake_req)
+    monkeypatch.setattr(
+        autoexploit_modules,
+        "_LFI_PAYLOADS",
+        ["/etc/nginx/nginx.conf", "/etc/mysql/my.cnf"],
+    )
+    monkeypatch.setattr(autoexploit_modules, "_LFI_SIGNATURES", ["nginx", "mysql"])
+
+    result = autoexploit_modules.lfi_autotest(
+        "https://example.test/main.do",
+        "page",
+    )
+
+    assert result["success"] is False
+    assert result["findings"] == []
+    assert result["candidates"]
+    assert "CANDIDATE:" in result["output"]
+
+
+def test_lfi_autotest_confirms_structured_passwd(monkeypatch, tmp_path: Path) -> None:
+    passwd_body = (
+        "root:x:0:0:root:/root:/bin/bash\n"
+        "daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n"
+    )
+
+    def fake_req(_sess, _method, _url, params=None, data=None, timeout=15):
+        request_params = params or data or {}
+        if request_params.get("page") == "../../etc/passwd":
+            return SimpleNamespace(text=passwd_body)
+        return SimpleNamespace(text="<html>normal page</html>")
+
+    monkeypatch.setattr(autoexploit_modules, "_HAS_REQUESTS", True)
+    monkeypatch.setattr(autoexploit_modules, "_sess", lambda _headers=None: object())
+    monkeypatch.setattr(autoexploit_modules, "_req", fake_req)
+    monkeypatch.setattr(autoexploit_modules, "_LFI_PAYLOADS", ["../../etc/passwd"])
+    monkeypatch.setattr(autoexploit_modules, "_save", lambda _filename, _content: str(tmp_path / _filename))
+
+    result = autoexploit_modules.lfi_autotest(
+        "https://example.test/main.do",
+        "page",
+    )
+
+    assert result["success"] is True
+    assert result["findings"]
+    assert "etc_passwd_structured" in result["findings"][0]["signatures"]
 
 
 def test_error_identifier_is_not_cracked_as_hash() -> None:

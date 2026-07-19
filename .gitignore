@@ -35,7 +35,7 @@ htmlcov/
 # bingo exported sessions
 bingo_chat_*.md
 
-# bingo project memory
+# Bingo project memory
 .bingo/*
 !.bingo/project-memory.md
 

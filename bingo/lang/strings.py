@@ -2231,6 +2231,10 @@ _STRINGS.update({
     "script_killed_timeout":    {"ko": "[스크립트_종료: 타임아웃]\n스크립트가 {sec}초 제한을 초과하여 강제 종료되었습니다.\n스크립트를 더 작은 블록으로 나누거나 루프를 최적화하세요.",
                                   "zh": "[脚本已终止: 超时]\n脚本超过{sec}秒限制，已被强制终止。\n请将脚本拆分为更小的块或优化循环。",
                                   "en": "[SCRIPT_KILLED: TIMEOUT]\nScript exceeded {sec}s timeout and was forcibly terminated.\nSplit the script into smaller blocks or optimize the loop."},
+    "script_killed_idle_timeout": {
+                                  "ko": "[스크립트_종료: 유휴_타임아웃]\n스크립트가 {sec}초 동안 출력을 내지 않아 강제 종료되었습니다.\n요청별 타임아웃을 추가하거나, 루프를 줄이거나, 스크립트를 더 작은 블록으로 나누세요.",
+                                  "zh": "[脚本已终止: 空闲超时]\n脚本连续{sec}秒没有输出，已被强制终止。\n请为单个请求添加超时、减少循环或将脚本拆分为更小的块。",
+                                  "en": "[SCRIPT_KILLED: IDLE_TIMEOUT]\nScript produced no output for {sec}s and was forcibly terminated.\nAdd per-request timeouts, reduce loops, or split the script into smaller blocks."},
 
     # ── v5.1.6: 고아 curl 프로세스 wall-clock 타임아웃 (프로세스 그룹 강제 종료) ──
     "wallclock_timeout_killed": {"ko": "⚠ WALL-CLOCK 타임아웃 ({elapsed}s) — bash 종료 후 자식 curl 프로세스가 남아있어 프로세스 그룹 강제 종료",

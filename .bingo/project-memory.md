@@ -8,7 +8,7 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.210`.
+- Current stable version after Bingo memory rebrand: `6.2.211`.
 - Bingo project memory is automatic:
   - At every Bingo session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Bingo must silently run `scripts/bingo-memory-sync.sh`.
@@ -30,13 +30,69 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T16:42:01+08:00
+- Last synced: 2026-07-19T17:46:10+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:00c37783e2074143a91c0618d59b4460948c3bc2 -->
+## Code change: fix: preserve domain-bound target identity
+- Commit: `00c37783e207`
+- Recorded: 2026-07-19T17:46:10+08:00
+- Committed: 2026-07-19T17:46:10+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	bingo/tools_ext/pentest_tools.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+00c37783e fix: preserve domain-bound target identity
+ .bingo/project-memory.md                      |  36 +++--
+ bingo/tools_ext/pentest_tools.py              | 212 +++++++++++++++++++++++---
+ bingo/ui/terminal.py                          |  59 +++++--
+ tests/test_terminal_completion_regressions.py |  52 +++++++
+ 4 files changed, 318 insertions(+), 41 deletions(-)
+```
+
+### Added Highlights
+- `def _normalise_web_host(host: str) -> str:`
+- `"""웹 타겟 비교용 호스트 정규화. 포트와 leading www.만 제거한다."""`
+- `h = (host or "").strip().lower().rstrip(".,/")`
+- `if h.startswith("[") and "]" in h:`
+- `h = h[1:h.index("]")]`
+- `elif ":" in h:`
+- `h = h.split(":", 1)[0]`
+- `return h.removeprefix("www.")`
+- `def _is_ip_literal(host: str) -> bool:`
+- `try:`
+- `import ipaddress as _ipaddr`
+- `_ipaddr.ip_address(_normalise_web_host(host))`
+- `return True`
+- `except Exception:`
+- `return False`
+- `def _host_matches_current_target(host: str) -> bool:`
+- `cur = _normalise_web_host(_CURRENT_TARGET_DOMAIN)`
+- `return bool(cur and _normalise_web_host(host) == cur)`
+- `def _headers_bind_current_target(headers: object) -> bool:`
+- `if not isinstance(headers, dict):`
+- `return False`
+- `for key, value in headers.items():`
+- `if str(key).lower() == "host" and _host_matches_current_target(str(value)):`
+- `return True`
+- `return False`
+- `def _script_has_current_host_header(script: str) -> bool:`
+- `"""curl -H 'Host: target' 또는 Python headers={'Host':'target'} 감지."""`
+- `import re as _re_host`
+- `host_pat = _re_host.compile(`
+- `r"""(?ix)`
 
 <!-- commit:4d671034a40a6dca608787a8ce698db609107cc0 -->
 ## Code change: bump: v6.2.210
@@ -133,7 +189,7 @@ M	tests/test_terminal_completion_regressions.py
 ### Added Highlights
 - `Metadata-Version: 2.4`
 - `Name: bingo-ai`
-- `Version: 6.2.210`
+- `Version: 6.2.211`
 - `Summary: AI-powered red team terminal — Zero-Hallucination · WAF bypass · XSS·Upload·SSRF·OAuth·GraphQL·Smuggling exploit chains · CVE/Exploit KB (trickest+exploitarium) · role-bas`
 - `Author-email: bingook <bingook@users.noreply.github.com>`
 - `License: MIT`

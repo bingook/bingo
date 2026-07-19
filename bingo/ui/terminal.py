@@ -11346,6 +11346,51 @@ class BingoTerminal:
         )
 
     @staticmethod
+    def _filter_verified_report_credentials(session_credentials: list) -> list:
+        """Keep only credentials with enough structure for report output.
+
+        A single password candidate from a login attempt (for example
+        "Password: cheomdan") is not a credential.  It is only a tested input
+        unless paired with an account and success/extraction evidence.
+        """
+        import re as _cred_re
+
+        filtered: list = []
+        for item in session_credentials or []:
+            if isinstance(item, dict):
+                lowered = {str(k).lower(): str(v).strip() for k, v in item.items()}
+                user = lowered.get("username") or lowered.get("user") or lowered.get("mb_id") or lowered.get("id")
+                password = lowered.get("password") or lowered.get("passwd") or lowered.get("pwd") or lowered.get("mb_password")
+                verified = str(
+                    lowered.get("verified")
+                    or lowered.get("success")
+                    or lowered.get("status")
+                    or lowered.get("source")
+                    or lowered.get("evidence")
+                    or ""
+                ).lower()
+                if user and password:
+                    filtered.append(item)
+                elif password and any(tok in verified for tok in ("confirmed", "success", "dump", "extract", "valid")):
+                    filtered.append(item)
+                continue
+
+            text = str(item).strip()
+            if not text:
+                continue
+            low = text.lower()
+            has_user = bool(_cred_re.search(r'\b(?:user(?:name)?|mb_id|login|account)\b\s*[:=]', low))
+            has_pass = bool(_cred_re.search(r'\b(?:pass(?:word)?|passwd|pwd|mb_password)\b\s*[:=]', low))
+            verified_text = bool(_cred_re.search(
+                r'confirmed|login\s+success|valid\s+credential|credential\s+extracted|'
+                r'dumped|extracted|로그인\s*성공|登录成功|凭据提取',
+                low,
+            ))
+            if has_user and has_pass and verified_text:
+                filtered.append(item)
+        return filtered
+
+    @staticmethod
     def _validate_report_finding_ids(report: str, findings: list) -> tuple[bool, list[str]]:
         """Reject report claims that are not backed by an active Finding ID."""
         import re as _report_re
@@ -11504,6 +11549,7 @@ class BingoTerminal:
             "zh": ("已确认", "推定/潜在"),
             "en": ("Confirmed", "Probable/Potential"),
         }.get(lang, ("Confirmed", "Probable/Potential"))
+        session_credentials = BingoTerminal._filter_verified_report_credentials(session_credentials)
         credential_lines = (
             "\n".join(f"- {item}" for item in session_credentials)
             if session_credentials else no_creds.get(lang, no_creds["en"])
@@ -11662,7 +11708,9 @@ class BingoTerminal:
 
         # ── 세션 구분 정보 수집 (보고서 환각 방지) ──────────────────────
         _session_tables  = getattr(self, "_session_tables", [])
-        _session_creds   = getattr(self, "_session_credentials", [])
+        _session_creds   = BingoTerminal._filter_verified_report_credentials(
+            getattr(self, "_session_credentials", [])
+        )
         _session_fresh   = getattr(self, "_session_fresh", True)
         # 이전 세션 복원이면 어떤 항목이 이전 세션에서 왔는지 구분
         _prev_tables = [t for t in _state.get("tables", []) if t not in _session_tables]
@@ -11742,6 +11790,8 @@ class BingoTerminal:
             _fe_confirmed_n = 0
             _fe_potential_n = 0
 
+        _force_deterministic_report = (_fe is not None and _fe_confirmed_n == 0)
+
         prompt_msg = Message(
             role="user",
             content=(
@@ -11785,7 +11835,7 @@ class BingoTerminal:
 
         full = ""
         _deterministic_report = False
-        if model_cfg:
+        if model_cfg and not _force_deterministic_report:
             try:
                 model = ModelRegistry.build(model_cfg)
                 _now_r = datetime.now().strftime("%H:%M:%S")
@@ -11804,12 +11854,6 @@ class BingoTerminal:
                             live.update(_Text(full, style="white"))
             except Exception as e:
                 self._error(f"report error: {e}")
-
-        # With zero confirmed exporter findings, prose from the model is not a
-        # sufficient source of truth.  Force the deterministic snapshot report
-        # so narrative claims cannot reintroduce SQLi/PII hallucinations.
-        if _fe is not None and _fe_confirmed_n == 0:
-            full = ""
 
         if not full.strip():
             _fallback_msg = self.s.get(
@@ -12615,10 +12659,26 @@ class BingoTerminal:
         cred_match = re.findall(
             r"(mb_id|mb_password|username|password)[:\s=]+([^\n\r,\]]{3,80})", text, re.IGNORECASE
         )
-        if cred_match:
+        cred_context_ok = bool(re.search(
+            r'credential(?:s)?\s+(?:extracted|dumped|confirmed)|'
+            r'valid\s+credential|login\s+success|로그인\s*성공|登录成功|'
+            r'real_credential_extract|g5_member|db\s*dump|password\s*hash',
+            text,
+            re.IGNORECASE,
+        ))
+        cred_negative_context = bool(re.search(
+            r'login\s+failed|invalid\s+password|wrong\s+password|'
+            r'가입된\s+회원|비밀번호가\s+틀립니다|登录失败|密码错误|'
+            r'===\s*testing.*password|^password\s*:',
+            text,
+            re.IGNORECASE | re.MULTILINE,
+        ))
+        if cred_match and cred_context_ok and not cred_negative_context:
             cred = {k.lower(): v.strip() for k, v in cred_match
                     if v.strip() and "~" not in v and "?" not in v and len(v.strip()) > 2}
-            if cred:
+            filtered_creds = BingoTerminal._filter_verified_report_credentials([cred])
+            if filtered_creds:
+                cred = filtered_creds[0]
                 self._agent_state["credentials"].append(cred)
                 # 현재 세션 추적 (보고서 환각 방지)
                 self._session_credentials.append(cred)

@@ -8,7 +8,7 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.211`.
+- Current stable version after Bingo memory rebrand: `6.2.212`.
 - Bingo project memory is automatic:
   - At every Bingo session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Bingo must silently run `scripts/bingo-memory-sync.sh`.
@@ -30,13 +30,42 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T17:46:10+08:00
+- Last synced: 2026-07-19T17:50:13+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:863be3f4b710e5836b7c3bed59bd6f2dd3fb8f7c -->
+## Code change: bump: v6.2.211
+- Commit: `863be3f4b710`
+- Recorded: 2026-07-19T17:50:13+08:00
+- Committed: 2026-07-19T17:50:13+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/tools_ext/pentest_tools.py
+```
+
+### Diff Stat
+```text
+863be3f4b bump: v6.2.211
+ .bingo/project-memory.md         | 62 ++++++++++++++++++++++++++++++++++++++--
+ PKG-INFO                         |  2 +-
+ bingo/__init__.py                |  2 +-
+ bingo/tools_ext/pentest_tools.py |  2 +-
+ 4 files changed, 62 insertions(+), 6 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.211`
+- `__version__ = "6.2.211"`
+- `v6.2.211: 도메인 바인딩/vhost 오판 방지 — URL 정체성은 도메인으로 유지하고,`
 
 <!-- commit:00c37783e2074143a91c0618d59b4460948c3bc2 -->
 ## Code change: fix: preserve domain-bound target identity
@@ -189,7 +218,7 @@ M	tests/test_terminal_completion_regressions.py
 ### Added Highlights
 - `Metadata-Version: 2.4`
 - `Name: bingo-ai`
-- `Version: 6.2.211`
+- `Version: 6.2.201`
 - `Summary: AI-powered red team terminal — Zero-Hallucination · WAF bypass · XSS·Upload·SSRF·OAuth·GraphQL·Smuggling exploit chains · CVE/Exploit KB (trickest+exploitarium) · role-bas`
 - `Author-email: bingook <bingook@users.noreply.github.com>`
 - `License: MIT`

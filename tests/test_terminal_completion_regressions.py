@@ -83,6 +83,43 @@ def test_raw_execution_feedback_is_thin_and_evidence_only() -> None:
     assert "Output TASK_COMPLETE when all credentials are extracted" not in feedback
 
 
+def test_hybrid_attack_assist_is_default_and_can_be_disabled(monkeypatch) -> None:
+    monkeypatch.delenv("BINGO_ATTACK_ASSIST", raising=False)
+    assert BingoTerminal._hybrid_attack_assist_mode()
+
+    monkeypatch.setenv("BINGO_ATTACK_ASSIST", "0")
+    assert not BingoTerminal._hybrid_attack_assist_mode()
+
+
+def test_hybrid_attack_assist_routes_sqli_waf_to_bingo_modules() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+
+    ctx = terminal._build_bingo_attack_assist_context(
+        "SQLi WAF 403 single quote caused 598B boolean oracle",
+        "",
+    )
+
+    assert "BINGO HYBRID ATTACK ASSIST" in ctx
+    assert "SQLI_WAF_MODULES_REQUIRED" in ctx
+    assert "sqli_autoexploit" in ctx
+    assert "execute_tool(\"detect_waf\"" in ctx
+    assert "execute_tool(\"sqli_boolean\"" in ctx
+    assert "CONFIRMED still requires raw deterministic proof" in ctx
+
+
+def test_raw_execution_feedback_keeps_hybrid_attack_assist() -> None:
+    feedback = BingoTerminal._build_execution_feedback(
+        "403/199B WAF block",
+        attack_assist_context="=== BINGO HYBRID ATTACK ASSIST ===\nsqli_autoexploit\n=== END BINGO HYBRID ATTACK ASSIST ===",
+        raw_mode=True,
+    )
+
+    assert "BINGO RAW EXECUTION RESULT" in feedback
+    assert "BINGO HYBRID ATTACK ASSIST" in feedback
+    assert "sqli_autoexploit" in feedback
+    assert "AUTO_VERIFICATION_QUEUE" not in feedback
+
+
 def test_classic_execution_feedback_keeps_legacy_contract() -> None:
     feedback = BingoTerminal._build_execution_feedback(
         "result",
@@ -383,7 +420,8 @@ def test_system_prompt_ends_with_raw_runtime_contract() -> None:
         "   in the verification backlog and continue to drive attacks."
     ) in prompt
     assert "=== BINGO RAW RUNTIME CONTRACT ===" in prompt
-    assert prompt.rstrip().endswith("it does not remove attack capability.")
+    assert "Built-in skills and Bingo modules are mandatory first-class assets." in prompt
+    assert prompt.rstrip().endswith("capability or module usage.")
     assert "sqlmap is PERMANENTLY BANNED" not in prompt
 
 

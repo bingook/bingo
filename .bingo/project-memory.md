@@ -9,7 +9,7 @@
 - Preserve unrelated user changes unless explicitly scoped.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
 - Rollback point for the clean `6.2.199` baseline: commit `07eefa781` (`revert: restore 6.2.199 baseline`).
-- Current working release: `6.2.207` = `6.2.199` capability baseline + supervised codeblock runtime + legacy structured-call prompt/log removal + default Claude-CLI-style raw feedback.
+- Current working release: `6.2.208` = `6.2.199` capability baseline + supervised codeblock runtime + legacy structured-call prompt/log removal + raw evidence + hybrid Bingo module/skill assist.
 - Bingo project memory is automatic:
   - At every AI assistant session start in this repo, read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, silently run `scripts/bingo-memory-sync.sh`.
@@ -20,15 +20,17 @@
   - `git diff --check`
   - `pytest -q`
 - Recent full-suite status for `6.2.205`: `201 passed`.
-- Current full-suite status for `6.2.207`: `202 passed` after raw feedback change.
+- Current full-suite status for `6.2.208`: `206 passed` after hybrid attack-assist change.
 
 ## Runtime Decision
 
 - Markdown `bash/python` codeblock execution remains enabled for capability compatibility.
 - The project uses direct Markdown `bash/python` codeblock execution, not a legacy structured-call-only policy or codeblock bridge.
-- Default runtime mode is raw/thin (`BINGO_RUNTIME_MODE` unset): run fenced code, return stdout/stderr, and do not auto-promote model prose into confirmed findings.
+- Default runtime mode is hybrid raw (`BINGO_RUNTIME_MODE` unset): run fenced code, return stdout/stderr, and do not auto-promote model prose into confirmed findings.
+- `BINGO_ATTACK_ASSIST` default is on: every initial prompt and raw execution feedback injects `BINGO HYBRID ATTACK ASSIST` so the model routes SQLi/WAF/XSS/SSRF/IDOR/recon candidates through Bingo modules before long ad-hoc loops.
+- Hybrid assist is guidance/module routing only. Module output remains candidate evidence until raw deterministic proof confirms it.
 - Classic heavy mode remains available only by explicit env opt-in: `BINGO_RUNTIME_MODE=classic` or `BINGO_CLAUDE_CLI_MODE=0`.
-- In default raw mode, skills remain enabled; only automatic finding promotion, adaptive pivot injections, IP-block wait/hints, target-memory extraction, and model-prose `[CONFIRMED]` UI promotion are disabled.
+- In default hybrid raw mode, skills and module routing remain enabled; only automatic finding promotion, adaptive pivot injections, IP-block wait/hints, target-memory extraction, model-prose `[CONFIRMED]` UI promotion, and auto-crack from raw model text are disabled.
 - Long-running generated code is handled by supervised runtime state:
   - normal completion returns `JOB_STATE status=completed`;
   - timeout/interruption returns `JOB_STATE status=timeout_interrupted` or equivalent;
@@ -47,25 +49,87 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T12:49:30+08:00
+- Last synced: 2026-07-19T14:06:37+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T12:49:30+08:00
+- Captured: 2026-07-19T14:06:37+08:00
 
 ### Status
 ```text
+ M bingo/__init__.py
+ M bingo/models/system_prompt.py
  M bingo/ui/terminal.py
  M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
- bingo/ui/terminal.py                          | 62 ++++++++++++++++++++++-----
- tests/test_terminal_completion_regressions.py | 10 +++++
- 2 files changed, 61 insertions(+), 11 deletions(-)
+ bingo/__init__.py                             |  2 +-
+ bingo/models/system_prompt.py                 | 10 ++-
+ bingo/ui/terminal.py                          | 98 ++++++++++++++++++++++++++-
+ tests/test_terminal_completion_regressions.py | 40 ++++++++++-
+ 4 files changed, 144 insertions(+), 6 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.208"`
+- `Default runtime behavior is hybrid Bingo execution with raw evidence:`
+- `5. Built-in skills and Bingo modules are mandatory first-class assets. For web`
+- `candidates, route through Bingo helpers such as sqli_autoexploit, execute_tool`
+- `registry tools, WAF/XSS/SSRF/IDOR scanners, and skill references before long`
+- `ad-hoc loops.`
+- `6. This contract changes evidence promotion only; it does not remove attack`
+- `capability or module usage.`
+- `@staticmethod`
+- `def _hybrid_attack_assist_mode() -> bool:`
+- `"""Keep Bingo's built-in skills/modules active while preserving raw evidence.`
+- `This is the intended default: Bingo supplies attack technique, module`
+- `routing, and helper examples; the model still decides from raw execution`
+- `output and cannot promote helper/model prose into confirmed findings.`
+- `"""`
+- `flag = os.environ.get("BINGO_ATTACK_ASSIST", "1").strip().lower()`
+- `return flag not in {"0", "false", "no", "off", "raw-only", "raw_only"}`
+- `attack_assist_context: str = "",`
+- `feedback = (`
+- `if attack_assist_context:`
+- `feedback += "\n\n" + attack_assist_context`
+- `return feedback`
+- `def _build_bingo_attack_assist_context(self, code: str, output: str = "") -> str:`
+- `"""Inject Bingo-native module routing without auto-confirming findings."""`
+- `if not self._hybrid_attack_assist_mode():`
+- `return ""`
+- `import re as _assist_re`
+- `blob = f"{code}\n{output}".lower()`
+- `lines = [`
+- `"=== BINGO HYBRID ATTACK ASSIST ===",`
+<!-- working-tree:end -->
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:e481ecc8e464d58c2adfd5c0c6c0aa52ed464270 -->
+## Code change: refactor: default to raw execution feedback
+- Commit: `e481ecc8e464`
+- Recorded: 2026-07-19T12:53:19+08:00
+- Committed: 2026-07-19T12:53:19+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+e481ecc8e refactor: default to raw execution feedback
+ .bingo/project-memory.md                      | 127 ++++++++++++++++++++++++--
+ bingo/ui/terminal.py                          |  62 ++++++++++---
+ tests/test_terminal_completion_regressions.py |  10 ++
+ 3 files changed, 182 insertions(+), 17 deletions(-)
 ```
 
 ### Added Highlights
@@ -99,7 +163,7 @@
 - `if _raw_runtime_mode:`
 - `_loop_stop_msg = "\n" + self._raw_loop_limit_message(`
 - `self._exec_loop_count,`
-<!-- working-tree:end -->
+
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.

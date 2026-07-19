@@ -3734,7 +3734,7 @@ This section overrides conflicting older instructions above.
 
 RAW_RUNTIME_CONTRACT = """
 === BINGO RAW RUNTIME CONTRACT ===
-Default runtime behavior is Claude-CLI-style direct execution:
+Default runtime behavior is hybrid Bingo execution with raw evidence:
 1. Emit fenced bash/python code blocks for runnable work. Bingo executes them and
    returns raw stdout/stderr.
 2. Treat stdout/stderr as the only evidence source. Your own prose, script labels,
@@ -3744,8 +3744,12 @@ Default runtime behavior is Claude-CLI-style direct execution:
    that exact claim.
 4. If evidence is insufficient, keep the candidate and write the next verifier.
    Do not fabricate a finding and do not discard a viable technique.
-5. Built-in skills and tool knowledge remain available. This contract changes
-   evidence promotion only; it does not remove attack capability.
+5. Built-in skills and Bingo modules are mandatory first-class assets. For web
+   candidates, route through Bingo helpers such as sqli_autoexploit, execute_tool
+   registry tools, WAF/XSS/SSRF/IDOR scanners, and skill references before long
+   ad-hoc loops.
+6. This contract changes evidence promotion only; it does not remove attack
+   capability or module usage.
 """.strip()
 
 def get_pentest_system_prompt(provider: str) -> str:

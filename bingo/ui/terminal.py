@@ -382,6 +382,17 @@ class BingoTerminal:
         return flag not in {"0", "false", "no", "off", "classic", "legacy", "heavy"}
 
     @staticmethod
+    def _hybrid_attack_assist_mode() -> bool:
+        """Keep Bingo's built-in skills/modules active while preserving raw evidence.
+
+        This is the intended default: Bingo supplies attack technique, module
+        routing, and helper examples; the model still decides from raw execution
+        output and cannot promote helper/model prose into confirmed findings.
+        """
+        flag = os.environ.get("BINGO_ATTACK_ASSIST", "1").strip().lower()
+        return flag not in {"0", "false", "no", "off", "raw-only", "raw_only"}
+
+    @staticmethod
     def _build_execution_feedback(
         trimmed: str,
         *,
@@ -389,11 +400,12 @@ class BingoTerminal:
         ip_block_hint: str = "",
         waf_redirect_note: str = "",
         next_action_contract: str = "",
+        attack_assist_context: str = "",
         raw_mode: bool = True,
     ) -> str:
         """Build the feedback message injected after local code execution."""
         if raw_mode:
-            return (
+            feedback = (
                 "=== BINGO RAW EXECUTION RESULT ===\n"
                 + trimmed
                 + "\n=== END RAW EXECUTION RESULT ===\n\n"
@@ -403,6 +415,9 @@ class BingoTerminal:
                 "If proof is insufficient, write the next verifying bash/python code block. "
                 "Keep using the loaded skills and available tools when relevant."
             )
+            if attack_assist_context:
+                feedback += "\n\n" + attack_assist_context
+            return feedback
         return (
             "=== BINGO REAL EXECUTION RESULTS ===\n"
             + trimmed
@@ -442,6 +457,79 @@ class BingoTerminal:
             "en": "Raw mode loop stopped — showing next options without auto-report.",
         }
         return messages.get(lang, messages["en"])
+
+    def _build_bingo_attack_assist_context(self, code: str, output: str = "") -> str:
+        """Inject Bingo-native module routing without auto-confirming findings."""
+        if not self._hybrid_attack_assist_mode():
+            return ""
+
+        import re as _assist_re
+
+        blob = f"{code}\n{output}".lower()
+        lines = [
+            "=== BINGO HYBRID ATTACK ASSIST ===",
+            "Bingo modules/skills are ON. Use them before long ad-hoc curl/python loops.",
+            "Hard rule: module output is candidate evidence only; CONFIRMED still requires raw deterministic proof.",
+            "Use exact URL/method/param/cookies from the latest output; replace placeholders before running.",
+        ]
+
+        def _add(section: str, items: list[str]) -> None:
+            lines.append(f"\n[{section}]")
+            lines.extend(f"- {item}" for item in items)
+
+        sqli_signal = _assist_re.search(
+            r"sqli|sql\s*inject|oracle|mysql|mssql|postgres|db\s*error|sql\s*error|"
+            r"boolean.?oracle|union|select|sleep|benchmark|extractvalue|updatexml|"
+            r"single.?quote|단일.?따옴표|单引号|598b|199b|403|waf",
+            blob,
+            _assist_re.I,
+        )
+        waf_signal = _assist_re.search(r"\bwaf\b|403|406|429|blocked|forbidden|拦截|차단", blob, _assist_re.I)
+        xss_signal = _assist_re.search(r"\bxss\b|reflection|反射|반사|<script|onerror|svg/onload", blob, _assist_re.I)
+        ssrf_signal = _assist_re.search(r"\bssrf\b|169\.254\.169\.254|metadata|gopher://|file://", blob, _assist_re.I)
+        idor_signal = _assist_re.search(r"\bidor\b|bola|patient_usernum|usernum|object.?id|idx=", blob, _assist_re.I)
+        recon_signal = _assist_re.search(r"\bapi\b|javascript|\.js\b|endpoint|sitemap|robots|directory|目录|엔드포인트", blob, _assist_re.I)
+
+        if sqli_signal or waf_signal:
+            _add("SQLI_WAF_MODULES_REQUIRED", [
+                "First try Bingo SQLi helper:",
+                "```python\nfrom bingo.tools_ext.pentest_tools import sqli_autoexploit\nprint(sqli_autoexploit(url=\"EXACT_URL\", param=\"EXACT_PARAM\", method=\"GET\", base_value=\"NORMAL_VALUE\"))\n```",
+                "Then cross-check with registry tools when blocked or inconclusive:",
+                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"detect_waf\", {\"url\": \"TARGET_URL\"}))\nprint(execute_tool(\"sqli_error\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"sqli_boolean\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"sqli_timebased\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"waf_sqli_db\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\n```",
+                "Only after these helpers fail, write custom payload loops or sqlmap/ghauri handoff.",
+            ])
+        if xss_signal:
+            _add("XSS_MODULES_REQUIRED", [
+                "Use Bingo XSS helpers before hand-written payload lists:",
+                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"xss_reflect\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"xss_autotest\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"xss_advanced_test\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\n```",
+                "Reflection is candidate only; browser/sink proof is required for confirmed XSS.",
+            ])
+        if ssrf_signal:
+            _add("SSRF_MODULES_REQUIRED", [
+                "Use Bingo SSRF helpers before declaring success:",
+                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"ssrf_autotest\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"ssrf_chain_exploit\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\n```",
+                "Normal HTML containing the submitted URL is reflection, not SSRF proof.",
+            ])
+        if idor_signal:
+            _add("IDOR_MODULES_REQUIRED", [
+                "Use Bingo IDOR helpers for two-baseline comparisons:",
+                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"idor_autotest\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"idor_scan\", {\"url\": \"EXACT_URL\"}))\n```",
+                "Public pages and common hospital phone numbers are not IDOR proof.",
+            ])
+        if recon_signal:
+            _add("RECON_API_MODULES_REQUIRED", [
+                "Use Bingo recon/API/fuzz modules to expand attack surface:",
+                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"param_fuzz\", {\"url\": \"TARGET_URL\"}))\nprint(execute_tool(\"dir_fuzz\", {\"url\": \"TARGET_URL\"}))\nprint(execute_tool(\"api_security_scan\", {\"url\": \"TARGET_URL\"}))\n```",
+                "Feed discovered endpoints back into SQLi/XSS/SSRF/IDOR module checks.",
+            ])
+
+        if len(lines) == 4:
+            _add("DEFAULT_MODULE_ROUTE", [
+                "Map endpoints with param_fuzz/dir_fuzz/api_security_scan, then route candidates to sqli_autoexploit, xss_autotest, ssrf_autotest, or idor_autotest.",
+            ])
+
+        lines.append("=== END BINGO HYBRID ATTACK ASSIST ===")
+        return "\n".join(lines)
 
     def __init__(self, config, strings: dict):
         self.config = config
@@ -1713,6 +1801,10 @@ class BingoTerminal:
         builtin_ctx = self._detect_and_load_skills(text)
         if builtin_ctx:
             parts.append(builtin_ctx)
+
+        attack_assist_ctx = self._build_bingo_attack_assist_context(text, "")
+        if attack_assist_ctx:
+            parts.append(attack_assist_ctx)
 
         # ── 2. 로컬 SecSkills references (기존) ──────────────────────
         try:
@@ -9787,6 +9879,10 @@ class BingoTerminal:
                 ip_block_hint=_ip_block_hint,
                 waf_redirect_note=_waf_redirect_note,
                 next_action_contract=_next_action_contract,
+                attack_assist_context=(
+                    self._build_bingo_attack_assist_context(current_response, raw_results)
+                    if _raw_runtime_mode else ""
+                ),
                 raw_mode=_raw_runtime_mode,
             )
             self.history.append(Message(role="user", content=injection))

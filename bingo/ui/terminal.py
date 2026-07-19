@@ -5285,6 +5285,21 @@ class BingoTerminal:
         from ..models.base import ModelConfig
 
         _lang = getattr(self.config, "lang", "en")
+        _delete_hint = {
+            "ko": "삭제: d번호 / del 번호  예) d3",
+            "zh": "删除: d编号 / del 编号  例) d3",
+            "en": "Delete: d<number> / del <number>  e.g. d3",
+        }.get(_lang, "Delete: d<number> / del <number>  e.g. d3")
+        _deleted_msg = {
+            "ko": "모델이 삭제되었습니다: {name}",
+            "zh": "模型已删除: {name}",
+            "en": "Model deleted: {name}",
+        }.get(_lang, "Model deleted: {name}")
+        _delete_invalid_msg = {
+            "ko": "삭제할 저장 모델 번호가 올바르지 않습니다: {raw}",
+            "zh": "要删除的已保存模型编号无效: {raw}",
+            "en": "Invalid saved-model number to delete: {raw}",
+        }.get(_lang, "Invalid saved-model number to delete: {raw}")
 
         self.console.print(f"\n[{THEME['primary']}]{self.s['select_model']}[/]\n")
 
@@ -5294,6 +5309,7 @@ class BingoTerminal:
             for i, m in enumerate(self.config.models, 1):
                 mark = "✓" if m.display_name() == self.config.active_model else " "
                 self.console.print(f"  [{THEME['primary']}]{mark} {i}[/] — {m.display_name()}")
+            self.console.print(f"  [{THEME['dim']}]{_delete_hint}[/]")
             self.console.print()
 
         # 신규 추가
@@ -5305,8 +5321,41 @@ class BingoTerminal:
             self.console.print(f"  [{THEME['dim']}]{i}[/] — {_lbl}")
 
         raw = self._safe_prompt_ask(f"\n[{THEME['primary']}]{self.s['select_number']}[/]")
+        raw_norm = raw.strip()
+        raw_lower = raw_norm.lower()
+
+        # 저장된 모델 삭제: d3 / del 3 / delete 3 / remove 3 / rm 3
+        delete_token = ""
+        if raw_lower.startswith("d") and raw_lower[1:].strip().isdigit():
+            delete_token = raw_lower[1:].strip()
+        else:
+            for prefix in ("del ", "delete ", "remove ", "rm ", "삭제 ", "删除 "):
+                if raw_lower.startswith(prefix):
+                    delete_token = raw_lower[len(prefix):].strip()
+                    break
+        if delete_token:
+            try:
+                delete_idx = int(delete_token) - 1
+            except ValueError:
+                delete_idx = -1
+            if 0 <= delete_idx < len(self.config.models):
+                removed = self.config.models.pop(delete_idx)
+                removed_name = removed.display_name()
+                if not self.config.models:
+                    self.config.active_model = ""
+                elif not any(
+                    m.display_name() == self.config.active_model or m.alias == self.config.active_model
+                    for m in self.config.models
+                ):
+                    self.config.active_model = self.config.models[0].display_name()
+                self.config.save()
+                self._success(_deleted_msg.format(name=removed_name))
+            else:
+                self._warn(_delete_invalid_msg.format(raw=raw_norm))
+            return
+
         try:
-            idx = int(raw) - 1
+            idx = int(raw_norm) - 1
         except ValueError:
             return
 

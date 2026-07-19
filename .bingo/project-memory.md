@@ -8,7 +8,11 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.216`.
+- Current stable version after Bingo memory rebrand: `6.2.217`.
+- Latest model management fix as of v6.2.217:
+  - `/model` now supports deleting saved models with `d번호`, `del 번호`, `delete 번호`, `remove 번호`, `rm 번호`, `삭제 번호`, or `删除 번호`.
+  - Deleting the active model automatically switches to the first remaining saved model; deleting the last saved model clears `active_model`.
+  - Invalid delete indexes do not save or mutate the model list.
 - Latest model setup input fix as of v6.2.216:
   - `/model` interactive inputs now catch `UnicodeDecodeError` from broken terminal/IME/paste bytes.
   - Model selection, API key, Base URL, model name, alias, and language prompts use safe retry input handling instead of crashing.
@@ -49,13 +53,13 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T23:05:26+08:00
+- Last synced: 2026-07-19T23:13:45+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T23:05:26+08:00
+- Captured: 2026-07-19T23:13:45+08:00
 
 ### Status
 ```text
@@ -70,9 +74,72 @@ M .bingo/project-memory.md
 ```text
 PKG-INFO                                      |  2 +-
  bingo/__init__.py                             |  2 +-
- bingo/ui/terminal.py                          | 46 ++++++++++++++----
- tests/test_terminal_completion_regressions.py | 68 +++++++++++++++++++++++++++
- 4 files changed, 106 insertions(+), 12 deletions(-)
+ bingo/ui/terminal.py                          | 51 +++++++++++++++++-
+ tests/test_terminal_completion_regressions.py | 77 ++++++++++++++++++++++++++-
+ 4 files changed, 128 insertions(+), 4 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.217`
+- `__version__ = "6.2.217"`
+- `_delete_hint = {`
+- `"ko": "삭제: d번호 / del 번호  예) d3",`
+- `"zh": "删除: d编号 / del 编号  例) d3",`
+- `"en": "Delete: d<number> / del <number>  e.g. d3",`
+- `}.get(_lang, "Delete: d<number> / del <number>  e.g. d3")`
+- `_deleted_msg = {`
+- `"ko": "모델이 삭제되었습니다: {name}",`
+- `"zh": "模型已删除: {name}",`
+- `"en": "Model deleted: {name}",`
+- `}.get(_lang, "Model deleted: {name}")`
+- `_delete_invalid_msg = {`
+- `"ko": "삭제할 저장 모델 번호가 올바르지 않습니다: {raw}",`
+- `"zh": "要删除的已保存模型编号无效: {raw}",`
+- `"en": "Invalid saved-model number to delete: {raw}",`
+- `}.get(_lang, "Invalid saved-model number to delete: {raw}")`
+- `self.console.print(f"  [{THEME['dim']}]{_delete_hint}[/]")`
+- `raw_norm = raw.strip()`
+- `raw_lower = raw_norm.lower()`
+- `if raw_lower.startswith("d") and raw_lower[1:].strip().isdigit():`
+- `else:`
+- `for prefix in ("del ", "delete ", "remove ", "rm ", "삭제 ", "删除 "):`
+- `if raw_lower.startswith(prefix):`
+- `break`
+- `try:`
+- `except ValueError:`
+- `delete_idx = -1`
+- `if 0 <= delete_idx < len(self.config.models):`
+- `removed = self.config.models.pop(delete_idx)`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:d29653f9cdeefb98d689b680503c1a4328c7a374 -->
+## Code change: fix: handle unicode input errors in model setup
+- Commit: `d29653f9cdee`
+- Recorded: 2026-07-19T23:07:21+08:00
+- Committed: 2026-07-19T23:07:21+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+d29653f9c fix: handle unicode input errors in model setup
+ .bingo/project-memory.md                      | 77 ++++++++++++++++++++++++---
+ PKG-INFO                                      |  2 +-
+ bingo/__init__.py                             |  2 +-
+ bingo/ui/terminal.py                          | 46 ++++++++++++----
+ tests/test_terminal_completion_regressions.py | 68 +++++++++++++++++++++++
+ 5 files changed, 177 insertions(+), 18 deletions(-)
 ```
 
 ### Added Highlights
@@ -106,7 +173,7 @@ PKG-INFO                                      |  2 +-
 - `alias = self._safe_prompt_ask(`
 - `)`
 - `if pid == "custom" and (not base_url or not model_name):`
-<!-- working-tree:end -->
+
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.

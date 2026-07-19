@@ -17,7 +17,7 @@ from bingo.tools.playwright_engine import PlaywrightEngine
 from bingo.core.execution_anchor import ExecutionAnchorEngine, _has_exec_evidence
 from bingo.core.zero_hal_v5 import ZeroHalEngine
 from bingo.models.system_prompt import get_pentest_system_prompt
-from bingo.models.base import Message
+from bingo.models.base import Message, ModelConfig
 from bingo.orchestrator.engine import _board_value_anchored, _goal_completion_allowed
 from bingo.tools_ext import autoexploit_modules
 from bingo.tools_ext.pentest_tools import (
@@ -321,6 +321,81 @@ def test_cmd_model_custom_alias_decode_error_does_not_crash(monkeypatch) -> None
     assert cfg.base_url == "https://api.ntrapi.cn/v1"
     assert cfg.model == "glm-5.2"
     assert cfg.alias == "glm-5.2"
+
+
+def test_cmd_model_deletes_saved_model_and_falls_back_active(monkeypatch) -> None:
+    class Config:
+        def __init__(self) -> None:
+            self.lang = "en"
+            self.models = [
+                ModelConfig(
+                    provider="custom",
+                    model="first-model",
+                    api_key="sk-first",
+                    base_url="https://api.example.test/v1",
+                    alias="first",
+                ),
+                ModelConfig(
+                    provider="custom",
+                    model="second-model",
+                    api_key="sk-second",
+                    base_url="https://api.example.test/v1",
+                    alias="second",
+                ),
+            ]
+            self.active_model = "second"
+            self.saved = False
+
+        def save(self) -> None:
+            self.saved = True
+
+    terminal = _code_test_terminal()
+    terminal.config = Config()
+    terminal.s = get_strings("en")
+    terminal._success = lambda msg: terminal.console.print(msg)
+    terminal._warn = lambda msg: terminal.console.print(msg)
+    monkeypatch.setattr("bingo.ui.terminal.Prompt.ask", lambda _prompt, password=False: "d2")
+
+    terminal._cmd_model()
+
+    assert terminal.config.saved is True
+    assert [m.alias for m in terminal.config.models] == ["first"]
+    assert terminal.config.active_model == "first"
+    assert any("Model deleted: second" in message for message in terminal.console.messages)
+
+
+def test_cmd_model_rejects_invalid_saved_model_delete(monkeypatch) -> None:
+    class Config:
+        def __init__(self) -> None:
+            self.lang = "en"
+            self.models = [
+                ModelConfig(
+                    provider="custom",
+                    model="only-model",
+                    api_key="sk-only",
+                    base_url="https://api.example.test/v1",
+                    alias="only",
+                )
+            ]
+            self.active_model = "only"
+            self.saved = False
+
+        def save(self) -> None:
+            self.saved = True
+
+    terminal = _code_test_terminal()
+    terminal.config = Config()
+    terminal.s = get_strings("en")
+    terminal._success = lambda msg: terminal.console.print(msg)
+    terminal._warn = lambda msg: terminal.console.print(msg)
+    monkeypatch.setattr("bingo.ui.terminal.Prompt.ask", lambda _prompt, password=False: "d9")
+
+    terminal._cmd_model()
+
+    assert terminal.config.saved is False
+    assert [m.alias for m in terminal.config.models] == ["only"]
+    assert terminal.config.active_model == "only"
+    assert any("Invalid saved-model number" in message for message in terminal.console.messages)
 
 
 def test_bash_codeblock_execution_obeys_idle_timeout(monkeypatch) -> None:

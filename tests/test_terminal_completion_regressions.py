@@ -25,8 +25,10 @@ from bingo.tools_ext.pentest_tools import (
     _boolean_probe_is_blocked,
     _boolean_probe_pair_is_eligible,
     _calibrate_boolean_oracle,
+    _check_script_target_drift,
     _classify_dbms_with_oracle,
     _fix_bash_script,
+    _inject_real_ip_notice,
     _load_sqli_checkpoint,
     _save_sqli_checkpoint,
     _inject_post_exploit_notice,
@@ -36,6 +38,7 @@ from bingo.tools_ext.pentest_tools import (
     run_python,
     run_ghauri,
     run_sqlmap,
+    set_target_domain,
     sqli_autoexploit,
     ssrf_chain_exploit,
 )
@@ -127,6 +130,55 @@ def test_flat_dict_tool_call_is_normalized_silently() -> None:
     assert count == 1
     assert '"args": {"url": "https://example.test/", "timeout": 7}' in normalized
     assert "AUTO_FIX" not in normalized
+
+
+def test_domain_bound_target_blocks_direct_ip_script_without_host_header() -> None:
+    set_target_domain("http://www.cheomdanhosp.co.kr/")
+    try:
+        reason = _check_script_target_drift(
+            "curl -sk 'http://14.63.227.240/index.php.bak'",
+            "bash",
+        )
+        assert reason is not None
+        assert "DOMAIN_BOUND_IP_BLOCKED" in reason
+    finally:
+        set_target_domain("")
+
+
+def test_domain_bound_target_allows_ip_transport_with_current_host_header() -> None:
+    set_target_domain("http://www.cheomdanhosp.co.kr/")
+    try:
+        reason = _check_script_target_drift(
+            "curl -sk -H 'Host: www.cheomdanhosp.co.kr' 'http://14.63.227.240/'",
+            "bash",
+        )
+        assert reason is None
+    finally:
+        set_target_domain("")
+
+
+def test_tool_call_blocks_direct_ip_url_without_host_header() -> None:
+    set_target_domain("http://www.cheomdanhosp.co.kr/")
+    try:
+        result = execute_tool("http_get", {"url": "http://14.63.227.240/"})
+        assert result["exit_code"] == -99
+        assert "DOMAIN_BOUND_IP_BLOCKED" in result["output"]
+    finally:
+        set_target_domain("")
+
+
+def test_real_ip_notice_keeps_domain_as_authoritative() -> None:
+    set_target_domain("http://www.cheomdanhosp.co.kr/")
+    try:
+        notice = _inject_real_ip_notice(
+            'href="http://14.63.227.240/index.php"'
+        )
+        assert "REAL_IP_DETECTED" in notice
+        assert "do NOT switch the target URL to the IP" in notice
+        assert 'sqli_autoexploit url="http://14.63.227.240' not in notice
+        assert "http(s)://www.cheomdanhosp.co.kr/path" in notice
+    finally:
+        set_target_domain("")
 
 
 def _code_test_terminal() -> BingoTerminal:

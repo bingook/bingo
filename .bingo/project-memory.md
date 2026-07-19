@@ -30,34 +30,42 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T16:39:59+08:00
+- Last synced: 2026-07-19T16:42:01+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
-<!-- working-tree:start -->
-## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T16:39:59+08:00
+# Workspace Memory
 
-### Status
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:4d671034a40a6dca608787a8ce698db609107cc0 -->
+## Code change: bump: v6.2.210
+- Commit: `4d671034a40a`
+- Recorded: 2026-07-19T16:42:01+08:00
+- Committed: 2026-07-19T16:42:01+08:00
+
+### Files
 ```text
-M .bingo/project-memory.md
- M PKG-INFO
- M bingo/__init__.py
- M bingo/ui/terminal.py
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO             | 2 +-
- bingo/__init__.py    | 2 +-
- bingo/ui/terminal.py | 2 +-
- 3 files changed, 3 insertions(+), 3 deletions(-)
+4d671034a bump: v6.2.210
+ .bingo/project-memory.md | 122 ++++++++++++++++++++++++++++++++++-------------
+ PKG-INFO                 |   2 +-
+ bingo/__init__.py        |   2 +-
+ bingo/ui/terminal.py     |   2 +-
+ 4 files changed, 93 insertions(+), 35 deletions(-)
 ```
 
 ### Added Highlights
 - `Version: 6.2.210`
 - `__version__ = "6.2.210"`
-<!-- working-tree:end -->
+
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.

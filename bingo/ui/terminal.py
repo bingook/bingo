@@ -6370,11 +6370,17 @@ class BingoTerminal:
             import re as _hall_re
             s = raw_code.strip()
 
-            # ── v6.0.0: bash 블록 — Claude CLI 모드 (제약 없음) ─────────────────
-            # PhantomGuard bash 제약 완전 제거. Claude CLI처럼 모든 bash/python 패턴 허용.
-            # heredoc, import requests, subprocess, 네트워크 없는 블록 — 전부 허용.
+            # ── bash 블록 — 실행 자유도는 유지하되 현재 타겟 정체성은 보존 ────────
+            # 도메인 바인딩 웹앱에서 IP URL로 갈아타는 drift만 실행 전 차단한다.
             if _block_type == "bash":
-                return None  # bash 블록은 무조건 통과
+                try:
+                    from ..tools_ext.pentest_tools import _check_script_target_drift as _bash_target_check
+                    _bash_drift = _bash_target_check(s, "bash")
+                    if _bash_drift:
+                        return _bash_drift
+                except Exception:
+                    pass
+                return None
 
             # ── Python 블록 환각 감지 (기존 로직 유지) ────────────────────────
 
@@ -6604,20 +6610,54 @@ class BingoTerminal:
             if _active_target and _has_network:
                 _t_str = _active_target if "://" in _active_target else f"https://{_active_target}"
                 _t_parsed = _up.urlparse(_t_str)
-                _t_domain = _t_parsed.netloc.lower().removeprefix("www.")
+                _t_domain = (_t_parsed.hostname or _t_parsed.netloc).lower().removeprefix("www.")
 
                 # AST로 실제 요청 타겟 URL만 추출
                 _p7_urls = _p7_ast_extract_request_urls(s)
 
                 import re as _p7re
+
+                def _p7_is_ip_literal(host: str) -> bool:
+                    try:
+                        import ipaddress as _p7ip
+                        _p7ip.ip_address(host)
+                        return True
+                    except Exception:
+                        return False
+
+                def _p7_has_current_host_header(code_str: str) -> bool:
+                    _host_header_re = _p7re.compile(
+                        r"""(?ix)
+                        (?:
+                            \bHost\b\s*['"]?\s*[:=]\s*['"]?\s*
+                          | ['"]Host['"]\s*:\s*['"]\s*
+                        )
+                        ([a-z0-9._-]+)
+                        """
+                    )
+                    for _hm in _host_header_re.finditer(code_str):
+                        if _hm.group(1).lower().removeprefix("www.") == _t_domain:
+                            return True
+                    return False
+
+                _p7_current_host_header = _p7_has_current_host_header(s)
                 for _cu in _p7_urls:
                     # f-string placeholder({...}) 제거 후 도메인 비교
                     _cu_clean = _p7re.sub(r'\{[^}]+\}', '', _cu)
                     _cu_parsed = _up.urlparse(_cu_clean)
-                    _cu_domain = _cu_parsed.netloc.lower().removeprefix("www.")
+                    _cu_domain = (_cu_parsed.hostname or _cu_parsed.netloc).lower().removeprefix("www.")
                     if not _cu_domain:
                         continue
                     if _cu_domain != _t_domain:
+                        if _p7_is_ip_literal(_cu_domain):
+                            if _p7_current_host_header:
+                                continue
+                            return (
+                                f"DOMAIN_BOUND_IP_BLOCKED: Code sends HTTP request to direct IP '{_cu_domain}' "
+                                f"while the ACTIVE TARGET is '{_active_target}' (domain: '{_t_domain}'). "
+                                "Do not switch a domain-bound web target to an IP URL; the IP may serve a different vhost/site. "
+                                f"Keep the URL on '{_t_domain}', or use curl --resolve / an explicit Host header only for transport pinning."
+                            )
                         return (
                             f"TARGET_DOMAIN_MISMATCH: Code sends HTTP request to '{_cu}' "
                             f"(domain: '{_cu_domain}'), but the ACTIVE TARGET is "
@@ -10397,22 +10437,21 @@ class BingoTerminal:
                             "[VPN_VIRTUAL_IP 자동 교정] "
                             f"감지된 IP {', '.join(set(_vpn_ips_found))}는 VPN 가상 IP입니다. "
                             f"실제 서버 IP: {_real_ip2 or '외부 DNS로 dig @8.8.8.8 확인 필요'}. "
-                            f"도메인 {_hn2 or ''}로 직접 접근하거나 "
-                            f"Host 헤더를 지정해 실제 IP로 접근하세요. "
+                            f"URL은 도메인 {_hn2 or ''}로 유지하고, 필요하면 curl --resolve 로 전송 IP만 고정하세요. "
                             "IP 차단이 아닙니다 — 계속 침투 시도하세요."
                         ),
                         "zh": (
                             "[VPN_VIRTUAL_IP自动校正] "
                             f"检测到IP {', '.join(set(_vpn_ips_found))}为VPN虚拟IP。"
                             f"真实服务器IP: {_real_ip2 or '需通过dig @8.8.8.8查询'}。"
-                            f"请直接使用域名{_hn2 or ''}访问，或指定Host头使用真实IP访问。"
+                            f"URL保持域名{_hn2 or ''}，必要时只用curl --resolve固定传输IP。"
                             "这不是IP封锁——请继续渗透测试。"
                         ),
                         "en": (
                             "[VPN_VIRTUAL_IP auto-corrector] "
                             f"Detected IP {', '.join(set(_vpn_ips_found))} is a VPN virtual IP. "
                             f"Real server IP: {_real_ip2 or 'check with dig @8.8.8.8'}. "
-                            f"Access directly via domain {_hn2 or ''} or use Host header with real IP. "
+                            f"Keep the URL on domain {_hn2 or ''}; if needed, pin only the transport IP with curl --resolve. "
                             "This is NOT an IP block — continue penetration testing."
                         ),
                     }.get(_lang, f"[VPN_VIRTUAL_IP] Not IP blocked. Real IP: {_real_ip2}")

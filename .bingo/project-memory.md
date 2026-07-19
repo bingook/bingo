@@ -53,30 +53,38 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T23:13:45+08:00
+- Last synced: 2026-07-19T23:15:14+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
-<!-- working-tree:start -->
-## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T23:13:45+08:00
+# Workspace Memory
 
-### Status
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:bd43ff9efcc7196cddfbfa1174a430e9a60ad72d -->
+## Code change: feat: allow deleting saved models
+- Commit: `bd43ff9efcc7`
+- Recorded: 2026-07-19T23:15:14+08:00
+- Committed: 2026-07-19T23:15:14+08:00
+
+### Files
 ```text
-M .bingo/project-memory.md
- M PKG-INFO
- M bingo/__init__.py
- M bingo/ui/terminal.py
- M tests/test_terminal_completion_regressions.py
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |  2 +-
+bd43ff9ef feat: allow deleting saved models
+ .bingo/project-memory.md                      | 81 ++++++++++++++++++++++++---
+ PKG-INFO                                      |  2 +-
  bingo/__init__.py                             |  2 +-
- bingo/ui/terminal.py                          | 51 +++++++++++++++++-
- tests/test_terminal_completion_regressions.py | 77 ++++++++++++++++++++++++++-
- 4 files changed, 128 insertions(+), 4 deletions(-)
+ bingo/ui/terminal.py                          | 51 ++++++++++++++++-
+ tests/test_terminal_completion_regressions.py | 77 ++++++++++++++++++++++++-
+ 5 files changed, 202 insertions(+), 11 deletions(-)
 ```
 
 ### Added Highlights
@@ -110,7 +118,6 @@ PKG-INFO                                      |  2 +-
 - `delete_idx = -1`
 - `if 0 <= delete_idx < len(self.config.models):`
 - `removed = self.config.models.pop(delete_idx)`
-<!-- working-tree:end -->
 
 # Workspace Memory
 

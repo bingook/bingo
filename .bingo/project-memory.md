@@ -63,31 +63,38 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T00:29:14+08:00
+- Last synced: 2026-07-20T00:31:27+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
-<!-- working-tree:start -->
-## Working tree snapshot (uncommitted)
-- Captured: 2026-07-20T00:29:14+08:00
+# Workspace Memory
 
-### Status
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:1d7da92b8bec3a48d54d5d622ee51fbc8cf86a56 -->
+## Code change: feat: bundle model prompt profiles
+- Commit: `1d7da92b8bec`
+- Recorded: 2026-07-20T00:31:27+08:00
+- Committed: 2026-07-20T00:31:27+08:00
+
+### Files
 ```text
-M .bingo/project-memory.md
- M PKG-INFO
- M bingo/__init__.py
- M bingo/models/system_prompt.py
- M tests/test_terminal_completion_regressions.py
-?? bingo/models/prompt_profiles/
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/models/system_prompt.py
+M	tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |   2 +-
+1d7da92b8 feat: bundle model prompt profiles
+ .bingo/project-memory.md                      |  96 ++++++++++++++---
+ PKG-INFO                                      |   2 +-
  bingo/__init__.py                             |   2 +-
  bingo/models/system_prompt.py                 | 122 ++++++++++++++++++++++
  tests/test_terminal_completion_regressions.py | 144 +++++++++++++++++++++++++-
- 4 files changed, 267 insertions(+), 3 deletions(-)
+ 5 files changed, 350 insertions(+), 16 deletions(-)
 ```
 
 ### Added Highlights
@@ -121,10 +128,6 @@ PKG-INFO                                      |   2 +-
 - `),`
 - `(`
 - `"hy3",`
-<!-- working-tree:end -->
-
-
-
 
 # Workspace Memory
 

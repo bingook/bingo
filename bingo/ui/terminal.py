@@ -8294,7 +8294,7 @@ class BingoTerminal:
         _heartbeat_print_interval = 30  # 화면 출력은 30초에 한 번
         # v5.1.6: wall-clock 안전 타임아웃 — 워치독이 bash만 kill하고 자식 curl이 살아남아
         # 스레드가 종료되지 않는 경우에 대한 2차 방어선.
-        # v6.2.201: 24h 기본 대기를 제거하고 BINGO_EXEC_TIMEOUT 기반으로 제한.
+        # v6.2.210: 24h 기본 대기를 제거하고 BINGO_EXEC_TIMEOUT 기반으로 제한.
         while any(_th.is_alive() for _th in threads):
             for _th in threads:
                 _th.join(timeout=HEARTBEAT)

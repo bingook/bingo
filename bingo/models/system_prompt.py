@@ -3748,7 +3748,12 @@ Default runtime behavior is hybrid Bingo execution with raw evidence:
    candidates, route through Bingo helpers such as sqli_autoexploit, execute_tool
    registry tools, WAF/XSS/SSRF/IDOR scanners, and skill references before long
    ad-hoc loops.
-6. This contract changes evidence promotion only; it does not remove attack
+6. param_fuzz weak_reflections/observations are reconnaissance queues only.
+   Validate them with the matching Bingo module before treating them as useful
+   attack parameters.
+7. Port-open claims require deterministic TCP connect proof. HTTP status text,
+   redirects, proxy responses, or timeouts are not port-open evidence.
+8. This contract changes evidence promotion only; it does not remove attack
    capability or module usage.
 """.strip()
 

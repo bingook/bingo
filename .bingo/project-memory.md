@@ -9,7 +9,7 @@
 - Preserve unrelated user changes unless explicitly scoped.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
 - Rollback point for the clean `6.2.199` baseline: commit `07eefa781` (`revert: restore 6.2.199 baseline`).
-- Current working release: `6.2.208` = `6.2.199` capability baseline + supervised codeblock runtime + legacy structured-call prompt/log removal + raw evidence + hybrid Bingo module/skill assist.
+- Current working release: `6.2.209` = `6.2.199` capability baseline + supervised codeblock runtime + legacy structured-call prompt/log removal + raw evidence + hybrid Bingo module/skill assist + weaker param_fuzz evidence separation.
 - Bingo project memory is automatic:
   - At every AI assistant session start in this repo, read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, silently run `scripts/bingo-memory-sync.sh`.
@@ -20,7 +20,7 @@
   - `git diff --check`
   - `pytest -q`
 - Recent full-suite status for `6.2.205`: `201 passed`.
-- Current full-suite status for `6.2.208`: `206 passed` after hybrid attack-assist change.
+- Current full-suite status for `6.2.209`: `210 passed` after param_fuzz weak-reflection separation and raw next-step title fix.
 
 ## Runtime Decision
 
@@ -29,6 +29,10 @@
 - Default runtime mode is hybrid raw (`BINGO_RUNTIME_MODE` unset): run fenced code, return stdout/stderr, and do not auto-promote model prose into confirmed findings.
 - `BINGO_ATTACK_ASSIST` default is on: every initial prompt and raw execution feedback injects `BINGO HYBRID ATTACK ASSIST` so the model routes SQLi/WAF/XSS/SSRF/IDOR/recon candidates through Bingo modules before long ad-hoc loops.
 - Hybrid assist is guidance/module routing only. Module output remains candidate evidence until raw deterministic proof confirms it.
+- `param_fuzz` now separates strong `found_params` from weak URL/attribute marker echoes in `weak_reflections`/`observations`; weak reflections are kept for validation but not promoted as discovered parameters.
+- `execute_tool` returns remain dict-compatible and now tolerate common model slicing mistakes (`result[:300]`) by slicing the output string instead of raising a module failure.
+- In raw mode, next-step menus must not display “report generated” wording when no report was generated.
+- Port-open claims require direct TCP connect proof; HTTP/proxy/timeout behavior is not proof of open non-HTTP ports.
 - Classic heavy mode remains available only by explicit env opt-in: `BINGO_RUNTIME_MODE=classic` or `BINGO_CLAUDE_CLI_MODE=0`.
 - In default hybrid raw mode, skills and module routing remain enabled; only automatic finding promotion, adaptive pivot injections, IP-block wait/hints, target-memory extraction, model-prose `[CONFIRMED]` UI promotion, and auto-crack from raw model text are disabled.
 - Long-running generated code is handled by supervised runtime state:
@@ -49,29 +53,97 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T14:06:37+08:00
+- Last synced: 2026-07-19T15:19:51+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T14:06:37+08:00
+- Captured: 2026-07-19T15:19:51+08:00
 
 ### Status
 ```text
  M bingo/__init__.py
  M bingo/models/system_prompt.py
+ M bingo/tools_ext/builtin/advanced_scanners.py
+ M bingo/tools_ext/pentest_tools.py
  M bingo/ui/terminal.py
+ M tests/test_advanced_scanner_false_positives.py
  M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
+ bingo/__init__.py                              |   2 +-
+ bingo/models/system_prompt.py                  |   7 +-
+ bingo/tools_ext/builtin/advanced_scanners.py   | 110 +++++++++++++++++++++++--
+ bingo/tools_ext/pentest_tools.py               |  51 ++++++++----
+ bingo/ui/terminal.py                           |  11 ++-
+ tests/test_advanced_scanner_false_positives.py |  50 +++++++++++
+ tests/test_terminal_completion_regressions.py  |  63 ++++++++++++++
+ 7 files changed, 267 insertions(+), 27 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.209"`
+- `6. param_fuzz weak_reflections/observations are reconnaissance queues only.`
+- `Validate them with the matching Bingo module before treating them as useful`
+- `attack parameters.`
+- `7. Port-open claims require deterministic TCP connect proof. HTTP status text,`
+- `redirects, proxy responses, or timeouts are not port-open evidence.`
+- `8. This contract changes evidence promotion only; it does not remove attack`
+- `def _dedupe_preserve_order(values: List[str]) -> List[str]:`
+- `seen: Set[str] = set()`
+- `out: List[str] = []`
+- `for value in values:`
+- `key = str(value or "").strip()`
+- `if not key or key in seen:`
+- `continue`
+- `seen.add(key)`
+- `out.append(key)`
+- `return out`
+- `def _visible_text_contains_marker(html: str, marker: str) -> bool:`
+- `"""Return True only when marker appears in rendered-ish text, not URL echo."""`
+- `if not marker or marker not in (html or ""):`
+- `return False`
+- `text = re.sub(r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1>", " ", html or "")`
+- `text = re.sub(r"(?is)<[^>]+>", " ", text)`
+- `text = re.sub(r"\s+", " ", text)`
+- `return marker in text`
+- `def _marker_contexts(html: str, marker: str, max_hits: int = 4) -> List[str]:`
+- `contexts: List[str] = []`
+- `if not marker:`
+- `return contexts`
+- `for match in re.finditer(re.escape(marker), html or ""):`
+<!-- working-tree:end -->
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:c874807971ce81e7687d1f6f7f678a3bcea44fa4 -->
+## Code change: refactor: add hybrid raw attack assist
+- Commit: `c874807971ce`
+- Recorded: 2026-07-19T14:09:09+08:00
+- Committed: 2026-07-19T14:09:09+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	bingo/__init__.py
+M	bingo/models/system_prompt.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+c87480797 refactor: add hybrid raw attack assist
+ .bingo/project-memory.md                      | 84 ++++++++++++++++++++---
  bingo/__init__.py                             |  2 +-
  bingo/models/system_prompt.py                 | 10 ++-
  bingo/ui/terminal.py                          | 98 ++++++++++++++++++++++++++-
  tests/test_terminal_completion_regressions.py | 40 ++++++++++-
- 4 files changed, 144 insertions(+), 6 deletions(-)
+ 5 files changed, 218 insertions(+), 16 deletions(-)
 ```
 
 ### Added Highlights
@@ -105,7 +177,7 @@
 - `blob = f"{code}\n{output}".lower()`
 - `lines = [`
 - `"=== BINGO HYBRID ATTACK ASSIST ===",`
-<!-- working-tree:end -->
+
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.

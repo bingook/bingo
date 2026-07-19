@@ -19,9 +19,7 @@ from bingo.core.zero_hal_v5 import ZeroHalEngine
 from bingo.models.system_prompt import (
     get_pentest_system_prompt,
     get_warmup_history,
-    load_external_prompt_profile,
     rephrase_refused_request,
-    resolve_external_prompt_profile,
     wrap_task,
 )
 from bingo.models.base import Message, ModelConfig
@@ -770,7 +768,6 @@ def test_system_prompt_ends_with_evidence_driven_offense_contract() -> None:
 
 def test_glm_custom_prompt_avoids_provider_refusal_triggers(monkeypatch) -> None:
     monkeypatch.delenv("BINGO_LEGACY_WARMUP_HISTORY", raising=False)
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_PROFILES", "0")
     cfg = ModelConfig(
         provider="custom",
         model="glm-5.2",
@@ -801,105 +798,6 @@ def test_glm_custom_prompt_avoids_provider_refusal_triggers(monkeypatch) -> None
     assert get_warmup_history("custom glm-5.2") == []
     for phrase in blocked_phrases:
         assert phrase not in combined
-
-
-def test_bundled_prompt_profiles_map_all_supported_models(monkeypatch) -> None:
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_PROFILES", "1")
-    profile_root = Path(__file__).resolve().parents[1] / "bingo" / "models" / "prompt_profiles"
-
-    assert resolve_external_prompt_profile("anthropic claude opus") == (
-        "claude-opus-4.6",
-        str(profile_root / "claudeopus4.6.txt"),
-    )
-    assert resolve_external_prompt_profile("custom glm-5.2 ntrapi") == (
-        "glm-5.2",
-        str(profile_root / "glm5.2.txt"),
-    )
-    assert resolve_external_prompt_profile("x.ai grok-4.5") == (
-        "grok-4.5",
-        str(profile_root / "grok4.5.txt"),
-    )
-    assert resolve_external_prompt_profile("dashscope qwen") == (
-        "qwen",
-        str(profile_root / "grok4.5_2.txt"),
-    )
-    assert resolve_external_prompt_profile("tencent hy3 hunyuan") == (
-        "hy3",
-        str(profile_root / "hy3.txt"),
-    )
-    for filename in (
-        "claudeopus4.6.txt",
-        "glm5.2.txt",
-        "grok4.5.txt",
-        "grok4.5_2.txt",
-        "hy3.txt",
-    ):
-        path = profile_root / filename
-        assert path.is_file()
-        assert path.read_text(encoding="utf-8", errors="replace").strip()
-
-
-def test_bundled_prompt_profile_loads_project_file_only(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_PROFILES", "1")
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_REMOTE", "1")
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_BASE_URL", "https://example.invalid/txt")
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_CACHE_DIR", str(tmp_path / "cache"))
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_DIR", str(tmp_path / "missing"))
-
-    def fail_urlopen(*_args, **_kwargs):
-        raise AssertionError("bundled prompt profiles must not use runtime HTTP")
-
-    monkeypatch.setattr("urllib.request.urlopen", fail_urlopen)
-    profile_root = Path(__file__).resolve().parents[1] / "bingo" / "models" / "prompt_profiles"
-    profile_text = (profile_root / "glm5.2.txt").read_text(encoding="utf-8", errors="replace").strip()
-    first_line = next(line for line in profile_text.splitlines() if line.strip())
-
-    loaded = load_external_prompt_profile("custom glm-5.2 ntrapi")
-
-    assert "BINGO BUNDLED MODEL PROFILE: glm-5.2" in loaded
-    assert first_line in loaded
-    assert not (tmp_path / "cache" / "glm5.2.txt").exists()
-
-
-def test_bundled_prompt_profiles_support_explicit_test_directory(monkeypatch, tmp_path: Path) -> None:
-    files = {
-        "claudeopus4.6.txt": "CLAUDE_PROFILE_FULL\nline2",
-        "glm5.2.txt": "GLM_PROFILE_FULL\nline2",
-        "grok4.5.txt": "GROK_PROFILE_FULL\nline2",
-        "grok4.5_2.txt": "QWEN_PROFILE_FULL\nline2",
-        "hy3.txt": "HY3_PROFILE_FULL\nline2",
-    }
-    for filename, content in files.items():
-        (tmp_path / filename).write_text(content, encoding="utf-8")
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_PROFILES", "1")
-
-    assert resolve_external_prompt_profile("anthropic claude opus", str(tmp_path)) == (
-        "claude-opus-4.6",
-        str(tmp_path / "claudeopus4.6.txt"),
-    )
-    assert resolve_external_prompt_profile("custom glm-5.2 ntrapi", str(tmp_path)) == (
-        "glm-5.2",
-        str(tmp_path / "glm5.2.txt"),
-    )
-    assert resolve_external_prompt_profile("x.ai grok-4.5", str(tmp_path)) == (
-        "grok-4.5",
-        str(tmp_path / "grok4.5.txt"),
-    )
-    assert resolve_external_prompt_profile("dashscope qwen", str(tmp_path)) == (
-        "qwen",
-        str(tmp_path / "grok4.5_2.txt"),
-    )
-    assert resolve_external_prompt_profile("tencent hy3 hunyuan", str(tmp_path)) == (
-        "hy3",
-        str(tmp_path / "hy3.txt"),
-    )
-
-
-def test_external_prompt_profile_can_be_disabled(monkeypatch) -> None:
-    monkeypatch.setenv("BINGO_EXTERNAL_PROMPT_PROFILES", "0")
-
-    assert load_external_prompt_profile("glm-5.2") == ""
-    assert "BINGO BUNDLED MODEL PROFILE" not in get_pentest_system_prompt("glm-5.2")
 
 
 def test_repeated_inconclusive_attack_automatically_pivots(tmp_path: Path) -> None:

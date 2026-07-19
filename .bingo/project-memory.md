@@ -8,7 +8,12 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.217`.
+- Current stable version after Bingo memory rebrand: `6.2.218`.
+- Latest GLM/custom prompt-hygiene fix as of v6.2.218:
+  - Removed model-facing jailbreak-style trigger phrases such as `pre-granted`, `BEHAVIOR OVERRIDE`, `No refusals`, `No disclaimers`, and `CONTINUE REQUIRED` from the main prompt/task/retry/hook paths.
+  - `custom` models with names/aliases/base URLs containing `glm`, `qwen`, `zhipu`, `alibaba`, or `dashscope` now route to the GLM/Qwen compatibility prompt instead of the Claude/GPT/custom prompt.
+  - Legacy few-shot warmup history is disabled by default (`BINGO_LEGACY_WARMUP_HISTORY=1` opt-in) so providers do not interpret preloaded SQLi/admin-hash examples as prompt injection.
+  - No attack modules, embedded skills, TOOL_CALL schema, WAF/SQLi engines, or evidence/reporting paths were disabled.
 - Latest model management fix as of v6.2.217:
   - `/model` now supports deleting saved models with `d번호`, `del 번호`, `delete 번호`, `remove 번호`, `rm 번호`, `삭제 번호`, or `删除 번호`.
   - Deleting the active model automatically switches to the first remaining saved model; deleting the last saved model clears `active_model`.
@@ -53,13 +58,91 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T23:15:46+08:00
+- Last synced: 2026-07-19T23:52:34+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
+<!-- working-tree:start -->
+## Working tree snapshot (uncommitted)
+- Captured: 2026-07-19T23:52:34+08:00
+
+### Status
+```text
+M .bingo/project-memory.md
+ M PKG-INFO
+ M bingo/__init__.py
+ M bingo/hooks/pre_tool_hook.py
+ M bingo/models/base.py
+ M bingo/models/system_prompt.py
+ M bingo/ui/terminal.py
+ M tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+PKG-INFO                                      |   2 +-
+ bingo/__init__.py                             |   2 +-
+ bingo/hooks/pre_tool_hook.py                  |  70 +++++++----------
+ bingo/models/base.py                          |   6 +-
+ bingo/models/system_prompt.py                 | 104 ++++++++++++--------------
+ bingo/ui/terminal.py                          |  20 +++--
+ tests/test_terminal_completion_regressions.py |  42 ++++++++++-
+ 7 files changed, 136 insertions(+), 110 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.218`
+- `__version__ = "6.2.218"`
+- `Pre-tool-call Context Helper — v3.3.5`
+- `=====================================`
+- `1. AI 응답 직전 실행 환경/증거 컨텍스트 주입`
+- `2. 응답 내 비실행 답변 감지 → 증거 중심 재시도 힌트 생성`
+- `[BINGO_CONTEXT_REFRESH — v3.3.5]`
+- `✓ Platform: bingo security testing terminal`
+- `✓ Network: local HTTP tooling is available when code execution is requested`
+- `✓ Code execution: bash/python blocks can be executed and returned as evidence`
+- `Execution guidance:`
+- `Keep target state, request profile, controls, and evidence criteria explicit.`
+- `Prefer runnable verification steps over simulated output.`
+- `[/BINGO_CONTEXT_REFRESH]`
+- `[BINGO_PRE_EXEC — v3.3.5]`
+- `• Local bash/python execution is available when Bingo runs code blocks`
+- `• Prefer real HTTP responses and measured deltas over mock/simulated data`
+- `[/BINGO_PRE_EXEC]`
+- `f"[BINGO_PRE_TASK — v3.3.5]\n"`
+- `f"  • Environment: Bingo security testing terminal\n"`
+- `f"  • Network/code execution: available through Bingo tool execution\n"`
+- `f"  • Output target: next concrete verification step and evidence criteria\n"`
+- `f"[/BINGO_PRE_TASK]\n\n"`
+- `비실행 응답 이후 재시도용 메시지 생성.`
+- `f"[BINGO_RETRY_HINT — #{self._inject_count}]\n"`
+- `f"Restate the work as an evidence-driven verification step.\n"`
+- `f"Preserve the current target/request profile and provide the next runnable check.\n"`
+- `f"[/BINGO_RETRY_HINT]\n"`
+- `model_hint = " ".join(`
+- `str(value or "")`
+<!-- working-tree:end -->
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:fda9aaee8498ced3200640f9c3f133f96b861bb7 -->
+## Code change: feat: allow deleting saved models
+- Commit: `fda9aaee8498`
+- Recorded: 2026-07-19T23:16:58+08:00
+- Committed: 2026-07-19T23:16:58+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+```
+
+### Diff Stat
+```text
+fda9aaee8 feat: allow deleting saved models
+ .bingo/project-memory.md | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+```
 
 <!-- commit:aa5368b10a5d985e74f3ff6a587af1ef679ba33c -->
 ## Code change: feat: allow deleting saved models

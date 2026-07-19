@@ -1647,7 +1647,13 @@ class BingoTerminal:
         from ..models.system_prompt import get_pentest_system_prompt
         model_cfg = self.config.get_active_model_config()
         provider = model_cfg.provider if model_cfg else "deepseek"
-        system_text = get_pentest_system_prompt(provider)
+        model_hint = ""
+        if model_cfg:
+            model_hint = " ".join(
+                str(getattr(model_cfg, attr, "") or "")
+                for attr in ("provider", "model", "alias", "base_url")
+            )
+        system_text = get_pentest_system_prompt(model_hint or provider)
 
         # 언어 설정을 시스템 프롬프트에 강제 주입 (매 요청마다)
         _lang = getattr(self.config, "lang", "en")
@@ -2964,7 +2970,7 @@ class BingoTerminal:
         }.get(_lang, _date_str_en)
 
         system = (
-            f"You are BINGO — an autonomous penetration testing engine.\n"
+            f"You are BINGO — an AI security testing terminal.\n"
             f"Your underlying AI model is: {_model_name}\n"
             f"Your AI provider is: {_provider_short}\n\n"
             f"=== CURRENT DATE & TIME (SYSTEM CLOCK) ===\n"
@@ -9031,11 +9037,11 @@ class BingoTerminal:
                 _no_code_retry += 1
                 _lang = getattr(self.config, "lang", "en")
                 _nudge = {
-                    "ko": "분석을 계속하려면 반드시 ```bash 코드 블록(curl 사용)을 포함해야 합니다. 다음 공격 단계의 bash+curl 코드를 즉시 작성하세요.",
-                    "zh": "要继续分析，必须包含 ```bash 代码块（使用curl）。请立即编写下一步攻击的bash+curl代码。",
-                    "en": "To continue, you MUST include a ```bash code block with curl. Write the next attack step as bash+curl NOW.",
-                }.get(_lang, "Write the next ```bash curl block NOW to continue.")
-                self.history.append(Message(role="user", content=f"[CONTINUE REQUIRED]\n{_nudge}"))
+                    "ko": "계속 진행할 경우, 다음 검증 가설을 확인하는 실행 가능한 bash 또는 python 코드 블록을 작성하세요. 현재 URL/쿠키/헤더/기준 응답을 보존하세요.",
+                    "zh": "如需继续，请给出一个可执行的 bash 或 python 代码块来验证下一个假设，并保留当前 URL/Cookie/Header/基线响应。",
+                    "en": "If continuing, provide a runnable bash or python code block that verifies the next hypothesis while preserving the current URL/cookies/headers/baseline.",
+                }.get(_lang, "Provide a runnable verification code block while preserving current request state.")
+                self.history.append(Message(role="user", content=f"[BINGO_EXECUTION_HINT]\n{_nudge}"))
                 from ..models.registry import ModelRegistry as _MR
                 _mc = self.config.get_active_model_config()
                 if not _mc:

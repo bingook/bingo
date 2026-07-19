@@ -255,6 +255,74 @@ def test_codeblock_exec_limits_clamp_env_values(monkeypatch) -> None:
     assert _codeblock_exec_limits() == (3, 3, 3)
 
 
+def test_safe_prompt_ask_retries_after_unicode_decode_error(monkeypatch) -> None:
+    terminal = _code_test_terminal()
+    boom = UnicodeDecodeError("utf-8", b"\xe3\x80", 0, 1, "invalid continuation byte")
+    values = iter([boom, "glm-5.2"])
+
+    def fake_ask(_prompt: str, password: bool = False) -> str:
+        value = next(values)
+        if isinstance(value, UnicodeDecodeError):
+            raise value
+        return value
+
+    monkeypatch.setattr("bingo.ui.terminal.Prompt.ask", fake_ask)
+
+    assert terminal._safe_prompt_ask("alias") == "glm-5.2"
+    assert any("Input encoding error" in message for message in terminal.console.messages)
+
+
+def test_cmd_model_custom_alias_decode_error_does_not_crash(monkeypatch) -> None:
+    from bingo.models.registry import BUILTIN_PROVIDERS
+
+    class Config:
+        lang = "zh"
+        models: list = []
+        active_model = ""
+        saved = False
+
+        def add_model(self, cfg) -> None:
+            self.models.append(cfg)
+
+        def save(self) -> None:
+            self.saved = True
+
+    terminal = _code_test_terminal()
+    terminal.config = Config()
+    terminal.s = get_strings("zh")
+    terminal._success = lambda msg: terminal.console.print(msg)
+    terminal._warn = lambda msg: terminal.console.print(msg)
+    custom_number = list(BUILTIN_PROVIDERS).index("custom") + 1
+    boom = UnicodeDecodeError("utf-8", b"\xe3\x80", 0, 1, "invalid continuation byte")
+    values = iter([
+        str(custom_number),
+        "sk-test",
+        "https://api.ntrapi.cn/v1",
+        "glm-5.2",
+        boom,
+        "glm-5.2",
+    ])
+
+    def fake_ask(_prompt: str, password: bool = False) -> str:
+        value = next(values)
+        if isinstance(value, UnicodeDecodeError):
+            raise value
+        return value
+
+    monkeypatch.setattr("bingo.ui.terminal.Prompt.ask", fake_ask)
+
+    terminal._cmd_model()
+
+    assert terminal.config.saved is True
+    assert len(terminal.config.models) == 1
+    cfg = terminal.config.models[0]
+    assert cfg.provider == "custom"
+    assert cfg.api_key == "sk-test"
+    assert cfg.base_url == "https://api.ntrapi.cn/v1"
+    assert cfg.model == "glm-5.2"
+    assert cfg.alias == "glm-5.2"
+
+
 def test_bash_codeblock_execution_obeys_idle_timeout(monkeypatch) -> None:
     terminal = _code_test_terminal()
     monkeypatch.setenv("BINGO_EXEC_TIMEOUT", "10")

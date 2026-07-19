@@ -8,7 +8,11 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.215`.
+- Current stable version after Bingo memory rebrand: `6.2.216`.
+- Latest model setup input fix as of v6.2.216:
+  - `/model` interactive inputs now catch `UnicodeDecodeError` from broken terminal/IME/paste bytes.
+  - Model selection, API key, Base URL, model name, alias, and language prompts use safe retry input handling instead of crashing.
+  - Custom provider registration now refuses empty Base URL/model name instead of saving an unusable config after repeated input decode failures.
 - Token usage reduction direction as of v6.2.215:
   - Use Token Governor only on the model-input copy of prior context.
   - Do not reduce attack execution, embedded skills, tool calls, payload families, target/session state, or raw evidence/session logs.
@@ -45,13 +49,13 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T22:17:06+08:00
+- Last synced: 2026-07-19T23:05:26+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T22:17:06+08:00
+- Captured: 2026-07-19T23:05:26+08:00
 
 ### Status
 ```text
@@ -64,11 +68,73 @@ M .bingo/project-memory.md
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |   2 +-
+PKG-INFO                                      |  2 +-
+ bingo/__init__.py                             |  2 +-
+ bingo/ui/terminal.py                          | 46 ++++++++++++++----
+ tests/test_terminal_completion_regressions.py | 68 +++++++++++++++++++++++++++
+ 4 files changed, 106 insertions(+), 12 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.216`
+- `__version__ = "6.2.216"`
+- `def _safe_prompt_ask(`
+- `self,`
+- `prompt: str,`
+- `fallback: str = "",`
+- `attempts: int = 2,`
+- `) -> str:`
+- `"""Prompt for terminal input without crashing on broken stdin bytes."""`
+- `lang = getattr(self.config, "lang", "en")`
+- `msg = {`
+- `"ko": "입력 인코딩 오류가 감지되었습니다. 현재 입력은 무시하고 다시 입력하세요.",`
+- `"zh": "检测到输入编码错误。已忽略当前输入，请重新输入。",`
+- `"en": "Input encoding error detected. Current input was ignored; please enter it again.",`
+- `}.get(lang, "Input encoding error detected. Please enter it again.")`
+- `for _ in range(max(1, attempts)):`
+- `try:`
+- `except UnicodeDecodeError:`
+- `self.console.print(f"[{THEME['warn']}]⚠ {msg}[/]")`
+- `return fallback`
+- `raw = self._safe_prompt_ask(`
+- `).lower()`
+- `raw = self._safe_prompt_ask(f"\n[{THEME['primary']}]{self.s['select_number']}[/]")`
+- `url_input = self._safe_prompt_ask(`
+- `)`
+- `model_input = self._safe_prompt_ask(`
+- `)`
+- `alias = self._safe_prompt_ask(`
+- `)`
+- `if pid == "custom" and (not base_url or not model_name):`
+<!-- working-tree:end -->
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:ecc144b5e88697e78d7bd77569816447e1716df3 -->
+## Code change: feat: add token governor for model context
+- Commit: `ecc144b5e886`
+- Recorded: 2026-07-19T22:52:19+08:00
+- Committed: 2026-07-19T22:52:19+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+ecc144b5e feat: add token governor for model context
+ .bingo/project-memory.md                      |  86 ++++++++--
+ PKG-INFO                                      |   2 +-
  bingo/__init__.py                             |   2 +-
  bingo/ui/terminal.py                          | 235 +++++++++++++++++++++++++-
  tests/test_terminal_completion_regressions.py | 133 +++++++++++++++
- 4 files changed, 369 insertions(+), 3 deletions(-)
+ 5 files changed, 444 insertions(+), 14 deletions(-)
 ```
 
 ### Added Highlights
@@ -102,7 +168,6 @@ PKG-INFO                                      |   2 +-
 - `status = next((g for g in m_status.groups() if g), "")`
 - `forms = _html_re.findall(r'<form\b[^>]*>', content, _html_re.I)`
 - `inputs = []`
-<!-- working-tree:end -->
 
 # Workspace Memory
 

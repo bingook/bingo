@@ -5216,6 +5216,28 @@ class BingoTerminal:
         table.add_row("models", str(len(self.config.models)))
         self.console.print(table)
 
+    def _safe_prompt_ask(
+        self,
+        prompt: str,
+        *,
+        password: bool = False,
+        fallback: str = "",
+        attempts: int = 2,
+    ) -> str:
+        """Prompt for terminal input without crashing on broken stdin bytes."""
+        lang = getattr(self.config, "lang", "en")
+        msg = {
+            "ko": "입력 인코딩 오류가 감지되었습니다. 현재 입력은 무시하고 다시 입력하세요.",
+            "zh": "检测到输入编码错误。已忽略当前输入，请重新输入。",
+            "en": "Input encoding error detected. Current input was ignored; please enter it again.",
+        }.get(lang, "Input encoding error detected. Please enter it again.")
+        for _ in range(max(1, attempts)):
+            try:
+                return Prompt.ask(prompt, password=password).strip()
+            except UnicodeDecodeError:
+                self.console.print(f"[{THEME['warn']}]⚠ {msg}[/]")
+        return fallback
+
     def _cmd_lang(self) -> None:
         self.console.print(f"\n[{THEME['primary']}]{self.s['select_lang']}[/]")
         lang_list = list(SUPPORTED_LANGS.items())  # [("ko","한국어"), ("zh","中文"), ("en","English")]
@@ -5224,9 +5246,9 @@ class BingoTerminal:
         self.console.print()
 
         # 번호(1/2/3) 또는 코드(ko/zh/en) 둘 다 허용
-        raw = Prompt.ask(
+        raw = self._safe_prompt_ask(
             f"[{THEME['primary']}][ko/zh/en/1/2/3][/]",
-        ).strip().lower()
+        ).lower()
 
         # 번호 입력 시 코드로 변환
         num_map = {str(i + 1): code for i, (code, _label) in enumerate(lang_list)}
@@ -5282,7 +5304,7 @@ class BingoTerminal:
             _lbl = get_provider_label(info, _lang)
             self.console.print(f"  [{THEME['dim']}]{i}[/] — {_lbl}")
 
-        raw = Prompt.ask(f"\n[{THEME['primary']}]{self.s['select_number']}[/]").strip()
+        raw = self._safe_prompt_ask(f"\n[{THEME['primary']}]{self.s['select_number']}[/]")
         try:
             idx = int(raw) - 1
         except ValueError:
@@ -5300,25 +5322,29 @@ class BingoTerminal:
         if 0 <= new_idx < len(providers):
             pid, info = providers[new_idx]
             _lbl = get_provider_label(info, _lang)
-            api_key = Prompt.ask(
+            api_key = self._safe_prompt_ask(
                 f"[{THEME['primary']}]{_lbl} {self.s['enter_api_key']}[/]",
                 password=True,
             )
             default_url = info["base_url"]
-            url_input = Prompt.ask(
+            url_input = self._safe_prompt_ask(
                 f"[{THEME['primary']}]{self.s['enter_base_url']}[/] [{THEME['dim']}]({default_url})[/]",
-            ).strip()
+            )
             base_url = url_input or default_url
 
             default_model = info["default_model"]
-            model_input = Prompt.ask(
+            model_input = self._safe_prompt_ask(
                 f"[{THEME['primary']}]{self.s['model_name_prompt']}[/] [{THEME['dim']}]({default_model})[/]",
-            ).strip()
+            )
             model_name = model_input or default_model
 
-            alias = Prompt.ask(
+            alias = self._safe_prompt_ask(
                 f"[{THEME['primary']}]{self.s['alias_prompt']}[/]",
-            ).strip()
+            )
+
+            if pid == "custom" and (not base_url or not model_name):
+                self._warn("Custom model requires Base URL and model name.")
+                return
 
             cfg = ModelConfig(
                 provider=pid,

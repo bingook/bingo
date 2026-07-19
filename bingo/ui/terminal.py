@@ -44,42 +44,131 @@ from ..i18n import t
 from ..proxy import ProxyManager
 
 
-def _positive_int_env(name: str, default: int, minimum: int = 1, maximum: int = 86400) -> int:
-    """Read a positive integer environment knob with sane bounds."""
+def _positive_int_env(
+    name: str,
+    default: int,
+    *,
+    minimum: int = 1,
+    maximum: int = 86_400,
+) -> int:
+    """Return a bounded positive integer from the environment."""
     raw = os.environ.get(name)
+    if raw is None:
+        return default
     try:
-        value = int(str(raw).strip()) if raw is not None else int(default)
-    except Exception:
-        value = int(default)
-    return max(minimum, min(maximum, value))
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(value, maximum))
 
 
-def _supervised_exec_limits() -> dict[str, int]:
-    """Runtime supervision limits for AI-emitted code blocks.
-
-    Code blocks still execute normally. These limits only bound a single
-    generated job so the model receives partial evidence instead of waiting
-    indefinitely on a silent subprocess.
-    """
-    script_timeout = _positive_int_env("BINGO_EXEC_TIMEOUT", 300, 1, 86400)
-    idle_report = _positive_int_env(
-        "BINGO_EXEC_IDLE_REPORT",
-        30,
-        1,
-        max(1, script_timeout),
+def _codeblock_exec_limits() -> tuple[int, int, int]:
+    """Execution limits for markdown Python/Bash code blocks."""
+    script_timeout = _positive_int_env("BINGO_EXEC_TIMEOUT", 180)
+    idle_timeout = _positive_int_env(
+        "BINGO_EXEC_IDLE_TIMEOUT",
+        120,
+        maximum=script_timeout,
     )
-    wall_default = script_timeout + max(10, min(60, script_timeout))
-    wall_clock = _positive_int_env(
+    wall_clock_timeout = _positive_int_env(
         "BINGO_EXEC_WALL_CLOCK_TIMEOUT",
-        wall_default,
-        script_timeout,
-        86460,
+        script_timeout + 30,
+        minimum=script_timeout,
+        maximum=86_430,
     )
-    return {
-        "script_timeout": script_timeout,
-        "idle_report": idle_report,
-        "wall_clock": wall_clock,
-    }
+    return script_timeout, idle_timeout, wall_clock_timeout
+
+
+def _codeblock_exec_enabled() -> bool:
+    """Return whether legacy markdown code block execution is explicitly enabled."""
+    raw = os.environ.get("BINGO_ALLOW_CODEBLOCK_EXEC", "")
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _tool_call_from_mapping(
+    value: object,
+    known_tools: set[str],
+    *,
+    allow_flat: bool = False,
+) -> str | None:
+    """Convert a model-emitted tool mapping to Bingo's canonical wire format."""
+    if not isinstance(value, dict):
+        return None
+    name = value.get("tool") or value.get("tool_name") or value.get("name")
+    if not isinstance(name, str) or name not in known_tools:
+        return None
+    has_explicit_args = "args" in value or "arguments" in value or "parameters" in value
+    # A generic API response may legitimately contain a top-level ``name``.
+    # Require an argument wrapper unless the mapping explicitly says ``tool``.
+    if "tool" not in value and "tool_name" not in value and not has_explicit_args and not allow_flat:
+        return None
+    if has_explicit_args:
+        args = value.get("args", value.get("arguments", value.get("parameters", {})))
+    else:
+        args = {
+            key: item
+            for key, item in value.items()
+            if key not in {"tool", "tool_name", "name"}
+        }
+    if not isinstance(args, dict):
+        args = {}
+    import json
+    return "TOOL_CALL:" + json.dumps({"name": name, "args": args}, ensure_ascii=False)
+
+
+def _normalize_tool_call_response(response: str) -> tuple[str, int]:
+    """Silently normalize fenced dict/XML tool calls before execution parsing."""
+    import ast
+    import json
+    import re
+
+    try:
+        from ..tools_ext.pentest_tools import TOOL_REGISTRY
+        known_tools = set(TOOL_REGISTRY)
+    except Exception:
+        known_tools = set()
+    if not known_tools:
+        return response, 0
+
+    converted = 0
+
+    def _parse_mapping(raw: str) -> object | None:
+        try:
+            return json.loads(raw)
+        except Exception:
+            try:
+                return ast.literal_eval(raw)
+            except Exception:
+                return None
+
+    # The common failure mode is a Python/JSON fenced block containing only a
+    # tool mapping. Replace the entire block so it is never treated as code.
+    fence_pattern = re.compile(
+        r"```(?:python|json)?[ \t]*\n(?P<body>.*?)```",
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    def _replace_fence(match: re.Match) -> str:
+        nonlocal converted
+        call = _tool_call_from_mapping(
+            _parse_mapping(match.group("body").strip()),
+            known_tools,
+            allow_flat=True,
+        )
+        if call is None:
+            return match.group(0)
+        converted += 1
+        return call
+
+    response = fence_pattern.sub(_replace_fence, response)
+
+    # Also accept a response that consists solely of a dict-form tool call.
+    stripped = response.strip()
+    if not re.search(r"TOOL_CALL\s*:", stripped):
+        call = _tool_call_from_mapping(_parse_mapping(stripped), known_tools, allow_flat=True)
+        if call is not None:
+            return call, converted + 1
+    return response, converted
 
 
 def _repair_mixed_bash_python(script: str) -> tuple[str, bool]:
@@ -363,173 +452,6 @@ def _filter_traceback(output: str):
 
 class BingoTerminal:
     """Bingo 메인 터미널 UI"""
-
-    @staticmethod
-    def _raw_runtime_mode() -> bool:
-        """Return True for Claude-CLI-style raw execution feedback.
-
-        Default is raw/thin mode: run fenced bash/python blocks, return stdout/stderr,
-        and let the model decide the next action from that evidence.  The legacy
-        heavy auto-analysis path remains available for regression testing via
-        BINGO_RUNTIME_MODE=classic or BINGO_CLAUDE_CLI_MODE=0.
-        """
-        mode = os.environ.get("BINGO_RUNTIME_MODE", "").strip().lower()
-        if mode in {"classic", "legacy", "heavy", "bingo"}:
-            return False
-        if mode in {"raw", "thin", "claude", "claude-cli", "claude_cli"}:
-            return True
-        flag = os.environ.get("BINGO_CLAUDE_CLI_MODE", "1").strip().lower()
-        return flag not in {"0", "false", "no", "off", "classic", "legacy", "heavy"}
-
-    @staticmethod
-    def _hybrid_attack_assist_mode() -> bool:
-        """Keep Bingo's built-in skills/modules active while preserving raw evidence.
-
-        This is the intended default: Bingo supplies attack technique, module
-        routing, and helper examples; the model still decides from raw execution
-        output and cannot promote helper/model prose into confirmed findings.
-        """
-        flag = os.environ.get("BINGO_ATTACK_ASSIST", "1").strip().lower()
-        return flag not in {"0", "false", "no", "off", "raw-only", "raw_only"}
-
-    @staticmethod
-    def _build_execution_feedback(
-        trimmed: str,
-        *,
-        state_summary: str = "",
-        ip_block_hint: str = "",
-        waf_redirect_note: str = "",
-        next_action_contract: str = "",
-        attack_assist_context: str = "",
-        raw_mode: bool = True,
-    ) -> str:
-        """Build the feedback message injected after local code execution."""
-        if raw_mode:
-            feedback = (
-                "=== BINGO RAW EXECUTION RESULT ===\n"
-                + trimmed
-                + "\n=== END RAW EXECUTION RESULT ===\n\n"
-                "Use only the stdout/stderr above as evidence. "
-                "Do not mark vulnerabilities, credentials, login, SSRF, SQLi, XSS, RCE, "
-                "or bypasses as CONFIRMED from narrative text or script prose alone. "
-                "If proof is insufficient, write the next verifying bash/python code block. "
-                "Keep using the loaded skills and available tools when relevant."
-            )
-            if attack_assist_context:
-                feedback += "\n\n" + attack_assist_context
-            return feedback
-        return (
-            "=== BINGO REAL EXECUTION RESULTS ===\n"
-            + trimmed
-            + ip_block_hint
-            + waf_redirect_note
-            + "\n=== END REAL RESULTS ===\n\n"
-            + state_summary
-            + next_action_contract
-            + "- If WAF blocks: use obfuscation variants\n"
-            "- Output TASK_COMPLETE when all credentials are extracted\n"
-            "- NEVER generate simulated output"
-        )
-
-    @staticmethod
-    def _raw_loop_limit_message(count: int, lang: str = "en") -> str:
-        messages = {
-            "ko": (
-                f"⛔ [LOOP_LIMIT_STOP] {count}회 루프 도달 — raw 모드에서 자동 중지.\n"
-                "보고서/확정 결과를 자동 생성하지 않고 다음 선택지만 표시합니다."
-            ),
-            "zh": (
-                f"⛔ [LOOP_LIMIT_STOP] 已达第 {count} 次循环 — raw模式自动停止。\n"
-                "不自动生成报告或确认结论，只显示下一步选项。"
-            ),
-            "en": (
-                f"⛔ [LOOP_LIMIT_STOP] Loop #{count} reached — raw mode auto-stop.\n"
-                "No automatic report or confirmed conclusion is generated; showing next options only."
-            ),
-        }
-        return messages.get(lang, messages["en"])
-
-    @staticmethod
-    def _raw_loop_limit_resume_message(lang: str = "en") -> str:
-        messages = {
-            "ko": "Raw 모드 루프가 중지됨 — 자동 보고서 없이 다음 선택지를 표시합니다.",
-            "zh": "Raw模式循环已停止 — 不自动生成报告，只显示下一步选项。",
-            "en": "Raw mode loop stopped — showing next options without auto-report.",
-        }
-        return messages.get(lang, messages["en"])
-
-    def _build_bingo_attack_assist_context(self, code: str, output: str = "") -> str:
-        """Inject Bingo-native module routing without auto-confirming findings."""
-        if not self._hybrid_attack_assist_mode():
-            return ""
-
-        import re as _assist_re
-
-        blob = f"{code}\n{output}".lower()
-        lines = [
-            "=== BINGO HYBRID ATTACK ASSIST ===",
-            "Bingo modules/skills are ON. Use them before long ad-hoc curl/python loops.",
-            "Hard rule: module output is candidate evidence only; CONFIRMED still requires raw deterministic proof.",
-            "Use exact URL/method/param/cookies from the latest output; replace placeholders before running.",
-        ]
-
-        def _add(section: str, items: list[str]) -> None:
-            lines.append(f"\n[{section}]")
-            lines.extend(f"- {item}" for item in items)
-
-        sqli_signal = _assist_re.search(
-            r"sqli|sql\s*inject|oracle|mysql|mssql|postgres|db\s*error|sql\s*error|"
-            r"boolean.?oracle|union|select|sleep|benchmark|extractvalue|updatexml|"
-            r"single.?quote|단일.?따옴표|单引号|598b|199b|403|waf",
-            blob,
-            _assist_re.I,
-        )
-        waf_signal = _assist_re.search(r"\bwaf\b|403|406|429|blocked|forbidden|拦截|차단", blob, _assist_re.I)
-        xss_signal = _assist_re.search(r"\bxss\b|reflection|反射|반사|<script|onerror|svg/onload", blob, _assist_re.I)
-        ssrf_signal = _assist_re.search(r"\bssrf\b|169\.254\.169\.254|metadata|gopher://|file://", blob, _assist_re.I)
-        idor_signal = _assist_re.search(r"\bidor\b|bola|patient_usernum|usernum|object.?id|idx=", blob, _assist_re.I)
-        recon_signal = _assist_re.search(r"\bapi\b|javascript|\.js\b|endpoint|sitemap|robots|directory|目录|엔드포인트", blob, _assist_re.I)
-
-        if sqli_signal or waf_signal:
-            _add("SQLI_WAF_MODULES_REQUIRED", [
-                "First try Bingo SQLi helper:",
-                "```python\nfrom bingo.tools_ext.pentest_tools import sqli_autoexploit\nprint(sqli_autoexploit(url=\"EXACT_URL\", param=\"EXACT_PARAM\", method=\"GET\", base_value=\"NORMAL_VALUE\"))\n```",
-                "Then cross-check with registry tools when blocked or inconclusive:",
-                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"detect_waf\", {\"url\": \"TARGET_URL\"}))\nprint(execute_tool(\"sqli_error\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"sqli_boolean\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"sqli_timebased\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"waf_sqli_db\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\n```",
-                "Only after these helpers fail, write custom payload loops or sqlmap/ghauri handoff.",
-            ])
-        if xss_signal:
-            _add("XSS_MODULES_REQUIRED", [
-                "Use Bingo XSS helpers before hand-written payload lists:",
-                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"xss_reflect\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"xss_autotest\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"xss_advanced_test\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\n```",
-                "Reflection is candidate only; browser/sink proof is required for confirmed XSS.",
-            ])
-        if ssrf_signal:
-            _add("SSRF_MODULES_REQUIRED", [
-                "Use Bingo SSRF helpers before declaring success:",
-                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"ssrf_autotest\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"ssrf_chain_exploit\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\n```",
-                "Normal HTML containing the submitted URL is reflection, not SSRF proof.",
-            ])
-        if idor_signal:
-            _add("IDOR_MODULES_REQUIRED", [
-                "Use Bingo IDOR helpers for two-baseline comparisons:",
-                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"idor_autotest\", {\"url\": \"EXACT_URL\", \"param\": \"EXACT_PARAM\"}))\nprint(execute_tool(\"idor_scan\", {\"url\": \"EXACT_URL\"}))\n```",
-                "Public pages and common hospital phone numbers are not IDOR proof.",
-            ])
-        if recon_signal:
-            _add("RECON_API_MODULES_REQUIRED", [
-                "Use Bingo recon/API/fuzz modules to expand attack surface:",
-                "```python\nfrom bingo.tools_ext.pentest_tools import execute_tool\nprint(execute_tool(\"param_fuzz\", {\"url\": \"TARGET_URL\"}))\nprint(execute_tool(\"dir_fuzz\", {\"url\": \"TARGET_URL\"}))\nprint(execute_tool(\"api_security_scan\", {\"url\": \"TARGET_URL\"}))\n```",
-                "Feed discovered endpoints back into SQLi/XSS/SSRF/IDOR module checks.",
-            ])
-
-        if len(lines) == 4:
-            _add("DEFAULT_MODULE_ROUTE", [
-                "Map endpoints with param_fuzz/dir_fuzz/api_security_scan, then route candidates to sqli_autoexploit, xss_autotest, ssrf_autotest, or idor_autotest.",
-            ])
-
-        lines.append("=== END BINGO HYBRID ATTACK ASSIST ===")
-        return "\n".join(lines)
 
     def __init__(self, config, strings: dict):
         self.config = config
@@ -1115,11 +1037,11 @@ class BingoTerminal:
             return
         try:
             ts = datetime.now().strftime("%H:%M:%S")
-            # 실행 결과 역할 추가
+            # v6.2.172: tool_result 역할 추가 → TOOL_RESULT 누락 버그 수정
             if role == "user":
                 label = "**YOU**"
             elif role == "tool_result":
-                label = "**RUNTIME_RESULT**"
+                label = "**TOOL_RESULT**"
             else:
                 label = "**bingo**"
             # v6.2.169: 쿠키/토큰 평문 마스킹 후 저장
@@ -1509,7 +1431,7 @@ class BingoTerminal:
                 f"目标: {_target or '(见对话历史)'}\n"
                 f"已知: {_find_s or '(见对话历史)'}\n"
                 f"不要从头重来。根据历史结果执行下一步攻击。"
-                f"立即输出下一个 bash 代码块。"
+                f"立即输出下一个 TOOL_CALL。"
             )
         if _lang == "ko":
             return (
@@ -1517,14 +1439,14 @@ class BingoTerminal:
                 f"타겟: {_target or '(대화 기록 참고)'}\n"
                 f"알려진 결과: {_find_s or '(대화 기록 참고)'}\n"
                 f"처음부터 다시 하지 말고, 이어서 다음 공격 단계를 실행하세요. "
-                f"즉시 다음 bash 코드 블록을 출력하세요."
+                f"즉시 다음 TOOL_CALL을 출력하세요."
             )
         return (
             f"[RESUME AFTER INTERRUPT]\n"
             f"Target: {_target or '(see chat history)'}\n"
             f"Known: {_find_s or '(see chat history)'}\n"
             f"Do NOT restart from scratch. Continue the next unfinished attack step. "
-            f"Emit the next bash block NOW."
+            f"Emit the next TOOL_CALL NOW."
         )
 
     def _read_hint_line_from_tty(self, timeout: float = 60.0) -> "str | None":
@@ -1801,10 +1723,6 @@ class BingoTerminal:
         builtin_ctx = self._detect_and_load_skills(text)
         if builtin_ctx:
             parts.append(builtin_ctx)
-
-        attack_assist_ctx = self._build_bingo_attack_assist_context(text, "")
-        if attack_assist_ctx:
-            parts.append(attack_assist_ctx)
 
         # ── 2. 로컬 SecSkills references (기존) ──────────────────────
         try:
@@ -3275,8 +3193,7 @@ class BingoTerminal:
             # AI 응답에서 명령 추출 → 실제 실행 → 결과를 컨텍스트로 주입
             self._execute_ai_commands(full_response)
             # AI 응답에 해시가 있으면 자동 크랙 알림
-            if not self._raw_runtime_mode():
-                self._notify_hashes_found(full_response)
+            self._notify_hashes_found(full_response)
 
     @staticmethod
     def _sanitize_preexecution_claims(text: str) -> str:
@@ -3446,7 +3363,7 @@ class BingoTerminal:
                 f"╔══════════════════════════════════════════════════════════╗\n"
                 f"║  ⛔ TEXT-LEVEL HALLUCINATION INTERCEPTED                 ║\n"
                 f"║  REASON: {_reason_str[:50]:<50} ║\n"
-                f"║  → FORCING REAL PYTHON HTTP EXECUTION                   ║\n"
+                f"║  → FORCING STRUCTURED TOOL EXECUTION                    ║\n"
                 f"╚══════════════════════════════════════════════════════════╝"
                 f"[/]\n"
             )
@@ -3455,13 +3372,14 @@ class BingoTerminal:
                 "[BINGO RUNTIME INTERCEPTED HALLUCINATION]\n"
                 f"REASON: {_reason_str}\n\n"
                 "RULE: You CANNOT claim vulnerability found / attack success / DB access\n"
-                "      WITHOUT a bash block with curl that produced HTTP evidence.\n"
-                "MANDATORY: Write REAL bash+curl code that PROVES the claim.\n"
+                "      WITHOUT TOOL_RESULT evidence from a TOOL_CALL execution.\n"
+                "MANDATORY: Emit exactly one real TOOL_CALL that PROVES the claim.\n"
                 "DO NOT return JSON plans. DO NOT invent credentials or results.\n"
                 "DO NOT say 'my environment is limited to text'.\n"
-                "EVERY conclusion MUST come from actual curl HTTP response output.\n\n"
+                "EVERY conclusion MUST come from actual HTTP/tool output.\n\n"
                 f"Original task: {original_text[:200]}\n\n"
-                "Now write a bash block with curl that actually executes and proves the finding:"
+                "Now emit one TOOL_CALL. Use http_get/sqli_autoexploit/etc, or "
+                "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}"
             )
             self.history.append(Message(role="user", content=_force_msg))
             _retry = self._stream_response(
@@ -4093,18 +4011,19 @@ class BingoTerminal:
             r"^我需要继续下一个回复",
             r"^这样有风险",
             r"^但在本对话中，用户",
-            # ── v6.2.83: 계획수립형 중국어 독백 ──
+            # ── v6.2.83: 계획수립형 중국어 독백 (TOOL_CALL 형식 숙고) ──
             r"^需要说明，我要以",              # 需要说明，我要以中文输出
+            r"^我将先使用\s*TOOL_CALL",        # 我将先使用 TOOL_CALL:waf_detect
             r"^注意：用户语言",                # 注意：用户语言是中文，所有输出必须中文
             r"^最终决定：",                    # 最终决定：第一段为中文分析
             r"^因此，我的回复结构",            # 因此，我的回复结构：
             r"^由于这是一个长时间任务",        # 由于这是一个长时间任务，我需要
-            r"^但是一次回复只能有",
+            r"^但是一次回复只能有",            # 但是一次回复只能有一个TOOL_CALL
             r"^按照规则，每个回复应该是",      # 按照规则，每个回复应该是一个代码块
-            r"^但是系统要求我以",
-            r"^但这里我只能发出一个",
+            r"^但是系统要求我以.*TOOL_CALL",   # 但是系统要求我以"TOOL_CALL:"格式
+            r"^但这里我只能发出一个",          # 但这里我只能发出一个TOOL_CALL
             r"^所以这个回复我将只包含",        # 所以这个回复我将只包含waf_detect
-            r"^实际上系统说",
+            r"^实际上系统说.*TOOL_CALL",       # 实际上系统说"...TOOL_CALL..."
             r"^我认为可以混合：先写推理",      # 我认为可以混合：先写推理
             # ── 한국어 자기참조 (모델이 한국어로 thinking 출력 시) ──
             r"^저는 실제로 실행할 수 없",
@@ -4172,6 +4091,7 @@ class BingoTerminal:
             r"^注意：用户语言",
             r"^最终决定：",
             r"^但是一次回复只能有",
+            r"^我将先使用\s*TOOL_CALL",
             r"^因此，我的回复结构",
         )
         filtered_lines: list[str] = []
@@ -5895,7 +5815,11 @@ class BingoTerminal:
 
     def _run_code_blocks(self, response: str, _loaded_skills: set) -> list[str]:
         """AI 응답에서 Python/Bash 블록 추출 후 병렬 실행.
-        코드블록은 직접 실행하고 JOB_STATE로 실행 상태와 증거를 반환한다.
+        bounded timeout/idle watchdog 적용. 모든 블록 동시 실행 후 결과 수집.
+
+        v5.2.0: TOOL_CALL 아키텍처 — bash 블록보다 우선 처리.
+        LLM이 TOOL_CALL:{"name":"...","args":{...}} 형식으로 호출하면
+        pentest_tools.py 의 Python 함수를 직접 실행 → 환각 완전 차단.
         """
         import re, subprocess, tempfile, os, threading
         from pathlib import Path
@@ -5907,8 +5831,544 @@ class BingoTerminal:
             "response_bytes": 0,
         }
 
+        # ══════════════════════════════════════════════════════════════════════
+        # v6.2.145 ── XML tool_call 형식 자동 변환 (Type A 자동 교정기)
+        # AI가 가끔 <tool_call>{"name":...,"arguments":{...}}</tool_call> XML 형식을 출력.
+        # bingo는 TOOL_CALL:{} 형식만 인식하므로 자동 변환.
+        # 변환: <tool_call>{"name":"X","arguments":{...}}</tool_call>
+        #      → TOOL_CALL:{"name":"X","args":{...}}
+        import re as _re_tc
+        def _convert_xml_toolcall(text: str) -> str:
+            """<tool_call>...</tool_call> XML 형식 → TOOL_CALL:{} 형식 자동 변환"""
+            _xml_tc_pat = _re_tc.compile(
+                r'<tool_call>\s*(\{.*?\})\s*</tool_call>',
+                _re_tc.DOTALL | _re_tc.IGNORECASE,
+            )
+            def _replace_tc(m: "_re_tc.Match") -> str:
+                try:
+                    import json as _j
+                    _obj = _j.loads(m.group(1))
+                    _name = str(_obj.get("name", "") or _obj.get("tool_name", ""))
+                    _args = _obj.get("arguments", _obj.get("args", _obj.get("parameters", {})))
+                    if not isinstance(_args, dict):
+                        _args = {}
+                    return "TOOL_CALL:" + _j.dumps({"name": _name, "args": _args}, ensure_ascii=False)
+                except Exception:
+                    return m.group(0)
+            if "<tool_call>" in text.lower():
+                text = _xml_tc_pat.sub(_replace_tc, text)
+            return text
+        response = _convert_xml_toolcall(response)
+        response, _silent_tool_fixes = _normalize_tool_call_response(response)
+
+        # v5.2.0 ── TOOL_CALL 파서 (bash 블록 처리 이전에 실행)
+        # 형식: TOOL_CALL:{"name":"sqli_timebased","args":{"url":"...","param":"id"}}
+        # ══════════════════════════════════════════════════════════════════════
+        # v5.2.3 fix: 중첩 {} 파싱 버그 수정 — 비탐욕 정규식 대신 괄호 카운터 사용
+        def _extract_tool_call_jsons(text: str) -> list[str]:
+            """TOOL_CALL: 뒤 JSON을 중괄호 깊이 카운팅으로 추출 (중첩 {} 지원)"""
+            found: list[str] = []
+            for _m in re.finditer(r'TOOL_CALL\s*:\s*', text):
+                pos = _m.end()
+                if pos >= len(text) or text[pos] != '{':
+                    continue
+                depth, j, in_str, esc = 0, pos, False, False
+                while j < len(text):
+                    c = text[j]
+                    if esc:
+                        esc = False
+                    elif c == '\\' and in_str:
+                        esc = True
+                    elif c == '"':
+                        in_str = not in_str
+                    elif not in_str:
+                        if c == '{':
+                            depth += 1
+                        elif c == '}':
+                            depth -= 1
+                            if depth == 0:
+                                found.append(text[pos: j + 1])
+                                break
+                    j += 1
+            return found
+
+        _tool_matches = _extract_tool_call_jsons(response)
+
+        if _tool_matches:
+            tool_results: list[str] = []
+            try:
+                from ..tools_ext.pentest_tools import execute_tool, TOOL_REGISTRY
+            except ImportError:
+                execute_tool = None
+                TOOL_REGISTRY = {}
+
+            # ── v6.2.179 Type A: TOOL_CALL 실행 중 UI '不动/卡死' 방지 ──────────
+            # 증상(채팅/스크린샷): AI가 run_bash + http_get×N 을 한 번에 쏟아낸 뒤
+            # 실행 중 화면에 아무 진행도 안 보여 '멈춤'으로 오인.
+            # (백엔드는 동작 중 — Ctrl+C 후 continue 하면 결과 나옴)
+            # 수정: 진행 표시 + 5초 heartbeat + flush + Ctrl+C로 남은 도구 스킵
+            #      + 배치 http_get 은 curl 우선(Playwright×N 수분 정지 방지)
+            _MAX_TOOLS_PER_TURN = 10
+            _MAX_HTTP_GET_PER_TURN = 6
+            _total_tc = len(_tool_matches)
+            _http_get_done = 0
+            _tools_executed = 0
+            _deferred_names: list[str] = []
+            import sys as _sys_flush
+            import threading as _thr_tool
+
+            def _flush_ui() -> None:
+                try:
+                    self.console.file.flush()
+                except Exception:
+                    pass
+                try:
+                    _sys_flush.stdout.flush()
+                    _sys_flush.stderr.flush()
+                except Exception:
+                    pass
+
+            _lang_tc = getattr(self.config, "lang", "en")
+            _tc_banner = {
+                "ko": f"⚙ 도구 {_total_tc}개 실행 중… (진행 표시됨 / Ctrl+C=중단)",
+                "zh": f"⚙ 正在执行 {_total_tc} 个工具…（会显示进度 / Ctrl+C=中断）",
+                "en": f"⚙ Running {_total_tc} tools… (progress shown / Ctrl+C=stop)",
+            }.get(_lang_tc, f"⚙ Running {_total_tc} tools…")
+            self.console.print(f"[{THEME['accent']}]{_tc_banner}[/]")
+            _flush_ui()
+
+            for _tc_i, _raw_json in enumerate(_tool_matches):
+                if self._agent_stop_flag.is_set():
+                    _stop_tc = {
+                        "ko": f"⏸ Ctrl+C — 남은 도구 {_total_tc - _tc_i}개 스킵",
+                        "zh": f"⏸ Ctrl+C — 跳过剩余 {_total_tc - _tc_i} 个工具",
+                        "en": f"⏸ Ctrl+C — skipped {_total_tc - _tc_i} remaining tools",
+                    }.get(_lang_tc, "⏸ Interrupted")
+                    self.console.print(f"[{THEME['warn']}]{_stop_tc}[/]")
+                    _flush_ui()
+                    tool_results.append(
+                        "=== INTERRUPTED by Ctrl+C — remaining TOOL_CALLs skipped ===\n"
+                        "Summarize partial results. Do NOT re-emit the same TOOL_CALL flood."
+                    )
+                    break
+
+                # JSON 파싱
+                # v6.2.40 FIX: re.sub(r'\s+', ' ') 제거 — 이것이 Python 코드의 들여쓰기를
+                # 파괴하여 SyntaxError: expected 'except' or 'finally' block 의 근본 원인이었음.
+                # JSON 표준은 토큰 사이 공백을 허용하므로 json.loads()는 그대로 처리 가능.
+                # 리터럴 개행이 포함된 경우(비표준 LLM 출력)만 복구 메커니즘이 처리함.
+                _call = _raw_json.strip()  # 원본 보존 (공백 정규화 없음)
+                try:
+                    _parsed = __import__("json").loads(_call)
+                    _tool_name = str(_parsed.get("name", ""))
+                    _tool_args = _parsed.get("args", {})
+                    if not isinstance(_tool_args, dict):
+                        _tool_args = {}
+                except Exception as _je:
+                    # ── v6.2.34: JSON 복구 시도 ──────────────────────────────
+                    # script/code 필드의 복잡한 이스케이프 조합으로 json.loads 실패 시
+                    # regex 기반 필드 추출로 폴백
+                    # v6.2.40: _call 이 이제 원본 보존 버전이므로 Python 코드 들여쓰기 유지
+                    _recovered = False
+                    try:
+                        import re as _re_json
+                        # name 추출
+                        _nm = _re_json.search(r'"name"\s*:\s*"([^"]+)"', _call)
+                        if _nm:
+                            _tool_name = _nm.group(1)
+                            _tool_args = {}
+                            # args 내부의 각 키:값 추출 (script/code 포함)
+                            # script/code: "script": "..." 이지만 중간에 \n, \", \' 포함
+                            # → "script" 이후 첫 " 부터 마지막 "} 직전까지 추출
+                            for _fk in ("script", "code", "url", "param",
+                                        "base_value", "method", "headers",
+                                        "post_data", "dump_table", "timeout"):
+                                _fv_m = _re_json.search(
+                                    rf'"{_fk}"\s*:\s*"((?:[^"\\]|\\.)*)\"',
+                                    _call, _re_json.DOTALL
+                                )
+                                if _fv_m:
+                                    # JSON 이스케이프 해제
+                                    import codecs as _cod
+                                    try:
+                                        _fv = _cod.decode(
+                                            _fv_m.group(1).encode(), "unicode_escape"
+                                        )
+                                    except Exception:
+                                        _fv = _fv_m.group(1)
+                                    _tool_args[_fk] = _fv
+                            # timeout 숫자 변환
+                            if "timeout" in _tool_args:
+                                try:
+                                    _tool_args["timeout"] = int(str(_tool_args["timeout"]))
+                                except Exception:
+                                    _tool_args.pop("timeout", None)
+                            _recovered = bool(_tool_args or _tool_name)
+                    except Exception:
+                        pass
+                    if not _recovered:
+                        tool_results.append(
+                            f"TOOL_RESULT:{{'name':'?','error':'JSON parse failed: {_je}','success':false}}"
+                        )
+                        import os as _os
+                        if _os.environ.get("BINGO_DEBUG"):
+                            self.console.print(f"[dim red]  [TOOL_CALL DEBUG] raw={_raw_json!r}[/dim red]")
+                            self.console.print(f"[dim red]TOOL_CALL JSON parse error: {_je}[/dim red]")
+                        continue
+                    # 복구 성공은 정상 실행 경로로 취급한다. 상세 정보는 디버그에서만 노출.
+                    if __import__("os").environ.get("BINGO_DEBUG"):
+                        self.console.print(f"[dim]TOOL_CALL JSON recovered: {_tool_name}[/dim]")
+
+                if _tools_executed >= _MAX_TOOLS_PER_TURN:
+                    _deferred_names.append(_tool_name or "?")
+                    continue
+
+                if _tool_name == "http_get":
+                    if _http_get_done >= _MAX_HTTP_GET_PER_TURN:
+                        _deferred_names.append("http_get")
+                        tool_results.append(
+                            f"=== TOOL_RESULT: http_get ===\n"
+                            f"exit_code=-95  success=false\n"
+                            f"--- output ---\n"
+                            f"[HTTP_GET_BATCH_CAP] max {_MAX_HTTP_GET_PER_TURN} http_get/turn skipped.\n"
+                            f"Probe many hosts with ONE run_bash curl loop, not N×http_get.\n"
+                            f"URL: {str(_tool_args.get('url', ''))[:120]}\n"
+                            f"=== END TOOL_RESULT ==="
+                        )
+                        continue
+                    _tool_args = dict(_tool_args)
+                    _tool_args["prefer_curl"] = True
+                    try:
+                        _to = int(_tool_args.get("timeout", 10) or 10)
+                    except Exception:
+                        _to = 10
+                    _tool_args["timeout"] = min(max(_to, 3), 10)
+                    _http_get_done += 1
+
+                if _tool_name == "run_python":
+                    import re as _report_guard_re
+                    _report_code = str(_tool_args.get("code", "") or "")
+                    _manual_report = bool(
+                        _report_guard_re.search(
+                            r'confirmed_vulnerabilities|security_assessment|'
+                            r'\breport\s*=\s*\{[\s\S]{0,300}\bfindings\b',
+                            _report_code,
+                            _report_guard_re.I,
+                        )
+                        and _report_guard_re.search(
+                            r'write_text\s*\(|json\.dump\s*\(|open\s*\([^)]*["\']w',
+                            _report_code,
+                            _report_guard_re.I,
+                        )
+                    )
+                    if _manual_report:
+                        _deferred_report = self.s.get(
+                            "report_manual_artifact_blocked",
+                            "[REPORT_REQUEST_DEFERRED] Manual model-authored report artifact skipped. "
+                            "Emit TASK_COMPLETE; Bingo will generate the report from Finding IDs.",
+                        )
+                        tool_results.append(
+                            "=== TOOL_RESULT: run_python ===\n"
+                            "exit_code=0 success=true\n--- output ---\n"
+                            + _deferred_report
+                            + "\n=== END TOOL_RESULT ==="
+                        )
+                        continue
+
+                if execute_tool is None:
+                    tool_results.append(
+                        f"TOOL_RESULT:{{'name':'{_tool_name}','error':'pentest_tools not available','success':false}}"
+                    )
+                    continue
+
+                # ── v6.2.74: 도구 실행 해커 스타일 헤더 ───────────────
+                _args_preview = str(_tool_args)[:100]
+                self.console.print(
+                    f"\n[{THEME['dim']}]┌─[/][{THEME['accent']}]⚙ {_tool_name}[/]"
+                    f"[{THEME['dim']}] ({_tc_i + 1}/{_total_tc}) ────────────────────[/]"
+                )
+                self.console.print(
+                    f"[{THEME['dim']}]│  {_args_preview}[/]"
+                )
+                _flush_ui()
+
+                _t0 = __import__("time").time()
+                # 실행 중 heartbeat — 화면이 不动처럼 보이는 핵심 원인 제거
+                _box: dict = {}
+                _mute_tool_output = _thr_tool.Event()
+
+                def _run_one(_n=_tool_name, _a=_tool_args):
+                    _lock = getattr(self, "_tool_execution_lock", None)
+                    if _lock is None:
+                        _lock = _thr_tool.Lock()
+                        self._tool_execution_lock = _lock
+                    while not _lock.acquire(timeout=0.25):
+                        if self._agent_stop_flag.is_set():
+                            _box["r"] = {
+                                "success": False,
+                                "output": "INTERRUPTED before tool start",
+                                "exit_code": -1,
+                            }
+                            return
+
+                    _owner = _thr_tool.current_thread()
+                    _stdout = _sys_flush.stdout
+                    _stderr = _sys_flush.stderr
+                    _stdout_proxy = _ToolThreadOutput(
+                        _stdout, _owner, self._hint_input_active, _mute_tool_output
+                    )
+                    _stderr_proxy = _ToolThreadOutput(
+                        _stderr, _owner, self._hint_input_active, _mute_tool_output
+                    )
+                    try:
+                        _sys_flush.stdout = _stdout_proxy
+                        _sys_flush.stderr = _stderr_proxy
+                        _box["r"] = execute_tool(_n, _a)
+                    except Exception as _ex:
+                        _box["r"] = {
+                            "success": False,
+                            "output": f"execute_tool exception: {_ex}",
+                            "exit_code": -1,
+                        }
+                    finally:
+                        if _sys_flush.stdout is _stdout_proxy:
+                            _sys_flush.stdout = _stdout
+                        if _sys_flush.stderr is _stderr_proxy:
+                            _sys_flush.stderr = _stderr
+                        _lock.release()
+
+                _th = _thr_tool.Thread(target=_run_one, daemon=True)
+                _th._bingo_mute_output = _mute_tool_output
+                self._active_tool_thread = _th
+                _th.start()
+                _wait_s = 0
+                while _th.is_alive():
+                    _th.join(timeout=1.0)
+                    _wait_s += 1
+                    if getattr(self, "_hint_input_active", None) and self._hint_input_active.is_set():
+                        # hint 입력 중이면 heartbeat/출력 억제
+                        continue
+                    if self._agent_stop_flag.is_set():
+                        self.console.print(
+                            f"[{THEME['warn']}]│  ⏸ stop — waiting up to 8s for {_tool_name}…[/]"
+                        )
+                        _flush_ui()
+                        _th.join(timeout=8.0)
+                        break
+                    if _wait_s % 5 == 0:
+                        self.console.print(
+                            f"[{THEME['dim']}]│  ⏱ {_tool_name} running… {_wait_s}s "
+                            f"(not frozen)[/]"
+                        )
+                        _flush_ui()
+
+                if self._agent_stop_flag.is_set() and _th.is_alive():
+                    # The worker may be inside a blocking library call. Keep it
+                    # serialized, but permanently mute its direct output so it
+                    # cannot overwrite the hint prompt or resumed AI stream.
+                    _mute_tool_output.set()
+                    tool_results.append(
+                        f"=== TOOL_RESULT: {_tool_name} ===\n"
+                        f"exit_code=-1  success=false  elapsed={_wait_s}s\n"
+                        f"--- output ---\nINTERRUPTED mid-tool\n=== END TOOL_RESULT ==="
+                    )
+                    if not (getattr(self, "_hint_input_active", None) and self._hint_input_active.is_set()):
+                        self.console.print(
+                            f"[{THEME['warn']}]└─ ✘ interrupted[/]"
+                        )
+                        _flush_ui()
+                    break
+
+                _result = _box.get(
+                    "r",
+                    {"success": False, "output": "no result", "exit_code": -1},
+                )
+                _elapsed = round(__import__("time").time() - _t0, 2)
+                _tools_executed += 1
+                self._active_tool_thread = None
+
+                _out = _result.get("output", "")
+                _ok  = _result.get("success", False)
+                _ec  = _result.get("exit_code", -1)
+                _completed = bool(_result.get("completed", False)) and _ec == 0
+
+                # 화면에 결과 미리보기 출력 (v5.2.7: 스마트 필터 적용)
+                if _ok and _ec == 0:
+                    _color, _status_icon = THEME["success"], "✔"
+                elif _completed:
+                    _color, _status_icon = THEME["dim"], "∅"
+                else:
+                    _color, _status_icon = THEME["warn"], "✘"
+                if not (getattr(self, "_hint_input_active", None) and self._hint_input_active.is_set()):
+                    self.console.print(
+                        f"[{THEME['dim']}]└─[/][{_color}]{_status_icon} exit={_ec}[/]"
+                        f"[{THEME['dim']}]  elapsed={_elapsed}s[/]"
+                    )
+                    _flush_ui()
+                if _out:
+                    import re as _re_tr
+                    from rich.markup import escape as _esc
+                    # ── TOOL_RESULT 스마트 필터 ──
+                    # AI에게 보내는 _result_str은 필터 없이 전체 보존
+                    # 터미널 미리보기만 핵심 줄로 제한
+                    _IMP_TR = _re_tr.compile(
+                        r'(?:'
+                        r'HTTP/\d'
+                        r'|status[=:\s]+\d{3}'
+                        r'|\b(?:200|201|204|301|302|307|400|401|403|404|429|500|502)\b'
+                        r'|content-length\s*:\s*\d'
+                        r'|location\s*:\s*https?'
+                        r'|set-cookie\s*:'
+                        r'|server\s*:\s*\S'
+                        r'|x-powered-by|waf|cloudflare'
+                        r'|detected|found|error|exception'
+                        r'|---http_status|---size'
+                        r'|\[\+\]|\[-\]|\[!\]'
+                        r'|✅|❌|⚠|🔍|💥'
+                        r')',
+                        _re_tr.IGNORECASE,
+                    )
+                    _HTML_TR = _re_tr.compile(r'<[a-zA-Z/!]')
+                    _HDR_TR  = _re_tr.compile(r'^[A-Za-z][A-Za-z0-9\-]+\s*:\s*\S')
+                    _disp_lines: list[str] = []
+                    _html_run = 0
+                    _hdr_run  = 0
+                    _suppressed_html = 0
+                    _suppressed_hdr  = 0
+                    for _ln in _out.splitlines()[:120]:  # 최대 120줄 검사
+                        _s = _ln.strip()
+                        if not _s:
+                            continue
+                        # 항상 표시: 중요 패턴
+                        if _IMP_TR.search(_s):
+                            if _suppressed_html:
+                                _disp_lines.append(f"  ⋯ {_suppressed_html} HTML lines hidden")
+                                _suppressed_html = 0
+                            if _suppressed_hdr:
+                                _disp_lines.append(f"  ⋯ {_suppressed_hdr} header lines hidden")
+                                _suppressed_hdr = 0
+                            _html_run = _hdr_run = 0
+                            _disp_lines.append(_ln[:200])
+                            continue
+                        # HTTP 헤더 블록
+                        if _HDR_TR.match(_s):
+                            _hdr_run += 1
+                            _html_run = 0
+                            if _hdr_run <= 6:
+                                _disp_lines.append(_ln[:200])
+                            else:
+                                _suppressed_hdr += 1
+                            continue
+                        else:
+                            if _suppressed_hdr:
+                                _disp_lines.append(f"  ⋯ {_suppressed_hdr} header lines hidden")
+                                _suppressed_hdr = 0
+                            _hdr_run = 0
+                        # HTML 태그 밀집 줄
+                        if len(_HTML_TR.findall(_s)) >= 2 or (_s.startswith("<") and _s.endswith(">")):
+                            _html_run += 1
+                            _hdr_run = 0
+                            if _html_run <= 3:
+                                _disp_lines.append(_ln[:200])
+                            else:
+                                _suppressed_html += 1
+                            continue
+                        else:
+                            if _suppressed_html:
+                                _disp_lines.append(f"  ⋯ {_suppressed_html} HTML lines hidden")
+                                _suppressed_html = 0
+                            _html_run = 0
+                        # 일반 줄 (200자 제한)
+                        _disp_lines.append(_ln[:200])
+                    if _suppressed_html:
+                        _disp_lines.append(f"  ⋯ {_suppressed_html} HTML lines hidden")
+                    if _suppressed_hdr:
+                        _disp_lines.append(f"  ⋯ {_suppressed_hdr} header lines hidden")
+                    _preview = "\n".join(_disp_lines)
+                    try:
+                        self.console.print(f"[{THEME['dim']}]{_esc(_preview)}[/]")
+                    except Exception:
+                        self.console.print(_preview[:1200])
+
+                # 결과를 LLM에게 돌려줄 텍스트로 포맷
+                _result_extra = {
+                    k: v for k, v in _result.items()
+                    if k not in ("output",) and not isinstance(v, (bytes,))
+                }
+                _result_str = (
+                    f"=== TOOL_RESULT: {_tool_name} ===\n"
+                    f"exit_code={_ec}  success={_ok}  elapsed={_elapsed}s\n"
+                    f"extra={__import__('json').dumps(_result_extra, ensure_ascii=False, default=str)[:500]}\n"
+                    f"--- output ---\n{_out}\n"
+                    f"=== END TOOL_RESULT ==="
+                )
+
+                # ── v6.2.43: aaaa/OOOO 패턴 감지 — 커스텀 SQLi 추출 실패 안전망 ──────────
+                # run_python 출력에서 8자 이상 동일 문자 반복 감지
+                # → 커스텀 Boolean Oracle 루프가 오작동 중임을 의미
+                # → 모델 무관하게 강제 경고 주입 → sqli_autoexploit 전환 강제
+                if _tool_name == "run_python" and _out:
+                    import re as _re_aaaa
+                    _REPEAT_PAT = _re_aaaa.compile(r'([a-zA-Z?])\1{7,}')
+                    _repeat_found = _REPEAT_PAT.search(_out)
+                    if _repeat_found:
+                        _rep_char = _repeat_found.group(1)
+                        _warn_repeat = self.s.get("sqli_repeat_char_warning").format(char=_rep_char)
+                        self.console.print(f"[{THEME['error']}]{_warn_repeat}[/]")
+                        _result_str += (
+                            f"\n\n{_warn_repeat}"
+                        )
+                # ── 감지 끝 ────────────────────────────────────────────────────────────────
+
+                tool_results.append(_result_str)
+
+            if _deferred_names:
+                _n_def = len(_deferred_names)
+                _cap_msg = (
+                    f"[TOOL_CALL_CAP] Deferred {_n_def} call(s) "
+                    f"(max {_MAX_TOOLS_PER_TURN} tools / {_MAX_HTTP_GET_PER_TURN} http_get per turn). "
+                    f"Use ONE run_bash probe loop instead of flooding http_get."
+                )
+                self.console.print(f"[{THEME['warn']}]⚠ {_cap_msg}[/]")
+                _flush_ui()
+                tool_results.append(_cap_msg)
+
+            if tool_results:
+                self._last_execution_context = {
+                    "executed": _tools_executed > 0,
+                    "source": "tool_call",
+                    "scripts": [
+                        {"type": "tool_call", "code": raw[:16_384], "returncode": 0}
+                        for raw in _tool_matches[:10]
+                    ],
+                    "response_bytes": sum(len(item) for item in tool_results),
+                }
+                return tool_results
+        # ══════════════════════════════════════════════════════════════════════
+        # TOOL_CALL 없음 → legacy markdown code block path.
+        # Public/default builds must not execute arbitrary prose code fences.
+        # Legacy behavior remains available only by explicit local opt-in.
+        # ══════════════════════════════════════════════════════════════════════
+
         if "```" not in response:
             return []
+
+        if not _codeblock_exec_enabled():
+            self._last_execution_context = {
+                "executed": False,
+                "source": "codeblock_disabled",
+                "scripts": [],
+                "response_bytes": 0,
+            }
+            return [
+                "[CODEBLOCK_EXEC_DISABLED]\n"
+                "Raw markdown code block execution is disabled by default in public builds.\n"
+                "Regenerate the operation as canonical TOOL_CALL only:\n"
+                "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"...\"}}\n"
+                "TOOL_CALL:{\"name\":\"run_python\",\"args\":{\"code\":\"...\"}}\n"
+                "or use a structured tool such as http_get/sqli_autoexploit/xss_autotest.\n"
+                "Local legacy compatibility: set BINGO_ALLOW_CODEBLOCK_EXEC=1."
+            ]
 
         # ── agent_tools 자동 설치 (최초 1회) ─────────────────────────
         _tools_dst = Path.home() / ".bingo" / "agent_tools.py"
@@ -5967,7 +6427,7 @@ class BingoTerminal:
             if len(_non_print) == len(_all_imports) and len(_lines) > 0 and not _has_network:
                 return (
                     "PRINT_ONLY_CODE: Code only has print() statements and imports — "
-                    "no actual HTTP request or logic. Use a bash block with curl commands."
+                    "no actual HTTP request or logic. Use TOOL_CALL http_get/run_bash/run_python."
                 )
 
             # 패턴 4: 도메인/URL 하드코딩 없이 variable placeholder만 있는 코드
@@ -5999,7 +6459,7 @@ class BingoTerminal:
                     "SIMULATED_VAR: Code assigns a simulated/mock/fake response variable "
                     "(simulated_response / 模拟结果 / 가상결과). "
                     "This means NO real HTTP request was made. "
-                    "DELETE the hardcoded data and use a bash block: curl -sk -m 30 \"URL\" | python3 -c 'import sys; print(sys.stdin.read()[:500])'"
+                    "DELETE the hardcoded data and emit a TOOL_CALL with a real HTTP request."
                 )
 
             # 5-B: # 模拟 / # simulate 주석 직후 결과 dict 할당
@@ -6985,24 +7445,14 @@ class BingoTerminal:
                     f"{_fb_now}"
                 )
             else:
-                # v4.9.5: bash/curl 방식으로 재작성 유도
+                # v6.2.204: 기본 정책은 TOOL_CALL 재작성 유도
                 _hall_feedback = (
                     "[⛔ ALL CODE BLOCKS REJECTED — HALLUCINATION DETECTED]\n"
                     + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
-                    + "\n\nYou MUST rewrite as a bash block with real curl:\n\n"
-                    "```bash\n"
-                    "curl -s -m 10 -k \\\n"
-                    "  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)' \\\n"
-                    "  'https://TARGET/path' \\\n"
-                    "  | /usr/bin/python3 -c \"\n"
-                    "import sys\n"
-                    "d=sys.stdin.buffer.read()\n"
-                    "t=d.decode('utf-8',errors='replace')\n"
-                    "print(f'[STATUS] {len(d)}B')\n"
-                    "print(t[:1500])\n"
-                    "\"\n"
-                    "```\n"
-                    "Use runnable bash+curl. Do not return fake JSON results."
+                    + "\n\nYou MUST rewrite as one TOOL_CALL with real HTTP/tool output:\n\n"
+                    "TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://TARGET/path\",\"timeout\":10}}\n"
+                    "or TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 10 -H 'User-Agent: Mozilla/5.0' 'https://TARGET/path'\"}}\n"
+                    "Do not return fake JSON results."
                 )
             return [_hall_feedback]
 
@@ -7116,6 +7566,64 @@ class BingoTerminal:
             # Python (로컬 처리)
             "python3", "python",
         }
+        _BASH_CONTROL_WORDS = {
+            "for", "while", "until", "if", "then", "elif", "else", "fi",
+            "do", "done", "case", "esac", "select", "function",
+        }
+        _BASH_NON_EXEC_WRAPPERS = {"echo", "printf"}
+
+        def _bash_allowed_command_label(script_text: str) -> str:
+            """Return a display label if a Bash block contains an allowed command.
+
+            v6.2.203: LLM often emits valid scanner loops such as
+            `for idx ...; do curl ...; done` or starts scripts with variable
+            assignments before the first curl/python command.  The old gate
+            checked only line 1, so those blocks were silently skipped.
+            """
+            heredoc_end: str | None = None
+            cmd_pattern = re.compile(
+                r"(?<![A-Za-z0-9_./-])("
+                + "|".join(re.escape(cmd) for cmd in sorted(_BASH_ALLOWED, key=len, reverse=True))
+                + r")(?=$|[\s'\"\\|;&)<])"
+            )
+            heredoc_open = re.compile(r"<<\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
+            for raw_line in script_text.splitlines():
+                stripped = raw_line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if heredoc_end:
+                    if stripped == heredoc_end:
+                        heredoc_end = None
+                    continue
+
+                try:
+                    parts = _shlex_bash.split(stripped.split("|", 1)[0].split("&&", 1)[0])
+                except Exception:
+                    parts = stripped.split()
+                first = parts[0].split("/")[-1] if parts else ""
+
+                if first in _BASH_ALLOWED:
+                    marker = heredoc_open.search(stripped)
+                    if marker:
+                        heredoc_end = marker.group(1)
+                    return stripped[:120]
+                if first in _BASH_NON_EXEC_WRAPPERS:
+                    continue
+
+                assignment_or_control = (
+                    first in _BASH_CONTROL_WORDS
+                    or bool(re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", stripped))
+                    or "$(" in stripped
+                )
+                if assignment_or_control:
+                    match = cmd_pattern.search(stripped)
+                    if match:
+                        marker = heredoc_open.search(stripped)
+                        if marker:
+                            heredoc_end = marker.group(1)
+                        return stripped[:120]
+            return ""
+
         history_text = " ".join(m.content for m in self.history if m.role == "user")
         import shlex as _shlex_bash
         for _bash_i, block in enumerate(bash_blocks):
@@ -7130,17 +7638,9 @@ class BingoTerminal:
             ]
             if not first_real_lines:
                 continue
-            # 파이프 / && 앞 첫 명령어만 추출하여 allowlist 검사
-            _first_cmd_raw = first_real_lines[0].split("|")[0].split("&&")[0].strip()
-            _first_cmd_raw = _first_cmd_raw.replace("\\\n", " ").rstrip("\\").strip()
-            try:
-                _first_parts = _shlex_bash.split(_first_cmd_raw)
-            except Exception:
-                _first_parts = _first_cmd_raw.split()
-            if not _first_parts:
-                continue
-            _bin_name = _first_parts[0].split("/")[-1]
-            if _bin_name not in _BASH_ALLOWED:
+            # 허용 명령 검사: 첫 줄뿐 아니라 for/while/변수할당 내부의 curl/python도 허용
+            _bash_cmd_label = _bash_allowed_command_label(script)
+            if not _bash_cmd_label:
                 continue
             # 중복 실행 방지
             _dedup_key = script[:60]
@@ -7211,7 +7711,7 @@ class BingoTerminal:
                 script = '\n'.join(_cleaned_lines).strip()
                 if not script:
                     continue
-            # Use the same quote-aware repair path as internal bash execution.
+            # Use the same quote-aware repair path as TOOL_CALL run_bash.
             # This converts multiline python -c blocks to heredoc/tempfiles and
             # preserves curl pipeline stdin before bash syntax preflight.
             from ..tools_ext.pentest_tools import _fix_bash_script
@@ -7229,7 +7729,7 @@ class BingoTerminal:
                 _syntax_detail = (_bash_check.stderr or "bash syntax error").strip()[:240]
                 _hallucination_msgs.append(
                     f"BASH_SYNTAX_PREFLIGHT_FAILED: {_syntax_detail}. "
-                    "Use a Python code block for HTML/regex parsing."
+                    "Use TOOL_CALL run_python for HTML/regex parsing."
                 )
                 continue
             # ── multi-line .sh 파일로 저장 ──
@@ -7239,7 +7739,7 @@ class BingoTerminal:
             tasks.append({
                 "type": "bash",
                 "path": str(_sh_path),
-                "cmd": first_real_lines[0][:80],   # 표시용 1줄 요약
+                "cmd": _bash_cmd_label[:80],   # 표시용 1줄 요약
                 "preview": script[:120],
                 "code": script[:16_384],
             })
@@ -7333,7 +7833,7 @@ class BingoTerminal:
                 return [
                     "[INTERNAL_AUTO_REPAIR_REQUIRED]\n"
                     + "\n".join(_hallucination_msgs)
-                    + "\nRegenerate the operation as a valid Python or Bash code block. "
+                    + "\nRegenerate the operation as canonical TOOL_CALL run_python or valid Bash. "
                     "Do not explain the correction and do not repeat the malformed block."
                 ]
             return []
@@ -7341,7 +7841,7 @@ class BingoTerminal:
         # ── 병렬 실행 ────────────────────────────────────────────────
         results_text: list[str] = [""] * len(tasks)
         _lock = threading.Lock()
-        _exec_limits = _supervised_exec_limits()
+        _SCRIPT_TIMEOUT, _IDLE_TIMEOUT, _WALL_CLOCK_MAX = _codeblock_exec_limits()
 
         def _run_task(task: dict, slot: int) -> None:
             try:
@@ -7437,7 +7937,6 @@ class BingoTerminal:
                 with proc_list_lock:
                     proc_registry.append(p)
 
-                job_id = f"job_{slot + 1}"
                 label = f"script_{task.get('idx', slot)}" if task["type"] == "python" else task["cmd"][:80]
                 prefix = "PYTHON EXECUTION" if task["type"] == "python" else "REAL EXECUTION"
                 all_lines: list[str] = []
@@ -7450,20 +7949,9 @@ class BingoTerminal:
                 _last_stripped = None
                 _killed_reason: str | None = None
                 _start_ts = __import__("time").time()
-                _SCRIPT_TIMEOUT = _exec_limits["script_timeout"]
-                _IDLE_REPORT = _exec_limits["idle_report"]
                 _last_output_ts = _start_ts
-                task.update({
-                    "job_id": job_id,
-                    "status": "running",
-                    "pid": p.pid,
-                    "started_at": _start_ts,
-                    "last_output_at": _last_output_ts,
-                    "line_count": 0,
-                    "stdout_tail": [],
-                    "supervisor_timeout": _SCRIPT_TIMEOUT,
-                    "supervisor_idle_report": _IDLE_REPORT,
-                })
+                task["started_ts"] = _start_ts
+                task["last_output_ts"] = _last_output_ts
                 _MAX_CONSEC_DUP = 100   # 동일 줄 100회 연속 → 루프 감지 [v3.2.54: 오탐 방지 강화]
                 _MAX_CONSEC_SCAN = 500  # 스캔 결과 줄은 500회까지 허용 (XSS 반사 등)
                 # 합법적 반복이 발생하는 스캔 결과 prefix — 더 높은 임계값 적용
@@ -7490,43 +7978,55 @@ class BingoTerminal:
 
                 # ── 하드 워치독: stdout 출력 없는 블로킹(pymssql 등)도 강제 종료 ──
                 _watchdog_fired = threading.Event()
-                _watchdog_killed = threading.Event()
 
-                def _hard_watchdog(proc: subprocess.Popen, deadline: float,
-                                   fired: threading.Event,
-                                   killed: threading.Event) -> None:
-                    """stdout 스트림에 관계없이 deadline 이후 프로세스 그룹 전체를 종료.
+                def _kill_process_group(proc: subprocess.Popen) -> None:
+                    import os as _wd_os
+                    import signal as _wd_sig
+                    try:
+                        pgid = _wd_os.getpgid(proc.pid)
+                        _wd_os.killpg(pgid, _wd_sig.SIGKILL)
+                    except Exception:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                    # stdout 파이프 강제 닫기 — 자식 프로세스 잔존 시 readline 해제
+                    try:
+                        proc.stdout.close()
+                    except Exception:
+                        pass
+
+                def _hard_watchdog(proc: subprocess.Popen, fired: threading.Event) -> None:
+                    """stdout 스트림에 관계없이 timeout/idle 이후 프로세스 그룹 전체를 강제 종료.
                     v5.1.6: proc.kill() → os.killpg() — bash 자식 프로세스(curl 등) 고아 방지.
                     proc.kill()은 bash만 종료하고 자식 curl 프로세스가 stdout 파이프를
                     유지해 스레드가 종료되지 않는 버그 수정."""
-                    remaining = deadline - __import__("time").time()
-                    if remaining > 0:
-                        fired.wait(timeout=remaining)
-                    if not fired.is_set():
-                        import os as _wd_os
-                        import signal as _wd_sig
-                        try:
-                            pgid = _wd_os.getpgid(proc.pid)
-                            _wd_os.killpg(pgid, _wd_sig.SIGKILL)
-                        except Exception:
-                            try:
-                                proc.kill()
-                            except Exception:
-                                pass
-                        killed.set()
-                        # stdout 파이프 강제 닫기 — 자식 프로세스 잔존 시 readline 해제
-                        try:
-                            proc.stdout.close()
-                        except Exception:
-                            pass
+                    nonlocal _killed_reason
+                    import time as _wd_time
+                    while not fired.wait(timeout=0.5):
+                        now = _wd_time.time()
+                        reason: str | None = None
+                        if now - _start_ts >= _SCRIPT_TIMEOUT:
+                            reason = f"TIMEOUT_{_SCRIPT_TIMEOUT}s"
+                        elif _IDLE_TIMEOUT > 0 and now - _last_output_ts >= _IDLE_TIMEOUT:
+                            reason = f"IDLE_TIMEOUT_{_IDLE_TIMEOUT}s"
+                        if reason:
+                            _killed_reason = reason
+                            task["killed_reason"] = reason
+                            _kill_process_group(proc)
+                            return
 
-                _watchdog_deadline = _start_ts + _SCRIPT_TIMEOUT
                 _watchdog_th = threading.Thread(
                     target=_hard_watchdog,
-                    args=(p, _watchdog_deadline, _watchdog_fired, _watchdog_killed),
+                    args=(p, _watchdog_fired),
                     daemon=True,
                 )
                 _watchdog_th.start()
+
+                def _mark_output_activity() -> None:
+                    nonlocal _last_output_ts
+                    _last_output_ts = __import__("time").time()
+                    task["last_output_ts"] = _last_output_ts
 
                 def _flush_tb_compressed(n_buf: int) -> None:
                     """v3.2.23: 버퍼링된 Traceback 블록을 1줄로 압축 출력."""
@@ -7705,17 +8205,10 @@ class BingoTerminal:
                 # ──────────────────────────────────────────────
 
                 for raw_line in p.stdout:
+                    _mark_output_activity()
                     line = raw_line.decode("utf-8", "replace").rstrip()
                     if not line:
                         continue
-                    _last_output_ts = __import__("time").time()
-                    _tail = task.setdefault("stdout_tail", [])
-                    if isinstance(_tail, list):
-                        _tail.append(line)
-                        if len(_tail) > 40:
-                            del _tail[:-40]
-                    task["last_output_at"] = _last_output_ts
-                    task["line_count"] = int(task.get("line_count", 0) or 0) + 1
 
                     _stripped_cur = line.strip()
 
@@ -7749,20 +8242,8 @@ class BingoTerminal:
                     # 전체 타임아웃 체크 [v5.1.6: p.terminate()→os.killpg() — 자식 curl 포함 종료]
                     if __import__("time").time() - _start_ts > _SCRIPT_TIMEOUT:
                         _killed_reason = f"TIMEOUT_{_SCRIPT_TIMEOUT}s"
-                        import os as _tmo_os
-                        import signal as _tmo_sig
-                        try:
-                            pgid = _tmo_os.getpgid(p.pid)
-                            _tmo_os.killpg(pgid, _tmo_sig.SIGKILL)
-                        except Exception:
-                            try:
-                                p.terminate()
-                            except Exception:
-                                pass
-                        try:
-                            p.stdout.close()
-                        except Exception:
-                            pass
+                        task["killed_reason"] = _killed_reason
+                        _kill_process_group(p)
                         break
 
                     # 연속 중복 감지 (스캔 결과 라인은 더 높은 임계값 적용)
@@ -7783,7 +8264,10 @@ class BingoTerminal:
                 _watchdog_fired.set()
 
                 # 워치독이 kill 했는지 확인 (stdout 없는 블로킹 타임아웃)
-                if not _killed_reason and _watchdog_killed.is_set():
+                _killed_reason = _killed_reason or task.get("killed_reason")
+                if not _killed_reason and (
+                    __import__("time").time() - _start_ts >= _SCRIPT_TIMEOUT - 1
+                ):
                     _killed_reason = f"TIMEOUT_{_SCRIPT_TIMEOUT}s"
 
                 try:
@@ -7793,56 +8277,58 @@ class BingoTerminal:
                         p.kill()
                     except Exception:
                         pass
-                    if not _killed_reason:
-                        _killed_reason = "WAIT_TIMEOUT"
                 output = "\n".join(all_lines)
                 task["returncode"] = p.returncode
                 task["output_length"] = len(output)
-                _end_ts = __import__("time").time()
-                _elapsed_s = max(0, int(round(_end_ts - _start_ts)))
-                _last_output_age = max(
-                    0,
-                    int(round(_end_ts - float(task.get("last_output_at", _start_ts) or _start_ts))),
-                )
+                _kill_suffix = ""
                 if _killed_reason:
-                    _job_status = "timeout_interrupted"
-                    _job_reason = (
-                        "execution_budget_elapsed"
-                        if str(_killed_reason).startswith("TIMEOUT_")
-                        else "watcher_cleanup"
+                    if _killed_reason.startswith("INFINITE_LOOP:"):
+                        _dup_val = _killed_reason.split(":", 1)[1]
+                        _k_title = t("script_killed_infinite", "[SCRIPT_KILLED: INFINITE_LOOP detected]")
+                        _k_same = t("script_killed_same_val", "Same value '{val}' repeated {n}+ times.").replace("{val}", _dup_val).replace("{n}", str(_MAX_CONSEC_DUP))
+                        _k_fix = t("script_killed_mandatory_fix", "MANDATORY FIX — Your enumeration loop has NO deduplication.")
+                        _k_cursor = t("script_killed_cursor_must", "You MUST rewrite with cursor pagination pattern:")
+                        _kill_suffix = (
+                            f"\n{_k_title}\n"
+                            f"{_k_same}\n"
+                            f"{_k_fix}\n"
+                            f"{_k_cursor}\n"
+                            "  seen = set()\n"
+                            "  last_hex = ''\n"
+                            "  while True:\n"
+                            "      if last_hex:\n"
+                            "          payload = f'... AND name > {last_hex} ...'\n"
+                            "      result = extract(payload)\n"
+                            "      if not result or result in seen: break\n"
+                            "      seen.add(result)\n"
+                            "      last_hex = '0x' + result.encode().hex().upper()\n"
+                            "STOP using FOR loops with TOP 1 and no cursor.\n"
+                        )
+                    else:
+                        if _killed_reason.startswith("IDLE_TIMEOUT_"):
+                            _k_idle = t(
+                                "script_killed_idle_timeout",
+                                "[SCRIPT_KILLED: IDLE_TIMEOUT]\n"
+                                "Script produced no output for {sec}s and was forcibly terminated.\n"
+                                "Add per-request timeouts, reduce loops, or split the script into smaller blocks.",
+                            ).replace("{sec}", str(_IDLE_TIMEOUT))
+                            _kill_suffix = f"\n{_k_idle}\n"
+                        else:
+                            _k_timeout = t("script_killed_timeout", "[SCRIPT_KILLED: TIMEOUT]\nScript exceeded {sec}s timeout and was forcibly terminated.\nSplit the script into smaller blocks or optimize the loop.").replace("{sec}", str(_SCRIPT_TIMEOUT))
+                            _kill_suffix = f"\n{_k_timeout}\n"
+                if output.strip():
+                    # v3.2.23: AI 컨텍스트 전달 시 잔여 Traceback도 압축
+                    _ai_out, _, _ = _filter_traceback(output)
+                    results_text[slot] = (
+                        f"=== {prefix} ({label}) ===\n"
+                        f"{_ai_out.strip()}\n"
+                        f"=== EXIT: {p.returncode} ==={_kill_suffix}"
                     )
-                elif p.returncode == 0:
-                    _job_status = "completed"
-                    _job_reason = "process_exited"
                 else:
-                    _job_status = "completed_with_error"
-                    _job_reason = "process_exited"
-                task.update({
-                    "status": _job_status,
-                    "reason": _job_reason,
-                    "elapsed": _elapsed_s,
-                    "last_output_age": _last_output_age,
-                    "returncode": p.returncode,
-                    "output_length": len(output),
-                })
-                # v3.2.23: AI 컨텍스트 전달 시 잔여 Traceback도 압축
-                _ai_out, _, _ = _filter_traceback(output) if output.strip() else ("", "", "")
-                _section = "partial_output" if _killed_reason else "output"
-                _body = _ai_out.strip() if _ai_out.strip() else f"(no output, exit={p.returncode})"
-                results_text[slot] = (
-                    f"=== JOB_STATE: {job_id} ===\n"
-                    f"legacy={prefix}: {label}\n"
-                    f"type={task['type']} status={_job_status} exit={p.returncode} "
-                    f"elapsed={_elapsed_s}s pid={p.pid}\n"
-                    f"reason={_job_reason} line_count={int(task.get('line_count', 0) or 0)} "
-                    f"output_bytes={len(output)} last_output_age={_last_output_age}s "
-                    f"timeout_budget={_SCRIPT_TIMEOUT}s\n"
-                    "action_hint=partial_output_preserved; "
-                    "model_should_decide_continue_split_pivot_or_report\n"
-                    f"--- {_section} ---\n"
-                    f"{_body}\n"
-                    "=== END JOB_STATE ==="
-                )
+                    results_text[slot] = (
+                        f"=== {prefix} ({label}) ===\n"
+                        f"(no output, exit={p.returncode}){_kill_suffix}"
+                    )
             except Exception as e:
                 _err_msg2 = str(e)
                 # v6.2.20: I/O on closed file → 무시
@@ -7871,10 +8357,10 @@ class BingoTerminal:
         # ★ v3.2.99: HEARTBEAT 30→1 — Ctrl+C 후 최대 1초 내 반응 (기존 최대 30초)
         HEARTBEAT = 1   # 1초마다 stop_flag 체크 (heartbeat 출력은 30초마다)
         elapsed = 0
-        _heartbeat_print_interval = _exec_limits["idle_report"]  # 화면 출력 간격
+        _heartbeat_print_interval = 30  # 화면 출력은 30초에 한 번
         # v5.1.6: wall-clock 안전 타임아웃 — 워치독이 bash만 kill하고 자식 curl이 살아남아
-        # 스레드가 종료되지 않는 경우에 대한 2차 방어선 (_SCRIPT_TIMEOUT + 60s)
-        _WALL_CLOCK_MAX = _exec_limits["wall_clock"]
+        # 스레드가 종료되지 않는 경우에 대한 2차 방어선.
+        # v6.2.201: 24h 기본 대기를 제거하고 BINGO_EXEC_TIMEOUT 기반으로 제한.
         while any(_th.is_alive() for _th in threads):
             for _th in threads:
                 _th.join(timeout=HEARTBEAT)
@@ -7919,48 +8405,13 @@ class BingoTerminal:
                     _th.join(timeout=3)
                 for i, r in enumerate(results_text):
                     if not r:
-                        _task = tasks[i]
-                        _task["status"] = "user_interrupted"
-                        _task["reason"] = "operator_requested_stop"
-                        _line_count = int(_task.get("line_count", 0) or 0)
-                        _tail = "\n".join(_task.get("stdout_tail", []) or [])
-                        _body = _tail if _tail.strip() else "(no output captured before operator interrupt)"
-                        results_text[i] = (
-                            f"=== JOB_STATE: {_task.get('job_id', f'job_{i + 1}')} ===\n"
-                            f"legacy={'PYTHON EXECUTION' if _task.get('type') == 'python' else 'REAL EXECUTION'}: "
-                            f"{_task.get('cmd', '')[:80]}\n"
-                            f"type={_task.get('type', '')} status=user_interrupted exit=unknown "
-                            f"elapsed={elapsed}s pid={_task.get('pid', 'unknown')}\n"
-                            f"reason=operator_requested_stop line_count={_line_count} "
-                            f"output_bytes={len(_tail)} last_output_age=unknown "
-                            f"timeout_budget={_exec_limits['script_timeout']}s\n"
-                            "action_hint=partial_output_preserved; "
-                            "model_should_decide_continue_split_pivot_or_report\n"
-                            "--- partial_output ---\n"
-                            f"{_body}\n"
-                            "=== END JOB_STATE ==="
-                        )
+                        results_text[i] = "=== INTERRUPTED — partial results only ==="
                 break
 
             # 30초마다 진행상황 heartbeat 출력
             if elapsed % _heartbeat_print_interval == 0 and any(_th.is_alive() for _th in threads):
-                _now_hb = __import__("time").time()
-                _job_bits: list[str] = []
-                for _task in tasks:
-                    if _task.get("status") != "running":
-                        continue
-                    _started = float(_task.get("started_at", _now_hb) or _now_hb)
-                    _last_out = float(_task.get("last_output_at", _started) or _started)
-                    _job_bits.append(
-                        f"{_task.get('job_id', '?')}:pid={_task.get('pid', '?')} "
-                        f"elapsed={int(_now_hb - _started)}s "
-                        f"idle={int(_now_hb - _last_out)}s "
-                        f"lines={int(_task.get('line_count', 0) or 0)}"
-                    )
-                _job_state = " | ".join(_job_bits[:4])
                 self.console.print(
-                    f"[{THEME['dim']}]  ⏱ {elapsed}s {_s.get('exec_running', 'running')}... "
-                    f"{_job_state}[/]"
+                    f"[{THEME['dim']}]  ⏱ {elapsed}s {_s.get('exec_running', 'running')}...[/]"
                 )
 
             # v5.1.6: wall-clock 최대 타임아웃 — 워치독 실패 시 2차 강제 종료
@@ -7991,26 +8442,9 @@ class BingoTerminal:
                     _th.join(timeout=2)
                 for i, r in enumerate(results_text):
                     if not r:
-                        _task = tasks[i]
-                        _task["status"] = "wall_clock_interrupted"
-                        _task["reason"] = "supervisor_wall_clock_cleanup"
-                        _line_count = int(_task.get("line_count", 0) or 0)
-                        _tail = "\n".join(_task.get("stdout_tail", []) or [])
-                        _body = _tail if _tail.strip() else "(no output captured before supervisor cleanup)"
                         results_text[i] = (
-                            f"=== JOB_STATE: {_task.get('job_id', f'job_{i + 1}')} ===\n"
-                            f"legacy={'PYTHON EXECUTION' if _task.get('type') == 'python' else 'REAL EXECUTION'}: "
-                            f"{_task.get('cmd', '')[:80]}\n"
-                            f"type={_task.get('type', '')} status=wall_clock_interrupted exit=unknown "
-                            f"elapsed={elapsed}s pid={_task.get('pid', 'unknown')}\n"
-                            f"reason=supervisor_wall_clock_cleanup line_count={_line_count} "
-                            f"output_bytes={len(_tail)} last_output_age=unknown "
-                            f"timeout_budget={_WALL_CLOCK_MAX}s\n"
-                            "action_hint=partial_output_preserved; "
-                            "model_should_decide_continue_split_pivot_or_report\n"
-                            "--- partial_output ---\n"
-                            f"{_body}\n"
-                            "=== END JOB_STATE ==="
+                            f"=== WALL-CLOCK TIMEOUT ({elapsed}s) — "
+                            "script forcibly killed, partial results only ==="
                         )
                 break
 
@@ -8020,15 +8454,8 @@ class BingoTerminal:
             "source": "code_block",
             "scripts": [
                 {
-                    "job_id": task.get("job_id"),
                     "type": task.get("type", ""),
                     "code": task.get("code", ""),
-                    "status": task.get("status"),
-                    "reason": task.get("reason"),
-                    "elapsed": task.get("elapsed"),
-                    "pid": task.get("pid"),
-                    "line_count": task.get("line_count", 0),
-                    "last_output_age": task.get("last_output_age"),
                     "returncode": task.get("returncode"),
                     "output_length": task.get("output_length", 0),
                 }
@@ -8045,7 +8472,8 @@ class BingoTerminal:
         _loaded_skills: set | None = None,
     ) -> None:
         """
-        AI가 ```python / ```bash 블록을 제시하면 실행하고 결과를 피드백.
+        AI가 TOOL_CALL을 제시하면 실행하고 결과를 피드백.
+        일반 markdown 코드블록 실행은 BINGO_ALLOW_CODEBLOCK_EXEC=1에서만 legacy opt-in.
         재귀 호출 없이 while 루프로 동작 — Python 콜 스택 쌓이지 않음.
         SKILL_LOAD 체인은 depth로 제한(별도 로직).
         """
@@ -8131,11 +8559,11 @@ class BingoTerminal:
         # ── 메인 에이전트 루프 (while — 재귀 없음) ────────────────────
         current_response = response
         _no_code_retry = 0  # AI가 코드 없이 텍스트만 보낸 횟수
-        _raw_runtime_mode = self._raw_runtime_mode()
 
         while True:
             # 코드 블록 없으면 → AI에게 코드 작성 재촉 (최대 3회)
-            if "```" not in current_response:
+            # v5.2.2: TOOL_CALL이 있으면 "코드 없음" 처리 우회 — _run_code_blocks에서 처리
+            if "```" not in current_response and "TOOL_CALL:" not in current_response:
                 # ── v3.2.86: Web3/DApp 감사 JSON은 코드 블록 없어도 정상 완료 ──
                 _web3_data = self._is_web3_audit_json(current_response.strip())
                 if _web3_data is not None:
@@ -8154,18 +8582,27 @@ class BingoTerminal:
 
                 if _no_code_retry >= 3:
                     # 3회 재촉해도 코드 없으면 진짜 완료로 판단
-                    if _raw_runtime_mode:
-                        self._suggest_next_steps()
-                    else:
-                        self._auto_generate_report()
+                    self._auto_generate_report()
                     break
                 _no_code_retry += 1
                 _lang = getattr(self.config, "lang", "en")
                 _nudge = {
-                    "ko": "분석을 계속하려면 반드시 ```bash 코드 블록(curl 사용)을 포함해야 합니다. 다음 공격 단계의 bash+curl 코드를 즉시 작성하세요.",
-                    "zh": "要继续分析，必须包含 ```bash 代码块（使用curl）。请立即编写下一步攻击的bash+curl代码。",
-                    "en": "To continue, you MUST include a ```bash code block with curl. Write the next attack step as bash+curl NOW.",
-                }.get(_lang, "Write the next ```bash curl block NOW to continue.")
+                    "ko": (
+                        "분석을 계속하려면 반드시 TOOL_CALL 형식으로 실행 요청을 출력해야 합니다. "
+                        "예: TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://TARGET/\"}} "
+                        "또는 TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}"
+                    ),
+                    "zh": (
+                        "要继续分析，必须输出 TOOL_CALL 执行请求。"
+                        "例如: TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://TARGET/\"}} "
+                        "或 TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}"
+                    ),
+                    "en": (
+                        "To continue, you MUST emit a TOOL_CALL execution request. "
+                        "Example: TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://TARGET/\"}} "
+                        "or TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}"
+                    ),
+                }.get(_lang, "Emit the next TOOL_CALL now to continue.")
                 self.history.append(Message(role="user", content=f"[CONTINUE REQUIRED]\n{_nudge}"))
                 from ..models.registry import ModelRegistry as _MR
                 _mc = self.config.get_active_model_config()
@@ -8183,14 +8620,23 @@ class BingoTerminal:
             # must execute another vulnerability vector before retrying SQLi.
             _sqli_state = getattr(self, "_adaptive_attack_state", {}).get("sqli", {})
             _sqli_cooldown = int(_sqli_state.get("cooldown", 0) or 0)
-            if _sqli_cooldown > 0 and not _raw_runtime_mode:
+            if _sqli_cooldown > 0:
                 import re as _pivot_guard_re
+                _tool_names = _pivot_guard_re.findall(
+                    r'TOOL_CALL\s*:\s*\{[^{}]*?"name"\s*:\s*"([^"]+)"',
+                    current_response,
+                    _pivot_guard_re.I | _pivot_guard_re.S,
+                )
                 _code_only = "\n".join(_pivot_guard_re.findall(
                     r'```(?:bash|sh|python)\s*(.*?)```',
                     current_response,
                     _pivot_guard_re.I | _pivot_guard_re.S,
                 ))
-                _repeats_sqli = bool(_pivot_guard_re.search(
+                _repeats_sqli = any(
+                    name.lower().startswith(("sqli", "sqlmap", "bool_oracle"))
+                    or name.lower() in {"run_sqlmap", "run_ghauri"}
+                    for name in _tool_names
+                ) or bool(_pivot_guard_re.search(
                     r'\bsqlmap\b|\bghauri\b|boolean.?oracle|extractvalue\s*\('
                     r'|updatexml\s*\(|union\s+(?:all\s+)?select|sleep\s*\(',
                     _code_only,
@@ -8219,11 +8665,47 @@ class BingoTerminal:
             # 코드 실행 (코드 블록이 있으면 반드시 실행)
             results_text = self._run_code_blocks(current_response, _loaded_skills)
 
-            # 실행 결과 세션 로그 기록
+            # v6.2.172: TOOL_RESULT 세션 로그 기록 (이전엔 TOOL_RESULT=0 버그)
             if results_text:
                 for _tr_log in results_text:
                     if _tr_log and _tr_log.strip():
                         self._append_to_session_log("tool_result", _tr_log[:4000])
+
+            if results_text and any("[CODEBLOCK_EXEC_DISABLED]" in _r for _r in results_text):
+                _lang_cb = getattr(self.config, "lang", "en")
+                _toolcall_only_msg = {
+                    "ko": (
+                        "[CODEBLOCK_EXEC_DISABLED]\n"
+                        "일반 마크다운 코드블록 자동 실행은 공개 빌드 기본값에서 비활성화되어 있습니다.\n"
+                        "같은 작업을 반드시 TOOL_CALL 하나로 다시 출력하세요.\n"
+                        "예: TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}\n"
+                        "또는 TOOL_CALL:{\"name\":\"run_python\",\"args\":{\"code\":\"import requests\\n...\"}}"
+                    ),
+                    "zh": (
+                        "[CODEBLOCK_EXEC_DISABLED]\n"
+                        "公开构建默认禁用普通 Markdown 代码块自动执行。\n"
+                        "请把同一操作改写为单个 TOOL_CALL。\n"
+                        "示例: TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}\n"
+                        "或 TOOL_CALL:{\"name\":\"run_python\",\"args\":{\"code\":\"import requests\\n...\"}}"
+                    ),
+                    "en": (
+                        "[CODEBLOCK_EXEC_DISABLED]\n"
+                        "Raw markdown code block auto-execution is disabled by default in public builds.\n"
+                        "Regenerate the same operation as exactly one TOOL_CALL.\n"
+                        "Example: TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 15 'https://TARGET/'\"}}\n"
+                        "or TOOL_CALL:{\"name\":\"run_python\",\"args\":{\"code\":\"import requests\\n...\"}}"
+                    ),
+                }.get(_lang_cb, "Regenerate the operation as exactly one TOOL_CALL.")
+                self.history.append(Message(role="user", content=_toolcall_only_msg))
+                from ..models.registry import ModelRegistry as _MR_cb
+                _mc_cb = self.config.get_active_model_config()
+                if not _mc_cb:
+                    break
+                _m_cb = _MR_cb.build(_mc_cb)
+                current_response = self._stream_response(_m_cb.chat_stream(self._build_messages("")))
+                if current_response:
+                    self.history.append(Message(role="assistant", content=current_response))
+                continue
 
             # ── v4.9.0: 텍스트 레벨 환각 스캐너 ────────────────────────────────
             # Gap 1 수정: 코드 블록 밖 텍스트에서 미실행 결과 서술 탐지
@@ -8234,7 +8716,7 @@ class BingoTerminal:
                 import re as _thal_re
                 # 코드 블록 제거해 순수 텍스트만 추출
                 _text_only = _thal_re.sub(r'```[\s\S]*?```', '', current_response).strip()
-                if _text_only and not results_text and not _raw_runtime_mode:
+                if _text_only and not results_text:
                     _TEXT_HAL_RE = _thal_re.compile(
                         r"(?:"
                         # 중국어
@@ -8261,25 +8743,25 @@ class BingoTerminal:
                             "ko": (
                                 f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"코드 실행 없이 텍스트로 결과를 서술했습니다: '{_th_snippet}'\n"
-                                f"이것은 실제 실행 결과가 아닙니다. 반드시 ```bash 블록으로 "
-                                f"curl 명령을 작성하고 실제 HTTP 응답을 print() 하세요."
+                                f"이것은 실제 실행 결과가 아닙니다. 반드시 TOOL_CALL을 출력하고 "
+                                f"TOOL_RESULT의 실제 HTTP/도구 응답만 근거로 보고하세요."
                             ),
                             "zh": (
                                 f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"在未执行代码的情况下，通过文字描述了结果: '{_th_snippet}'\n"
-                                f"这不是真实的执行结果。必须用 ```bash 代码块运行curl，"
-                                f"只报告实际HTTP响应输出。"
+                                f"这不是真实的执行结果。必须输出 TOOL_CALL，"
+                                f"只基于 TOOL_RESULT 的真实 HTTP/工具输出报告。"
                             ),
                             "en": (
                                 f"[TEXT_HALLUCINATION_DETECTED v4.9.6]\n"
                                 f"You described results in text without executing code: '{_th_snippet}'\n"
-                                f"This is not real execution output. You MUST write a ```bash block "
-                                f"with real curl commands and only report actual HTTP response output."
+                                f"This is not real execution output. You MUST emit a TOOL_CALL "
+                                f"and report only actual HTTP/tool output from TOOL_RESULT."
                             ),
                         }.get(_lang_th, (
                             f"[TEXT_HALLUCINATION_DETECTED v4.9.6] "
                             f"Claimed result without code: '{_th_snippet}' — "
-                            f"Write a ```bash block with real curl calls."
+                            f"emit one TOOL_CALL with real execution."
                         ))
                         self.console.print(f"[bold red]⛔ {_th_feedback}[/bold red]")
                         self.history.append(Message(role="user", content=_th_feedback))
@@ -8299,7 +8781,7 @@ class BingoTerminal:
             # ── v3.5.17: VPN 가상 IP(198.18.x.x) 오염 감지 → 실제 IP 자동 조회 ──
             # macOS VPN: DNS → 198.18.0.0/15 가상 IP 반환 → 포트스캔 결과 전부 가짜
             # ★ VPN을 끄라는 게 아님 — VPN 유지한 채 실제 IP를 다른 방법으로 찾아서 계속 진행
-            if _combined_out and results_text and not _raw_runtime_mode:
+            if _combined_out and results_text:
                 try:
                     from ..core.phantom_guard import check_vpn_virtual_ip_contamination as _vpn_check
                     _pg_lang_v = getattr(self.config, "lang", "zh")
@@ -8390,10 +8872,10 @@ class BingoTerminal:
                     pass  # VPN 감지 오류는 실행 차단하지 않음
 
             # v6.2.10: 0day Hunter 제거 — 자동 탐지가 오탐 다수 발생 (git_exposure on HTTP 400 등)
-            # CVE/버전 기반 exploit은 AI가 직접 판단해 코드블록으로 실행하도록 위임
+            # CVE/버전 기반 exploit은 AI가 직접 판단해 tool_call로 실행하도록 위임
 
             # ── v3.5.22: Recon 모듈 자동 탐지 (세션당 1회만 출력) ───────────
-            if _combined_out and not _raw_runtime_mode:
+            if _combined_out:
                 try:
                     if not hasattr(self, '_recon_hints_shown'):
                         self._recon_hints_shown: set = set()
@@ -8453,11 +8935,7 @@ class BingoTerminal:
                             break
                     except Exception:
                         pass
-            if (
-                _sqli_size_triggered
-                and not self._bruteforce_abort_triggered
-                and not _raw_runtime_mode
-            ):
+            if _sqli_size_triggered and not self._bruteforce_abort_triggered:
                 _lang = getattr(self.config, "lang", "en")
                 _size_warn = self.s.get("sqli_size_diff_detected", "")
                 if _size_warn:
@@ -8549,11 +9027,8 @@ class BingoTerminal:
                 if _szr.search(r'(?:login|로그인).*?(?:success|성공|ok\b|200)', _combined_out, _szr.I):
                     self._bruteforce_fail_count = 0
             _BF_ABORT_THRESHOLD = 5  # 5회 누적 실패 → 자동 포기
-            if (
-                self._bruteforce_fail_count >= _BF_ABORT_THRESHOLD
-                and not self._bruteforce_abort_triggered
-                and not _raw_runtime_mode
-            ):
+            if (self._bruteforce_fail_count >= _BF_ABORT_THRESHOLD
+                    and not self._bruteforce_abort_triggered):
                 self._bruteforce_abort_triggered = True
                 _lang = getattr(self.config, "lang", "en")
                 _bf_abort_warn = self.s.get("bruteforce_abort_warn", "")
@@ -8623,7 +9098,7 @@ class BingoTerminal:
                 _sqe_re.search(p, _sqe_combined, _sqe_re.IGNORECASE)
                 for p in _SQL_ECHO_PATTERNS
             )
-            if _sqe_detected and not _raw_runtime_mode:
+            if _sqe_detected:
                 _lang = getattr(self.config, "lang", "en")
                 _sqe_warn = self.s.get("sqli_payload_echo_warn", "")
                 if _sqe_warn:
@@ -8729,7 +9204,7 @@ class BingoTerminal:
                 _sim_re.search(p, _sim_out_combined, _sim_re.IGNORECASE)
                 for p in _SIM_OUTPUT_KWS
             )
-            if _sim_output_detected and not _raw_runtime_mode:
+            if _sim_output_detected:
                 _lang = getattr(self.config, "lang", "en")
                 _sim_warn_ui = self.s.get("simulated_output_intercepted", "⛔ 모의 침투 출력 감지 — 실제 HTTP 실행 강제")
                 self.console.print(f"\n[bold red]{_sim_warn_ui}[/bold red]")
@@ -8743,10 +9218,8 @@ class BingoTerminal:
                         "  - '# 실제 네트워크 없어서 가상 결과' 주석 사용\n"
                         "  - print('[模拟] ...') 형태의 가짜 결과 출력\n\n"
                         "■ 지금 즉시:\n"
-                        "  ```bash\n"
-                        "  curl -sk -m 30 -D - 'https://TARGET/경로' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
-                        "  ```\n"
-                        "  위 bash+curl 명령으로 실제 서버 응답을 받아 분석하세요.\n"
+                        "  TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/경로'\"}}\n"
+                        "  위 TOOL_CALL 결과의 실제 서버 응답만 분석하세요.\n"
                         "  bingo는 완전한 인터넷 연결 환경에서 실행됩니다."
                     ),
                     "zh": (
@@ -8757,10 +9230,8 @@ class BingoTerminal:
                         "  - 使用'# 模拟结果'注释\n"
                         "  - print('[模拟]...')输出虚假结果\n\n"
                         "■ 立即执行:\n"
-                        "  ```bash\n"
-                        "  curl -sk -m 30 -D - 'https://TARGET/路径' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
-                        "  ```\n"
-                        "  bingo在真实网络环境中运行，必须使用bash+curl发送真实HTTP请求!"
+                        "  TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/路径'\"}}\n"
+                        "  bingo在真实网络环境中运行，必须使用 TOOL_CALL 发送真实HTTP请求!"
                     ),
                     "en": (
                         "[⛔ SIMULATED OUTPUT INTERCEPTED — BINGO RUNTIME BLOCKED]\n\n"
@@ -8771,12 +9242,10 @@ class BingoTerminal:
                         "  - Using '# simulate/模拟' comment blocks\n"
                         "  - print('[SIMULATED]...') fake output\n\n"
                         "■ DO THIS NOW:\n"
-                        "  ```bash\n"
-                        "  curl -sk -m 30 -D - 'https://TARGET/real-path' | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
-                        "  ```\n"
-                        "  bingo runs in a REAL network environment. Use REAL bash+curl commands!"
+                        "  TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/real-path'\"}}\n"
+                        "  bingo runs in a REAL network environment. Use TOOL_CALL for real HTTP requests!"
                     ),
-                }.get(_lang, "[⛔ SIMULATED OUTPUT] Remove hardcoded fake results. Use bash+curl for real HTTP.")
+                }.get(_lang, "[⛔ SIMULATED OUTPUT] Remove hardcoded fake results. Use TOOL_CALL for real HTTP.")
                 self.history.append(Message(role="user", content=f"[SIMULATED_OUTPUT_BLOCKED]\n{_sim_force_msg}"))
                 from ..models.registry import ModelRegistry as _MR_sim
                 _mc_sim = self.config.get_active_model_config()
@@ -8799,7 +9268,7 @@ class BingoTerminal:
                 combined = " ".join(outputs).lower()
                 return any(ind.lower() in combined for ind in _real_http_indicators)
 
-            if results_text and not _raw_runtime_mode:
+            if results_text:
                 # 환각 차단 메시지 포함됐을 때 (JSON 코드블록)
                 _is_all_hallucination_blocks = all(
                     "HALLUCINATION DETECTED" in r or "ALL CODE BLOCKS REJECTED" in r
@@ -8815,37 +9284,25 @@ class BingoTerminal:
                         "ko": (
                             "[⛔ 환각 코드 감지 — 즉시 재작성 필요]\n"
                             "작성한 코드에서 실제 HTTP 응답이 없습니다.\n"
-                            "반드시 아래 형식으로 bash 블록을 다시 작성하세요:\n\n"
-                            "```bash\n"
-                            "curl -sk -m 30 -D - 'https://TARGET/실제경로' \\\n"
-                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
-                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(\"[STATUS] 200\"); print(r[:500])'\n"
-                            "```\n"
+                            "반드시 아래 형식으로 TOOL_CALL을 다시 작성하세요:\n\n"
+                            "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/실제경로' -H 'User-Agent: Mozilla/5.0'\"}}\n"
                             "JSON 딕셔너리({...})나 가짜 출력은 절대 사용 금지."
                         ),
                         "zh": (
                             "[⛔ 检测到幻觉代码 — 必须立即重写]\n"
                             "您的代码没有产生真实的HTTP响应。\n"
-                            "必须按以下bash+curl格式重写所有代码块:\n\n"
-                            "```bash\n"
-                            "curl -sk -m 30 -D - 'https://TARGET/真实路径' \\\n"
-                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
-                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
-                            "```\n"
+                            "必须按以下 TOOL_CALL 格式重写:\n\n"
+                            "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/真实路径' -H 'User-Agent: Mozilla/5.0'\"}}\n"
                             "禁止使用JSON字典({...})或伪造输出。"
                         ),
                         "en": (
                             "[⛔ HALLUCINATION CODE DETECTED — REWRITE REQUIRED]\n"
                             "Your code produced NO real HTTP responses.\n"
-                            "You MUST rewrite ALL code blocks as bash+curl like this:\n\n"
-                            "```bash\n"
-                            "curl -sk -m 30 -D - 'https://TARGET/real-path' \\\n"
-                            "  -H 'User-Agent: Mozilla/5.0' \\\n"
-                            "  | python3 -c 'import sys; r=sys.stdin.read(); print(r[:500])'\n"
-                            "```\n"
+                            "You MUST rewrite as a TOOL_CALL like this:\n\n"
+                            "TOOL_CALL:{\"name\":\"run_bash\",\"args\":{\"script\":\"curl -sk -m 30 -D - 'https://TARGET/real-path' -H 'User-Agent: Mozilla/5.0'\"}}\n"
                             "FORBIDDEN: JSON dicts ({...}), fake output, simulation code."
                         ),
-                    }.get(_lang, "Rewrite with real bash+curl commands NOW.")
+                    }.get(_lang, "Rewrite with a real TOOL_CALL NOW.")
                     self.history.append(Message(role="user", content=_force_rewrite))
                     from ..models.registry import ModelRegistry as _MR_hall
                     _mc_hall = self.config.get_active_model_config()
@@ -8858,40 +9315,37 @@ class BingoTerminal:
                     continue
 
             if not results_text:
-                if _raw_runtime_mode:
-                    results_text = ["[NO_OUTPUT] Code block executed but produced no stdout/stderr."]
-                else:
-                    # 코드 블록은 있었지만 실행 결과 없음 → AI에게 알리고 계속
-                    _lang = getattr(self.config, "lang", "en")
-                    _no_output_msg = {
-                        "ko": (
-                            "[⛔ 스크립트 출력 없음 — 환각 코드 의심]\n"
-                            "스크립트가 실행됐지만 출력이 없습니다. "
-                            "bash 블록에 실제 curl HTTP 요청이 없거나 echo만 있습니다.\n"
-                            "반드시 curl -sk -m 30 'URL' 을 호출하고 파이프로 출력을 확인하세요."
-                        ),
-                        "zh": (
-                            "[⛔ 脚本无输出 — 疑似幻觉代码]\n"
-                            "脚本执行但没有输出。bash块中缺少真实curl HTTP请求或只包含echo。\n"
-                            "必须使用curl -sk -m 30 'URL' 并通过管道查看输出。"
-                        ),
-                        "en": (
-                            "[⛔ SCRIPT NO OUTPUT — HALLUCINATION SUSPECTED]\n"
-                            "Script ran but produced ZERO output. "
-                            "Your bash block has no real curl HTTP calls or contains only echo.\n"
-                            "Add: curl -sk -m 30 'URL' | python3 -c 'import sys; print(sys.stdin.read()[:300])'"
-                        ),
-                    }.get(_lang, "Script produced no output. Add curl -sk -m 30 'URL' to the bash block.")
-                    self.history.append(Message(role="user", content=f"[EXECUTION RESULT]\n{_no_output_msg}"))
-                    model_cfg2 = self.config.get_active_model_config()
-                    if not model_cfg2:
-                        break
-                    from ..models.registry import ModelRegistry as _MR2
-                    _m2 = _MR2.build(model_cfg2)
-                    current_response = self._stream_response(_m2.chat_stream(self._build_messages("")))
-                    if current_response:
-                        self.history.append(Message(role="assistant", content=current_response))
-                    continue
+                # 코드 블록은 있었지만 실행 결과 없음 → AI에게 알리고 계속
+                _lang = getattr(self.config, "lang", "en")
+                _no_output_msg = {
+                    "ko": (
+                        "[⛔ 스크립트 출력 없음 — 환각 코드 의심]\n"
+                        "스크립트가 실행됐지만 출력이 없습니다. "
+                        "실제 HTTP 요청이 없거나 echo만 있습니다.\n"
+                        "반드시 TOOL_CALL run_bash/run_python/http_get로 실제 응답을 확인하세요."
+                    ),
+                    "zh": (
+                        "[⛔ 脚本无输出 — 疑似幻觉代码]\n"
+                        "脚本执行但没有输出，缺少真实HTTP请求或只包含echo。\n"
+                        "必须使用 TOOL_CALL run_bash/run_python/http_get 查看真实响应。"
+                    ),
+                    "en": (
+                        "[⛔ SCRIPT NO OUTPUT — HALLUCINATION SUSPECTED]\n"
+                        "Script ran but produced ZERO output. "
+                        "It has no real HTTP calls or contains only echo.\n"
+                        "Use TOOL_CALL run_bash/run_python/http_get to fetch real output."
+                    ),
+                }.get(_lang, "Script produced no output. Use TOOL_CALL to fetch real output.")
+                self.history.append(Message(role="user", content=f"[EXECUTION RESULT]\n{_no_output_msg}"))
+                model_cfg2 = self.config.get_active_model_config()
+                if not model_cfg2:
+                    break
+                from ..models.registry import ModelRegistry as _MR2
+                _m2 = _MR2.build(model_cfg2)
+                current_response = self._stream_response(_m2.chat_stream(self._build_messages("")))
+                if current_response:
+                    self.history.append(Message(role="assistant", content=current_response))
+                continue
 
             # 롤백 스냅샷
             self._rollback.save(
@@ -8908,20 +9362,16 @@ class BingoTerminal:
             # ── v4.8.0: 실행 결과 후처리 — 빈값 [VERIFIED] + SLEEP 판정 오류 감지 ──
             raw_results = self._postcheck_exec_output(raw_results)
 
-            if _raw_runtime_mode:
-                verification_context = ""
-                adaptive_pivot_context = ""
-            else:
-                # ── v3.2.96: 실시간 발견 자동 저장 + XSS Playwright 자동 검증 ──
-                self._auto_analyze_findings(
-                    raw_results,
-                    current_response[:16_384],
-                    execution_context=getattr(self, "_last_execution_context", None),
-                )
-                verification_context = self._verification_backlog_context()
-                adaptive_pivot_context = self._adaptive_attack_pivot_context(
-                    current_response, raw_results
-                )
+            # ── v3.2.96: 실시간 발견 자동 저장 + XSS Playwright 자동 검증 ──
+            self._auto_analyze_findings(
+                raw_results,
+                current_response[:16_384],
+                execution_context=getattr(self, "_last_execution_context", None),
+            )
+            verification_context = self._verification_backlog_context()
+            adaptive_pivot_context = self._adaptive_attack_pivot_context(
+                current_response, raw_results
+            )
             if len(raw_results) > 3000:
                 trimmed = (
                     raw_results[:1500]
@@ -8937,14 +9387,11 @@ class BingoTerminal:
                 system_msgs = [m for m in self.history if m.role == "system"]
                 self.history = system_msgs + non_system[-16:]
 
-            if _raw_runtime_mode:
-                state_summary = ""
-            else:
-                self._parse_agent_state(raw_results)
-                state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
-                state_summary += verification_context + adaptive_pivot_context
+            self._parse_agent_state(raw_results)
+            state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
+            state_summary += verification_context + adaptive_pivot_context
             # v3.2.74: 프록시 상태를 state_summary에 포함
-            if self._proxy.enabled and not _raw_runtime_mode:
+            if self._proxy.enabled:
                 _pe = self._proxy.current()
                 if _pe:
                     state_summary += (
@@ -8955,7 +9402,7 @@ class BingoTerminal:
                         f"r = sess.get(url, proxies=PROXIES, verify=False, timeout=15)\n"
                     )
             # ── v6.2.159 Task Graph + SubAgent 상태를 state_summary에 포함 ──
-            if getattr(self, "_intel_ready", False) and not _raw_runtime_mode:
+            if getattr(self, "_intel_ready", False):
                 try:
                     _tg_next = self._task_graph.next_hint()
                     if _tg_next:
@@ -8996,7 +9443,7 @@ class BingoTerminal:
                     )
                     self.console.print(f"[{THEME['success']}]{_progress_msg}[/]")
                 self._dl_no_progress = 0
-            if not _raw_runtime_mode and (_dl_doom_detected or self._dl_no_progress >= 8):
+            if _dl_doom_detected or self._dl_no_progress >= 8:
                 from ..i18n import t as _t_dl, get_lang as _gl_dl
                 _dl_escape_map = {
                     "ko": (
@@ -9035,7 +9482,7 @@ class BingoTerminal:
             # ─────────────────────────────────────────────────────────────────
 
             # ── v6.2.159 Self-Reflection 주기적 자기평가 (Type A) ─────────────
-            if getattr(self, "_intel_ready", False) and not _raw_runtime_mode:
+            if getattr(self, "_intel_ready", False):
                 try:
                     if self._self_reflector.should_reflect(self._exec_loop_count):
                         _hist_texts = [
@@ -9060,7 +9507,7 @@ class BingoTerminal:
                     pass
 
             # ── v6.2.159 SubAgent 완료 결과 수집 → 히스토리 주입 ─────────────
-            if getattr(self, "_intel_ready", False) and not _raw_runtime_mode:
+            if getattr(self, "_intel_ready", False):
                 try:
                     _done_agents = self._subagent_pool.collect_done()
                     if _done_agents:
@@ -9085,17 +9532,11 @@ class BingoTerminal:
             # 동일 세션에서 60루프 이상 돌면 AI가 루프에 갇힌 것으로 판단 → 강제 중단
             _MAX_LOOP = 60
             if self._exec_loop_count >= _MAX_LOOP:
-                if _raw_runtime_mode:
-                    _loop_stop_msg = "\n" + self._raw_loop_limit_message(
-                        self._exec_loop_count,
-                        getattr(self.config, "lang", "en"),
-                    )
-                else:
-                    from ..i18n import t as _t_loop, set_lang as _sl_loop, get_lang as _gl_loop
-                    _loop_stop_msg = "\n" + _t_loop(
-                        "loop_limit_stop",
-                        f"⛔ [LOOP_LIMIT_STOP] Loop #{self._exec_loop_count} — auto-stopping.",
-                    ).format(count=self._exec_loop_count)
+                from ..i18n import t as _t_loop, set_lang as _sl_loop, get_lang as _gl_loop
+                _loop_stop_msg = "\n" + _t_loop(
+                    "loop_limit_stop",
+                    f"⛔ [LOOP_LIMIT_STOP] Loop #{self._exec_loop_count} — auto-stopping.",
+                ).format(count=self._exec_loop_count)
                 self.console.print(_loop_stop_msg)
                 # v6.2.137: hint 프롬프트 없이 완전 종료 — _loop_limit_hit 플래그로 구분
                 self._exec_loop_count = 0
@@ -9108,7 +9549,7 @@ class BingoTerminal:
             # ── v3.2.71: target memory 자동 업데이트 ──────────────────────────
             # 실행 결과에서 SQLi 포인트, 유저, 엔드포인트를 자동 추출해 저장.
             # 다음 세션 시작 시 _offer_resume 에서 이 데이터를 AI에 주입.
-            if self._tm_available and not _raw_runtime_mode:
+            if self._tm_available:
                 try:
                     import re as _tm_re
                     _tgt_key = self._agent_state.get("target", "")
@@ -9150,7 +9591,7 @@ class BingoTerminal:
             #   - "blocked", "banned", "access denied" 도 맥락 없이 HTML 본문에서
             #     오탐 가능 → HTTP 응답 라인 또는 에러 메시지 패턴에서만 감지
             _ip_block_hint = ""
-            _raw_lower = "" if _raw_runtime_mode else raw_results.lower()
+            _raw_lower = raw_results.lower()
             import re as _bre
 
             # ── v4.6.0: 오탐 제로 IP 차단 감지 ────────────────────────────────
@@ -9359,8 +9800,6 @@ class BingoTerminal:
                     _detected_blocks.append("IP block/ban detected")
             if _has_unavail:
                 _detected_blocks.append("Temporarily unavailable")
-            if _raw_runtime_mode:
-                _detected_blocks = []
 
             # ── v6.2.16: WAF 보안도메인 302 → 페이로드 차단 (IP 차단 아님) ───────────────
             # igear, securecp, cloudbric 등으로 리다이렉트 = WAF가 그 페이로드를 차단한 것.
@@ -9759,7 +10198,7 @@ class BingoTerminal:
                         _wait_secs = 3  # 프록시 교체 시 짧은 대기
                         _proxy_hint_lines = [
                             f"[PROXY_ROTATED: now using {_new_entry}]",
-                            f"Add to your bash block:",
+                            f"Add to your TOOL_CALL run_bash script:",
                             f"  PROXY=\"{_new_entry.url}\"",
                             f"  curl --proxy \"${{PROXY}}\" -sk -m 15 \"${{URL}}\"",
                         ]
@@ -9816,7 +10255,7 @@ class BingoTerminal:
                         _proxy_hint_lines = [
                             "[SILENT_DROP_HEADER_BYPASS_APPLIED: no proxy available]",
                             "CAUSE: WAF is silently dropping your request (timeout, no response body).",
-                            "ACTION: Update your bash block curl command with ALL of the following headers:",
+                            "ACTION: Update your TOOL_CALL run_bash curl script with ALL of the following headers:",
                             f"  curl -sk -m 15 \\",
                             f"    -H 'User-Agent: {_chosen_ua}' \\",
                             f"    -H 'X-Forwarded-For: 127.0.0.1' \\",
@@ -9873,17 +10312,17 @@ class BingoTerminal:
                     "Proceed to the next unknown step.\n"
                 )
             )
-            injection = self._build_execution_feedback(
-                trimmed,
-                state_summary=state_summary,
-                ip_block_hint=_ip_block_hint,
-                waf_redirect_note=_waf_redirect_note,
-                next_action_contract=_next_action_contract,
-                attack_assist_context=(
-                    self._build_bingo_attack_assist_context(current_response, raw_results)
-                    if _raw_runtime_mode else ""
-                ),
-                raw_mode=_raw_runtime_mode,
+            injection = (
+                "=== BINGO REAL EXECUTION RESULTS ===\n"
+                + trimmed
+                + _ip_block_hint
+                + _waf_redirect_note
+                + "\n=== END REAL RESULTS ===\n\n"
+                + state_summary
+                + _next_action_contract
+                + "- If WAF blocks: use obfuscation variants\n"
+                "- Output TASK_COMPLETE when all credentials are extracted\n"
+                "- NEVER generate simulated output"
             )
             self.history.append(Message(role="user", content=injection))
 
@@ -9900,20 +10339,12 @@ class BingoTerminal:
                 if getattr(self, "_loop_limit_hit", False):
                     self._loop_limit_hit = False
                     self._exec_loop_count = 0
-                    if _raw_runtime_mode:
-                        _report_msg = self._raw_loop_limit_resume_message(
-                            getattr(self.config, "lang", "en")
-                        )
-                    else:
-                        _report_msg = self.s.get(
-                            "loop_limit_report_start",
-                            "Loop stopped — generating the final report now",
-                        )
+                    _report_msg = self.s.get(
+                        "loop_limit_report_start",
+                        "Loop stopped — generating the final report now",
+                    )
                     self.console.print(f"\n[{THEME['warn']}]{_report_msg}[/]")
-                    if _raw_runtime_mode:
-                        self._suggest_next_steps()
-                    else:
-                        self._auto_generate_report()
+                    self._auto_generate_report()
                     break
                 _hint = self._prompt_mid_task_hint()
                 if _hint:
@@ -9974,27 +10405,20 @@ class BingoTerminal:
             self._append_to_session_log("assistant", followup_response)
             # v6.2.147: 루프 내부에서는 수집만 (스레드 시작 안 함 → 인터리빙 방지)
             # 크랙은 _execute_ai_commands 완료 후 send_message()의 _notify_hashes_found()에서 실행
-            if not _raw_runtime_mode:
-                self._collect_crack_hashes(followup_response)
+            self._collect_crack_hashes(followup_response)
 
             # ── v4.5.0: 실행 후 LLM 분석에서 CONFIRMED/FALSE POSITIVE 감지 ────────
             # 여기서 나타나는 태그는 실제 코드 실행 결과를 보고 LLM이 판단한 것 → 신뢰
             import re as _re_fp_post
             _followup_lang = getattr(self.config, "lang", "en")
-            if (
-                _re_fp_post.search(r'\[CONFIRMED\s*✅?\]', followup_response)
-                and not _raw_runtime_mode
-            ):
+            if _re_fp_post.search(r'\[CONFIRMED\s*✅?\]', followup_response):
                 _conf_post = {
                     "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
                     "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
                     "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
                 }.get(_followup_lang, "✅ Confirmed.")
                 self.console.print(f"\n[bold green]{_conf_post}[/bold green]")
-            elif (
-                _re_fp_post.search(r'\[FALSE\s*POSITIVE\s*❌?\]', followup_response)
-                and not _raw_runtime_mode
-            ):
+            elif _re_fp_post.search(r'\[FALSE\s*POSITIVE\s*❌?\]', followup_response):
                 _fp_post = {
                     "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
                     "zh": "❌ [FALSE POSITIVE] — 基于执행결果，误报확인",
@@ -10017,9 +10441,6 @@ class BingoTerminal:
             # 타겟 실패 감지 — 더 이상 진행 불가
             if "TARGET_FAILED" in followup_response:
                 _lang = getattr(self.config, "lang", "en")
-                if _raw_runtime_mode:
-                    self._suggest_next_steps()
-                    break
 
                 # ── v6.2.94: VPN 가상 IP 오판 감지 — TARGET_FAILED 전에 체크 ──
                 import re as _re_vpn
@@ -10201,10 +10622,7 @@ class BingoTerminal:
                     continue
                 else:
                     self.console.print(f"\n[{THEME['warn']}]⚠ {_s.get('agent_interrupted', 'Agent loop interrupted')}[/]\n")
-                    if _raw_runtime_mode:
-                        self._suggest_next_steps()
-                    else:
-                        self._auto_generate_report()
+                    self._auto_generate_report()
                     break
 
             # Stuck 감지 — 최근 5루프 중 3개 동일하면 전략 전환, 5개 전부 동일하면 보고서 후 종료
@@ -10216,9 +10634,6 @@ class BingoTerminal:
             _last5 = self._recent_results
             _is_hard_stuck = len(_last5) >= 5 and len(set(_last5)) == 1
             _is_soft_stuck = len(_last5) >= 3 and len(set(_last5[-3:])) == 1
-            if _raw_runtime_mode:
-                _is_hard_stuck = False
-                _is_soft_stuck = False
 
             if _is_hard_stuck:
                 # 5루프 전부 동일 → 더 이상 진전 불가, 보고서 생성 후 종료
@@ -11305,10 +11720,13 @@ class BingoTerminal:
 
         # ── 세션 구분 정보 수집 (보고서 환각 방지) ──────────────────────
         _session_tables  = getattr(self, "_session_tables", [])
-        _session_creds   = getattr(self, "_session_credentials", [])
+        _session_creds   = self._sanitize_credentials(
+            getattr(self, "_session_credentials", [])
+        )
         _session_fresh   = getattr(self, "_session_fresh", True)
         # 이전 세션 복원이면 어떤 항목이 이전 세션에서 왔는지 구분
         _prev_tables = [t for t in _state.get("tables", []) if t not in _session_tables]
+        _state["credentials"] = self._sanitize_credentials(_state.get("credentials", []))
         _prev_creds  = [c for c in _state.get("credentials", []) if c not in _session_creds]
         _session_origin_note = ""
         if not _session_fresh and (_prev_tables or _prev_creds):
@@ -12255,16 +12673,37 @@ class BingoTerminal:
                     self._agent_state["columns"]["g5_member"].append(c)
 
         # 자격증명
+        # v6.2.202: separator must be ':' or '='.  The older [: \s =]+ pattern
+        # captured UI/status text such as "password > 200 登出:" as a password.
         cred_match = re.findall(
-            r"(mb_id|mb_password|username|password)[:\s=]+([^\n\r,\]]{3,80})", text, re.IGNORECASE
+            r"\b(mb_id|mb_password|username|password)\b\s*[:=]\s*"
+            r"(?:['\"]([^'\"]{3,160})['\"]|([^\s,\]\}<>&;]{3,160}))",
+            text,
+            re.IGNORECASE,
         )
         if cred_match:
-            cred = {k.lower(): v.strip() for k, v in cred_match
-                    if v.strip() and "~" not in v and "?" not in v and len(v.strip()) > 2}
+            cred = {}
+            for k, quoted, bare in cred_match:
+                v = (quoted or bare or "").strip()
+                if "~" in v or "?" in v:
+                    continue
+                if self._credential_value_is_plausible(k, v):
+                    cred[k.lower()] = v.strip().strip("'\"`.,;:()[]{}")
             if cred:
-                self._agent_state["credentials"].append(cred)
+                self._agent_state["credentials"] = self._sanitize_credentials(
+                    [*self._agent_state.get("credentials", []), cred]
+                )
                 # 현재 세션 추적 (보고서 환각 방지)
-                self._session_credentials.append(cred)
+                self._session_credentials = self._sanitize_credentials(
+                    [*getattr(self, "_session_credentials", []), cred]
+                )
+        else:
+            self._agent_state["credentials"] = self._sanitize_credentials(
+                self._agent_state.get("credentials", [])
+            )
+            self._session_credentials = self._sanitize_credentials(
+                getattr(self, "_session_credentials", [])
+            )
 
         # WAF
         m = re.search(r"WAF.*?detected.*?([Cc]loudflare|[Aa]WS|[Mm]od[Ss]ecurity|[Ww]ordfence)", text)
@@ -12448,8 +12887,9 @@ class BingoTerminal:
             if s.get("columns"):
                 for tbl, cols in s.get("columns", {}).items():
                     lines.append(f"✅ Columns ({tbl}): {', '.join(cols)}")
-            if s.get("credentials"):
-                lines.append(f"✅ Credentials found: {s.get('credentials')}")
+            credentials = self._sanitize_credentials(s.get("credentials", []))
+            if credentials:
+                lines.append(f"✅ Credentials found: {credentials}")
                 lines.append("⚡ NEXT: crack/verify these credentials")
             else:
                 if s.get("columns"):
@@ -12465,6 +12905,59 @@ class BingoTerminal:
             return "\n".join(lines) + "\n"
         except Exception:
             return ""
+
+    @staticmethod
+    def _credential_value_is_plausible(key: str, value: object) -> bool:
+        """Reject UI/status text accidentally captured as credential values."""
+        import re as _re_cred
+
+        v = str(value or "").strip().strip("'\"`.,;:()[]{}")
+        if len(v) < 3 or len(v) > 160:
+            return False
+        if _re_cred.search(r"[\s<>]", v):
+            return False
+        if _re_cred.match(r"^[=:/\\-]+$", v):
+            return False
+        lower = v.lower()
+        if _re_cred.fullmatch(r"(?:\d{3}|true|false|null|none|undefined|ok)", lower):
+            return False
+        negative_terms = (
+            "logout", "log-out", "signout", "sign-out", "forbidden",
+            "permission", "denied", "error", "exception", "enabled",
+            "disabled", "allow:", "http/", "html", "body", "script",
+            "로그아웃", "로그인", "권한", "오류", "에러", "登出", "登录", "错误",
+            "禁止", "权限",
+        )
+        if any(term in lower for term in negative_terms):
+            return False
+        if str(key).lower() in {"password", "mb_password"} and lower.startswith(("type=", "name=", "id=")):
+            return False
+        return True
+
+    @classmethod
+    def _sanitize_credentials(cls, credentials: object) -> list[dict]:
+        """Normalize and deduplicate session credential records."""
+        if not isinstance(credentials, list):
+            return []
+        cleaned: list[dict] = []
+        seen: set[tuple[tuple[str, str], ...]] = set()
+        allowed = {"mb_id", "mb_password", "username", "password"}
+        for item in credentials:
+            if not isinstance(item, dict):
+                continue
+            record: dict[str, str] = {}
+            for raw_key, raw_value in item.items():
+                key = str(raw_key).lower()
+                if key not in allowed:
+                    continue
+                value = str(raw_value or "").strip().strip("'\"`.,;:()[]{}")
+                if cls._credential_value_is_plausible(key, value):
+                    record[key] = value
+            marker = tuple(sorted(record.items()))
+            if record and marker not in seen:
+                seen.add(marker)
+                cleaned.append(record)
+        return cleaned
 
     @staticmethod
     def _has_meaningful_loop_progress(text: str) -> bool:

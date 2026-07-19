@@ -9,7 +9,7 @@
 - Preserve unrelated user changes unless explicitly scoped.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
 - Rollback point for the clean `6.2.199` baseline: commit `07eefa781` (`revert: restore 6.2.199 baseline`).
-- Current working release: `6.2.209` = `6.2.199` capability baseline + supervised codeblock runtime + legacy structured-call prompt/log removal + raw evidence + hybrid Bingo module/skill assist + weaker param_fuzz evidence separation.
+- Current working release: `6.2.199` restored from commit `07eefa781` code behavior, while keeping public `bingo` memory branding.
 - Bingo project memory is automatic:
   - At every AI assistant session start in this repo, read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, silently run `scripts/bingo-memory-sync.sh`.
@@ -20,30 +20,15 @@
   - `git diff --check`
   - `pytest -q`
 - Recent full-suite status for `6.2.205`: `201 passed`.
-- Current full-suite status for `6.2.209`: `210 passed` after param_fuzz weak-reflection separation and raw next-step title fix.
+- Current full-suite status for restored `6.2.199`: `204 passed`.
 
 ## Runtime Decision
 
-- Markdown `bash/python` codeblock execution remains enabled for capability compatibility.
-- The project uses direct Markdown `bash/python` codeblock execution, not a legacy structured-call-only policy or codeblock bridge.
-- Default runtime mode is hybrid raw (`BINGO_RUNTIME_MODE` unset): run fenced code, return stdout/stderr, and do not auto-promote model prose into confirmed findings.
-- `BINGO_ATTACK_ASSIST` default is on: every initial prompt and raw execution feedback injects `BINGO HYBRID ATTACK ASSIST` so the model routes SQLi/WAF/XSS/SSRF/IDOR/recon candidates through Bingo modules before long ad-hoc loops.
-- Hybrid assist is guidance/module routing only. Module output remains candidate evidence until raw deterministic proof confirms it.
-- `param_fuzz` now separates strong `found_params` from weak URL/attribute marker echoes in `weak_reflections`/`observations`; weak reflections are kept for validation but not promoted as discovered parameters.
-- `execute_tool` returns remain dict-compatible and now tolerate common model slicing mistakes (`result[:300]`) by slicing the output string instead of raising a module failure.
-- In raw mode, next-step menus must not display “report generated” wording when no report was generated.
-- Port-open claims require direct TCP connect proof; HTTP/proxy/timeout behavior is not proof of open non-HTTP ports.
-- Classic heavy mode remains available only by explicit env opt-in: `BINGO_RUNTIME_MODE=classic` or `BINGO_CLAUDE_CLI_MODE=0`.
-- In default hybrid raw mode, skills and module routing remain enabled; only automatic finding promotion, adaptive pivot injections, IP-block wait/hints, target-memory extraction, model-prose `[CONFIRMED]` UI promotion, and auto-crack from raw model text are disabled.
-- Long-running generated code is handled by supervised runtime state:
-  - normal completion returns `JOB_STATE status=completed`;
-  - timeout/interruption returns `JOB_STATE status=timeout_interrupted` or equivalent;
-  - partial stdout/stderr is preserved under `partial_output`;
-  - the model must decide continue/split/pivot/report from evidence.
-- Runtime knobs:
-  - `BINGO_EXEC_TIMEOUT` default `300`
-  - `BINGO_EXEC_IDLE_REPORT` default `30`
-  - `BINGO_EXEC_WALL_CLOCK_TIMEOUT` default `timeout + 10~60`
+- Runtime has been reverted away from the raw/hybrid experiment.
+- Restored behavior is the older Bingo `TOOL_CALL`-first pipeline from `6.2.199`.
+- Markdown codeblock execution is legacy opt-in only via `BINGO_ALLOW_CODEBLOCK_EXEC=1`; default execution expects `TOOL_CALL` helper dispatch.
+- The failed raw/hybrid experiment started at `2026-07-19 05:33:54 +0800` with commit `03253633f`.
+- Safety backup branch before local revert: `backup-before-raw-revert-20260719`.
 
 ## Public Branding Rule
 
@@ -53,35 +38,86 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T15:19:51+08:00
+- Last synced: 2026-07-19T16:00:01+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T15:19:51+08:00
+- Captured: 2026-07-19T16:00:01+08:00
 
 ### Status
 ```text
  M bingo/__init__.py
+ M bingo/core/execution_anchor.py
+ M bingo/lang/strings.py
+ M bingo/models/base.py
  M bingo/models/system_prompt.py
+ M bingo/redteam/verification.py
+ M bingo/tools/findings_exporter.py
+ M bingo/tools/gnuboard.py
+ M bingo/tools/recon_engine.py
+ M bingo/tools_ext/autoexploit_modules.py
  M bingo/tools_ext/builtin/advanced_scanners.py
  M bingo/tools_ext/pentest_tools.py
  M bingo/ui/terminal.py
- M tests/test_advanced_scanner_false_positives.py
  M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
- bingo/__init__.py                              |   2 +-
- bingo/models/system_prompt.py                  |   7 +-
- bingo/tools_ext/builtin/advanced_scanners.py   | 110 +++++++++++++++++++++++--
- bingo/tools_ext/pentest_tools.py               |  51 ++++++++----
- bingo/ui/terminal.py                           |  11 ++-
- tests/test_advanced_scanner_false_positives.py |  50 +++++++++++
- tests/test_terminal_completion_regressions.py  |  63 ++++++++++++++
- 7 files changed, 267 insertions(+), 27 deletions(-)
+ bingo/__init__.py                             |    2 +-
+ bingo/core/execution_anchor.py                |    2 +-
+ bingo/lang/strings.py                         |   92 +-
+ bingo/models/base.py                          |    2 +-
+ bingo/models/system_prompt.py                 |  297 ++---
+ bingo/redteam/verification.py                 |    2 +-
+ bingo/tools/findings_exporter.py              |   10 +-
+ bingo/tools/gnuboard.py                       |    6 -
+ bingo/tools/recon_engine.py                   |    3 +-
+ bingo/tools_ext/autoexploit_modules.py        |    4 +-
+ bingo/tools_ext/builtin/advanced_scanners.py  |  110 +-
+ bingo/tools_ext/pentest_tools.py              |  285 ++--
+ bingo/ui/terminal.py                          | 1739 ++++++++++++++++---------
+ tests/test_terminal_completion_regressions.py |  334 +++--
+ 14 files changed, 1613 insertions(+), 1275 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.199"`
+- `},`
+- `},`
+- `},`
+- `},`
+- `},`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:f8a6ea583536d3d12dfac14d0b645eb53e20c4d0 -->
+## Code change: fix: separate weak param fuzz evidence
+- Commit: `f8a6ea583536`
+- Recorded: 2026-07-19T15:21:01+08:00
+- Committed: 2026-07-19T15:21:01+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	bingo/__init__.py
+M	bingo/models/system_prompt.py
+M	bingo/tools_ext/builtin/advanced_scanners.py
+```
+
+### Diff Stat
+```text
+f8a6ea583 fix: separate weak param fuzz evidence
+ .bingo/project-memory.md                     |  84 ++++++++++++++++++--
+ bingo/__init__.py                            |   2 +-
+ bingo/models/system_prompt.py                |   7 +-
+ bingo/tools_ext/builtin/advanced_scanners.py | 110 ++++++++++++++++++++++++---
+ 4 files changed, 186 insertions(+), 17 deletions(-)
 ```
 
 ### Added Highlights
@@ -115,7 +151,7 @@
 - `if not marker:`
 - `return contexts`
 - `for match in re.finditer(re.escape(marker), html or ""):`
-<!-- working-tree:end -->
+
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.

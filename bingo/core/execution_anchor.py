@@ -185,7 +185,7 @@ _EXEC_EVIDENCE_PATTERNS: list[str] = [
     r'\bPORT\s+\d+\s+(?:OPEN|CLOSED)',  # PORT 80 OPEN (포트 스캔 결과)
     r'\[\d{3}\]\s+\d+\s+bytes',         # [200] 12345 bytes
     r'---HTTP_STATUS:\d{3}---SIZE:\d+---TIME:',
-    r'=== RUNTIME_RESULT:[\s\S]{0,240}?exit_code=0',
+    r'=== TOOL_RESULT:[\s\S]{0,240}?exit_code=0',
 ]
 
 _COMPILED_EXEC_EVIDENCE = [re.compile(p, re.IGNORECASE) for p in _EXEC_EVIDENCE_PATTERNS]

@@ -103,60 +103,6 @@ def _most_common_int(values: List[int], default: int = 0) -> int:
         return default
     return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
 
-def _dedupe_preserve_order(values: List[str]) -> List[str]:
-    seen: Set[str] = set()
-    out: List[str] = []
-    for value in values:
-        key = str(value or "").strip()
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        out.append(key)
-    return out
-
-def _visible_text_contains_marker(html: str, marker: str) -> bool:
-    """Return True only when marker appears in rendered-ish text, not URL echo."""
-    if not marker or marker not in (html or ""):
-        return False
-    text = re.sub(r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1>", " ", html or "")
-    text = re.sub(r"(?is)<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text)
-    return marker in text
-
-def _marker_contexts(html: str, marker: str, max_hits: int = 4) -> List[str]:
-    contexts: List[str] = []
-    if not marker:
-        return contexts
-    for match in re.finditer(re.escape(marker), html or ""):
-        start = max(0, match.start() - 100)
-        end = min(len(html), match.end() + 100)
-        ctx = re.sub(r"\s+", " ", html[start:end]).strip()
-        contexts.append(ctx[:240])
-        if len(contexts) >= max_hits:
-            break
-    return contexts
-
-def _marker_reflection_evidence(html: str, marker: str, baseline_html: str = "") -> tuple[str, str, List[str]]:
-    """Classify parameter marker reflection without treating URL echoes as findings."""
-    if not marker or marker not in (html or "") or marker in (baseline_html or ""):
-        return "", "", []
-
-    contexts = _marker_contexts(html, marker)
-    if _visible_text_contains_marker(html, marker):
-        return "visible_marker_reflection", "strong", contexts
-
-    joined = " ".join(contexts).lower()
-    url_echo = bool(re.search(
-        r"\b(href|src|action|data-url|content)\s*=|canonical|og:url|"
-        r"location\.href|requesturi|request_uri|query|string|url=",
-        joined,
-        re.I,
-    ))
-    if url_echo:
-        return "url_echo_marker_reflection", "weak", contexts
-
-    return "attribute_marker_reflection", "weak", contexts
-
 def _finding_is_confirmed(finding: Dict[str, Any]) -> bool:
     tier = str(finding.get("evidence_tier") or finding.get("confidence") or "").lower()
     if tier:
@@ -788,7 +734,7 @@ def param_fuzz(
 
     print(_banner(_t("param_fuzz_banner", "🔍 Parameter Fuzzing — {url}").format(url=url)))
 
-    words = _dedupe_preserve_order(wordlist or PARAM_WORDLIST)[:max_params]
+    words = (wordlist or PARAM_WORDLIST)[:max_params]
     sess = _sess(session_headers)
 
     # 베이스라인은 반복 측정으로 페이지 자체 변동폭을 먼저 잡는다.
@@ -806,7 +752,6 @@ def param_fuzz(
     print(_t("param_fuzz_baseline", "  Baseline: {status} {size}B").format(status=baseline_status, size=baseline_size))
 
     found_params: List[Dict] = []
-    weak_reflections: List[Dict] = []
 
     def _send_param(pname: str):
         p = {pname: test_value}
@@ -825,24 +770,14 @@ def param_fuzz(
         sz_diff = abs(response_size - baseline_size)
         status_change = r.status_code != baseline_status
         similarity = _body_similarity(r.text, baseline_text)
-        reflection_evidence, reflection_strength, reflection_contexts = _marker_reflection_evidence(
-            r.text,
-            test_value,
-            baseline_text,
-        )
+        reflected = test_value in r.text and test_value not in baseline_text
 
-        if reflection_evidence and reflection_strength == "strong":
-            evidence = reflection_evidence
-            evidence_tier = "candidate"
+        if reflected:
+            evidence = "marker_reflection"
         elif status_change and not _status_is_blocked(baseline_status):
             evidence = "stable_status_change"
-            evidence_tier = "candidate"
         elif sz_diff >= min_diff and similarity < 0.985:
             evidence = "stable_body_change"
-            evidence_tier = "candidate"
-        elif reflection_evidence:
-            evidence = reflection_evidence
-            evidence_tier = "observation"
         else:
             return None
 
@@ -853,8 +788,7 @@ def param_fuzz(
             "status_change": status_change,
             "similarity": round(similarity, 4),
             "evidence": evidence,
-            "evidence_tier": evidence_tier,
-            "reflection_contexts": reflection_contexts,
+            "evidence_tier": "candidate",
         }
 
     def _test_param(pname: str) -> Optional[Dict]:
@@ -865,8 +799,6 @@ def param_fuzz(
             second = _evaluate_param_response(pname, _send_param(pname))
             if not second:
                 return None
-            if first.get("evidence_tier") != "candidate" or second.get("evidence_tier") != "candidate":
-                first["evidence_tier"] = "observation"
             first["size_diff"] = min(first["size_diff"], second["size_diff"])
             first["similarity"] = min(first["similarity"], second["similarity"])
             return first
@@ -875,25 +807,14 @@ def param_fuzz(
         return None
 
     # 병렬 퍼징
-    weak_printed = 0
     with ThreadPoolExecutor(max_workers=15) as executor:
         futures = {executor.submit(_test_param, w): w for w in words}
         for future in as_completed(futures):
             result = future.result()
             if result:
-                if result.get("evidence_tier") == "candidate":
-                    found_params.append(result)
-                    print(_t("param_fuzz_found", "  🟡 Param candidate: {param} (status={status} diff={diff}B evidence={evidence})").format(
-                          param=result['param'], status=result['status'], diff=result['size_diff'], evidence=result.get("evidence", "?")))
-                else:
-                    weak_reflections.append(result)
-                    if weak_printed < 20:
-                        print("  ⚪ Weak reflection: {param} (status={status} diff={diff}B evidence={evidence})".format(
-                              param=result['param'], status=result['status'], diff=result['size_diff'], evidence=result.get("evidence", "?")))
-                        weak_printed += 1
-                    elif weak_printed == 20:
-                        print("  ⚪ Weak reflection output capped; remaining weak candidates kept in result JSON.")
-                        weak_printed += 1
+                found_params.append(result)
+                print(_t("param_fuzz_found", "  🟡 Param found: {param} (status={status} diff={diff}B)").format(
+                      param=result['param'], status=result['status'], diff=result['size_diff']))
 
     # 취약점 가능성 있는 파라미터 분류
     ssrf_candidates = [p for p in found_params if p["param"] in
@@ -906,36 +827,23 @@ def param_fuzz(
                        {"id", "user_id", "product_id", "order_id", "category",
                         "page", "limit", "offset", "sort", "order", "filter"}]
 
-    weak_sqli_candidates = [p for p in weak_reflections if p["param"] in
-                            {"id", "user_id", "product_id", "order_id", "category",
-                             "page", "limit", "offset", "sort", "order", "filter"}]
-
     output = (
         f"[PARAM_FUZZ] {url}\n"
         + _t("param_fuzz_tested", "  Tested: {n} params\n").format(n=len(words))
         + _t("param_fuzz_discovered", "  Found: {n}\n").format(n=len(found_params))
-        + f"  Weak reflections: {len(weak_reflections)}\n"
         + (_t("param_fuzz_ssrf_cand", "  SSRF candidates: {params}\n").format(params=[p['param'] for p in ssrf_candidates]) if ssrf_candidates else "")
         + (_t("param_fuzz_lfi_cand", "  LFI candidates: {params}\n").format(params=[p['param'] for p in lfi_candidates]) if lfi_candidates else "")
         + (_t("param_fuzz_sqli_cand", "  SQLi candidates: {params}\n").format(params=[p['param'] for p in sqli_candidates]) if sqli_candidates else "")
-        + (f"  Weak SQLi-name reflections: {[p['param'] for p in weak_sqli_candidates[:10]]}\n" if weak_sqli_candidates else "")
-        + "\n".join(f"  {p['param']} → status={p['status']} diff={p['size_diff']}B evidence={p.get('evidence', '?')}" for p in found_params[:20])
-        + ("\n  Weak examples:\n" + "\n".join(
-            f"  {p['param']} → status={p['status']} diff={p['size_diff']}B evidence={p.get('evidence', '?')}"
-            for p in weak_reflections[:10]
-        ) if weak_reflections else "")
+        + "\n".join(f"  {p['param']} → status={p['status']} diff={p['size_diff']}B" for p in found_params[:20])
     )
     print(f"\n{output}")
 
     return {
         "success": bool(found_params),
         "found_params": found_params,
-        "weak_reflections": weak_reflections,
-        "observations": weak_reflections,
         "ssrf_candidates": ssrf_candidates,
         "lfi_candidates": lfi_candidates,
         "sqli_candidates": sqli_candidates,
-        "weak_sqli_candidates": weak_sqli_candidates,
         "output": output,
     }
 

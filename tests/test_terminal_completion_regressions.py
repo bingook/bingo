@@ -102,6 +102,40 @@ def test_preexecution_claim_downgrade_preserves_attack_code() -> None:
     assert code in corrected
 
 
+def test_chinese_fake_final_report_is_intercepted_before_hash_collection() -> None:
+    class _Model:
+        @staticmethod
+        def chat_stream(_messages):
+            return []
+
+    obj = BingoTerminal.__new__(BingoTerminal)
+    obj.console = _Console()
+    obj.s = {}
+    obj.history = []
+    obj._build_messages = lambda _skill: []
+    obj._stream_response = lambda _stream: "```bash\ncurl -sk https://example.test/\n```"
+
+    response = (
+        "目标环境已全面分析完毕。这是所有关键发现和已验证漏洞的最终报告。\n"
+        "SQL 注入（已验证 — 完整数据库泄露）\n"
+        "loan1007.shiningcorp.com — 完整数据库转储 SinkDB、SQLMap shell 实现命令执行\n"
+        "管理员哈希  admin : *A4B6157319038724E3560894F7F932C8886EBFCF\n"
+    )
+
+    intercepted = BingoTerminal._intercept_text_hallucination(
+        obj,
+        response,
+        "continue",
+        _Model(),
+        SimpleNamespace(provider="test"),
+        "",
+    )
+
+    assert intercepted.startswith("```bash")
+    assert "SinkDB" not in intercepted
+    assert "A4B615" not in intercepted
+
+
 def test_dict_tool_call_is_normalized_before_code_execution() -> None:
     response = (
         "```python\n"
@@ -269,6 +303,65 @@ def test_unrepairable_bash_error_is_internal_not_visible() -> None:
     assert "语法预检" not in visible
 
 
+def test_python_placeholder_template_codeblock_is_not_executed() -> None:
+    terminal = _code_test_terminal()
+    response = (
+        "```python\n"
+        "import requests\n"
+        "url = URL\n"
+        "param = PARAM\n"
+        "payload = f\"{VAL}' AND '1'='1\"\n"
+        "print(requests.get(url, params={param: payload}).status_code)\n"
+        "```"
+    )
+
+    results = terminal._run_code_blocks(response, set())
+    joined = "\n".join(results)
+
+    assert "INTERNAL_AUTO_REPAIR_REQUIRED" in joined
+    assert "PLACEHOLDER_TEMPLATE_CODE" in joined
+    assert "PYTHON EXECUTION" not in joined
+    assert "SyntaxError" not in joined
+
+
+def test_python_syntax_error_codeblock_fails_preflight_not_runtime() -> None:
+    terminal = _code_test_terminal()
+    response = (
+        "```python\n"
+        "import requests\n"
+        "payloads = {\n"
+        "    \"AND \"TRUE\": \"broken\"\n"
+        "}\n"
+        "print(payloads)\n"
+        "```"
+    )
+
+    results = terminal._run_code_blocks(response, set())
+    joined = "\n".join(results)
+
+    assert "INTERNAL_AUTO_REPAIR_REQUIRED" in joined
+    assert "PYTHON_SYNTAX_PREFLIGHT_FAILED" in joined
+    assert "PYTHON EXECUTION" not in joined
+
+
+def test_python_codeblock_injects_missing_random_import() -> None:
+    terminal = _code_test_terminal()
+    response = (
+        "```python\n"
+        "if False:\n"
+        "    requests.get('https://example.test/')\n"
+        "print(random.randint(1, 1))\n"
+        "```"
+    )
+
+    results = terminal._run_code_blocks(response, set())
+    joined = "\n".join(results)
+
+    assert "PYTHON EXECUTION" in joined
+    assert "NameError" not in joined
+    assert "\n1\n" in joined
+
+
 def test_python_suffix_inside_bash_is_wrapped_before_preflight() -> None:
     script = (
         "curl -sk https://example.test/ > /tmp/home.html\n"
@@ -342,6 +435,42 @@ def test_corrupted_href_findall_is_repaired_to_valid_python() -> None:
     compile(python_body, "<repaired>", "exec")
     assert "re.findall" in python_body
     assert "href=" in python_body
+
+
+def test_run_python_repairs_raw_regex_quote_class_syntax_error() -> None:
+    code = """
+import re
+html = '<input type="hidden" name="token" value="abc">'
+hidden_fields = re.findall(r'<input[^>]+type=["']hidden["'][^>]*>', html, re.I)
+print(len(hidden_fields))
+"""
+
+    result = run_python(code, timeout=10)
+
+    assert result["success"] is True
+    assert "1" in result["output"]
+    assert "SyntaxError" not in result["output"]
+
+
+def test_inline_python_with_suffix_redirection_does_not_poison_heredoc() -> None:
+    script = (
+        'TITLE=$(printf "<title>x</title>" | python3 -c "'
+        "import sys,re; t=sys.stdin.read(); "
+        "m=re.search(r'<title>(.+?)</title>',t); "
+        "print(m.group(1) if m else 'NO_TITLE')"
+        '" 2>/dev/null)\n'
+        'echo "$TITLE"\n'
+    )
+
+    repaired = _fix_bash_script(script)
+
+    assert "PYEOF 2>" not in repaired
+    import subprocess
+    checked = subprocess.run(["bash", "-n"], input=repaired, text=True, capture_output=True)
+    assert checked.returncode == 0, checked.stderr
+    executed = subprocess.run(["bash", "-c", repaired], text=True, capture_output=True, timeout=10)
+    assert executed.returncode == 0
+    assert executed.stdout.strip() == "x"
 
 
 def test_custom_sqli_oracle_executes_instead_of_being_blocked() -> None:
@@ -1048,6 +1177,115 @@ def test_report_rejects_unlabeled_unconfirmed_claim(tmp_path: Path) -> None:
 
     assert not valid
     assert f"unconfirmed_claim:{finding.id}" in errors
+
+
+def test_login_attempt_password_is_not_parsed_as_credential() -> None:
+    obj = BingoTerminal.__new__(BingoTerminal)
+    obj._agent_state = {
+        "target": "https://example.test",
+        "waf": None,
+        "bool_true_len": None,
+        "bool_false_len": None,
+        "db_name": None,
+        "tables": [],
+        "columns": {},
+        "credentials": [],
+        "confirmed_sqli": False,
+        "notes": [],
+    }
+    obj._session_tables = []
+    obj._session_credentials = []
+    obj._findings_exporter = SimpleNamespace(findings=[])
+
+    obj._parse_agent_state(
+        "=== Testing password: cheomdan ===\n"
+        "Login failed: invalid password\n"
+        "Password: cheomdan\n"
+    )
+
+    assert obj._agent_state["credentials"] == []
+    assert obj._session_credentials == []
+
+
+def test_report_filters_unverified_password_candidate() -> None:
+    report = BingoTerminal._build_fallback_report(
+        target="https://example.test",
+        lang="en",
+        confirmed_count=0,
+        potential_count=1,
+        ground_truth="- id=BINGO-1 tier=potential type=sqli",
+        session_credentials=[
+            "Password: cheomdan",
+            {"password": "cheomdan", "source": "login failed candidate"},
+        ],
+    )
+
+    assert "cheomdan" not in report
+    assert "- No credentials confirmed in this session" in report
+
+
+def test_next_step_summary_downgrades_unbacked_db_hash_claim() -> None:
+    flags = {
+        "has_confirmed_sqli": False,
+        "has_potential_sqli": False,
+        "has_real_cred": False,
+        "has_upload": False,
+        "blocked_count": 2,
+    }
+
+    safe = BingoTerminal._sanitize_next_step_summary(
+        "进展摘要：已通过 SQL 注入获取数据库 SinkDB 和管理员哈希，但缺少 shell。",
+        flags,
+        "zh",
+        confirmed_count=0,
+        potential_count=0,
+    )
+
+    assert "未确认" in safe
+    assert "SinkDB" not in safe
+    assert "管理员哈希" not in safe
+    assert "shell" in safe
+
+
+def test_next_steps_filter_removes_post_exploit_without_confirmed_evidence() -> None:
+    flags = {
+        "has_confirmed_sqli": False,
+        "has_potential_sqli": False,
+        "has_real_cred": False,
+        "has_upload": False,
+        "has_admin_panel": False,
+        "blocked_count": 2,
+    }
+    options = [
+        "使用 SQLMap 的 os-shell 功能尝试执行系统命令（whoami / id）",
+        "通过堆叠查询向 g5_member 表插入新管理员账户",
+        "检查 admin/admin.login.php 是否存在默认凭证或简单密码",
+        "枚举同一域名下的 JS/API 端点寻找新输入点",
+    ]
+
+    filtered = BingoTerminal._filter_next_steps_by_evidence(options, flags)
+    joined = "\n".join(filtered)
+
+    assert "os-shell" not in joined
+    assert "系统命令" not in joined
+    assert "插入新管理员" not in joined
+    assert "默认凭证" not in joined
+    assert "JS/API" in joined
+
+
+def test_evidence_based_next_steps_do_not_claim_access_when_zero_confirmed() -> None:
+    summary, options = BingoTerminal._build_evidence_based_next_steps(
+        "zh",
+        {"has_potential_sqli": False, "blocked_count": 2, "has_admin_panel": False},
+        confirmed_count=0,
+        potential_count=0,
+    )
+
+    joined = "\n".join([summary, *options])
+    assert "未确认" in summary or "没有 confirmed" in summary
+    assert "获取数据库" not in joined
+    assert "管理员权限" not in joined
+    assert "os-shell" not in joined
 
 
 def test_unresolved_candidate_is_queued_for_bounded_verification(tmp_path: Path) -> None:

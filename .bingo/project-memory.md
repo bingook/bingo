@@ -8,7 +8,7 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.212`.
+- Current stable version after Bingo memory rebrand: `6.2.213`.
 - Bingo project memory is automatic:
   - At every Bingo session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Bingo must silently run `scripts/bingo-memory-sync.sh`.
@@ -26,17 +26,134 @@
 - Latest target-log issue:
   - Markdown BASH codeblock execution, not TOOL_CALL `run_bash`, caused heartbeat-only hangs up to 3600s because terminal execution used a 24h default timeout.
   - Fixed by bounded codeblock execution limits: `BINGO_EXEC_TIMEOUT` default 180s, `BINGO_EXEC_IDLE_TIMEOUT` default 120s, and wall-clock fallback default timeout+30s.
+- Latest target-log issue after v6.2.212:
+  - Deterministic report correctly showed `confirmed=0`, but interactive post-report next-step summary still overclaimed DB/hash/admin progress from model prose.
+  - Fix direction: evidence-gate `_suggest_next_steps`; with zero confirmed findings, downgrade unsupported progress summaries and remove post-exploit options such as os-shell/admin insert/hash cracking unless confirmed evidence exists.
+  - Earlier Markdown Python example blocks were also auto-executed even when they were generic templates with unresolved placeholders like `URL`, `PARAM`, `VAL`, `BASE_VALUE`, `TRUESIZE`, or `THRESHOLD`.
+  - Fix direction: preflight Markdown Python blocks before execution; unresolved template placeholders and SyntaxError blocks return an internal regeneration request instead of runtime execution. Common missing stdlib imports such as `random` are injected before valid codeblock execution.
 
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T17:50:13+08:00
+- Last synced: 2026-07-19T20:33:08+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
+<!-- working-tree:start -->
+## Working tree snapshot (uncommitted)
+- Captured: 2026-07-19T20:33:08+08:00
+
+### Status
+```text
+M .bingo/project-memory.md
+ M PKG-INFO
+ M bingo/__init__.py
+ M bingo/ui/terminal.py
+ M tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+PKG-INFO                                      |   2 +-
+ bingo/__init__.py                             |   2 +-
+ bingo/ui/terminal.py                          | 265 +++++++++++++++++++++++++-
+ tests/test_terminal_completion_regressions.py | 238 +++++++++++++++++++++++
+ 4 files changed, 500 insertions(+), 7 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.213`
+- `__version__ = "6.2.213"`
+- `r"(密码哈希|管理员哈希|哈希|hash|md5|sha1|해시)\s*[:：]\s*[a-fA-F0-9\*]{20,}",`
+- `r"(sql\s*注入|sql注入|注入).{0,60}(已验证|验证|确认|完整数据库|数据库泄露|数据库转储|命令执行|shell)",`
+- `r"(完整)?数据库.{0,30}(转储|泄露|导出|提取|dump)",`
+- `r"(sqlmap|os-?shell|shell).{0,40}(命令执行|实现|成功|已验证)",`
+- `r"(获取|提取|拿到|导出|转储).{0,30}(密码|账号|凭证|数据库|hash|哈希|管理员|令牌)",`
+- `_placeholder_names = (`
+- `"URL", "PARAM", "BASE_VALUE", "TRUESIZE", "TRUE_SIZE",`
+- `"FALSESIZE", "FALSE_SIZE", "THRESHOLD", "VAL",`
+- `)`
+- `_unbound_placeholders = [`
+- `name for name in _placeholder_names`
+- `if _hall_re.search(rf'\b{name}\b', s)`
+- `and not _hall_re.search(rf'(?m)^\s*{name}\s*=', s)`
+- `and not _hall_re.search(rf'\bfor\s+{name}\s+in\b', s)`
+- `]`
+- `_placeholder_assignment = _hall_re.search(`
+- `r'(?m)^\s*(?:URL|PARAM|BASE_VALUE|TRUESIZE|TRUE_SIZE|FALSESIZE|'`
+- `r'FALSE_SIZE|THRESHOLD|VAL)\s*=\s*["\'](?:<[^>]+>|'`
+- `r'URL|PARAM|BASE_VALUE|TRUESIZE|THRESHOLD|REPLACE_ME|CHANGE_ME|'`
+- `r'YOUR_[A-Z_]+|TARGET_[A-Z_]+)["\']',`
+- `s,`
+- `_hall_re.IGNORECASE,`
+- `)`
+- `if _unbound_placeholders or _placeholder_assignment:`
+- `return (`
+- `"PLACEHOLDER_TEMPLATE_CODE: Python block contains unresolved "`
+- `f"template placeholder(s): {', '.join(_unbound_placeholders) or 'assignment'}. "`
+- `"Do not execute generic examples; regenerate a concrete TOOL_CALL run_python "`
+<!-- working-tree:end -->
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:edc114463b324cad9ae82fcfa499a8672c343569 -->
+## Code change: fix: harden report evidence and syntax recovery
+- Commit: `edc114463b32`
+- Recorded: 2026-07-19T18:35:46+08:00
+- Committed: 2026-07-19T18:35:46+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/tools_ext/pentest_tools.py
+M	bingo/ui/terminal.py
+```
+
+### Diff Stat
+```text
+edc114463 fix: harden report evidence and syntax recovery
+ .bingo/project-memory.md         | 35 ++++++++++++++--
+ PKG-INFO                         |  2 +-
+ bingo/__init__.py                |  2 +-
+ bingo/tools_ext/pentest_tools.py | 90 ++++++++++++++++++++++++++++++++++++++--
+ bingo/ui/terminal.py             | 80 ++++++++++++++++++++++++++++++-----
+ 5 files changed, 191 insertions(+), 18 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.212`
+- `__version__ = "6.2.212"`
+- `def _repair_python_regex_quote_literals(code: str) -> str:`
+- `"""`
+- `Repair model-generated Python regex literals where a raw single-quoted`
+- `pattern contains quote character classes such as ["'].`
+- `Example:`
+- `re.findall(r'<input type=["']hidden["']>', html)`
+- `becomes:`
+- `re.findall(r'''<input type=["']hidden["']>''', html)`
+- `This preserves the regex semantics and prevents SyntaxError:`
+- `"closing parenthesis ']' does not match opening parenthesis".`
+- `"""`
+- `import re as _rxq`
+- `def _needs_repair(pattern: str) -> bool:`
+- `'["\']', '[\'"]', '[^"\']', '[^\'"]',`
+- `'[\\"\\\']', '[\\\'\\"]',`
+- `))`
+- `def _repair_line(line: str) -> str:`
+- `if "re." not in line or "r'" not in line:`
+- `return line`
+- `if not _rxq.search(r'\bre\.(?:findall|finditer|search|match|compile|sub|split)\s*\(', line):`
+- `return line`
+- `out: list[str] = []`
+- `i = 0`
+- `changed = False`
+- `while i < len(line):`
+- `start = line.find("r'", i)`
+- `if start < 0:`
+- `out.append(line[i:])`
 
 <!-- commit:863be3f4b710e5836b7c3bed59bd6f2dd3fb8f7c -->
 ## Code change: bump: v6.2.211

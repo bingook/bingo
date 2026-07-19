@@ -1,2 +1,2 @@
 """Bingo — Hacker-style AI Terminal"""
-__version__ = "6.2.212"
+__version__ = "6.2.213"

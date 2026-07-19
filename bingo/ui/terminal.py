@@ -3200,7 +3200,7 @@ class BingoTerminal:
             _pre_re.IGNORECASE,
         )
         credential_pattern = _pre_re.compile(
-            r'(?:username|password|passwd|hash|用户名|密码|아이디|비밀번호)\s*[:：]\s*\S+',
+            r'(?:username|password|passwd|hash|哈希|密码哈希|管理员哈希|用户名|密码|아이디|비밀번호|해시)\s*[:：]\s*\S+',
             _pre_re.IGNORECASE,
         )
         certainty_tokens = _pre_re.compile(
@@ -3296,7 +3296,7 @@ class BingoTerminal:
         _cred_patterns = [
             r"(用户名|username|user\s*name)\s*[:：]\s*\w+",
             r"(密码|password|passwd)\s*[:：].{3,30}",
-            r"(密码哈希|hash|md5|sha1)\s*[:：]\s*[a-fA-F0-9\*]{20,}",
+            r"(密码哈希|管理员哈希|哈希|hash|md5|sha1|해시)\s*[:：]\s*[a-fA-F0-9\*]{20,}",
         ]
         _has_fake_creds = any(
             _re.search(p, _narrative, _re.IGNORECASE) for p in _cred_patterns
@@ -3306,17 +3306,22 @@ class BingoTerminal:
         _conclusion_patterns = [
             # 취약점 발견 주장
             r"(sql\s*inject|sqli|xss|rce|ssrf|lfi).{0,40}(발견|확인|detected|found|confirmed|존재)",
+            r"(sql\s*注入|sql注入|注入).{0,60}(已验证|验证|确认|完整数据库|数据库泄露|数据库转储|命令执行|shell)",
             r"(취약점|vulnerability|vuln).{0,30}(발견|확인|존재|found|detected)",
             # 공격 성공 주장
             r"(waf|bypass|우회).{0,30}(성공|success|successful|완료)",
             r"(공격|attack|exploit).{0,20}(성공|success|완료)",
             # DB/서버 접근 성공 주장
             r"(database|db|데이터베이스).{0,30}(접근|access|추출|extract|dump).{0,20}(성공|success|완료)",
+            r"(完整)?数据库.{0,30}(转储|泄露|导出|提取|dump)",
+            r"(sqlmap|os-?shell|shell).{0,40}(命令执行|实现|成功|已验证)",
             r"(admin|관리자).{0,20}(로그인|login|접근|access).{0,20}(성공|success|완료)",
+            r"(管理员|admin|관리자).{0,30}(哈希|hash|密码|凭据|token|令牌)",
+            r"(会话令牌|session\s*token|admin\s*token|관리자\s*토큰).{0,40}(泄露|leak|exposed|노출)",
             r"(서버|server).{0,20}(접근|access|침투|compromise).{0,20}(성공|success|완료)",
             # 데이터 추출 주장
             r"(추출|extracted|dumped).{0,30}(table|column|data|password|hash)",
-            r"(获取|提取|拿到).{0,20}(密码|账号|凭证|数据库|hash)",
+            r"(获取|提取|拿到|导出|转储).{0,30}(密码|账号|凭证|数据库|hash|哈希|管理员|令牌)",
             r"(注入成功|绕过成功|攻击成功|漏洞确认)",
         ]
         _has_unproven_conclusion = any(
@@ -6417,6 +6422,31 @@ class BingoTerminal:
                     "PLACEHOLDER_URL: Code contains placeholder URL (TARGET_URL/YOUR_URL). "
                     "Replace with the actual target URL before executing."
                 )
+            _placeholder_names = (
+                "URL", "PARAM", "BASE_VALUE", "TRUESIZE", "TRUE_SIZE",
+                "FALSESIZE", "FALSE_SIZE", "THRESHOLD", "VAL",
+            )
+            _unbound_placeholders = [
+                name for name in _placeholder_names
+                if _hall_re.search(rf'\b{name}\b', s)
+                and not _hall_re.search(rf'(?m)^\s*{name}\s*=', s)
+                and not _hall_re.search(rf'\bfor\s+{name}\s+in\b', s)
+            ]
+            _placeholder_assignment = _hall_re.search(
+                r'(?m)^\s*(?:URL|PARAM|BASE_VALUE|TRUESIZE|TRUE_SIZE|FALSESIZE|'
+                r'FALSE_SIZE|THRESHOLD|VAL)\s*=\s*["\'](?:<[^>]+>|'
+                r'URL|PARAM|BASE_VALUE|TRUESIZE|THRESHOLD|REPLACE_ME|CHANGE_ME|'
+                r'YOUR_[A-Z_]+|TARGET_[A-Z_]+)["\']',
+                s,
+                _hall_re.IGNORECASE,
+            )
+            if _unbound_placeholders or _placeholder_assignment:
+                return (
+                    "PLACEHOLDER_TEMPLATE_CODE: Python block contains unresolved "
+                    f"template placeholder(s): {', '.join(_unbound_placeholders) or 'assignment'}. "
+                    "Do not execute generic examples; regenerate a concrete TOOL_CALL run_python "
+                    "or Bash command with the active target values."
+                )
 
             # ── v3.2.73 패턴 5: 코드 내부 모의실행 감지 ──────────────────
             # 5-A: 模拟/simulate/假设 키워드가 변수 할당과 함께 나타나는 경우
@@ -7782,10 +7812,66 @@ class BingoTerminal:
             if _ok(_s4): return _s4
             return code
 
+        def _inject_missing_codeblock_imports(code: str) -> str:
+            """Add common missing stdlib imports before markdown Python execution."""
+            import re as _imp_re
+            rules = [
+                ("re", r'\bre\.'),
+                ("json", r'\bjson\.'),
+                ("time", r'\btime\.'),
+                ("random", r'\brandom\.'),
+                ("string", r'\bstring\.'),
+                ("os", r'\bos\.'),
+                ("sys", r'\bsys\.'),
+                ("base64", r'\bbase64\.'),
+                ("hashlib", r'\bhashlib\.'),
+                ("urllib.parse", r'\burllib\.parse\.'),
+            ]
+            existing = set(_imp_re.findall(r'(?m)^\s*(?:import|from)\s+([A-Za-z_][\w.]*)', code))
+            to_add: list[str] = []
+            for module, pattern in rules:
+                root = module.split(".", 1)[0]
+                if module in existing or root in existing:
+                    continue
+                if _imp_re.search(pattern, code):
+                    to_add.append(f"import {module}")
+            if not to_add:
+                return code
+            lines = code.splitlines()
+            insert_at = 0
+            for idx, line in enumerate(lines[:20]):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or stripped.startswith("from __future__"):
+                    insert_at = idx + 1
+                    continue
+                if stripped.startswith("import ") or stripped.startswith("from "):
+                    insert_at = idx + 1
+                    continue
+                break
+            for stmt in reversed(to_add):
+                lines.insert(insert_at, stmt)
+            return "\n".join(lines)
+
         python_raw_blocks = re.findall(r"```python\s*(.*?)```", response, re.DOTALL)
         for _py_i, py_block in enumerate(python_raw_blocks):
-            py_script = _fix_indent(_repair_python_regex_quotes(py_block.strip()))
+            py_script = _inject_missing_codeblock_imports(
+                _fix_indent(_repair_python_regex_quotes(py_block.strip()))
+            )
             if not py_script:
+                continue
+            _py_hall = _detect_hallucination(py_script, _block_type="python")
+            if _py_hall:
+                _hallucination_msgs.append(_py_hall)
+                continue
+            try:
+                import ast as _py_ast
+                _py_ast.parse(py_script)
+            except SyntaxError as _py_syn:
+                _hallucination_msgs.append(
+                    f"PYTHON_SYNTAX_PREFLIGHT_FAILED: line {_py_syn.lineno}: {_py_syn.msg}. "
+                    "Regenerate as canonical TOOL_CALL run_python with concrete target values; "
+                    "do not output placeholder/template code blocks."
+                )
                 continue
             _py_dedup_key = py_script[:60]
             if f"PYTHON EXECUTION" in history_text and _py_dedup_key[:40] in history_text:
@@ -11346,6 +11432,125 @@ class BingoTerminal:
         )
 
     @staticmethod
+    def _build_evidence_based_next_steps(
+        lang: str,
+        flags: dict,
+        confirmed_count: int = 0,
+        potential_count: int = 0,
+    ) -> tuple[str, list[str]]:
+        """Build a deterministic next-step menu from the evidence ladder.
+
+        This is used as a hard fallback when the next-step model writes
+        unsupported post-exploit claims such as "DB/hash/admin obtained" while
+        the local findings exporter has zero confirmed findings.
+        """
+        blocked = int(flags.get("blocked_count", 0) or 0)
+        has_potential_sqli = bool(flags.get("has_potential_sqli") or potential_count > 0 or blocked > 0)
+        has_admin_panel = bool(flags.get("has_admin_panel"))
+
+        if lang == "zh":
+            if confirmed_count > 0:
+                summary = "已有 confirmed 级别发现；下一步应围绕已确认证据继续扩展验证。"
+            elif has_potential_sqli:
+                summary = "当前没有 confirmed 级别漏洞；现有 SQLi/WAF 迹象只能作为未确认验证队列处理，不能使用 DB/哈希/shell/高权限控制已完成的表述。"
+            else:
+                summary = "当前没有 confirmed 级别漏洞；下一步应重新建立 baseline 并寻找新的可验证输入面。"
+            options = [
+                "重新校准目标页面 baseline 后复测 SQLi/WAF oracle，要求稳定 TRUE/FALSE 或时间差证据",
+                "枚举同一域名下的 JS/API 端点，寻找新的参数和未授权接口",
+                "对登录后对象 ID、订单号、 게시판 wr_id 等参数做 IDOR 边界验证",
+                "切换到 LFI/路径遍历候选复测，但只有出现目标文件内容时才升级为发现",
+                "检查公开后台路径可访问性并记录状态，不假设默认凭据或已取得管理员权限",
+            ]
+        elif lang == "ko":
+            if confirmed_count > 0:
+                summary = "confirmed 등급 발견이 있으므로, 다음 단계는 확정 증거를 기준으로 확장 검증해야 한다."
+            elif has_potential_sqli:
+                summary = "현재 confirmed 취약점은 없다. SQLi/WAF 징후는 미확정 검증 대기 항목이며 DB, 해시, shell, 관리자 권한 획득으로 쓰면 안 된다."
+            else:
+                summary = "현재 confirmed 취약점은 없다. baseline을 다시 잡고 검증 가능한 새 입력면을 찾아야 한다."
+            options = [
+                "목표 페이지 baseline을 재보정한 뒤 SQLi/WAF oracle을 재검증한다",
+                "같은 도메인의 JS/API 엔드포인트를 열거해 새 파라미터와 미인증 인터페이스를 찾는다",
+                "로그인 후 객체 ID, 주문번호, 게시판 wr_id 계열 파라미터로 IDOR 경계를 검증한다",
+                "LFI/경로순회 후보를 재검증하되 실제 파일 내용이 나올 때만 발견으로 승격한다",
+                "공개 관리자 경로 접근성만 확인하고 기본 자격증명이나 관리자 획득은 가정하지 않는다",
+            ]
+        else:
+            if confirmed_count > 0:
+                summary = "Confirmed findings exist; continue from the verified evidence only."
+            elif has_potential_sqli:
+                summary = "No confirmed vulnerability exists yet. SQLi/WAF signals are unconfirmed verification backlog items, not proof of database, hash, shell, or admin access."
+            else:
+                summary = "No confirmed vulnerability exists yet. Rebuild the baseline and look for new independently verifiable input surfaces."
+            options = [
+                "Recalibrate the target baseline, then re-test SQLi/WAF oracle with stable TRUE/FALSE or timing evidence",
+                "Enumerate same-domain JS/API endpoints for new parameters and unauthenticated interfaces",
+                "Verify IDOR boundaries on authenticated object IDs, order IDs, and board record IDs",
+                "Re-test LFI/path traversal candidates and promote only when exact target file content appears",
+                "Check public admin-path reachability only; do not assume default credentials or admin access",
+            ]
+
+        if not has_admin_panel:
+            # Keep the path-reachability item but make its non-assumption explicit.
+            options = [
+                opt.replace("检查公开后台路径可访问性并记录状态，不假设默认凭据或已取得管理员权限",
+                            "枚举公开管理路径是否存在；若仅有登录页，只记录为 login_form_only")
+                .replace("공개 관리자 경로 접근성만 확인하고 기본 자격증명이나 관리자 획득은 가정하지 않는다",
+                         "공개 관리자 경로 존재 여부만 확인한다. 로그인 페이지만 있으면 login_form_only로 기록한다")
+                .replace("Check public admin-path reachability only; do not assume default credentials or admin access",
+                         "Enumerate public admin paths; if only a login page exists, record login_form_only")
+                for opt in options
+            ]
+        return summary, options
+
+    @staticmethod
+    def _sanitize_next_step_summary(
+        summary: str,
+        flags: dict,
+        lang: str,
+        confirmed_count: int = 0,
+        potential_count: int = 0,
+    ) -> str:
+        """Evidence-gate the interactive post-report progress summary."""
+        if not summary:
+            return summary
+        import re as _re_nss
+
+        out = BingoTerminal._sanitize_ground_truth_claims(
+            summary,
+            confirmed_count=confirmed_count,
+            potential_count=potential_count,
+        )
+        if confirmed_count > 0:
+            return out
+
+        unsupported_takeover_claim = bool(_re_nss.search(
+            r'(?:已通过|通过|获取|获得|拿到|提取|导出|dump(?:ed)?|extract(?:ed)?|'
+            r'obtain(?:ed)?|acquir(?:ed|e)|획득|추출|덤프|확보)'
+            r'.{0,80}'
+            r'(?:数据库|DB\b|database|SinkDB|g5_member|哈希|hash|管理员|admin|'
+            r'凭据|credential|shell|webshell|관리자|해시|자격증명)',
+            out,
+            _re_nss.I,
+        ))
+        unsupported_access_claim = bool(_re_nss.search(
+            r'(?:shell|webshell|RCE|命令执行|系统命令|관리자|admin\s+access|'
+            r'管理员权限|root\s+shell|os-shell)',
+            out,
+            _re_nss.I,
+        ))
+        if unsupported_takeover_claim or unsupported_access_claim:
+            safe_summary, _ = BingoTerminal._build_evidence_based_next_steps(
+                lang,
+                flags,
+                confirmed_count=confirmed_count,
+                potential_count=potential_count,
+            )
+            return safe_summary
+        return out
+
+    @staticmethod
     def _filter_verified_report_credentials(session_credentials: list) -> list:
         """Keep only credentials with enough structure for report output.
 
@@ -11474,8 +11679,46 @@ class BingoTerminal:
             or flags.get("has_potential_sqli")
             or flags.get("blocked_count")  # blocked여도 우회 재시도 유지
         )
+        _has_confirmed_sqli = bool(flags.get("has_confirmed_sqli"))
+        _has_real_cred = bool(flags.get("has_real_cred"))
+        _has_upload = bool(flags.get("has_upload"))
+        _has_admin_panel = bool(flags.get("has_admin_panel"))
         for opt in options:
             low = (opt or "").lower()
+            # Post-exploit/data-extraction actions require confirmed upstream evidence.
+            # Keep verification/retest options, but remove "os-shell / admin insert /
+            # DB dump / hash cracking" when the evidence ladder has not confirmed SQLi
+            # or a real credential.
+            _needs_confirmed_sqli = bool(_re_ns.search(
+                r'os-?shell|--os-shell|xp_cmdshell|whoami|命令执行|系统命令|'
+                r'rce\b|remote\s+code|getshell|反弹\s*shell|reverse\s+shell|'
+                r'堆叠查询|stacked\s+quer|insert.{0,40}admin|admin\s+account|'
+                r'插入.{0,40}管理员|新管理员|관리자.{0,20}생성|관리자.{0,20}삽입|'
+                r'into\s+outfile|load_file\s*\(|写入|写文件|파일\s*쓰기',
+                low,
+                _re_ns.I,
+            ))
+            _needs_extracted_secret = bool(_re_ns.search(
+                r'获取.{0,30}数据库|提取.{0,30}数据库|导出.{0,30}数据库|'
+                r'dump.{0,30}(?:db|database|table)|database\s+dump|'
+                r'g5_member|mysql\.user|管理员.{0,20}哈希|admin.{0,20}hash|'
+                r'password\s*hash|哈希|해시|hash\s+crack|비밀번호\s*크랙',
+                low,
+                _re_ns.I,
+            ))
+            if _needs_confirmed_sqli and not (_has_confirmed_sqli or _has_upload):
+                continue
+            if _needs_extracted_secret and not (_has_confirmed_sqli or _has_real_cred):
+                continue
+            _needs_admin_or_cred_surface = bool(_re_ns.search(
+                r'default\s+(?:cred|password)|默认凭据|默认密码|简单密码|弱口令|'
+                r'admin/admin|credential\s*stuff|撞库|password\s*spray|brute\s*force|'
+                r'기본\s*(?:암호|비밀번호)|약한\s*비밀번호',
+                low,
+                _re_ns.I,
+            ))
+            if _needs_admin_or_cred_surface and not (_has_admin_panel or _has_real_cred):
+                continue
             # SQLi/WAF 우회/oracle 재검증 — 실탐 누락 방지: 항상 유지
             _is_sqli_path = bool(_re_ns.search(
                 r'sqli|sql\s*注入|布尔|블라인드|blind|oracle|waf|우회|绕过'
@@ -12181,6 +12424,7 @@ class BingoTerminal:
         _fe_gt = ""
         _fe_confirmed_n = 0
         _fe_potential_n = 0
+        _fe = None
         try:
             _fe = getattr(self, "_findings_exporter", None)
             if _fe is not None:
@@ -12317,8 +12561,10 @@ class BingoTerminal:
             # v6.2.175: progress summary + next_steps ground-truth 교정
             if summary_lines:
                 _sum_joined = " ".join(summary_lines[:5])
-                _sum_joined = BingoTerminal._sanitize_ground_truth_claims(
+                _sum_joined = BingoTerminal._sanitize_next_step_summary(
                     _sum_joined,
+                    _fe_flags,
+                    _lang,
                     confirmed_count=_fe_confirmed_n,
                     potential_count=_fe_potential_n,
                 )
@@ -12333,6 +12579,15 @@ class BingoTerminal:
                     for o in options
                 ]
                 options = BingoTerminal._filter_next_steps_by_evidence(options, _fe_flags)
+            if _fe is not None and _fe_confirmed_n == 0 and len(options) < 3:
+                _det_summary, _det_options = BingoTerminal._build_evidence_based_next_steps(
+                    _lang,
+                    _fe_flags,
+                    confirmed_count=_fe_confirmed_n,
+                    potential_count=_fe_potential_n,
+                )
+                summary_lines = [_det_summary]
+                options = _det_options
 
             # ── 요약 출력 (v6.2.80: Rich Panel) ─────────────────────────
             if summary_lines:

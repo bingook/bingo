@@ -8,8 +8,8 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.218`.
-- Restored workspace from `/Users/jmaker/Desktop/bingo_ai-6.2.218.tar.gz` on 2026-07-20; removed bundled prompt profile txt files and external profile loader changes; validation after restore: `pytest -q` → `237 passed`.
+- Current stable version after Bingo memory rebrand: `6.2.223`.
+- Restored workspace from `/Users/jmaker/Desktop/bingo_ai-6.2.218.tar.gz` on 2026-07-20; removed bundled prompt profile txt files and external profile loader changes; bumped package version to `6.2.223` for PyPI release. PyPI check: latest `6.2.222`, `6.2.223` not present. Validation after restore: `pytest -q` → `237 passed`.
 - Latest GLM/custom prompt-hygiene fix as of v6.2.218:
   - Removed model-facing jailbreak-style trigger phrases such as `pre-granted`, `BEHAVIOR OVERRIDE`, `No refusals`, `No disclaimers`, and `CONTINUE REQUIRED` from the main prompt/task/retry/hook paths.
   - `custom` models with names/aliases/base URLs containing `glm`, `qwen`, `zhipu`, `alibaba`, or `dashscope` now route to the GLM/Qwen compatibility prompt instead of the Claude/GPT/custom prompt.
@@ -59,31 +59,61 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T01:16:29+08:00
+- Last synced: 2026-07-20T01:23:59+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-20T01:16:29+08:00
+- Captured: 2026-07-20T01:23:59+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
  M PKG-INFO
  M bingo/__init__.py
- D bingo/models/prompt_profiles/claudeopus4.6.txt
- D bingo/models/prompt_profiles/glm5.2.txt
- D bingo/models/prompt_profiles/grok4.5.txt
- D bingo/models/prompt_profiles/grok4.5_2.txt
- D bingo/models/prompt_profiles/hy3.txt
- M bingo/models/system_prompt.py
- M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                                       |    2 +-
+PKG-INFO          | 2 +-
+ bingo/__init__.py | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.223`
+- `__version__ = "6.2.223"`
+<!-- working-tree:end -->
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:1ad97aeaba90e1225ad401f664b87dccbcb1aee6 -->
+## Code change: revert: restore 6.2.218 behavior
+- Commit: `1ad97aeaba90`
+- Recorded: 2026-07-20T01:17:52+08:00
+- Committed: 2026-07-20T01:17:52+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+D	bingo/models/prompt_profiles/claudeopus4.6.txt
+D	bingo/models/prompt_profiles/glm5.2.txt
+D	bingo/models/prompt_profiles/grok4.5.txt
+D	bingo/models/prompt_profiles/grok4.5_2.txt
+D	bingo/models/prompt_profiles/hy3.txt
+M	bingo/models/system_prompt.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+1ad97aeab revert: restore 6.2.218 behavior
+ .bingo/project-memory.md                       |   66 +-
+ PKG-INFO                                       |    2 +-
  bingo/__init__.py                              |    2 +-
  bingo/models/prompt_profiles/claudeopus4.6.txt | 1065 ------------------------
  bingo/models/prompt_profiles/glm5.2.txt        |  353 --------
@@ -92,13 +122,12 @@ PKG-INFO                                       |    2 +-
  bingo/models/prompt_profiles/hy3.txt           |   51 --
  bingo/models/system_prompt.py                  |  122 ---
  tests/test_terminal_completion_regressions.py  |  102 ---
- 9 files changed, 2 insertions(+), 2294 deletions(-)
+ 10 files changed, 55 insertions(+), 2307 deletions(-)
 ```
 
 ### Added Highlights
 - `Version: 6.2.218`
 - `__version__ = "6.2.218"`
-<!-- working-tree:end -->
 
 # Workspace Memory
 

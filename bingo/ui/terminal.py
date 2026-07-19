@@ -3817,6 +3817,15 @@ class BingoTerminal:
             else:
                 intent = lines[0][:50] if lines else "script"
 
+            if lines and re.match(r'^TOOL_CALL\s*:', lines[0], re.I):
+                intent = {"ko": "bingo 액션", "zh": "bingo 动作", "en": "bingo action"}.get(_lang, "bingo action")
+                lines = [
+                    {"ko": "내장 실행 요청", "zh": "内置执行请求", "en": "internal execution request"}.get(
+                        _lang, "internal execution request"
+                    ),
+                    "",
+                ]
+
             icon = "🐍" if lang == "python" else "⚡"
             _wait_label = _s.get("exec_waiting", "Waiting to execute")
             # _markup_escape: 코드 내 [, ] 등 Rich 마크업 문자 이스케이프 → [/dim] 크래시 방지
@@ -7593,16 +7602,84 @@ class BingoTerminal:
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
 
         def _repair_python_regex_quotes(source: str) -> str:
-            """Use triple quotes for generated raw regexes containing quote classes."""
+            """Use triple quotes for generated raw regexes containing quote classes.
+
+            Handles model-generated Python embedded in Bash heredocs, including
+            raw bytes literals such as:
+              re.search(rb'charset[=]\\s*[\\"']?([\\w-]+)', head)
+            """
+            import re as _rx_quote
+
+            _regex_call = _rx_quote.compile(
+                r'\bre\.(?:findall|finditer|search|match|compile|sub|split)\s*\('
+            )
+            _raw_prefixes = ("rb'", "br'", "r'")
+
+            def _needs_repair(pattern: str) -> bool:
+                return any(token in pattern for token in (
+                    '["\']', '[\'"]', '[^"\']', '[^\'"]',
+                    '[\\"\\\']', '[\\\'\\"]', '[\\"\'',
+                ))
+
+            def _repair_line(line: str) -> str:
+                if "re." not in line or not _regex_call.search(line):
+                    return line
+                if not any(prefix in line for prefix in _raw_prefixes):
+                    return line
+
+                out: list[str] = []
+                i = 0
+                changed = False
+                while i < len(line):
+                    candidates = [
+                        (line.find(prefix, i), prefix)
+                        for prefix in _raw_prefixes
+                        if line.find(prefix, i) >= 0
+                    ]
+                    if not candidates:
+                        out.append(line[i:])
+                        break
+                    start, prefix = min(candidates, key=lambda item: item[0])
+                    out.append(line[i:start])
+                    j = start + len(prefix)
+                    in_class = False
+                    escaped = False
+                    end = -1
+                    while j < len(line):
+                        ch = line[j]
+                        if escaped:
+                            escaped = False
+                        elif ch == "\\":
+                            escaped = True
+                        elif ch == "[":
+                            in_class = True
+                        elif ch == "]":
+                            in_class = False
+                        elif ch == "'" and not in_class:
+                            k = j + 1
+                            while k < len(line) and line[k].isspace():
+                                k += 1
+                            if k >= len(line) or line[k] in ",)":
+                                end = j
+                                break
+                        j += 1
+
+                    if end < 0:
+                        out.append(line[start:])
+                        break
+
+                    pattern = line[start + len(prefix):end]
+                    if _needs_repair(pattern) and "'''" not in pattern:
+                        out.append(prefix[:-1] + "'''" + pattern + "'''")
+                        changed = True
+                    else:
+                        out.append(line[start:end + 1])
+                    i = end + 1
+                return "".join(out) if changed else line
+
             repaired_lines: list[str] = []
             for line in source.splitlines():
-                if "re." in line and "r'" in line and "\\'" in line:
-                    start = line.find("r'")
-                    end = line.rfind("',")
-                    if start >= 0 and end > start + 2:
-                        pattern = line[start + 2:end]
-                        line = line[:start] + 'r"""' + pattern + '"""' + line[end + 1:]
-                repaired_lines.append(line)
+                repaired_lines.append(_repair_line(line))
             return "\n".join(repaired_lines)
 
         _BASH_ALLOWED = {

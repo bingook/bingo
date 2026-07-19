@@ -8,7 +8,7 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.213`.
+- Current stable version after Bingo memory rebrand: `6.2.214`.
 - Bingo project memory is automatic:
   - At every Bingo session start in this repo, `AGENTS.md` instructs the agent to read this file and silently run `scripts/bingo-memory-autostart.sh`.
   - After every file edit/patch/format/test-generated worktree change, Bingo must silently run `scripts/bingo-memory-sync.sh`.
@@ -31,34 +31,105 @@
   - Fix direction: evidence-gate `_suggest_next_steps`; with zero confirmed findings, downgrade unsupported progress summaries and remove post-exploit options such as os-shell/admin insert/hash cracking unless confirmed evidence exists.
   - Earlier Markdown Python example blocks were also auto-executed even when they were generic templates with unresolved placeholders like `URL`, `PARAM`, `VAL`, `BASE_VALUE`, `TRUESIZE`, or `THRESHOLD`.
   - Fix direction: preflight Markdown Python blocks before execution; unresolved template placeholders and SyntaxError blocks return an internal regeneration request instead of runtime execution. Common missing stdlib imports such as `random` are injected before valid codeblock execution.
+- Latest target-log issue after v6.2.213:
+  - `happymfg.co.kr` run produced a false confirmed SQLi finding from a plain CMS fingerprint block: `FOUND: g5_` / `FOUND: bo_table` was misread as `db_table_extract`.
+  - The same run later printed `SQLI_NO_VALID_CHANNEL` and `SQLI_EXTRACTION_FAILURE`, but negative oracle markers were evaluated after the db/table confirmation heuristic.
+  - Fix direction: SQLi negative markers outrank SQLi db/table extraction heuristics; DB/table confirmed now requires explicit extraction context such as `Database confirmed`, `Found tables`, `TABLE_EXISTS`, `SHOW TABLES`, or `information_schema` query context. CMS fingerprints alone cannot become confirmed SQLi.
+  - Markdown Bash heredoc regex repair now handles raw bytes regex prefixes (`rb'...'`, `br'...'`) so quote classes like `[\\"']` do not produce SyntaxError.
+  - User-facing codeblock rendering masks raw internal action directives so `TOOL_CALL:` JSON does not appear in collapsed execution previews.
 
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T20:33:08+08:00
+- Last synced: 2026-07-19T21:38:47+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T20:33:08+08:00
+- Captured: 2026-07-19T21:38:47+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
  M PKG-INFO
  M bingo/__init__.py
+ M bingo/tools/findings_exporter.py
  M bingo/ui/terminal.py
  M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |   2 +-
+PKG-INFO                                      |  2 +-
+ bingo/__init__.py                             |  2 +-
+ bingo/tools/findings_exporter.py              | 37 +++++++++--
+ bingo/ui/terminal.py                          | 93 ++++++++++++++++++++++++---
+ tests/test_terminal_completion_regressions.py | 68 ++++++++++++++++++++
+ 5 files changed, 187 insertions(+), 15 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.214`
+- `__version__ = "6.2.214"`
+- `r'|SQLI_NO_VALID_CHANNEL'`
+- `_sqli_context = bool(re.search(`
+- `r'\bSQLI_|sqli|sql\s*injection|sql\s*注入|oracle|boolean|blind|'`
+- `r'TRUE/FALSE|BENCHMARK|SLEEP|GET_LOCK|EXTRACTVALUE|UPDATEXML',`
+- `blob,`
+- `re.I,`
+- `))`
+- `_sqli_negative = bool(`
+- `_ORACLE_FAILURE_WARNING.search(output)`
+- `or (_sqli_context and _ORACLE_FAILURE_REPEATED.search(output))`
+- `)`
+- `if _sqli_negative:`
+- `return EvidenceVerdict(CONF_BLOCKED, REASON_ORACLE_PRECHECK_FAIL, FINDING_SQLI, "oracle fail")`
+- `_db_table_extract = bool(re.search(`
+- `r'(?:Database\s+confirmed|DB\s+name|Current\s+database|database\(\)|'`
+- `r'数据库名|数据库名称)\s*[:=：]\s*[\'"]?(?!a{4,}|0{4,})[a-zA-Z][\w]{1,40}'`
+- `r'|(?:Found\s+tables?|TABLES_EXTRACTED|SHOW\s+TABLES)\s*[:=：]\s*\[[^\]]+\]'`
+- `r'|(?:table(?:_name)?|TABLE_EXISTS)\s+[\w.]+\s*:\s*EXISTS'`
+- `r'|\[\+\]\s*Table\s+exists(?::|\()\s*[a-zA-Z0-9_]+',`
+- `))`
+- `_db_table_code_context = bool(re.search(`
+- `r'information_schema|SHOW\s+TABLES|table_schema|database\(\)|@@version|'`
+- `r'sqli_autoexploit|sqlmap|ghauri|UNION\s+SELECT|EXTRACTVALUE|UPDATEXML',`
+- `blob, re.I`
+- `))`
+- `if _db_table_extract and _db_table_code_context:`
+- `r'|SQLI_NO_VALID_CHANNEL'`
+- `if lines and re.match(r'^TOOL_CALL\s*:', lines[0], re.I):`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:c4d532a3339170d47fd4723063ee4f0f4e501ca3 -->
+## Code change: fix: evidence-gate next steps and codeblock execution
+- Commit: `c4d532a33391`
+- Recorded: 2026-07-19T21:05:29+08:00
+- Committed: 2026-07-19T21:05:29+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+c4d532a33 fix: evidence-gate next steps and codeblock execution
+ .bingo/project-memory.md                      | 121 +++++++++++-
+ PKG-INFO                                      |   2 +-
  bingo/__init__.py                             |   2 +-
  bingo/ui/terminal.py                          | 265 +++++++++++++++++++++++++-
  tests/test_terminal_completion_regressions.py | 238 +++++++++++++++++++++++
- 4 files changed, 500 insertions(+), 7 deletions(-)
+ 5 files changed, 619 insertions(+), 9 deletions(-)
 ```
 
 ### Added Highlights
@@ -92,7 +163,7 @@ PKG-INFO                                      |   2 +-
 - `"PLACEHOLDER_TEMPLATE_CODE: Python block contains unresolved "`
 - `f"template placeholder(s): {', '.join(_unbound_placeholders) or 'assignment'}. "`
 - `"Do not execute generic examples; regenerate a concrete TOOL_CALL run_python "`
-<!-- working-tree:end -->
+
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.

@@ -502,6 +502,7 @@ _ORACLE_FAILURE_WARNING = re.compile(
     r'|TRUE/FALSE\s*(?:无法区分|indistinguishable|구분\s*불가)'
     r'|SQLI_ORACLE_REJECTED'
     r'|SQLI_EXTRACTION_FAILURE'
+    r'|SQLI_NO_VALID_CHANNEL'
     r'|Boolean\s+oracle\s+may\s+be\s+unreliable'
     r'|WAF\s*(?:全部拦截|全部拦截|屏蔽所有|blocking\s+all)'
     r'|oracle\s*all-?same'
@@ -605,6 +606,23 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
     if re.search(r'window\.__BINGO_XSS__\s*=\s*1', output):
         return EvidenceVerdict(CONF_CONFIRMED, REASON_XSS_BROWSER, FINDING_XSS, "bingo xss marker")
 
+    # Explicit SQLi negative markers must outrank all SQLi extraction
+    # heuristics.  A homepage/CMS fingerprint such as "FOUND: g5_" is not a
+    # database extraction, especially when the same run prints
+    # SQLI_EXTRACTION_FAILURE / SQLI_NO_VALID_CHANNEL.
+    _sqli_context = bool(re.search(
+        r'\bSQLI_|sqli|sql\s*injection|sql\s*注入|oracle|boolean|blind|'
+        r'TRUE/FALSE|BENCHMARK|SLEEP|GET_LOCK|EXTRACTVALUE|UPDATEXML',
+        blob,
+        re.I,
+    ))
+    _sqli_negative = bool(
+        _ORACLE_FAILURE_WARNING.search(output)
+        or (_sqli_context and _ORACLE_FAILURE_REPEATED.search(output))
+    )
+    if _sqli_negative:
+        return EvidenceVerdict(CONF_BLOCKED, REASON_ORACLE_PRECHECK_FAIL, FINDING_SQLI, "oracle fail")
+
     if re.search(
         r'XPATH\s+syntax\s+error[^\n]{0,80}~[A-Za-z0-9_.\-]{2,80}~'
         r'|~[A-Za-z0-9_.\-]{2,80}~[^\n]{0,40}XPATH',
@@ -627,12 +645,20 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
         ):
             return EvidenceVerdict(CONF_CONFIRMED, REASON_XPATH_EXTRACT, FINDING_SQLI, "data extract")
 
-    if re.search(
-        r'(?:database|db_name|schema)\s*[=:]\s*[\'"]?(?!a{4,}|0{4,})[a-zA-Z][\w]{1,40}'
-        r'|table(?:_name)?\s+[\w]+\s*:\s*EXISTS'
-        r'|\[?\s*(?:g5_|wp_|information_schema)[\w]*\s*\]?\s*(?:EXISTS|found|존재)',
+    _db_table_extract = bool(re.search(
+        r'(?:Database\s+confirmed|DB\s+name|Current\s+database|database\(\)|'
+        r'数据库名|数据库名称)\s*[:=：]\s*[\'"]?(?!a{4,}|0{4,})[a-zA-Z][\w]{1,40}'
+        r'|(?:Found\s+tables?|TABLES_EXTRACTED|SHOW\s+TABLES)\s*[:=：]\s*\[[^\]]+\]'
+        r'|(?:table(?:_name)?|TABLE_EXISTS)\s+[\w.]+\s*:\s*EXISTS'
+        r'|\[\+\]\s*Table\s+exists(?::|\()\s*[a-zA-Z0-9_]+',
         output, re.I
-    ) and not _ORACLE_FAILURE_REPEATED.search(output):
+    ))
+    _db_table_code_context = bool(re.search(
+        r'information_schema|SHOW\s+TABLES|table_schema|database\(\)|@@version|'
+        r'sqli_autoexploit|sqlmap|ghauri|UNION\s+SELECT|EXTRACTVALUE|UPDATEXML',
+        blob, re.I
+    ))
+    if _db_table_extract and _db_table_code_context:
         return EvidenceVerdict(CONF_CONFIRMED, REASON_DB_TABLE_EXTRACT, FINDING_SQLI, "db/table")
 
     if re.search(
@@ -701,6 +727,7 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
         r'|DB\s+errors\s+found:\s*None'
         r'|boolean\s+oracle.*?fail'
         r'|SQLI_EXTRACTION_FAILURE'
+        r'|SQLI_NO_VALID_CHANNEL'
         r'|Oracle预检失败'
         r'|oracle\s*pre-?check\s*FAIL'
         r'|Boolean\s+字符提取已禁用'

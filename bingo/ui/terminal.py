@@ -416,6 +416,33 @@ class BingoTerminal:
             "- NEVER generate simulated output"
         )
 
+    @staticmethod
+    def _raw_loop_limit_message(count: int, lang: str = "en") -> str:
+        messages = {
+            "ko": (
+                f"⛔ [LOOP_LIMIT_STOP] {count}회 루프 도달 — raw 모드에서 자동 중지.\n"
+                "보고서/확정 결과를 자동 생성하지 않고 다음 선택지만 표시합니다."
+            ),
+            "zh": (
+                f"⛔ [LOOP_LIMIT_STOP] 已达第 {count} 次循环 — raw模式自动停止。\n"
+                "不自动生成报告或确认结论，只显示下一步选项。"
+            ),
+            "en": (
+                f"⛔ [LOOP_LIMIT_STOP] Loop #{count} reached — raw mode auto-stop.\n"
+                "No automatic report or confirmed conclusion is generated; showing next options only."
+            ),
+        }
+        return messages.get(lang, messages["en"])
+
+    @staticmethod
+    def _raw_loop_limit_resume_message(lang: str = "en") -> str:
+        messages = {
+            "ko": "Raw 모드 루프가 중지됨 — 자동 보고서 없이 다음 선택지를 표시합니다.",
+            "zh": "Raw模式循环已停止 — 不自动生成报告，只显示下一步选项。",
+            "en": "Raw mode loop stopped — showing next options without auto-report.",
+        }
+        return messages.get(lang, messages["en"])
+
     def __init__(self, config, strings: dict):
         self.config = config
         self.s = strings
@@ -3156,7 +3183,8 @@ class BingoTerminal:
             # AI 응답에서 명령 추출 → 실제 실행 → 결과를 컨텍스트로 주입
             self._execute_ai_commands(full_response)
             # AI 응답에 해시가 있으면 자동 크랙 알림
-            self._notify_hashes_found(full_response)
+            if not self._raw_runtime_mode():
+                self._notify_hashes_found(full_response)
 
     @staticmethod
     def _sanitize_preexecution_claims(text: str) -> str:
@@ -8965,11 +8993,17 @@ class BingoTerminal:
             # 동일 세션에서 60루프 이상 돌면 AI가 루프에 갇힌 것으로 판단 → 강제 중단
             _MAX_LOOP = 60
             if self._exec_loop_count >= _MAX_LOOP:
-                from ..i18n import t as _t_loop, set_lang as _sl_loop, get_lang as _gl_loop
-                _loop_stop_msg = "\n" + _t_loop(
-                    "loop_limit_stop",
-                    f"⛔ [LOOP_LIMIT_STOP] Loop #{self._exec_loop_count} — auto-stopping.",
-                ).format(count=self._exec_loop_count)
+                if _raw_runtime_mode:
+                    _loop_stop_msg = "\n" + self._raw_loop_limit_message(
+                        self._exec_loop_count,
+                        getattr(self.config, "lang", "en"),
+                    )
+                else:
+                    from ..i18n import t as _t_loop, set_lang as _sl_loop, get_lang as _gl_loop
+                    _loop_stop_msg = "\n" + _t_loop(
+                        "loop_limit_stop",
+                        f"⛔ [LOOP_LIMIT_STOP] Loop #{self._exec_loop_count} — auto-stopping.",
+                    ).format(count=self._exec_loop_count)
                 self.console.print(_loop_stop_msg)
                 # v6.2.137: hint 프롬프트 없이 완전 종료 — _loop_limit_hit 플래그로 구분
                 self._exec_loop_count = 0
@@ -9770,10 +9804,15 @@ class BingoTerminal:
                 if getattr(self, "_loop_limit_hit", False):
                     self._loop_limit_hit = False
                     self._exec_loop_count = 0
-                    _report_msg = self.s.get(
-                        "loop_limit_report_start",
-                        "Loop stopped — generating the final report now",
-                    )
+                    if _raw_runtime_mode:
+                        _report_msg = self._raw_loop_limit_resume_message(
+                            getattr(self.config, "lang", "en")
+                        )
+                    else:
+                        _report_msg = self.s.get(
+                            "loop_limit_report_start",
+                            "Loop stopped — generating the final report now",
+                        )
                     self.console.print(f"\n[{THEME['warn']}]{_report_msg}[/]")
                     if _raw_runtime_mode:
                         self._suggest_next_steps()
@@ -9839,7 +9878,8 @@ class BingoTerminal:
             self._append_to_session_log("assistant", followup_response)
             # v6.2.147: 루프 내부에서는 수집만 (스레드 시작 안 함 → 인터리빙 방지)
             # 크랙은 _execute_ai_commands 완료 후 send_message()의 _notify_hashes_found()에서 실행
-            self._collect_crack_hashes(followup_response)
+            if not _raw_runtime_mode:
+                self._collect_crack_hashes(followup_response)
 
             # ── v4.5.0: 실행 후 LLM 분석에서 CONFIRMED/FALSE POSITIVE 감지 ────────
             # 여기서 나타나는 태그는 실제 코드 실행 결과를 보고 LLM이 판단한 것 → 신뢰

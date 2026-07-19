@@ -47,29 +47,87 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T05:30:23+08:00
+- Last synced: 2026-07-19T12:49:30+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T05:30:23+08:00
+- Captured: 2026-07-19T12:49:30+08:00
 
 ### Status
 ```text
- M bingo/__init__.py
- M bingo/models/system_prompt.py
  M bingo/ui/terminal.py
  M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
+ bingo/ui/terminal.py                          | 62 ++++++++++++++++++++++-----
+ tests/test_terminal_completion_regressions.py | 10 +++++
+ 2 files changed, 61 insertions(+), 11 deletions(-)
+```
+
+### Added Highlights
+- `@staticmethod`
+- `def _raw_loop_limit_message(count: int, lang: str = "en") -> str:`
+- `messages = {`
+- `"ko": (`
+- `f"⛔ [LOOP_LIMIT_STOP] {count}회 루프 도달 — raw 모드에서 자동 중지.\n"`
+- `"보고서/확정 결과를 자동 생성하지 않고 다음 선택지만 표시합니다."`
+- `),`
+- `"zh": (`
+- `f"⛔ [LOOP_LIMIT_STOP] 已达第 {count} 次循环 — raw模式自动停止。\n"`
+- `"不自动生成报告或确认结论，只显示下一步选项。"`
+- `),`
+- `"en": (`
+- `f"⛔ [LOOP_LIMIT_STOP] Loop #{count} reached — raw mode auto-stop.\n"`
+- `"No automatic report or confirmed conclusion is generated; showing next options only."`
+- `),`
+- `}`
+- `return messages.get(lang, messages["en"])`
+- `@staticmethod`
+- `def _raw_loop_limit_resume_message(lang: str = "en") -> str:`
+- `messages = {`
+- `"ko": "Raw 모드 루프가 중지됨 — 자동 보고서 없이 다음 선택지를 표시합니다.",`
+- `"zh": "Raw模式循环已停止 — 不自动生成报告，只显示下一步选项。",`
+- `"en": "Raw mode loop stopped — showing next options without auto-report.",`
+- `}`
+- `return messages.get(lang, messages["en"])`
+- `if not self._raw_runtime_mode():`
+- `self._notify_hashes_found(full_response)`
+- `if _raw_runtime_mode:`
+- `_loop_stop_msg = "\n" + self._raw_loop_limit_message(`
+- `self._exec_loop_count,`
+<!-- working-tree:end -->
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:03253633f78da0387c38a6a6a34bff7d47d63d2b -->
+## Code change: refactor: default to raw execution feedback
+- Commit: `03253633f78d`
+- Recorded: 2026-07-19T05:34:17+08:00
+- Committed: 2026-07-19T05:34:17+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	bingo/__init__.py
+M	bingo/models/system_prompt.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+03253633f refactor: default to raw execution feedback
+ .bingo/project-memory.md                      |  95 ++++++++--
  bingo/__init__.py                             |   2 +-
  bingo/models/system_prompt.py                 |  18 ++
  bingo/ui/terminal.py                          | 243 ++++++++++++++++++--------
  tests/test_terminal_completion_regressions.py |  54 +++++-
- 4 files changed, 237 insertions(+), 80 deletions(-)
+ 5 files changed, 317 insertions(+), 95 deletions(-)
 ```
 
 ### Added Highlights
@@ -103,7 +161,64 @@
 - `if mode in {"classic", "legacy", "heavy", "bingo"}:`
 - `return False`
 - `if mode in {"raw", "thin", "claude", "claude-cli", "claude_cli"}:`
-<!-- working-tree:end -->
+
+<!-- commit:653fb1206a9d1b8556f8582cc89e0fa7855871f7 -->
+## Code change: refactor: default to raw execution feedback
+- Commit: `653fb1206a9d`
+- Recorded: 2026-07-19T05:33:55+08:00
+- Committed: 2026-07-19T05:33:54+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	bingo/__init__.py
+M	bingo/models/system_prompt.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+653fb1206 refactor: default to raw execution feedback
+ .bingo/project-memory.md                      |  95 ++++++++--
+ bingo/__init__.py                             |   2 +-
+ bingo/models/system_prompt.py                 |  18 ++
+ bingo/ui/terminal.py                          | 243 ++++++++++++++++++--------
+ tests/test_terminal_completion_regressions.py |  54 +++++-
+ 5 files changed, 317 insertions(+), 95 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.207"`
+- `RAW_RUNTIME_CONTRACT = """`
+- `=== BINGO RAW RUNTIME CONTRACT ===`
+- `Default runtime behavior is Claude-CLI-style direct execution:`
+- `1. Emit fenced bash/python code blocks for runnable work. Bingo executes them and`
+- `returns raw stdout/stderr.`
+- `2. Treat stdout/stderr as the only evidence source. Your own prose, script labels,`
+- `helper print labels, and previous assumptions are not proof.`
+- `3. Do not call login, SSRF, SQLi, XSS, RCE, bypass, credential extraction, or data`
+- `access CONFIRMED unless the returned output contains deterministic proof for`
+- `that exact claim.`
+- `4. If evidence is insufficient, keep the candidate and write the next verifier.`
+- `Do not fabricate a finding and do not discard a viable technique.`
+- `5. Built-in skills and tool knowledge remain available. This contract changes`
+- `evidence promotion only; it does not remove attack capability.`
+- `""".strip()`
+- `+ "\n\n"`
+- `+ RAW_RUNTIME_CONTRACT`
+- `@staticmethod`
+- `def _raw_runtime_mode() -> bool:`
+- `"""Return True for Claude-CLI-style raw execution feedback.`
+- `Default is raw/thin mode: run fenced bash/python blocks, return stdout/stderr,`
+- `and let the model decide the next action from that evidence.  The legacy`
+- `heavy auto-analysis path remains available for regression testing via`
+- `BINGO_RUNTIME_MODE=classic or BINGO_CLAUDE_CLI_MODE=0.`
+- `"""`
+- `mode = os.environ.get("BINGO_RUNTIME_MODE", "").strip().lower()`
+- `if mode in {"classic", "legacy", "heavy", "bingo"}:`
+- `return False`
+- `if mode in {"raw", "thin", "claude", "claude-cli", "claude_cli"}:`
 
 # Workspace Memory
 

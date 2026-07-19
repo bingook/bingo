@@ -100,6 +100,16 @@ def test_classic_execution_feedback_keeps_legacy_contract() -> None:
     assert "Output TASK_COMPLETE when all credentials are extracted" in feedback
 
 
+def test_raw_loop_limit_messages_do_not_request_auto_report() -> None:
+    stop_msg = BingoTerminal._raw_loop_limit_message(60, "ko")
+    resume_msg = BingoTerminal._raw_loop_limit_resume_message("ko")
+
+    assert "자동 보고서 없이" in resume_msg
+    assert "보고서/확정 결과를 자동 생성하지 않고" in stop_msg
+    assert "TASK_COMPLETE" not in stop_msg
+    assert "보고서 생성" not in resume_msg
+
+
 def test_attack_hypothesis_is_warned_but_not_blocked() -> None:
     engine = ExecutionAnchorEngine(session_target="https://example.test", lang="en")
 

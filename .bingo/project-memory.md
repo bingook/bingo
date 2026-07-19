@@ -8,7 +8,12 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.218`.
+- Current stable version after Bingo memory rebrand: `6.2.221`.
+- Latest bundled model prompt profile fix as of v6.2.221:
+  - Bingo ships the 5 model prompt profiles directly under `bingo/models/prompt_profiles/`.
+  - Runtime loading uses only bundled project files: `claudeopus4.6.txt`, `glm5.2.txt`, `grok4.5.txt`, `grok4.5_2.txt`, and `hy3.txt`.
+  - No runtime URL fetch, no `~/.config/bingo/prompt_profiles` cache, and no external fallback directory.
+  - Disable profiles entirely with `BINGO_EXTERNAL_PROMPT_PROFILES=0`.
 - Latest GLM/custom prompt-hygiene fix as of v6.2.218:
   - Removed model-facing jailbreak-style trigger phrases such as `pre-granted`, `BEHAVIOR OVERRIDE`, `No refusals`, `No disclaimers`, and `CONTINUE REQUIRED` from the main prompt/task/retry/hook paths.
   - `custom` models with names/aliases/base URLs containing `glm`, `qwen`, `zhipu`, `alibaba`, or `dashscope` now route to the GLM/Qwen compatibility prompt instead of the Claude/GPT/custom prompt.
@@ -58,36 +63,101 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-19T23:52:34+08:00
+- Last synced: 2026-07-20T00:29:14+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-19T23:52:34+08:00
+- Captured: 2026-07-20T00:29:14+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
  M PKG-INFO
  M bingo/__init__.py
- M bingo/hooks/pre_tool_hook.py
- M bingo/models/base.py
  M bingo/models/system_prompt.py
- M bingo/ui/terminal.py
  M tests/test_terminal_completion_regressions.py
+?? bingo/models/prompt_profiles/
 ```
 
 ### Diff Stat
 ```text
 PKG-INFO                                      |   2 +-
  bingo/__init__.py                             |   2 +-
- bingo/hooks/pre_tool_hook.py                  |  70 +++++++----------
- bingo/models/base.py                          |   6 +-
- bingo/models/system_prompt.py                 | 104 ++++++++++++--------------
- bingo/ui/terminal.py                          |  20 +++--
- tests/test_terminal_completion_regressions.py |  42 ++++++++++-
- 7 files changed, 136 insertions(+), 110 deletions(-)
+ bingo/models/system_prompt.py                 | 122 ++++++++++++++++++++++
+ tests/test_terminal_completion_regressions.py | 144 +++++++++++++++++++++++++-
+ 4 files changed, 267 insertions(+), 3 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.221`
+- `__version__ = "6.2.221"`
+- `def _bundled_external_prompt_dir() -> str:`
+- `"""Directory containing Bingo-bundled model prompt profiles."""`
+- `from pathlib import Path as _ProfilePath`
+- `return str(_ProfilePath(__file__).with_name("prompt_profiles"))`
+- `DEFAULT_EXTERNAL_PROMPT_DIR = _bundled_external_prompt_dir()`
+- `_EXTERNAL_PROMPT_PROFILE_MAP: tuple[tuple[str, str, tuple[str, ...]], ...] = (`
+- `(`
+- `"claude-opus-4.6",`
+- `"claudeopus4.6.txt",`
+- `("claude-opus-4.6", "opus-4.6", "claude", "anthropic", "opus", "sonnet", "haiku", "fable"),`
+- `),`
+- `(`
+- `"glm-5.2",`
+- `"glm5.2.txt",`
+- `("glm-5.2", "glm5.2", "glm", "zhipu", "bigmodel", "z.ai"),`
+- `),`
+- `(`
+- `"grok-4.5",`
+- `"grok4.5.txt",`
+- `("grok-4.5", "grok4.5", "grok", "xai", "x.ai"),`
+- `),`
+- `(`
+- `"qwen",`
+- `"grok4.5_2.txt",`
+- `("qwen", "dashscope", "alibaba", "通义", "千问"),`
+- `),`
+- `(`
+- `"hy3",`
+<!-- working-tree:end -->
+
+
+
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:213701acb14867176e46f022a6bdc1c93f7df201 -->
+## Code change: fix: reduce provider refusal triggers for glm prompts
+- Commit: `213701acb148`
+- Recorded: 2026-07-19T23:56:09+08:00
+- Committed: 2026-07-19T23:56:09+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/hooks/pre_tool_hook.py
+M	bingo/models/base.py
+M	bingo/models/system_prompt.py
+M	bingo/ui/terminal.py
+```
+
+### Diff Stat
+```text
+213701acb fix: reduce provider refusal triggers for glm prompts
+ .bingo/project-memory.md      |  87 ++++++++++++++++++++++++++++++++++-
+ PKG-INFO                      |   2 +-
+ bingo/__init__.py             |   2 +-
+ bingo/hooks/pre_tool_hook.py  |  70 ++++++++++++----------------
+ bingo/models/base.py          |   6 ++-
+ bingo/models/system_prompt.py | 104 +++++++++++++++++++-----------------------
+ bingo/ui/terminal.py          |  20 +++++---
+ 7 files changed, 180 insertions(+), 111 deletions(-)
 ```
 
 ### Added Highlights
@@ -121,7 +191,7 @@ PKG-INFO                                      |   2 +-
 - `f"[/BINGO_RETRY_HINT]\n"`
 - `model_hint = " ".join(`
 - `str(value or "")`
-<!-- working-tree:end -->
+
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.

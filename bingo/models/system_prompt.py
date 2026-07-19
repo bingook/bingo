@@ -58,6 +58,126 @@ REFUSAL_PATTERNS = [
     "我拒绝此请求",
 ]
 
+
+# ════════════════════════════════════════════════════════════════
+# Bundled model prompt profiles
+# ════════════════════════════════════════════════════════════════
+
+def _bundled_external_prompt_dir() -> str:
+    """Directory containing Bingo-bundled model prompt profiles."""
+    from pathlib import Path as _ProfilePath
+
+    return str(_ProfilePath(__file__).with_name("prompt_profiles"))
+
+
+DEFAULT_EXTERNAL_PROMPT_DIR = _bundled_external_prompt_dir()
+
+_EXTERNAL_PROMPT_PROFILE_MAP: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    (
+        "claude-opus-4.6",
+        "claudeopus4.6.txt",
+        ("claude-opus-4.6", "opus-4.6", "claude", "anthropic", "opus", "sonnet", "haiku", "fable"),
+    ),
+    (
+        "glm-5.2",
+        "glm5.2.txt",
+        ("glm-5.2", "glm5.2", "glm", "zhipu", "bigmodel", "z.ai"),
+    ),
+    (
+        "grok-4.5",
+        "grok4.5.txt",
+        ("grok-4.5", "grok4.5", "grok", "xai", "x.ai"),
+    ),
+    (
+        "qwen",
+        "grok4.5_2.txt",
+        ("qwen", "dashscope", "alibaba", "通义", "千问"),
+    ),
+    (
+        "hy3",
+        "hy3.txt",
+        ("hy3", "hunyuan", "混元", "tencent", "腾讯"),
+    ),
+)
+
+
+def _external_prompt_profiles_enabled() -> bool:
+    """Whether model-specific external prompt profiles should be auto-loaded."""
+    import os as _profile_os
+
+    return str(_profile_os.environ.get("BINGO_EXTERNAL_PROMPT_PROFILES", "1")).lower() not in {
+        "0", "false", "off", "no"
+    }
+
+
+def _external_prompt_profile_dir(base_dir: str | None = None) -> str:
+    """Directory containing model-specific bundled prompt profiles."""
+    return base_dir or DEFAULT_EXTERNAL_PROMPT_DIR
+
+
+def _match_external_prompt_profile(model_hint: str) -> tuple[str, str, tuple[str, ...]] | None:
+    """Return the profile metadata matching a model hint."""
+    hint = (model_hint or "").lower()
+    for profile in _EXTERNAL_PROMPT_PROFILE_MAP:
+        _profile_id, _filename, keywords = profile
+        if any(keyword.lower() in hint for keyword in keywords):
+            return profile
+    return None
+
+
+def _external_prompt_local_path(filename: str, base_dir: str | None = None) -> str | None:
+    """Return the bundled profile path if present."""
+    from pathlib import Path as _ProfilePath
+
+    root = _ProfilePath(_external_prompt_profile_dir(base_dir)).expanduser()
+    if not root.is_dir():
+        return None
+    path = root / filename
+    if path.is_file():
+        return str(path)
+    return None
+
+
+def resolve_external_prompt_profile(model_hint: str, base_dir: str | None = None) -> tuple[str, str] | None:
+    """Return (profile_id, primary_source) for the model hint."""
+    profile = _match_external_prompt_profile(model_hint)
+    if profile is None:
+        return None
+    profile_id, filename, _keywords = profile
+    local_path = _external_prompt_local_path(filename, base_dir)
+    if local_path:
+        return profile_id, local_path
+    return None
+
+
+def _read_external_prompt_file(path: str) -> str:
+    """Read a local prompt profile file."""
+    try:
+        from pathlib import Path as _ProfilePath
+
+        return _ProfilePath(path).read_text(encoding="utf-8", errors="replace").strip()
+    except Exception:
+        return ""
+
+
+def load_external_prompt_profile(model_hint: str) -> str:
+    """Load the full bundled prompt profile matching the current model."""
+    if not _external_prompt_profiles_enabled():
+        return ""
+    resolved = resolve_external_prompt_profile(model_hint)
+    if resolved is None:
+        return ""
+    profile_id, local_path = resolved
+    content = _read_external_prompt_file(local_path)
+
+    if not content:
+        return ""
+    return (
+        f"\n\n=== BINGO BUNDLED MODEL PROFILE: {profile_id} ===\n"
+        f"{content}\n"
+        f"=== END BINGO BUNDLED MODEL PROFILE ===\n"
+    )
+
 # ════════════════════════════════════════════════════════════════
 # UNIVERSAL CORE — 모든 모델에 100% 동일하게 적용
 # ════════════════════════════════════════════════════════════════
@@ -3810,11 +3930,13 @@ def get_pentest_system_prompt(provider: str) -> str:
     else:
         # Claude/GPT/Grok/Gemini/custom use the same direct-execution profile.
         model_extra = CLAUDE_GPT_EXTRA
+    external_profile = load_external_prompt_profile(provider)
     return (
         UNIVERSAL_PENTEST_CORE
         + _tool_schema_block
         + "\n\n"
         + model_extra
+        + external_profile
         + "\n\n"
         + """=== VSHELL POST-EXPLOITATION CHAIN ===
 When Vshell is configured and an Agent session is available, use the native

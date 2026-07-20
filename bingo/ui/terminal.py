@@ -9318,8 +9318,12 @@ class BingoTerminal:
                     if _defer_reason:
                         _auto_report_defer_count += 1
                         if _auto_report_defer_count >= 4:
-                            self._suggest_next_steps()
-                            break
+                            _auto_report_defer_count = 0
+                            _no_code_retry = 0
+                            _defer_reason = (
+                                f"{_defer_reason}; repeated non-executable completion attempt — "
+                                "force a different executable branch"
+                            )
                         _no_code_retry = 0
                     else:
                         # 3회 재촉해도 코드 없고 evidence gate를 통과하면 완료로 판단
@@ -11262,8 +11266,27 @@ class BingoTerminal:
                         ),
                     ))
                     if _auto_report_defer_count >= 4:
-                        self._suggest_next_steps()
-                        break
+                        _auto_report_defer_count = 0
+                        self.history.append(Message(
+                            role="user",
+                            content=(
+                                "[FORCED_SCAN_CONTINUATION]\n"
+                                "Repeated premature completion was deferred. Do not summarize or ask for a menu. "
+                                "Choose a different untested branch and emit exactly one concrete executable "
+                                "TOOL_CALL, run_python, or run_bash action now."
+                            ),
+                        ))
+                        from ..models.registry import ModelRegistry as _MR_done
+                        _mc_done = self.config.get_active_model_config()
+                        if not _mc_done:
+                            break
+                        _m_done = _MR_done.build(_mc_done)
+                        current_response = self._stream_response(
+                            _m_done.chat_stream(self._build_messages(""))
+                        )
+                        if current_response:
+                            self.history.append(Message(role="assistant", content=current_response))
+                        continue
                     current_response = followup_response
                     continue
                 if _done_counts.get("confirmed", 0) > 0:
@@ -13770,7 +13793,7 @@ class BingoTerminal:
         prompt_msg = Message(
             role="user",
             content=(
-                "[INTERACTIVE NEXT STEPS — PENTEST CONTINUATION]\n\n"
+                "[NEXT STEP SUGGESTIONS — PENTEST CONTINUATION]\n\n"
                 f"Target: {_state.get('target', 'unknown')}\n"
                 f"Current state: {_state}\n\n"
                 f"⚠️ FINDINGS GROUND TRUTH (DO NOT CONTRADICT):\n{_fe_gt or '(none)'}\n\n"
@@ -13798,7 +13821,11 @@ class BingoTerminal:
 
         temp_messages = [self._get_system_message("")] + self.history[-10:] + [prompt_msg]
 
-        _after_report_title = _s.get("next_steps_after_report", "Report done — choose next step")
+        _after_report_title = {
+            "ko": "다음 권장 단계",
+            "zh": "建议下一步",
+            "en": "Suggested next steps",
+        }.get(_lang, "Suggested next steps")
         self.console.print(Rule(
             f"[bold cyan]💡 {_after_report_title}[/bold cyan]",
             style="cyan"
@@ -13922,6 +13949,9 @@ class BingoTerminal:
                     border_style=THEME["accent"],
                     padding=(0, 2),
                 ))
+
+                if not _env_flag_enabled("BINGO_INTERACTIVE_NEXT_STEPS", False):
+                    return
 
                 # ── 번호 입력 대기 ────────────────────────────────────
                 _prompt_txt = _s.get(

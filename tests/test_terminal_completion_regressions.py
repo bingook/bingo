@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import io
 import threading
 import json
 from pathlib import Path
 from types import SimpleNamespace
+
+from rich.console import Console
 
 from bingo.ui.terminal import (
     BingoTerminal,
@@ -393,6 +396,24 @@ def test_related_target_scope_learns_first_party_flow_domain() -> None:
         )
         assert sibling is not None
         assert "TARGET_DRIFT_BLOCKED" in sibling
+    finally:
+        set_target_domain("")
+
+
+def test_related_target_scope_learns_window_open_safekey_domain() -> None:
+    set_target_domain("https://www.balance-cf.co.kr/")
+    try:
+        added = _remember_related_domains_from_text(
+            "https://www.balance-cf.co.kr/balance/mypage/receipt_account.do",
+            "function fnPopup(){ window.open('https://balance-sa.ccse.co.kr/safekey/main.do',"
+            "'popupChk','width=880,height=600'); }",
+        )
+        assert added == ["balance-sa.ccse.co.kr"]
+        reason = _check_script_target_drift(
+            "curl -sk 'https://balance-sa.ccse.co.kr/safekey/main.do?id=1 OR 1=1--'",
+            "bash",
+        )
+        assert reason is None
     finally:
         set_target_domain("")
 
@@ -843,6 +864,7 @@ def test_quote_heavy_multiline_python_pipeline_uses_tempfile(tmp_path: Path) -> 
     repaired = _fix_bash_script(script)
 
     assert "mktemp /tmp/bingo_py_" in repaired
+    assert "mktemp /tmp/bingo_py_XXXXXX.py" not in repaired
     assert "| python3 \"${_bingo_pytmp_1}\"" in repaired
     import subprocess
     checked = subprocess.run(["bash", "-n"], input=repaired, text=True, capture_output=True)
@@ -2467,7 +2489,8 @@ def test_report_fallback_is_written_without_model(tmp_path: Path, monkeypatch) -
     obj._get_system_message = lambda _skill: SimpleNamespace(role="system", content="")
     obj._render_hacker_report = lambda *_args: None
     obj._converge_session_artifacts = lambda *_args, **_kwargs: None
-    obj._suggest_next_steps = lambda: None
+    next_steps_calls: list[bool] = []
+    obj._suggest_next_steps = lambda: next_steps_calls.append(True)
     original_fallback = BingoTerminal._build_fallback_report
     captured: dict[str, str] = {}
 
@@ -2503,6 +2526,103 @@ def test_report_fallback_is_written_without_model(tmp_path: Path, monkeypatch) -
     assert "BINGO-1" not in vuln_section
     assert "Verification Backlog (Unconfirmed)" in report
     assert "type=sqli\nEVIDENCE LADDER RULES" in captured["ground_truth"]
+    assert next_steps_calls == []
+
+
+def test_report_next_steps_can_be_enabled_by_env(tmp_path: Path, monkeypatch) -> None:
+    class _Config:
+        lang = "en"
+
+        @staticmethod
+        def get_active_model_config():
+            return None
+
+    class _Findings:
+        @staticmethod
+        def stats():
+            return {"confirmed": 0, "probable": 0, "potential_high": 0, "potential_critical": 0}
+
+        @staticmethod
+        def ground_truth_block():
+            return ""
+
+        @staticmethod
+        def save():
+            return None
+
+    obj = BingoTerminal.__new__(BingoTerminal)
+    obj.config = _Config()
+    obj.s = {"report_fallback_used": "fallback", "report_save_ok": "saved"}
+    obj.console = _Console()
+    obj._agent_state = {"target": "https://example.test"}
+    obj.history = []
+    obj._session_tables = []
+    obj._session_credentials = []
+    obj._session_fresh = True
+    obj._findings_exporter = _Findings()
+    obj._get_system_message = lambda _skill: SimpleNamespace(role="system", content="")
+    obj._render_hacker_report = lambda *_args: None
+    obj._converge_session_artifacts = lambda *_args, **_kwargs: None
+    next_steps_calls: list[bool] = []
+    obj._suggest_next_steps = lambda: next_steps_calls.append(True)
+    monkeypatch.setenv("BINGO_REPORTS_DIR", str(tmp_path))
+    monkeypatch.setenv("BINGO_REPORT_NEXT_STEPS", "1")
+
+    BingoTerminal._auto_generate_report(obj)
+
+    assert next_steps_calls == [True]
+
+
+def test_suggest_next_steps_is_non_interactive_by_default(monkeypatch) -> None:
+    class _Config:
+        lang = "zh"
+
+        @staticmethod
+        def get_active_model_config():
+            return SimpleNamespace(provider="test", model="test")
+
+    class _Model:
+        @staticmethod
+        def chat_stream(_messages):
+            yield SimpleNamespace(error=None, text="进展摘要: 当前未确认漏洞。\n\n")
+            yield SimpleNamespace(
+                error=None,
+                text=(
+                    "下一步选项:\n"
+                    "1. 继续解析 main.do 菜单链接\n"
+                    "2. 枚举真实 .do 参数\n"
+                    "3. 复测 SQLi/WAF oracle\n"
+                ),
+            )
+
+    from bingo.models import registry as registry_mod
+
+    monkeypatch.delenv("BINGO_INTERACTIVE_NEXT_STEPS", raising=False)
+    monkeypatch.setattr(registry_mod.ModelRegistry, "build", staticmethod(lambda _cfg: _Model()))
+
+    sent: list[str] = []
+    stream = io.StringIO()
+    obj = BingoTerminal.__new__(BingoTerminal)
+    obj.config = _Config()
+    obj.s = {
+        "progress_summary": "进展摘要",
+        "next_steps_title": "下一步选项",
+        "next_steps_prompt": "输入数字后回车",
+    }
+    obj.console = Console(file=stream, force_terminal=False, width=120, record=True)
+    obj._agent_state = {"target": "https://example.test"}
+    obj.history = [Message(role="assistant", content="recent")]
+    obj._findings_exporter = None
+    obj._get_system_message = lambda _skill: Message(role="system", content="")
+    obj._send_message = lambda text, **_kwargs: sent.append(text)
+
+    BingoTerminal._suggest_next_steps(obj)
+
+    rendered = obj.console.export_text()
+    assert "建议下一步" in rendered
+    assert "报告已生成" not in rendered
+    assert "输入数字后回车" not in rendered
+    assert sent == []
 
 
 def test_html_report_renderer_escapes_content_and_adds_cards() -> None:

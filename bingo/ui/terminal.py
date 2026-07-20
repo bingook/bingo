@@ -592,15 +592,19 @@ class BingoTerminal:
             self._task_graph = TaskGraph()
             self._self_reflector = SelfReflector()
             self._intel_ready = True
-            # v6.2.230: fixed mission templates are opt-in.  They are useful for
-            # explicit planning, but as a default they bias the model into a
-            # full checklist and can push runs toward the 60-loop safety limit.
-            self._task_graph_enabled = _env_flag_enabled("BINGO_TASK_GRAPH", False)
-            self._self_reflection_enabled = _env_flag_enabled("BINGO_SELF_REFLECTION", False)
+            # Keep the planning/reflection engines in model context by default.
+            # User-facing graph banners stay opt-in so blackbox runs remain quiet.
+            self._task_graph_enabled = _env_flag_enabled("BINGO_TASK_GRAPH_CONTEXT", True)
+            self._task_graph_visible = _env_flag_enabled("BINGO_TASK_GRAPH", False)
+            self._self_reflection_enabled = _env_flag_enabled("BINGO_SELF_REFLECTION", True)
+            self._self_reflection_visible = _env_flag_enabled("BINGO_SELF_REFLECTION_VISIBLE", False)
         except Exception:
             self._intel_ready = False
             self._task_graph_enabled = False
+            self._task_graph_visible = False
             self._self_reflection_enabled = False
+            self._self_reflection_visible = False
+        self._compact_operator_ui = _env_flag_enabled("BINGO_COMPACT_UI", True)
         # v6.2.230: source-path prompt is opt-in.  A live blackbox target must
         # not stop to ask for local source code unless the user explicitly says
         # they have source, or BINGO_ASK_SOURCE_PATH=1 is set.
@@ -3220,14 +3224,16 @@ class BingoTerminal:
                 self._stuck_count = 0
                 self._recent_results = []
                 # ── v6.2.159 Task Graph 초기화 (새 타겟 설정 시) ────────────
-                # v6.2.230: default OFF.  The fixed full-chain template is
-                # opt-in because it can over-scope normal blackbox prompts.
                 if getattr(self, "_intel_ready", False) and getattr(self, "_task_graph_enabled", False):
                     try:
                         self._task_graph.load_template(text)
                         self._self_reflector._last_reflect_loop = 0
                         self._self_reflector._reflect_count = 0
-                        _tg_render = self._task_graph.render()
+                        _tg_render = (
+                            self._task_graph.render()
+                            if getattr(self, "_task_graph_visible", False)
+                            else ""
+                        )
                         if _tg_render:
                             self.console.print(f"\n[bold cyan]{_tg_render}[/bold cyan]")
                     except Exception:
@@ -4180,8 +4186,50 @@ class BingoTerminal:
         import json as _json_tc
         import re as _re_tc
 
+        def _compact_exposed_actions(value: str) -> str:
+            """Collapse echoed [bingo action] code/script payloads in visible text."""
+            lines = value.splitlines()
+            out: list[str] = []
+            i = 0
+            action_start = _re_tc.compile(
+                r"^\[bingo action\]\s*([a-zA-Z0-9_]+)\((code|script)="
+            )
+            section_start = _re_tc.compile(
+                r"^(?:\[bingo action\]|── bingo|Agent loop|Agent 循环|Agent 루프|"
+                r"⚙|┌─|└─|📊|⚠|🔄|===|\s*💰)"
+            )
+            while i < len(lines):
+                line = lines[i]
+                stripped = line.strip()
+                match = action_start.match(stripped)
+                if not match:
+                    out.append(line)
+                    i += 1
+                    continue
+
+                name, key = match.group(1), match.group(2)
+                if "<" in stripped[stripped.find(f"{key}="):]:
+                    out.append(line)
+                    i += 1
+                    continue
+
+                omitted_lines = 0
+                i += 1
+                while i < len(lines):
+                    nxt = lines[i].strip()
+                    if nxt == ")":
+                        i += 1
+                        break
+                    if nxt and section_start.match(nxt):
+                        break
+                    omitted_lines += 1
+                    i += 1
+                omitted_lines = max(omitted_lines, 1)
+                out.append(f"[bingo action] {name}({key}=<{omitted_lines} lines omitted>)")
+            return "\n".join(out)
+
         if "TOOL_CALL" not in text:
-            return text
+            return _compact_exposed_actions(text)
 
         def _compact_leaked_summaries(value: str) -> str:
             """Hide previously compacted tool summaries if a model echoes them."""
@@ -4262,7 +4310,7 @@ class BingoTerminal:
                 j += 1
 
         if not spans:
-            return _compact_leaked_summaries(text)
+            return _compact_exposed_actions(_compact_leaked_summaries(text))
 
         parts: list[str] = []
         cursor = 0
@@ -4303,7 +4351,7 @@ class BingoTerminal:
         compacted = "".join(parts)
         if omitted:
             compacted += f"\n[bingo action] {omitted} additional deferred call(s) omitted from log/context."
-        return _compact_leaked_summaries(compacted)
+        return _compact_exposed_actions(_compact_leaked_summaries(compacted))
 
     def _compact_latest_assistant_tool_history(self, original_response: str) -> None:
         """Replace the latest assistant history item with compact TOOL_CALL text."""
@@ -4347,7 +4395,7 @@ class BingoTerminal:
                 if chunk.text:
                     full += chunk.text
                     visible = self._filter_ai_monologue(full)
-                    visible = self._compact_tool_call_payloads(visible)
+                    visible = self._compact_tool_call_payloads(visible, max_calls=3)
                     # 스트리밍 중: 코드 블록 접기 + 내부 키워드 제거
                     collapsed = self._collapse_code_blocks(visible)
                     collapsed = self._filter_agent_noise(collapsed)
@@ -4376,7 +4424,7 @@ class BingoTerminal:
 
         # 최종 출력: 코드 블록 접기 + 내부 제어 키워드 제거
         final = self._filter_ai_monologue(full)
-        final_for_display = self._compact_tool_call_payloads(final)
+        final_for_display = self._compact_tool_call_payloads(final, max_calls=3)
         display = self._collapse_code_blocks(final_for_display)
         display = self._filter_agent_noise(display)
         # SKILL_LOAD 선언 줄은 유저에게 숨김 (처리는 됨)
@@ -4399,7 +4447,9 @@ class BingoTerminal:
         # ── v6.2.81: 필터링 후 display가 비었으면 원본(full) 사용 ──────────────
         # _filter_ai_monologue 가 중국어 응답을 독백으로 오인해 전부 제거하는 버그 방지.
         if not display.strip() and full.strip():
-            display = full  # 원본 그대로 표시 (필터 우회)
+            display = self._collapse_code_blocks(
+                self._compact_tool_call_payloads(full)
+            )
 
         try:
             _has_rich = "[dim]" in display or "[bold" in display
@@ -6635,7 +6685,21 @@ class BingoTerminal:
                     continue
 
                 # ── v6.2.74: 도구 실행 해커 스타일 헤더 ───────────────
-                _args_preview = str(_tool_args)[:100]
+                if getattr(self, "_compact_operator_ui", True):
+                    _preview_bits: list[str] = []
+                    for _ak, _av in list(_tool_args.items())[:6]:
+                        if _ak in {"script", "code"}:
+                            _avs = str(_av)
+                            _av_lines = _avs.count("\n") + (1 if _avs else 0)
+                            _preview_bits.append(f"{_ak}=<{len(_avs)} chars/{_av_lines}L>")
+                        else:
+                            _avs = str(_av).replace("\n", "\\n")
+                            if len(_avs) > 72:
+                                _avs = _avs[:69] + "..."
+                            _preview_bits.append(f"{_ak}={_avs}")
+                    _args_preview = ", ".join(_preview_bits)
+                else:
+                    _args_preview = str(_tool_args)[:100]
                 self.console.print(
                     f"\n[{THEME['dim']}]┌─[/][{THEME['accent']}]⚙ {_tool_name}[/]"
                     f"[{THEME['dim']}] ({_tc_i + 1}/{_total_tc}) ────────────────────[/]"
@@ -6795,7 +6859,10 @@ class BingoTerminal:
                         or "<!doctype" in _out_lower_preview
                         or "<script" in _out_lower_preview
                     )
-                    _max_preview_lines = 36 if _html_doc_like else 80
+                    if getattr(self, "_compact_operator_ui", True):
+                        _max_preview_lines = 10 if _html_doc_like else 16
+                    else:
+                        _max_preview_lines = 36 if _html_doc_like else 80
                     for _ln in _out.splitlines()[:160]:  # 검사량은 넉넉히, 표시량은 아래에서 제한
                         _s = _ln.strip()
                         if not _s:
@@ -6852,7 +6919,7 @@ class BingoTerminal:
                     if _suppressed_hdr:
                         _disp_lines.append(f"  ⋯ {_suppressed_hdr} header lines hidden")
                     if _suppressed_body:
-                        _disp_lines.append(f"  ⋯ {_suppressed_body} body lines hidden (full output kept for AI)")
+                        _disp_lines.append(f"  ⋯ {_suppressed_body} body lines hidden")
                     _preview = "\n".join(_disp_lines)
                     try:
                         self.console.print(f"[{THEME['dim']}]{_esc(_preview)}[/]")
@@ -10241,9 +10308,10 @@ class BingoTerminal:
                             self._task_graph if self._task_graph._nodes else None,
                         )
                         self.history.append(Message(role="user", content=_reflect_msg))
-                        self.console.print(
-                            f"\n[bold magenta]{_reflect_msg.splitlines()[0]}[/bold magenta]"
-                        )
+                        if getattr(self, "_self_reflection_visible", False):
+                            self.console.print(
+                                f"\n[bold magenta]{_reflect_msg.splitlines()[0]}[/bold magenta]"
+                            )
                 except Exception:
                     pass
 

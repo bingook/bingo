@@ -210,6 +210,25 @@ def test_echoed_tool_call_summary_payload_is_compacted_again() -> None:
     assert "[bingo action] http_get" in compacted
 
 
+def test_echoed_bingo_action_code_is_compacted_without_tool_call_marker() -> None:
+    echoed = (
+        "probe target\n"
+        "[bingo action] run_python(code=\n"
+        "import requests, re\n"
+        "r = requests.get('https://example.test/')\n"
+        "print(r.status_code)\n"
+        ")\n"
+        "next step"
+    )
+
+    compacted = BingoTerminal._compact_tool_call_payloads(echoed)
+
+    assert "[bingo action] run_python(code=<3 lines omitted>)" in compacted
+    assert "import requests" not in compacted
+    assert "print(r.status_code)" not in compacted
+    assert "next step" in compacted
+
+
 def test_auto_report_defers_task_complete_when_tool_action_is_pending() -> None:
     response = (
         'TOOL_CALL:{"name":"http_get","args":{"url":"https://example.test/login"}}\n'

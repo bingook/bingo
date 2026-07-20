@@ -364,18 +364,14 @@ THEME = {
     "low":       "#00e5ff",   # LOW 취약점
 }
 
-BANNER = r"""
-[#16313d]┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓[/]
-[#00ff88]  ██████╗ ██╗███╗   ██╗ ██████╗  ██████╗[/]
-[#00e676]  ██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗[/]
-[#00d7ff]  ██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║[/]
-[#00e676]  ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║[/]
-[#00ff88]  ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝[/]
-[#00ff88]  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝[/]
-[#16313d]┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫[/]
-[#627386]  red team operations console[/] [#16313d]//[/] [#00d7ff]v{ver}[/] [#16313d]//[/] [#ff2bd6]multi-model arsenal[/] [#16313d]//[/] [#00ff88]evidence-led[/]
-[#16313d]┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛[/]
-"""
+BANNER_LOGO = (
+    "██████╗ ██╗███╗   ██╗ ██████╗  ██████╗",
+    "██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗",
+    "██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║",
+    "██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║",
+    "██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝",
+    "╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝",
+)
 
 PT_STYLE = PTStyle.from_dict({
     "":              "#00ff88",
@@ -953,7 +949,6 @@ class BingoTerminal:
     # ── 배너 / 상태 표시 ──────────────────────────────────────────
     def _print_banner(self) -> None:
         from bingo import __version__ as _bingo_ver
-        self.console.print(BANNER.replace("{ver}", _bingo_ver))
         model_cfg = self.config.get_active_model_config()
         _model_name = model_cfg.display_name() if model_cfg else "no model"
         lang_label = SUPPORTED_LANGS.get(self.config.lang, self.config.lang)
@@ -965,43 +960,64 @@ class BingoTerminal:
         except Exception:
             _db_count = 0
         _total = _hs_count + 6 + 5 + _db_count
-        # ── Operator telemetry card ─────────────────────────────────
-        # 수동 패딩 계산은 Rich 마크업 태그 길이/이모지/한자 폭으로 인해
-        # 우측 테두리가 항상 어긋난다 → Panel/Table에 위임하면 자동 정렬.
+        # Rich owns all border/width calculation; no hand-drawn frames here.
+        from rich.align import Align as _StAlign
+        from rich import box as _StBox
         from rich.panel import Panel as _StPanel
         from rich.text import Text as _StText
         from rich.table import Table as _StTable
 
-        _grid = _StTable.grid(expand=True)
-        _grid.add_column(ratio=1)
-        _grid.add_column(ratio=1)
-        _grid.add_column(ratio=1)
-        _grid.add_column(ratio=1)
+        _logo = _StText(justify="center")
+        _logo_styles = (THEME["primary"], "#00e676", THEME["secondary"], "#00e676", THEME["primary"], THEME["primary"])
+        for _line, _style in zip(BANNER_LOGO, _logo_styles):
+            _logo.append(_line + "\n", style=f"bold {_style}")
 
-        def _cell(label: str, value: str, style: str) -> _StText:
-            _txt = _StText()
-            _txt.append(label.upper() + "\n", style=THEME["dim"])
-            _txt.append(value, style=style)
-            return _txt
+        _tagline = _StText(justify="center")
+        _tagline.append("red team operations console", style=THEME["dim"])
+        _tagline.append("  //  ", style=THEME["border"])
+        _tagline.append(f"v{_bingo_ver}", style=f"bold {THEME['secondary']}")
+        _tagline.append("  //  ", style=THEME["border"])
+        _tagline.append("multi-model arsenal", style=THEME["accent"])
+        _tagline.append("  //  ", style=THEME["border"])
+        _tagline.append("evidence-led", style=THEME["success"])
 
-        _grid.add_row(
-            _cell("MODEL", _model_name, THEME["secondary"]),
-            _cell("LOCALE", lang_label, THEME["accent"]),
-            _cell("ARSENAL", f"{_total} skills", THEME["success"]),
-            _cell("OUTPUT", "MD · HTML", THEME["primary"]),
+        _header = _StTable.grid(expand=True)
+        _header.add_column(justify="center")
+        _header.add_row(_StAlign.center(_logo))
+        _header.add_row(_StAlign.center(_tagline))
+        self.console.print(_StPanel(
+            _header,
+            title=f"[bold {THEME['primary']}] BINGO [/]",
+            border_style=THEME["primary"],
+            box=_StBox.HEAVY_EDGE,
+            padding=(1, 2),
+        ))
+
+        _grid = _StTable(
+            box=_StBox.SIMPLE_HEAVY,
+            expand=True,
+            show_header=True,
+            header_style=THEME["dim"],
+            border_style=THEME["border"],
+            pad_edge=False,
         )
+        _grid.add_column("MODEL", style=THEME["secondary"], ratio=2, no_wrap=True)
+        _grid.add_column("LOCALE", style=THEME["accent"], ratio=1, no_wrap=True)
+        _grid.add_column("SKILLS", style=THEME["success"], ratio=1, no_wrap=True)
+        _grid.add_column("OUTPUT", style=THEME["primary"], ratio=1, no_wrap=True)
+        _grid.add_row(_model_name, lang_label, f"{_total} ready", "MD · HTML")
 
-        _subtitle = (
-            f"[{THEME['dim']}]planner[/] [{THEME['primary']}]model[/]  "
-            f"[{THEME['dim']}]execution[/] [{THEME['secondary']}]tools+skills[/]  "
-            f"[{THEME['dim']}]proof[/] [{THEME['accent']}]evidence ledger[/]"
-        )
         self.console.print(_StPanel(
             _grid,
-            title=f"[{THEME['primary']}] BINGO OPS MATRIX [/]",
-            subtitle=_subtitle,
+            title=f"[{THEME['secondary']}] OPS MATRIX [/]",
+            subtitle=(
+                f"[{THEME['dim']}]planner[/] [{THEME['primary']}]model[/]  "
+                f"[{THEME['dim']}]execution[/] [{THEME['secondary']}]tools+skills[/]  "
+                f"[{THEME['dim']}]proof[/] [{THEME['accent']}]evidence ledger[/]"
+            ),
             border_style=THEME["border"],
-            padding=(0, 2),
+            box=_StBox.SQUARE,
+            padding=(0, 1),
         ))
         self.console.print()
         # 네트워크 환경 표시

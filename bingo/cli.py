@@ -39,20 +39,51 @@ def _s(lang: str = "en") -> dict:
 
 console = Console(highlight=False)
 
-BANNER_SMALL = r"""[#16313d]┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓[/]
-[#00ff88]  ██████╗ ██╗███╗   ██╗ ██████╗  ██████╗[/]
-[#00e676]  ██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗[/]
-[#00d7ff]  ██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║[/]
-[#00e676]  ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║[/]
-[#00ff88]  ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝[/]
-[#00ff88]  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝[/]
-[#16313d]┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛[/]"""
+BANNER_LOGO = (
+    "██████╗ ██╗███╗   ██╗ ██████╗  ██████╗",
+    "██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗",
+    "██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║",
+    "██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║",
+    "██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝",
+    "╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝",
+)
+
+
+def _print_banner_small() -> None:
+    from rich import box
+    from rich.align import Align
+    from rich.table import Table
+    from bingo import __version__
+
+    logo = Text(justify="center")
+    styles = ("#00ff88", "#00e676", "#00d7ff", "#00e676", "#00ff88", "#00ff88")
+    for line, style in zip(BANNER_LOGO, styles):
+        logo.append(line + "\n", style=f"bold {style}")
+
+    sub = Text(justify="center")
+    sub.append("red team operations console", style="#627386")
+    sub.append("  //  ", style="#16313d")
+    sub.append(f"v{__version__}", style="bold #00d7ff")
+    sub.append("  //  ", style="#16313d")
+    sub.append("evidence-led", style="#00ff41")
+
+    layout = Table.grid(expand=True)
+    layout.add_column(justify="center")
+    layout.add_row(Align.center(logo))
+    layout.add_row(Align.center(sub))
+    console.print(Panel(
+        layout,
+        title="[bold #00ff88] BINGO [/]",
+        border_style="#00ff88",
+        box=box.HEAVY_EDGE,
+        padding=(1, 2),
+    ))
 
 
 def _onboarding(cfg: BingoConfig) -> BingoConfig:
     """첫 실행 온보딩: 언어 선택 → 모델 설정"""
     os.system("cls" if os.name == "nt" else "clear")
-    console.print(BANNER_SMALL)
+    _print_banner_small()
     console.print()
     console.print(Panel(
         "[#00ff88]Bingo[/] [#627386]//[/] offensive security ops console\n"
@@ -146,7 +177,7 @@ def _run_scan_mode(target: str, cfg: BingoConfig, args: list[str], s: dict | Non
 
     auth_ctx = create_auth_context(target)
 
-    console.print(BANNER_SMALL)
+    _print_banner_small()
     console.print()
     console.print(Panel(
         f"[#ff4444]⚔  BINGO RED TEAM — AUTHORIZED ENGAGEMENT[/]\n"
@@ -561,7 +592,7 @@ def main() -> None:
 
     # ── 도움말 ───────────────────────────────────────────────────
     if args and args[0] in ("-h", "--help", "help"):
-        console.print(BANNER_SMALL)
+        _print_banner_small()
         console.print()
         console.print("  [#00d4aa]Usage:[/]")
         console.print(f"    [white]bingo[/]                      {sl['cli_help_chat']}")

@@ -10185,7 +10185,7 @@ class BingoTerminal:
                     )
                     self.console.print(f"[{THEME['success']}]{_progress_msg}[/]")
                 self._dl_no_progress = 0
-            if _dl_doom_detected or self._dl_no_progress >= 8:
+            if _dl_doom_detected or self._dl_no_progress >= 12:
                 from ..i18n import t as _t_dl, get_lang as _gl_dl
                 _dl_escape_map = {
                     "ko": (
@@ -10219,7 +10219,7 @@ class BingoTerminal:
                 _dl_lang = getattr(self.config, "lang", "en")
                 _dl_msg = _dl_escape_map.get(_dl_lang, _dl_escape_map["en"])
                 self._dl_escape_attempts += 1
-                if self._dl_escape_attempts >= 2:
+                if self._dl_escape_attempts >= 4:
                     _stop_msg = {
                         "ko": (
                             "⛔ [NO_NEW_PROGRESS_STOP] 새 증거 없이 반복 탐지가 계속되어 자동 종료합니다. "
@@ -13464,7 +13464,8 @@ class BingoTerminal:
             self._converge_session_artifacts(report_path, target, html_path=html_report_path)
         except Exception:
             pass
-        self._suggest_next_steps()
+        if _env_flag_enabled("BINGO_REPORT_NEXT_STEPS", False):
+            self._suggest_next_steps()
 
         # ── v3.2.96: findings JSON 자동 저장 ─────────────────────────
         try:

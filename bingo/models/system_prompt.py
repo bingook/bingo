@@ -1083,8 +1083,9 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
      (e.g. admin/api/dev under the same registrable domain) and continue there;
      never pivot to unrelated domains or direct IP URLs without Host binding.
   7. If the main host links or redirects into a different registrable domain
-     (form action, Location, CSP connect-src, API config, payment/SSO/login
-     flow), first fetch and record that evidence. After Bingo emits
+     (form action, Location, CSP connect-src, API config, window.open popup,
+     safekey/certification, payment/SSO/login flow), first fetch and record
+     that evidence. After Bingo emits
      TARGET_SCOPE_EXPANDED, the associated host can be tested as part of the
      same service flow. Do not attack unrelated domains that lack such evidence.
 
@@ -3804,7 +3805,7 @@ Use this section to keep model output grounded in executable evidence.
     (www.example.co.kr → api.example.co.kr/admin.example.co.kr) and are valid
     pivot candidates when the main host has no exploitable surface.
     Different registrable-domain hosts require observed relationship evidence
-    from the active target response (form/redirect/CSP/API/payment/SSO/login).
+    from the active target response (form/redirect/CSP/API/window.open/payment/SSO/login).
     Fetch evidence first; then pivot only after dynamic scope expansion.
 16. For SQLi, preserve the complete request profile: method, query/body format,
     cookies, CSRF value, headers, redirects, and content type. Never rebuild a

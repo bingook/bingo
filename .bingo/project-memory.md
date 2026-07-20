@@ -59,32 +59,101 @@
   - `m.justintime-capital.com` run reached loop 60 with `confirmed=0`; root causes were repeated broken `run_python` SyntaxError, noisy advertising/analytics XHR being counted as progress, and broad standalone 32hex/40char info-disclosure matches.
   - Fix direction: keep TOOL_CALL/run_python/skills enabled, but precheck Python syntax before subprocess execution; repair escaped raw-regex quote classes; count only actionable high-value endpoint/param discoveries as loop progress; require secret/hash context for 40-char AWS secret and 32-hex token findings.
   - Validation after fix: `pytest -q tests/test_terminal_completion_regressions.py -q` → `118 passed`; `ruff check --select F821,F811 ...` → passed; `git diff --check` → passed; `pytest -q` → `243 passed`.
+- Latest target-log issue after v6.2.224:
+  - `www.balance-cf.co.kr` run produced 24,651 log lines. Main causes: 60 loops, 1,976 raw `TOOL_CALL` payloads in terminal/session/model history, repeated proof rechecks treated as new progress, 54 target-drift blocks from `.co.kr` → `.co.jp`, and large tool floods such as 46 calls in one loop.
+  - Fix direction: keep original TOOL_CALL execution untouched, but compact TOOL_CALL payloads for display/session/model history; de-duplicate repeated progress signatures; stop after repeated no-new-progress escape attempts instead of waiting for loop 60.
+  - Validation after fix: `pytest -q tests/test_terminal_completion_regressions.py -q` → `121 passed`; `ruff check --select F821,F811 ...` → passed; `git diff --check` → passed; `pytest -q` → `247 passed`.
 
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T12:31:59+08:00
+- Last synced: 2026-07-20T16:19:20+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
-- Source: `.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
+- Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-20T12:31:59+08:00
+- Captured: 2026-07-20T16:19:20+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
  M PKG-INFO
  M bingo/__init__.py
- M bingo/core/change_memory.py
+ M bingo/models/system_prompt.py
+ M bingo/ui/terminal.py
+ M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                    | 2 +-
- bingo/__init__.py           | 2 +-
- bingo/core/change_memory.py | 7 +++++++
- 3 files changed, 9 insertions(+), 2 deletions(-)
+PKG-INFO                                      |   2 +-
+ bingo/__init__.py                             |   2 +-
+ bingo/models/system_prompt.py                 |  52 +-
+ bingo/ui/terminal.py                          | 714 ++++++++++++++++++++++++--
+ tests/test_terminal_completion_regressions.py | 127 +++++
+ 5 files changed, 838 insertions(+), 59 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.225`
+- `__version__ = "6.2.225"`
+- `BINGO ENGINE v6.2 — HYBRID AI-LED MODE`
+- `║  ★★★ HYBRID AI-LED MODE — 모델 주도 + Bingo 증거 검증 ★★★        ║`
+- `║  AI 모델이 전략, 판단, 다음 행동을 주도한다.                      ║`
+- `║  Bingo는 스킬 자동주입, 툴 실행, 증거 ledger, 보고서 생성을 맡는다.║`
+- `║  Raw 모드처럼 모델의 자유 실행을 보장하되, 확정/완료/보고서는      ║`
+- `║  Bingo의 실행 증거와 Finding ID 기준으로만 승격된다.              ║`
+- `║  run_python — 복잡한 검증에 사용:                                 ║`
+- `║   • 필요한 만큼 완전한 스크립트 작성, 단 결과는 짧고 검증 가능하게 ║`
+- `║  ⚡ 중간형 원칙: 모델이 직접 판단하되 Bingo의 검증 기준을 통과해야 한다.║`
+- `║     막히면 같은 시도를 반복하지 말고 payload/transport/endpoint/vector를 바꾼다.║`
+- `║  ● Use real execution output; simulation text is not evidence     ║`
+- `║  ● The words CONFIRMED, TASK_COMPLETE, dumped, shell, admin, DB, ║`
+- `║    credential, or extracted are not proof by themselves.          ║`
+- `║  ● Confirmed findings require Bingo Finding ID or deterministic  ║`
+- `║    type-specific verifier output. Otherwise label as hypothesis.  ║`
+- `║  2. 기본은 한 번에 TOOL_CALL 하나. 독립 baseline probe만 작은 batch(최대 3) 허용║`
+- `║  3. TOOL flood 금지: 같은 목적의 10개+ 호출을 한 턴에 쏟아내지 말 것        ║`
+- `║  4. TOOL_RESULT 결과를 분석 후 다음 TOOL_CALL 또는 BINGO_SIGNAL 출력       ║`
+- `║  5. TOOL_CALL 우선; custom Python/bash/외부 도구는 fallback으로 즉시 사용   ║`
+- `Principle: Skills are Bingo's technique memory. When the task clearly matches a`
+- `known skill family, load the matching skill early, then execute real verification`
+- `with TOOL_CALL/run_python/run_bash. Skills guide technique; execution output and`
+- `Finding IDs decide what is true.`
+- `TASK_COMPLETE → only after passing all evidence gates above. It is a stop/report`
+- `signal, not proof. If Bingo has zero confirmed Finding IDs, the final report must`
+- `say no confirmed vulnerability and keep candidates in the verification backlog.`
+- `13. Hybrid mode rule: the model chooses strategy and next actions; Bingo owns`
+- `execution, skill injection, evidence ledger, and report truth. A model-written`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:126aed157903ff2227ca94549039314a8a192229 -->
+## Code change: chore: bump version to 6.2.224
+- Commit: `126aed157903`
+- Recorded: 2026-07-20T12:32:43+08:00
+- Committed: 2026-07-20T12:32:43+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/core/change_memory.py
+```
+
+### Diff Stat
+```text
+126aed157 chore: bump version to 6.2.224
+ .bingo/project-memory.md    | 65 ++++++++++++++++++++++++++++++++++-----------
+ PKG-INFO                    |  2 +-
+ bingo/__init__.py           |  2 +-
+ bingo/core/change_memory.py |  7 +++++
+ 4 files changed, 59 insertions(+), 17 deletions(-)
 ```
 
 ### Added Highlights
@@ -96,73 +165,6 @@ PKG-INFO                    | 2 +-
 - `BINGO_AUTO_END,`
 - `}:`
 - `continue`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:549afad3865229b3600717a8c779e058dfa40116 -->
-## Code change: fix: stabilize scan loop and python tool execution
-- Commit: `549afad38652`
-- Recorded: 2026-07-20T12:29:02+08:00
-- Committed: 2026-07-20T12:29:02+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-M	bingo/core/change_memory.py
-M	bingo/tools_ext/builtin/security_audit.py
-M	bingo/tools_ext/pentest_tools.py
-M	bingo/ui/terminal.py
-M	tests/test_change_memory.py
-M	tests/test_terminal_completion_regressions.py
-```
-
-### Diff Stat
-```text
-549afad38 fix: stabilize scan loop and python tool execution
- .bingo/project-memory.md                      | 927 ++------------------------
- bingo/core/change_memory.py                   |  50 +-
- bingo/tools_ext/builtin/security_audit.py     |  12 +-
- bingo/tools_ext/pentest_tools.py              |  25 +-
- bingo/ui/terminal.py                          |  91 ++-
- tests/test_change_memory.py                   |  34 +
- tests/test_terminal_completion_regressions.py |  83 +++
- 7 files changed, 329 insertions(+), 893 deletions(-)
-```
-
-### Added Highlights
-- `content = _compact_project_memory_source(source_content) or "_No captured workspace memory yet._"`
-- `def _first_commit_block(content: str) -> str:`
-- `marker = "<!-- commit:"`
-- `start = content.find(marker)`
-- `if start < 0:`
-- `return ""`
-- `candidates = [`
-- `pos for pos in (`
-- `content.find("\n<!-- commit:", start + len(marker)),`
-- `content.find("\n# Workspace Memory", start + len(marker)),`
-- `)`
-- `if pos > start`
-- `]`
-- `end = min(candidates) if candidates else len(content)`
-- `return content[start:end].strip()`
-- `def _compact_project_memory_source(source_content: str) -> str:`
-- `"""Keep project memory concise and prevent stale generated history nesting.`
-- `Workspace MEMORY.md can accumulate previous project-memory sync output when`
-- `committed memory files are recorded.  For the tracked '.bingo' mirror, keep`
-- `only the current worktree snapshot and newest commit entry so old deleted`
-- `file names or large prompt payloads do not reappear in future sessions.`
-- `"""`
-- `source_content = source_content.strip()`
-- `if not source_content:`
-- `return ""`
-- `sections: list[str] = []`
-- `worktree_match = re.search(`
-- `rf"{re.escape(WORKTREE_START)}.*?{re.escape(WORKTREE_END)}",`
-- `source_content,`
-- `flags=re.DOTALL,`
 <!-- bingo-project-memory:auto:end -->
 
 "`

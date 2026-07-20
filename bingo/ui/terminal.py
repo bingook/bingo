@@ -338,13 +338,13 @@ def _decode_response(resp) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-# ── 색상 팔레트 (해커 그린 테마 v6.2.74) ─────────────────────────
+# ── 색상 팔레트 (Bingo cyber glass theme) ────────────────────────
 THEME = {
-    "primary":   "#00ff41",   # 매트릭스 그린 (메인 텍스트)
-    "secondary": "#00d4aa",   # 민트/틸 (서브타이틀, 보조)
-    "accent":    "#00e5ff",   # 사이버 시안 (강조, 툴 이름)
-    "dim":       "#546e7a",   # 다크 그레이 (흐린 텍스트)
-    "border":    "#1b3a1b",   # 다크 그린 보더
+    "primary":   "#6cffb2",   # neon mint
+    "secondary": "#35d6ff",   # cyber blue
+    "accent":    "#b388ff",   # violet accent
+    "dim":       "#6b7c8f",   # cool slate
+    "border":    "#1c3f52",   # glass border
     "user_bg":   "#0d1117",
     "ai_bg":     "#0d1117",
     "error":     "#ff1744",   # 크리티컬 레드
@@ -357,22 +357,22 @@ THEME = {
 }
 
 BANNER = r"""
-[#00ff41]
-  ██████╗ ██╗███╗   ██╗ ██████╗  ██████╗ 
+[#6cffb2]
+  ██████╗ ██╗███╗   ██╗ ██████╗  ██████╗
   ██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗
   ██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║
   ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║
   ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝
-  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝ [/#00ff41]
-[#00d4aa]  AI Terminal  ·  v{ver}  ·  Multi-Model[/#00d4aa]
+  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝[/#6cffb2]
+[#35d6ff]  AI Red Team Terminal[/#35d6ff] [#6b7c8f]·[/#6b7c8f] [#b388ff]v{ver}[/#b388ff] [#6b7c8f]·[/#6b7c8f] [#6cffb2]Hybrid AI-led[/#6cffb2]
 """
 
 PT_STYLE = PTStyle.from_dict({
-    "":              "#00ff41",
-    "prompt":        "#00ff41 bold",
-    "prompt.corner": "#546e7a",   # ┌─ 꺾쇠
-    "prompt.target": "#00e5ff",   # 타겟 URL (시안)
-    "prompt.arrow":  "#00ff41 bold",  # └─▶
+    "":              "#6cffb2",
+    "prompt":        "#6cffb2 bold",
+    "prompt.corner": "#6b7c8f",   # ┌─ 꺾쇠
+    "prompt.target": "#35d6ff",   # 타겟 URL
+    "prompt.arrow":  "#b388ff bold",  # └─▶
 })
 
 
@@ -567,6 +567,8 @@ class BingoTerminal:
         # 최근 도구 호출 시그니처 목록 (이름+인자 해시) — 반복 패턴 감지용
         self._dl_tool_sigs: list[str] = []
         self._dl_no_progress: int = 0       # 연속 "진전 없음" 루프 수
+        self._dl_progress_sigs: set[str] = set()
+        self._dl_escape_attempts: int = 0
         # ── v6.2.151 2-pass Compaction 상태 ──────────────────────────────
         self._compaction_summary: str = ""  # 배경 LLM 생성 요약
         self._compaction_lock = __import__("threading").Lock()
@@ -937,21 +939,44 @@ class BingoTerminal:
         except Exception:
             _db_count = 0
         _total = _hs_count + 6 + 5 + _db_count
-        # ── v6.2.78: Rich Panel로 상태 박스 교체 ──────────────────────
+        # ── Rich glass status card ──────────────────────────────────
         # 수동 패딩 계산은 Rich 마크업 태그 길이/이모지/한자 폭으로 인해
-        # 우측 테두리가 항상 어긋난다 → Panel에 위임하면 자동 정렬.
+        # 우측 테두리가 항상 어긋난다 → Panel/Table에 위임하면 자동 정렬.
         from rich.panel import Panel as _StPanel
         from rich.text import Text as _StText
+        from rich.table import Table as _StTable
 
-        _st = _StText()
-        _st.append("model  : ", style=THEME["dim"])
-        _st.append(_model_name + "\n", style=THEME["secondary"])
-        _st.append("lang   : ", style=THEME["dim"])
-        _st.append(lang_label + "\n", style=THEME["accent"])
-        _st.append("skills : ", style=THEME["dim"])
-        _st.append(f"{_total} ready", style=THEME["success"])
+        _grid = _StTable.grid(expand=True)
+        _grid.add_column(ratio=1)
+        _grid.add_column(ratio=1)
+        _grid.add_column(ratio=1)
+        _grid.add_column(ratio=1)
 
-        self.console.print(_StPanel(_st, border_style=THEME["dim"], padding=(0, 2)))
+        def _cell(label: str, value: str, style: str) -> _StText:
+            _txt = _StText()
+            _txt.append(label.upper() + "\n", style=THEME["dim"])
+            _txt.append(value, style=style)
+            return _txt
+
+        _grid.add_row(
+            _cell("model", _model_name, THEME["secondary"]),
+            _cell("lang", lang_label, THEME["accent"]),
+            _cell("skills", f"{_total} ready", THEME["success"]),
+            _cell("report", "MD + HTML", THEME["primary"]),
+        )
+
+        _subtitle = (
+            f"[{THEME['dim']}]strategy[/] [{THEME['primary']}]AI-led[/]  "
+            f"[{THEME['dim']}]execution[/] [{THEME['secondary']}]tools+skills[/]  "
+            f"[{THEME['dim']}]truth[/] [{THEME['accent']}]evidence ledger[/]"
+        )
+        self.console.print(_StPanel(
+            _grid,
+            title=f"[{THEME['primary']}] BINGO CONTROL DECK [/]",
+            subtitle=_subtitle,
+            border_style=THEME["border"],
+            padding=(1, 2),
+        ))
         self.console.print()
         # 네트워크 환경 표시
         import time as _t
@@ -1039,7 +1064,11 @@ class BingoTerminal:
             else:
                 label = "**bingo**"
             # v6.2.169: 쿠키/토큰 평문 마스킹 후 저장
-            _safe_content = BingoTerminal._mask_sensitive_in_log(content)
+            _log_content = (
+                BingoTerminal._compact_tool_call_payloads(content)
+                if role == "assistant" else content
+            )
+            _safe_content = BingoTerminal._mask_sensitive_in_log(_log_content)
             with open(self._session_log_path, "a", encoding="utf-8") as f:
                 f.write(f"### {label} `{ts}`\n{_safe_content}\n\n")
         except Exception:
@@ -4097,6 +4126,106 @@ class BingoTerminal:
         )
         return result
 
+    @staticmethod
+    def _compact_tool_call_payloads(text: str, max_calls: int = 10) -> str:
+        """Compact bulky TOOL_CALL JSON for display/log/history only.
+
+        Execution still receives the original response.  This prevents long
+        run_bash/run_python payloads and deferred tool floods from becoming
+        permanent session-log or model-context bloat.
+        """
+        import json as _json_tc
+        import re as _re_tc
+
+        if "TOOL_CALL" not in text:
+            return text
+
+        spans: list[tuple[int, int, str]] = []
+        for match in _re_tc.finditer(r"TOOL_CALL\s*:\s*", text):
+            pos = match.end()
+            if pos >= len(text) or text[pos] != "{":
+                continue
+            depth = 0
+            in_str = False
+            esc = False
+            j = pos
+            while j < len(text):
+                ch = text[j]
+                if esc:
+                    esc = False
+                elif ch == "\\" and in_str:
+                    esc = True
+                elif ch == '"':
+                    in_str = not in_str
+                elif not in_str:
+                    if ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0:
+                            spans.append((match.start(), j + 1, text[pos:j + 1]))
+                            break
+                j += 1
+
+        if not spans:
+            return text
+
+        parts: list[str] = []
+        cursor = 0
+        omitted = 0
+        for idx, (start, end, raw_json) in enumerate(spans):
+            parts.append(text[cursor:start])
+            if idx >= max_calls:
+                omitted += 1
+                cursor = end
+                continue
+            try:
+                parsed = _json_tc.loads(raw_json)
+                name = str(parsed.get("name", "?"))
+                args = parsed.get("args", {})
+                if not isinstance(args, dict):
+                    args = {}
+            except Exception:
+                name_m = _re_tc.search(r'"name"\s*:\s*"([^"]+)"', raw_json)
+                name = name_m.group(1) if name_m else "?"
+                args = {}
+
+            arg_bits: list[str] = []
+            for key, value in list(args.items())[:8]:
+                if key in {"script", "code"}:
+                    value_s = str(value)
+                    lines = value_s.count("\n") + (1 if value_s else 0)
+                    arg_bits.append(f"{key}=<{len(value_s)} chars/{lines}L>")
+                    continue
+                value_s = str(value).replace("\n", "\\n")
+                if len(value_s) > 96:
+                    value_s = value_s[:93] + "..."
+                arg_bits.append(f"{key}={value_s}")
+            arg_text = ", ".join(arg_bits)
+            parts.append(f"TOOL_CALL_SUMMARY: {name}({arg_text})")
+            cursor = end
+
+        parts.append(text[cursor:])
+        compacted = "".join(parts)
+        if omitted:
+            compacted += f"\n[TOOL_CALL_SUMMARY] {omitted} additional deferred call(s) omitted from log/context."
+        return compacted
+
+    def _compact_latest_assistant_tool_history(self, original_response: str) -> None:
+        """Replace the latest assistant history item with compact TOOL_CALL text."""
+        if "TOOL_CALL" not in original_response:
+            return
+        compacted = self._compact_tool_call_payloads(original_response)
+        if compacted == original_response:
+            return
+        try:
+            for msg in reversed(self.history):
+                if getattr(msg, "role", "") == "assistant" and getattr(msg, "content", None) == original_response:
+                    msg.content = compacted
+                    break
+        except Exception:
+            pass
+
     def _stream_response(self, stream: Iterator[StreamChunk]) -> str:
         full = ""
         _interrupted = False  # Ctrl+C로 스트림이 중단됐는지 여부
@@ -4124,6 +4253,7 @@ class BingoTerminal:
                 if chunk.text:
                     full += chunk.text
                     visible = self._filter_ai_monologue(full)
+                    visible = self._compact_tool_call_payloads(visible)
                     # 스트리밍 중: 코드 블록 접기 + 내부 키워드 제거
                     collapsed = self._collapse_code_blocks(visible)
                     collapsed = self._filter_agent_noise(collapsed)
@@ -4152,7 +4282,8 @@ class BingoTerminal:
 
         # 최종 출력: 코드 블록 접기 + 내부 제어 키워드 제거
         final = self._filter_ai_monologue(full)
-        display = self._collapse_code_blocks(final)
+        final_for_display = self._compact_tool_call_payloads(final)
+        display = self._collapse_code_blocks(final_for_display)
         display = self._filter_agent_noise(display)
         # SKILL_LOAD 선언 줄은 유저에게 숨김 (처리는 됨)
         import re as _re
@@ -6216,6 +6347,7 @@ class BingoTerminal:
         _tool_matches = _extract_tool_call_jsons(response)
 
         if _tool_matches:
+            self._compact_latest_assistant_tool_history(response)
             tool_results: list[str] = []
             try:
                 from ..tools_ext.pentest_tools import execute_tool, TOOL_REGISTRY
@@ -9853,9 +9985,16 @@ class BingoTerminal:
             # HTTP 200/found 같은 일반 문구가 반복을 영구 리셋하지 않도록
             # 검증된 신규 증거만 진행으로 인정한다.
             _dl_has_progress = self._has_meaningful_loop_progress(raw_results)
+            if _dl_has_progress:
+                _dl_progress_sig = self._meaningful_loop_progress_signature(raw_results)
+                if _dl_progress_sig and _dl_progress_sig in self._dl_progress_sigs:
+                    _dl_has_progress = False
+                elif _dl_progress_sig:
+                    self._dl_progress_sigs.add(_dl_progress_sig)
             if not _dl_has_progress:
                 self._dl_no_progress += 1
             else:
+                self._dl_escape_attempts = 0
                 if self._dl_no_progress > 0:
                     _progress_msg = self.s.get(
                         "doom_progress_autocorrected",
@@ -9896,6 +10035,27 @@ class BingoTerminal:
                 }
                 _dl_lang = getattr(self.config, "lang", "en")
                 _dl_msg = _dl_escape_map.get(_dl_lang, _dl_escape_map["en"])
+                self._dl_escape_attempts += 1
+                if self._dl_escape_attempts >= 2:
+                    _stop_msg = {
+                        "ko": (
+                            "⛔ [NO_NEW_PROGRESS_STOP] 새 증거 없이 반복 탐지가 계속되어 자동 종료합니다. "
+                            "현재 증거로 보고서를 생성합니다."
+                        ),
+                        "zh": (
+                            "⛔ [NO_NEW_PROGRESS_STOP] 未出现新证据且重复探测持续，自动停止。"
+                            "请基于当前证据生成报告。"
+                        ),
+                        "en": (
+                            "⛔ [NO_NEW_PROGRESS_STOP] Repeated probing without new evidence; auto-stopping. "
+                            "Generate the report from current evidence."
+                        ),
+                    }.get(_dl_lang, "⛔ [NO_NEW_PROGRESS_STOP] No new progress; stop and report.")
+                    self.console.print(f"[{THEME['warn']}]{_stop_msg}[/]")
+                    self.history.append(Message(role="user", content=_stop_msg + "\nTASK_COMPLETE"))
+                    self._loop_limit_hit = True
+                    self._agent_stop_flag.set()
+                    break
                 self.history.append(Message(role="user", content=_dl_msg))
                 self._dl_tool_sigs.clear()
                 self._dl_no_progress = 0
@@ -10741,7 +10901,8 @@ class BingoTerminal:
                 + state_summary
                 + _next_action_contract
                 + "- If WAF blocks: use obfuscation variants\n"
-                "- Output TASK_COMPLETE when all credentials are extracted\n"
+                "- Output TASK_COMPLETE only when the requested scope is complete; "
+                "confirmed vulnerabilities still require Finding-ID evidence\n"
                 "- NEVER generate simulated output"
             )
             self.history.append(Message(role="user", content=injection))
@@ -10821,6 +10982,22 @@ class BingoTerminal:
                 if not followup_response:
                     break  # 재시도도 실패하면 종료
 
+            _evidence_counts_post = BingoTerminal._finding_evidence_counts(
+                getattr(self, "_findings_exporter", None)
+            )
+            _sanitized_followup = BingoTerminal._sanitize_runtime_claims_by_evidence(
+                followup_response,
+                getattr(self, "_findings_exporter", None),
+            )
+            if _sanitized_followup != followup_response:
+                _claim_fix_msg = {
+                    "ko": "⚠ 확정 표현을 evidence ledger 기준으로 자동 강등했습니다.",
+                    "zh": "⚠ 已按 evidence ledger 自动降级未证实的确认表述。",
+                    "en": "⚠ Unsupported confirmation wording was downgraded by the evidence ledger.",
+                }.get(getattr(self.config, "lang", "en"), "⚠ Unsupported confirmation wording downgraded.")
+                self.console.print(f"\n[{THEME['warn']}]{_claim_fix_msg}[/]")
+                followup_response = _sanitized_followup
+
             self.history.append(Message(role="assistant", content=followup_response))
             self._append_to_session_log("assistant", followup_response)
             # v6.2.147: 루프 내부에서는 수집만 (스레드 시작 안 함 → 인터리빙 방지)
@@ -10828,16 +11005,25 @@ class BingoTerminal:
             self._collect_crack_hashes(followup_response)
 
             # ── v4.5.0: 실행 후 LLM 분석에서 CONFIRMED/FALSE POSITIVE 감지 ────────
-            # 여기서 나타나는 태그는 실제 코드 실행 결과를 보고 LLM이 판단한 것 → 신뢰
+            # 모델의 CONFIRMED 문구 자체는 증거가 아니다. 로컬 Finding ledger가
+            # confirmed일 때만 확정 표시하고, 아니면 probable/potential로 강등한다.
             import re as _re_fp_post
             _followup_lang = getattr(self.config, "lang", "en")
             if _re_fp_post.search(r'\[CONFIRMED\s*✅?\]', followup_response):
-                _conf_post = {
-                    "ko": "✅ [CONFIRMED] — 실행결과 기반 취약점 확인됨",
-                    "zh": "✅ [CONFIRMED] — 基于执行结果，漏洞确认",
-                    "en": "✅ [CONFIRMED] — Confirmed from actual execution output",
-                }.get(_followup_lang, "✅ Confirmed.")
-                self.console.print(f"\n[bold green]{_conf_post}[/bold green]")
+                if _evidence_counts_post.get("confirmed", 0) > 0:
+                    _conf_post = {
+                        "ko": "✅ [CONFIRMED] — Finding ID 기준 확정 증거 있음",
+                        "zh": "✅ [CONFIRMED] — Finding ID 证据已确认",
+                        "en": "✅ [CONFIRMED] — Confirmed Finding-ID evidence exists",
+                    }.get(_followup_lang, "✅ Confirmed Finding-ID evidence exists.")
+                    self.console.print(f"\n[bold green]{_conf_post}[/bold green]")
+                else:
+                    _conf_post = {
+                        "ko": "⚠ [PROBABLE] — 모델 확정 문구가 있었지만 confirmed Finding ID가 없습니다.",
+                        "zh": "⚠ [PROBABLE] — 模型写了确认，但没有 confirmed Finding ID。",
+                        "en": "⚠ [PROBABLE] — Model claimed confirmation, but no confirmed Finding ID exists.",
+                    }.get(_followup_lang, "⚠ Probable only; no confirmed Finding ID.")
+                    self.console.print(f"\n[bold yellow]{_conf_post}[/bold yellow]")
             elif _re_fp_post.search(r'\[FALSE\s*POSITIVE\s*❌?\]', followup_response):
                 _fp_post = {
                     "ko": "❌ [FALSE POSITIVE] — 실행결과 기반 오탐 확인됨",
@@ -10848,7 +11034,29 @@ class BingoTerminal:
 
             # 작업 완료
             if "TASK_COMPLETE" in followup_response or "MISSION_COMPLETE" in followup_response:
-                self.console.print(f"\n[{THEME['success']}]✅ {_s.get('agent_done', 'Agent task complete')}[/]\n")
+                _done_counts = BingoTerminal._finding_evidence_counts(
+                    getattr(self, "_findings_exporter", None)
+                )
+                if _done_counts.get("confirmed", 0) > 0:
+                    self.console.print(
+                        f"\n[{THEME['success']}]✅ {_s.get('agent_done', 'Agent task complete')}[/]\n"
+                    )
+                else:
+                    _no_confirm_done = {
+                        "ko": (
+                            "⚠ TASK_COMPLETE 수신 — confirmed Finding ID는 없습니다. "
+                            "현재 증거 기준으로 미확정/후보 보고서를 생성합니다."
+                        ),
+                        "zh": (
+                            "⚠ 收到 TASK_COMPLETE — 没有 confirmed Finding ID。"
+                            "将基于当前证据生成未确认/候选报告。"
+                        ),
+                        "en": (
+                            "⚠ TASK_COMPLETE received — no confirmed Finding ID exists. "
+                            "Generating an unconfirmed/candidate evidence report."
+                        ),
+                    }.get(getattr(self.config, "lang", "en"), "⚠ TASK_COMPLETE received without confirmed evidence.")
+                    self.console.print(f"\n[{THEME['warn']}]{_no_confirm_done}[/]\n")
                 _target = self._agent_state.get("target") or "target"
                 _lang = getattr(self.config, "lang", "en")
                 _notif_title = {"ko": "BINGO — 작업 완료", "zh": "BINGO — 任务完成", "en": "BINGO — Task Complete"}.get(_lang, "BINGO — Done")
@@ -11759,6 +11967,295 @@ class BingoTerminal:
         )
 
     @staticmethod
+    def _build_html_report(
+        md_text: str,
+        target: str,
+        confirmed_count: int = 0,
+        potential_count: int = 0,
+        generated_at: str | None = None,
+    ) -> str:
+        """Render the evidence-gated markdown report as a polished standalone HTML file."""
+        import html as _html
+        import re as _html_re
+        from datetime import datetime as _html_dt
+
+        generated_at = generated_at or _html_dt.now().strftime("%Y-%m-%d %H:%M:%S")
+        safe_target = _html.escape(target or "unknown")
+
+        def _inline(text: str) -> str:
+            out = _html.escape(text)
+            out = _html_re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", out)
+            out = _html_re.sub(r"`([^`]+)`", r"<code>\1</code>", out)
+            out = _html_re.sub(
+                r"\b(BINGO-(?:Q)?\d{4})\b",
+                r'<span class="finding-id">\1</span>',
+                out,
+            )
+            severity_map = {
+                "Critical": "critical",
+                "CRITICAL": "critical",
+                "High": "high",
+                "HIGH": "high",
+                "Medium": "medium",
+                "MEDIUM": "medium",
+                "Low": "low",
+                "LOW": "low",
+                "Confirmed": "confirmed",
+                "CONFIRMED": "confirmed",
+                "Potential": "potential",
+                "POTENTIAL": "potential",
+                "Probable": "potential",
+                "PROBABLE": "potential",
+                "Unconfirmed": "unconfirmed",
+                "UNCONFIRMED": "unconfirmed",
+            }
+            for word, cls in severity_map.items():
+                out = _html_re.sub(
+                    rf"(?<![>\w-]){_html_re.escape(word)}(?![\w-])",
+                    f'<span class="badge {cls}">{word}</span>',
+                    out,
+                )
+            return out
+
+        body: list[str] = []
+        in_ul = False
+        in_code = False
+        in_section = False
+        code_lines: list[str] = []
+
+        def _close_ul() -> None:
+            nonlocal in_ul
+            if in_ul:
+                body.append("</ul>")
+                in_ul = False
+
+        def _close_section() -> None:
+            nonlocal in_section
+            _close_ul()
+            if in_section:
+                body.append("</section>")
+                in_section = False
+
+        for raw in (md_text or "").splitlines():
+            line = raw.rstrip()
+            if line.strip().startswith("```"):
+                if in_code:
+                    body.append(
+                        "<pre><code>"
+                        + _html.escape("\n".join(code_lines))
+                        + "</code></pre>"
+                    )
+                    code_lines = []
+                    in_code = False
+                else:
+                    _close_ul()
+                    in_code = True
+                    code_lines = []
+                continue
+            if in_code:
+                code_lines.append(line)
+                continue
+
+            if not line.strip():
+                _close_ul()
+                continue
+
+            heading = _html_re.match(r"^(#{1,3})\s+(.+)$", line)
+            if heading:
+                _close_section()
+                level = min(len(heading.group(1)), 3)
+                title = _inline(heading.group(2).strip())
+                if level == 1:
+                    body.append(f'<h1 class="md-title">{title}</h1>')
+                else:
+                    body.append(f'<section class="report-card"><h{level}>{title}</h{level}>')
+                    in_section = True
+                continue
+
+            bullet = _html_re.match(r"^\s*[-*]\s+(.+)$", line)
+            if bullet:
+                if not in_ul:
+                    body.append("<ul>")
+                    in_ul = True
+                body.append(f"<li>{_inline(bullet.group(1).strip())}</li>")
+                continue
+
+            numbered = _html_re.match(r"^\s*(\d+)[.)]\s+(.+)$", line)
+            if numbered:
+                if not in_ul:
+                    body.append("<ul>")
+                    in_ul = True
+                body.append(
+                    f'<li><span class="step-no">{numbered.group(1)}</span> '
+                    f"{_inline(numbered.group(2).strip())}</li>"
+                )
+                continue
+
+            body.append(f"<p>{_inline(line)}</p>")
+
+        if in_code:
+            body.append("<pre><code>" + _html.escape("\n".join(code_lines)) + "</code></pre>")
+        _close_section()
+
+        html_body = "\n".join(body)
+        return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bingo Security Report - {safe_target}</title>
+  <style>
+    :root {{
+      --bg: #071018;
+      --card: rgba(13, 22, 35, .86);
+      --card2: rgba(8, 15, 26, .92);
+      --line: rgba(108, 255, 178, .24);
+      --mint: #6cffb2;
+      --blue: #35d6ff;
+      --violet: #b388ff;
+      --yellow: #ffd600;
+      --red: #ff4d6d;
+      --text: #e8f3ff;
+      --muted: #8ea1b7;
+      --shadow: 0 24px 80px rgba(0, 0, 0, .45);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% 12%, rgba(53, 214, 255, .18), transparent 30%),
+        radial-gradient(circle at 85% 8%, rgba(179, 136, 255, .20), transparent 28%),
+        radial-gradient(circle at 50% 95%, rgba(108, 255, 178, .10), transparent 36%),
+        var(--bg);
+      font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+      min-height: 100vh;
+    }}
+    .shell {{ width: min(1120px, calc(100vw - 40px)); margin: 34px auto 56px; }}
+    .hero {{
+      border: 1px solid var(--line);
+      background: linear-gradient(145deg, rgba(13,22,35,.96), rgba(7,16,24,.82));
+      border-radius: 28px;
+      padding: 30px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }}
+    .hero:before {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(108,255,178,.08), transparent);
+      transform: translateX(-70%);
+      pointer-events: none;
+    }}
+    .brand {{ color: var(--mint); letter-spacing: .18em; font-size: 12px; font-weight: 800; }}
+    .hero h1 {{ margin: 10px 0 8px; font-size: clamp(32px, 5vw, 54px); line-height: 1.05; }}
+    .hero .target {{ color: var(--blue); word-break: break-all; }}
+    .meta {{ color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }}
+    .metrics {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0 24px; }}
+    .metric {{
+      border: 1px solid rgba(53, 214, 255, .18);
+      background: var(--card);
+      border-radius: 18px;
+      padding: 16px 18px;
+    }}
+    .metric .label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }}
+    .metric .value {{ font-size: 28px; font-weight: 800; margin-top: 4px; }}
+    .metric.confirmed .value {{ color: var(--mint); }}
+    .metric.potential .value {{ color: var(--yellow); }}
+    .metric.mode .value {{ color: var(--violet); font-size: 20px; }}
+    .report-card {{
+      border: 1px solid rgba(108, 255, 178, .18);
+      background: var(--card2);
+      border-radius: 22px;
+      padding: 22px 24px;
+      margin: 16px 0;
+      box-shadow: 0 18px 54px rgba(0,0,0,.26);
+    }}
+    .report-card h2, .report-card h3 {{ margin: 0 0 14px; color: var(--blue); }}
+    .md-title {{ display: none; }}
+    p {{ margin: 10px 0; }}
+    ul {{ margin: 8px 0 0; padding: 0; list-style: none; }}
+    li {{ margin: 9px 0; padding-left: 24px; position: relative; }}
+    li:before {{ content: "▸"; position: absolute; left: 0; color: var(--mint); }}
+    code {{
+      color: #d6faff;
+      background: rgba(53, 214, 255, .10);
+      border: 1px solid rgba(53, 214, 255, .14);
+      border-radius: 7px;
+      padding: 1px 6px;
+    }}
+    pre {{
+      overflow: auto;
+      border-radius: 16px;
+      padding: 16px;
+      background: #050b12;
+      border: 1px solid rgba(108, 255, 178, .16);
+    }}
+    pre code {{ background: transparent; border: 0; padding: 0; color: #d9fff0; }}
+    strong {{ color: #ffffff; }}
+    .finding-id {{
+      display: inline-block;
+      color: #061018;
+      background: linear-gradient(90deg, var(--mint), var(--blue));
+      border-radius: 999px;
+      padding: 1px 8px;
+      font-weight: 800;
+      letter-spacing: .03em;
+    }}
+    .badge {{
+      display: inline-block;
+      border-radius: 999px;
+      padding: 1px 8px;
+      font-size: .82em;
+      font-weight: 800;
+      border: 1px solid currentColor;
+    }}
+    .badge.critical {{ color: var(--red); }}
+    .badge.high {{ color: var(--yellow); }}
+    .badge.medium {{ color: #ff9f43; }}
+    .badge.low {{ color: var(--blue); }}
+    .badge.confirmed {{ color: var(--mint); }}
+    .badge.potential, .badge.unconfirmed {{ color: var(--yellow); }}
+    .step-no {{ color: var(--violet); font-weight: 800; margin-right: 6px; }}
+    footer {{ margin-top: 24px; color: var(--muted); text-align: center; font-size: 12px; }}
+    @media (max-width: 780px) {{
+      .shell {{ width: min(100vw - 24px, 1120px); margin-top: 16px; }}
+      .hero {{ padding: 22px; border-radius: 22px; }}
+      .metrics {{ grid-template-columns: 1fr; }}
+    }}
+    @media print {{
+      body {{ background: white; color: #121821; }}
+      .hero, .metric, .report-card {{ box-shadow: none; background: white; color: #121821; }}
+      .report-card, .metric, .hero {{ border-color: #cfd8e3; }}
+    }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="brand">BINGO · SECURITY REPORT</div>
+      <h1>Evidence-driven assessment</h1>
+      <div class="target">{safe_target}</div>
+      <div class="meta">
+        <span>Generated: {_html.escape(generated_at)}</span>
+        <span>Report truth: Finding-ID ledger</span>
+      </div>
+    </header>
+    <section class="metrics">
+      <div class="metric confirmed"><div class="label">Confirmed</div><div class="value">{int(confirmed_count)}</div></div>
+      <div class="metric potential"><div class="label">Probable / Potential</div><div class="value">{int(potential_count)}</div></div>
+      <div class="metric mode"><div class="label">Mode</div><div class="value">Hybrid AI-led</div></div>
+    </section>
+    {html_body}
+    <footer>Generated by bingo · Markdown and HTML reports share the same evidence-gated source.</footer>
+  </main>
+</body>
+</html>
+"""
+
+    @staticmethod
     def _sanitize_ground_truth_claims(
         text: str,
         confirmed_count: int = 0,
@@ -11821,6 +12318,75 @@ class BingoTerminal:
         return BingoTerminal._sanitize_ground_truth_claims(
             report, confirmed_count, potential_count=potential_count
         )
+
+    @staticmethod
+    def _finding_evidence_counts(exporter) -> dict[str, int]:
+        """Return evidence-ledger counts used to gate completion/confirmation."""
+        counts = {
+            "confirmed": 0,
+            "probable": 0,
+            "potential": 0,
+            "blocked": 0,
+            "quarantined": 0,
+        }
+        if exporter is None:
+            return counts
+        try:
+            stats = exporter.stats() if hasattr(exporter, "stats") else {}
+            counts["confirmed"] = int(stats.get("confirmed", 0) or 0)
+            counts["probable"] = int(stats.get("probable", 0) or 0)
+            counts["potential"] = max(
+                int(stats.get("potential", 0) or 0),
+                int(stats.get("potential_critical", 0) or 0)
+                + int(stats.get("potential_high", 0) or 0),
+            )
+            counts["blocked"] = int(stats.get("blocked", 0) or 0)
+            counts["quarantined"] = int(stats.get("quarantined", 0) or 0)
+            return counts
+        except Exception:
+            pass
+
+        try:
+            for finding in list(getattr(exporter, "findings", []) or []):
+                confidence = str(getattr(finding, "confidence", "") or "").lower()
+                if bool(getattr(finding, "confirmed", False)) or confidence == "confirmed":
+                    counts["confirmed"] += 1
+                elif confidence == "probable":
+                    counts["probable"] += 1
+                elif confidence in {"potential", "inconclusive"}:
+                    counts["potential"] += 1
+                elif confidence == "blocked":
+                    counts["blocked"] += 1
+            counts["quarantined"] = len(list(getattr(exporter, "quarantined", []) or []))
+        except Exception:
+            pass
+        return counts
+
+    @staticmethod
+    def _sanitize_runtime_claims_by_evidence(text: str, exporter) -> str:
+        """Downgrade runtime narrative claims that outrun the local evidence ledger.
+
+        Code blocks and TOOL_CALL payloads are preserved so attack capability is
+        not reduced; only the model's natural-language confidence wording is
+        grounded to the Finding evidence ladder.
+        """
+        if not text:
+            return text
+        counts = BingoTerminal._finding_evidence_counts(exporter)
+        if counts["confirmed"] > 0:
+            return text
+
+        import re as _rt_re
+
+        potential_count = counts["probable"] + counts["potential"] + counts["blocked"]
+        parts = _rt_re.split(r'(```[\s\S]*?```)', text)
+        for index in range(0, len(parts), 2):
+            parts[index] = BingoTerminal._sanitize_ground_truth_claims(
+                parts[index],
+                confirmed_count=0,
+                potential_count=potential_count,
+            )
+        return "".join(parts)
 
     @staticmethod
     def _build_evidence_based_next_steps(
@@ -12316,11 +12882,13 @@ class BingoTerminal:
             )
             report_dir = Path.cwd()
         report_path = report_dir / f"report_{safe_target}_{ts}.md"
+        html_report_path = report_path.with_suffix(".html")
 
         # 저장 경로 미리 출력 — 사용자가 어디 저장되는지 알 수 있게
         self.console.print(
             f"\n[{THEME['warn']}]📁 REPORT SAVE PATH:\n"
             f"   [bold white]{report_path.absolute()}[/bold white]\n"
+            f"   [{THEME['dim']}]HTML: {html_report_path.absolute()}[/]\n"
             f"   (set BINGO_REPORTS_DIR env var to override location)[/]\n"
         )
 
@@ -12537,10 +13105,26 @@ class BingoTerminal:
             report_path.write_text(full.strip(), encoding="utf-8")
         except Exception as _write_err:
             report_path = Path.cwd() / f"report_{safe_target}_{ts}.md"
+            html_report_path = report_path.with_suffix(".html")
             report_path.write_text(full.strip(), encoding="utf-8")
             self.console.print(
                 f"[{THEME['warn']}]⚠ Report path write failed ({_write_err}); "
                 f"saved to {report_path.absolute()}[/]"
+            )
+        try:
+            html_report_path.write_text(
+                BingoTerminal._build_html_report(
+                    full.strip(),
+                    target=target,
+                    confirmed_count=_fe_confirmed_n,
+                    potential_count=_fe_potential_n,
+                    generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                ),
+                encoding="utf-8",
+            )
+        except Exception as _html_write_err:
+            self.console.print(
+                f"[{THEME['warn']}]⚠ HTML report write failed: {_html_write_err}[/]"
             )
         self.console.print()
         try:
@@ -12548,20 +13132,23 @@ class BingoTerminal:
         except Exception as _render_err:
             self._error(f"report render error: {_render_err}")
         _rp_str = str(report_path.absolute())
+        _hp_str = str(html_report_path.absolute())
         _ok_label = self.s.get("report_save_ok", "REPORT SAVED SUCCESSFULLY")
         _now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         from rich.text import Text as _OkText
         _ot = _OkText()
         _ot.append(f"✔ {_ok_label}\n", style=THEME["success"])
-        _ot.append("PATH : ", style=THEME["dim"])
+        _ot.append("MD   : ", style=THEME["dim"])
         _ot.append(_rp_str + "\n", style="bold white")
+        _ot.append("HTML : ", style=THEME["dim"])
+        _ot.append(_hp_str + "\n", style=THEME["secondary"])
         _ot.append("TIME : ", style=THEME["dim"])
         _ot.append(_now_ts, style=THEME["dim"])
         from rich.panel import Panel as _OkPanel
         self.console.print(_OkPanel(_ot, border_style=THEME["success"], padding=(0, 2)))
 
         try:
-            self._converge_session_artifacts(report_path, target)
+            self._converge_session_artifacts(report_path, target, html_path=html_report_path)
         except Exception:
             pass
         self._suggest_next_steps()
@@ -12592,7 +13179,12 @@ class BingoTerminal:
                 ))
                 # findings 저장 후에도 수렴 인덱스 갱신
                 try:
-                    self._converge_session_artifacts(report_path, target, findings_path=_fe_path)
+                    self._converge_session_artifacts(
+                        report_path,
+                        target,
+                        findings_path=_fe_path,
+                        html_path=html_report_path,
+                    )
                 except Exception:
                     pass
         except Exception:
@@ -12603,6 +13195,7 @@ class BingoTerminal:
         report_path: "Path | None",
         target: str,
         findings_path: "Path | None" = None,
+        html_path: "Path | None" = None,
     ) -> None:
         """v6.2.172: 보고서 / findings JSON / 세션 로그를 하나의 INDEX로 자동 수렴.
 
@@ -12655,6 +13248,7 @@ class BingoTerminal:
         _index_json = _index_dir / f"INDEX_{_safe}.json"
 
         _rp = str(_P(report_path).absolute()) if report_path else ""
+        _hp = str(_P(html_path).absolute()) if html_path else ""
         _fp = str(_P(findings_path).absolute()) if findings_path else ""
         _sp = str(_P(_session).absolute()) if _session else ""
 
@@ -12663,6 +13257,7 @@ class BingoTerminal:
             f"- target: `{target}`\n"
             f"- updated: `{_t.strftime('%Y-%m-%d %H:%M:%S')}`\n"
             f"- report: `{_rp or 'N/A'}`\n"
+            f"- html_report: `{_hp or 'N/A'}`\n"
             f"- findings: `{_fp or 'N/A'}`\n"
             f"- session: `{_sp or 'N/A'}`\n"
             f"- summary: {_sum or 'no findings'}\n\n"
@@ -12688,6 +13283,7 @@ class BingoTerminal:
                 "target": target,
                 "updated_at": _t.strftime("%Y-%m-%d %H:%M:%S"),
                 "report": _rp,
+                "html_report": _hp,
                 "findings": _fp,
                 "session": _sp,
                 "summary": _sum,
@@ -12705,6 +13301,7 @@ class BingoTerminal:
                     _append = (
                         f"\n\n---\n## Converged Artifacts\n\n"
                         f"- INDEX: `{_index_path}`\n"
+                        f"- HTML Report: `{_hp or 'N/A'}`\n"
                         f"- Findings JSON: `{_fp or 'N/A'}`\n"
                         f"- Session log: `{_sp or 'N/A'}`\n"
                         f"- Summary: {_sum or 'no findings'}\n"
@@ -12748,6 +13345,7 @@ class BingoTerminal:
                             f"=== CONVERGED ARTIFACTS ===\n"
                             f"INDEX: {_index_path}\n"
                             f"REPORT: {_rp or 'N/A'}\n"
+                            f"HTML_REPORT: {_hp or 'N/A'}\n"
                             f"FINDINGS: {_fp or 'N/A'}\n"
                             f"SUMMARY: {_sum or 'no findings'}\n"
                             f"=== END CONVERGED ==="
@@ -13629,6 +14227,42 @@ class BingoTerminal:
                 return True
 
         return False
+
+    @staticmethod
+    def _meaningful_loop_progress_signature(text: str) -> str:
+        """Stable signature for novel progress de-duplication."""
+        import hashlib as _hash_progress
+        import re as _re_progress_sig
+
+        if not text:
+            return ""
+        signal_re = _re_progress_sig.compile(
+            r"(?:"
+            r"CONFIRMED|VERIFIED|credential|password|passwd|username|"
+            r"database|table|column|endpoint|TRACE|clickjacking|csrf|"
+            r"x-frame-options|frame-ancestors|content-security-policy|"
+            r"RCE|shell|BINGO_SIGNAL|VULNERABLE|HIGH|CRITICAL"
+            r")",
+            _re_progress_sig.IGNORECASE,
+        )
+        lines: list[str] = []
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped or not signal_re.search(stripped):
+                continue
+            stripped = _re_progress_sig.sub(
+                r"BINGO(?:_[A-Z0-9]+){1,}|TRACE_[A-Z0-9_]+|[a-f0-9]{16,}",
+                "<id>",
+                stripped,
+                flags=_re_progress_sig.IGNORECASE,
+            )
+            stripped = _re_progress_sig.sub(r"\b\d{5,}\b", "<n>", stripped)
+            lines.append(stripped.lower()[:240])
+            if len(lines) >= 24:
+                break
+        if not lines:
+            return ""
+        return _hash_progress.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
 
     @staticmethod
     def _hashes_from_error_context(text: str, hashes: list[str]) -> set[str]:

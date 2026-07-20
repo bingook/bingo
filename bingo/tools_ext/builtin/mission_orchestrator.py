@@ -338,10 +338,11 @@ def mission_execute(
                 sqli_url = t["url"]
                 sqli_param = t["param"]
 
-                # sqli_autoexploit 우선 (관리자 계정까지 추출)
+                # AI-led policy: sqli_autoexploit is a bounded verifier/handoff,
+                # not a mandatory first proof by name.
                 if "sqli_autoexploit" in TOOL_REGISTRY:
                     sqli_r = _safe_run(
-                        TOOL_REGISTRY["sqli_autoexploit"], f"SQLi 자동 익스플로잇 [{sqli_param}]",
+                        TOOL_REGISTRY["sqli_autoexploit"], f"SQLi verifier [{sqli_param}]",
                         url=sqli_url, param=sqli_param, method=t.get("method", "GET"),
                     )
                     if sqli_r.get("success") or sqli_r.get("oracle_confirmed"):

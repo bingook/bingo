@@ -219,18 +219,10 @@ def _run_waf_test(target: str, s: dict | None = None) -> None:
         for i, strategy in enumerate(result.bypass_priority, 1):
             console.print(f"  {i}. {strategy}")
 
-        console.print(f"\n[#ffaa00]{s['cli_waf_bypass_try']}[/]")
-        engine = WafBypassEngine(probe, on_progress=lambda m: console.print(f"[#c9d1d9]{m}[/]"))
-        test_payload = "' OR 1=1--"
-        success, attempt = engine.auto_bypass(target + "?id=1", test_payload)
-        if success and attempt:
-            console.print(f"\n[#00ff41]{s['cli_waf_bypass_ok']}[/]")
-            console.print(f"[#00ff41]{s['cli_waf_tech']}: {attempt.technique}[/]")
-            console.print(f"[#00ff41]{s['cli_waf_payload']}: {attempt.payload_modified}[/]")
-        elif success:
-            console.print(f"\n[#00ff41]{s['waf_none']}[/]")
-        else:
-            console.print(f"\n[#ff4444]{s['cli_waf_bypass_fail']}[/]")
+        engine = WafBypassEngine(probe)
+        console.print(f"\n[#00d4aa]AI-led WAF plan:[/]")
+        console.print("[#4a4a4a]  Auto bypass spray is disabled. Use model + waf_bypass skill to choose one bounded verifier.[/]")
+        console.print(f"[#4a4a4a]{engine.get_bypass_summary(result.waf_type)}[/]")
     else:
         console.print(f"[#00ff41]{s['cli_waf_none']}[/]")
 

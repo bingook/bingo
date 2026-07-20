@@ -6285,27 +6285,33 @@ class BingoTerminal:
             for i, s in enumerate(result.bypass_priority, 1):
                 self.console.print(f"  {i}. {s}")
 
-            self.console.print(f"\n[{THEME['warn']}]{self.s['waf_auto_bypass']}[/]")
             engine = WafBypassEngine(
                 probe,
                 on_progress=lambda m: self.console.print(f"[{THEME['dim']}]{m}[/]")
             )
-            success, attempt = engine.auto_bypass(url + "?id=1", "' OR 1=1--")
-            if success and attempt:
-                self.console.print(f"[{THEME['success']}]{self.s['waf_bypass_ok']}: {attempt.technique}[/]")
-                self.console.print(f"[{THEME['success']}]payload: {attempt.payload_modified}[/]")
-            else:
-                self.console.print(f"[{THEME['error']}]{self.s['waf_bypass_fail']}[/]")
-
-            # AI에게 우회 전략 물어보기
             bypass_summary = engine.get_bypass_summary(result.waf_type)
             ai_prompt = (
+                "[WAF_AI_SKILL_PLAN]\n"
                 f"WAF detected: {result.waf_type}\n"
-                f"Bypass attempts failed\n\n{bypass_summary}\n\n"
-                f"Provide 5 optimal bypass payloads for this WAF."
+                f"Confidence: {result.confidence}\n"
+                f"Evidence: {result.evidence}\n\n"
+                f"{bypass_summary}\n\n"
+                "Use waf_bypass skill memory and choose exactly one bounded next verification step. "
+                "Do not spray the full bypass library. Preserve the exact target host and request profile."
             )
             self.console.print(f"\n[{THEME['secondary']}]{self.s['waf_ai_request']}[/]")
-            self._stream_response(ai_prompt)
+            model_cfg = self.config.get_active_model_config()
+            if model_cfg:
+                from ..models.registry import ModelRegistry
+                self.history.append(Message(role="user", content=ai_prompt))
+                response = self._stream_response(
+                    ModelRegistry.build(model_cfg).chat_stream(self._build_messages(""))
+                )
+                if response:
+                    self.history.append(Message(role="assistant", content=response))
+                    self._execute_ai_commands(response)
+            else:
+                self.console.print(f"[{THEME['dim']}]{bypass_summary}[/]")
         else:
             self.console.print(f"[{THEME['success']}]{self.s['waf_none']}[/]")
 
@@ -9283,8 +9289,9 @@ class BingoTerminal:
 
             _no_code_retry = 0  # 코드 있으면 카운터 리셋
 
-            # Repeated blocked SQLi gets a short execution cooldown. The model
-            # must execute another vulnerability vector before retrying SQLi.
+            # Repeated blocked SQLi receives an AI-led pivot advisory.  It must
+            # not suppress the model-selected executable step; Bingo still runs
+            # the current verifier and uses the result as evidence.
             _sqli_state = getattr(self, "_adaptive_attack_state", {}).get("sqli", {})
             _sqli_cooldown = int(_sqli_state.get("cooldown", 0) or 0)
             if _sqli_cooldown > 0:
@@ -9313,21 +9320,22 @@ class BingoTerminal:
                     _sqli_state["cooldown"] = _sqli_cooldown - 1
                     _guard_msg = self.s.get(
                         "sqli_cross_vector_guard",
-                        "[AUTO_PIVOT] Repeated blocked SQLi execution skipped. "
-                        "Run JS/API/IDOR/XSS/LFI/auth verification now.",
+                        "[AI_LED_PIVOT_ADVISORY] Repeated SQLi blocks detected. "
+                        "Prefer a different vector unless this run uses a new verifier. "
+                        "Current executable action is not blocked.",
                     )
-                    self.history.append(Message(role="user", content=_guard_msg))
-                    model_cfg_guard = self.config.get_active_model_config()
-                    if not model_cfg_guard:
-                        break
-                    from ..models.registry import ModelRegistry as _MR_guard
-                    current_response = self._stream_response(
-                        _MR_guard.build(model_cfg_guard).chat_stream(self._build_messages(""))
-                    )
-                    if current_response:
-                        self.history.append(Message(role="assistant", content=current_response))
-                    continue
-                _sqli_state["cooldown"] = 0
+                    self.history.append(Message(
+                        role="user",
+                        content=(
+                            f"{_guard_msg}\n"
+                            "[CURRENT_ACTION_NOT_BLOCKED]\n"
+                            "Execute the current model-selected step. In the next analysis, "
+                            "prefer sqli/waf_bypass skill reasoning and one bounded verifier "
+                            "instead of repeating the same blocked request."
+                        ),
+                    ))
+                else:
+                    _sqli_state["cooldown"] = 0
 
             # 코드 실행 (코드 블록이 있으면 반드시 실행)
             results_text = self._run_code_blocks(current_response, _loaded_skills)
@@ -10980,8 +10988,10 @@ class BingoTerminal:
                 )
 
             _next_action_contract = (
-                "NEXT ACTION: Obey ADAPTIVE_OFFENSE_PIVOT and execute a non-SQLi vector now. "
-                "Do not emit sqlmap, sqli_*, Boolean oracle, UNION, error-based, or time-based SQLi.\n"
+                "NEXT ACTION: Treat ADAPTIVE_OFFENSE_PIVOT as an AI-led advisory. "
+                "Prefer a non-SQLi vector after repeated blocked controls, unless you can state "
+                "the new SQLi/WAF hypothesis and execute one distinct bounded verifier. "
+                "Do not repeat the same blocked request.\n"
                 if adaptive_pivot_context and "next=cross_vector" in adaptive_pivot_context
                 else (
                     "NEXT ACTION: Continue from where you left off. "
@@ -11807,7 +11817,8 @@ class BingoTerminal:
             f"ACTION: {next_action}.\n"
             "Preserve the candidate, target, endpoint, parameter, session, headers, and controls. "
             "Change technique now; do not repeat the same request and do not stop exploration. "
-            "When next=cross_vector, SQLi tools are temporarily blocked until one non-SQLi vector executes.\n"
+            "When next=cross_vector, prefer another vector unless a distinct SQLi/WAF verifier "
+            "is justified by new evidence. Current executable tools are not suppressed.\n"
             "[/ADAPTIVE_OFFENSE_PIVOT]\n"
         )
 

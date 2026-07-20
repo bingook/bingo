@@ -67,7 +67,7 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T16:47:11+08:00
+- Last synced: 2026-07-20T16:53:45+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
@@ -75,61 +75,63 @@
 
 > Automatically records committed code changes. Newest entries appear first.
 
-<!-- commit:529d683ec84a4722f9d1165f6e00fbc49c2c6678 -->
-## Code change: fix: prevent premature reports and bump version to 6.2.226
-- Commit: `529d683ec84a`
-- Recorded: 2026-07-20T16:47:11+08:00
-- Committed: 2026-07-20T16:47:11+08:00
+<!-- commit:34b84f6ff1b804ba9b99eccffe055fe736ce2175 -->
+## Code change: style: refine bingo operator console ui
+- Commit: `34b84f6ff1b8`
+- Recorded: 2026-07-20T16:53:45+08:00
+- Committed: 2026-07-20T16:53:45+08:00
 
 ### Files
 ```text
 M	.bingo/project-memory.md
 M	PKG-INFO
 M	bingo/__init__.py
-M	tests/test_terminal_completion_regressions.py
+M	bingo/cli.py
+M	bingo/ui/terminal.py
 ```
 
 ### Diff Stat
 ```text
-529d683ec fix: prevent premature reports and bump version to 6.2.226
- .bingo/project-memory.md                      |  99 +++----------
- PKG-INFO                                      |   2 +-
- bingo/__init__.py                             |   2 +-
- tests/test_terminal_completion_regressions.py | 206 ++++++++++++++++++++++++++
- 4 files changed, 229 insertions(+), 80 deletions(-)
+34b84f6ff style: refine bingo operator console ui
+ .bingo/project-memory.md | 90 +++++++++++++++++++++++-----------------------
+ PKG-INFO                 |  2 +-
+ bingo/__init__.py        |  2 +-
+ bingo/cli.py             | 17 ++++-----
+ bingo/ui/terminal.py     | 94 ++++++++++++++++++++++++------------------------
+ 5 files changed, 99 insertions(+), 106 deletions(-)
 ```
 
 ### Added Highlights
-- `Version: 6.2.226`
-- `__version__ = "6.2.226"`
-- `def test_plain_tool_call_payloads_are_compacted_for_logs_and_history() -> None:`
-- `long_script = "echo start\\n" + ("curl -sk https://example.test/a\\n" * 120)`
-- `text = (`
-- `"Run probes\n"`
-- `f'TOOL_CALL:{{"name":"run_bash","args":{{"script":"{long_script}"}}}}\n'`
-- `'TOOL_CALL:{"name":"http_get","args":{"url":"https://example.test/login","timeout":30}}\n'`
-- `)`
-- `compacted = BingoTerminal._compact_tool_call_payloads(text, max_calls=1)`
-- `assert "[bingo action] run_bash" in compacted`
-- `legacy_marker = "TOOL_CALL" + "_SUMMARY"`
-- `assert legacy_marker not in compacted`
-- `assert "script=<" in compacted`
-- `assert "curl -sk https://example.test/a" not in compacted`
-- `assert "additional deferred call" in compacted`
-- `def test_latest_assistant_tool_history_is_compacted_without_blocking_execution() -> None:`
-- `response = (`
-- `'TOOL_CALL:{"name":"run_python","args":{"code":"'`
-- `+ ("print(1)\\n" * 80)`
-- `+ '"}}'`
-- `)`
-- `terminal = BingoTerminal.__new__(BingoTerminal)`
-- `terminal.history = [Message(role="assistant", content=response)]`
-- `terminal._compact_latest_assistant_tool_history(response)`
-- `assert "[bingo action] run_python" in terminal.history[-1].content`
-- `legacy_marker = "TOOL_CALL" + "_SUMMARY"`
-- `assert legacy_marker not in terminal.history[-1].content`
-- `assert "print(1)" not in terminal.history[-1].content`
-- `def test_echoed_tool_call_summary_payload_is_compacted_again() -> None:`
+- `Version: 6.2.227`
+- `__version__ = "6.2.227"`
+- `BANNER_SMALL = r"""[#627386]━━[/] [#00ff88]bingo[/] [#627386]//[/] [#d7ffe8]red team operations console[/] [#627386]//[/] [#00d7ff]multi-model[/]"""`
+- `"[#00ff88]Bingo[/] [#627386]//[/] offensive security ops console\n"`
+- `"[#627386]providers[/] DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom",`
+- `title="[#00d7ff] operator setup [/#00d7ff]",`
+- `border_style="#16313d",`
+- `console.print(f"[#00ff88]bingo[/] [#627386]//[/] v{__version__} [#627386]//[/] official build")`
+- `"primary":   "#00ff88",   # terminal green`
+- `"secondary": "#00d7ff",   # signal cyan`
+- `"accent":    "#ff2bd6",   # magenta trace`
+- `"dim":       "#627386",   # tactical slate`
+- `"border":    "#16313d",   # low-contrast frame`
+- `[#627386]━━[/] [#00ff88]bingo[/] [#627386]//[/] [#d7ffe8]red team operations console[/] [#627386]//[/] [#00d7ff]v{ver}[/] [#627386]//[/] [#ff2bd6]multi-model arsenal[/]`
+- `"":              "#00ff88",`
+- `"prompt":        "#00ff88 bold",`
+- `"prompt.brand":  "#00ff88 bold",`
+- `"prompt.host":   "#00d7ff",`
+- `"prompt.dim":    "#627386",`
+- `"prompt.arrow":  "#ff2bd6 bold",`
+- `_cell("MODEL", _model_name, THEME["secondary"]),`
+- `_cell("LOCALE", lang_label, THEME["accent"]),`
+- `_cell("ARSENAL", f"{_total} skills", THEME["success"]),`
+- `_cell("OUTPUT", "MD · HTML", THEME["primary"]),`
+- `f"[{THEME['dim']}]planner[/] [{THEME['primary']}]model[/]  "`
+- `f"[{THEME['dim']}]proof[/] [{THEME['accent']}]evidence ledger[/]"`
+- `title=f"[{THEME['primary']}] BINGO OPS MATRIX [/]",`
+- `padding=(0, 2),`
+- `_target_str = f" [{THEME['dim']}]//[/] [{THEME['accent']}]{_target}[/]" if _target else ""`
+- `f"[{THEME['dim']}]bingo[/] [{THEME['primary']}]{name}[/]{_target_str}[{THEME['dim']}]  {now}[/]",`
 <!-- bingo-project-memory:auto:end -->
 
 "`

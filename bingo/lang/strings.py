@@ -877,9 +877,9 @@ _STRINGS = {
         "en": "🔁 Repeated SQLi control blocks — pivoting to JS/API/IDOR while preserving the candidate",
     },
     "sqli_cross_vector_guard": {
-        "ko": "[자동 피벗] 반복 차단된 SQLi 실행을 건너뜁니다. 지금 JS/API/IDOR/XSS/LFI/인증 검증을 실행하세요.",
-        "zh": "[自动切换] 已跳过重复受阻的 SQLi 执行。现在执行 JS/API/IDOR/XSS/LFI/认证验证。",
-        "en": "[Auto-pivot] Repeated blocked SQLi execution skipped. Run JS/API/IDOR/XSS/LFI/auth verification now.",
+        "ko": "[AI 주도 피벗 권고] SQLi 대조가 반복 차단됨. 현재 실행은 막지 않지만, 다음 판단은 sqli/waf_bypass skill 기반으로 새 검증기 또는 JS/API/IDOR/XSS/LFI/인증 벡터를 선택하세요.",
+        "zh": "[AI主导切换建议] SQLi 对照请求重复受阻。当前执行不被拦截；下一步请基于 sqli/waf_bypass skill 选择新的验证器或 JS/API/IDOR/XSS/LFI/认证向量。",
+        "en": "[AI-led pivot advisory] Repeated SQLi controls were blocked. Current execution is not suppressed; next choose a new verifier or JS/API/IDOR/XSS/LFI/auth vector using sqli/waf_bypass skills.",
     },
     "report_manual_artifact_blocked": {
         "ko": "[보고서 요청 보류] 모델이 직접 작성한 보고서 파일을 건너뜁니다. TASK_COMPLETE를 출력하면 Bingo가 Finding ID 기준으로 생성합니다.",

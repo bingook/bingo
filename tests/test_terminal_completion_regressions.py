@@ -897,12 +897,20 @@ def test_system_prompt_ends_with_evidence_driven_offense_contract() -> None:
     assert "Do not flood TOOL_CALLs" in prompt
     assert "CONFIRMED/TASK_COMPLETE/FINDINGS line is not evidence by itself" in prompt
     assert "Preserve the exact active target host" in prompt
+    assert "WAF bypass is AI-led and skill-guided" in prompt
+    assert "SQLi is AI-led and skill-guided" in prompt
+    assert "sqli_autoexploit, WafBypassEngine, sqlmap, and ghauri are bounded verifier" in prompt
+    assert "Runtime pivot hints are advisory" in prompt
+    assert "sqli_autoexploit 우선" not in prompt
+    assert "AI MUST apply these automatically" not in prompt
     assert "EVIDENCE-DRIVEN SECURITY TESTING" in prompt
     assert (
         "Reports contain verified vulnerabilities only. Probable/potential candidates stay\n"
         "   in the verification backlog and continue to drive attacks."
     ) in prompt
-    assert prompt.rstrip().endswith("promote after deterministic extraction evidence.")
+    assert prompt.rstrip().endswith(
+        "evidence before the next branch."
+    )
     assert "sqlmap is PERMANENTLY BANNED" not in prompt
 
 
@@ -1000,6 +1008,8 @@ def test_repeated_inconclusive_attack_automatically_pivots(tmp_path: Path) -> No
     assert "next=cross_vector" in second
     assert terminal._adaptive_attack_state["sqli"]["cooldown"] == 2
     assert "do not stop exploration" in second
+    assert "temporarily blocked" not in second
+    assert "Current executable tools are not suppressed" in second
 
 
 def test_boolean_oracle_rejects_block_pages_and_status_transitions() -> None:
@@ -2419,6 +2429,9 @@ def test_chinese_deterministic_report_keeps_zero_confirmed_label() -> None:
 def test_new_runtime_messages_have_all_languages() -> None:
     for lang in ("ko", "zh", "en"):
         strings = get_strings(lang)
+        assert "skipped" not in strings["sqli_cross_vector_guard"].lower()
+        assert "건너뜁니다" not in strings["sqli_cross_vector_guard"]
+        assert "跳过" not in strings["sqli_cross_vector_guard"]
         for key in (
             "sqli_cross_vector_guard",
             "report_manual_artifact_blocked",

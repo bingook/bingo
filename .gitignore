@@ -54,6 +54,7 @@ downloads/
 *.jpg
 *.png
 !assets/
+!assets/logo.png
 !bingo-github-profile.png
 headers.txt
 interesting_files.txt

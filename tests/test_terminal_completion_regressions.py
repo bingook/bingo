@@ -154,6 +154,99 @@ def test_tool_call_codeblock_rendering_hides_raw_directive() -> None:
     assert "bingo action" in collapsed
 
 
+def test_plain_tool_call_payloads_are_compacted_for_logs_and_history() -> None:
+    long_script = "echo start\\n" + ("curl -sk https://example.test/a\\n" * 120)
+    text = (
+        "Run probes\n"
+        f'TOOL_CALL:{{"name":"run_bash","args":{{"script":"{long_script}"}}}}\n'
+        'TOOL_CALL:{"name":"http_get","args":{"url":"https://example.test/login","timeout":30}}\n'
+    )
+
+    compacted = BingoTerminal._compact_tool_call_payloads(text, max_calls=1)
+
+    assert "[bingo action] run_bash" in compacted
+    legacy_marker = "TOOL_CALL" + "_SUMMARY"
+    assert legacy_marker not in compacted
+    assert "script=<" in compacted
+    assert "curl -sk https://example.test/a" not in compacted
+    assert "additional deferred call" in compacted
+
+
+def test_latest_assistant_tool_history_is_compacted_without_blocking_execution() -> None:
+    response = (
+        'TOOL_CALL:{"name":"run_python","args":{"code":"'
+        + ("print(1)\\n" * 80)
+        + '"}}'
+    )
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.history = [Message(role="assistant", content=response)]
+
+    terminal._compact_latest_assistant_tool_history(response)
+
+    assert "[bingo action] run_python" in terminal.history[-1].content
+    legacy_marker = "TOOL_CALL" + "_SUMMARY"
+    assert legacy_marker not in terminal.history[-1].content
+    assert "print(1)" not in terminal.history[-1].content
+
+
+def test_echoed_tool_call_summary_payload_is_compacted_again() -> None:
+    legacy_marker = "TOOL_CALL" + "_SUMMARY"
+    echoed = (
+        f"{legacy_marker}: run_python(code=import requests,re\n"
+        "BASE='https://example.test'\n"
+        "r=requests.get(BASE)\n"
+        "print(r.status_code)\n"
+        "\n"
+        "next text\n"
+        f"{legacy_marker}: http_get(url=https://example.test/)"
+    )
+
+    compacted = BingoTerminal._compact_tool_call_payloads(echoed)
+
+    assert legacy_marker not in compacted
+    assert "[bingo action] run_python(code=<code omitted>)" in compacted
+    assert "BASE='https://example.test'" not in compacted
+    assert "next text" in compacted
+    assert "[bingo action] http_get" in compacted
+
+
+def test_auto_report_defers_task_complete_when_tool_action_is_pending() -> None:
+    response = (
+        'TOOL_CALL:{"name":"http_get","args":{"url":"https://example.test/login"}}\n'
+        "TASK_COMPLETE"
+    )
+    counts = {"confirmed": 0, "probable": 0, "potential": 0}
+
+    reason = BingoTerminal._auto_report_defer_reason(
+        response, counts, loop_count=4, trigger="task_complete"
+    )
+
+    assert "pending executable action" in reason
+
+
+def test_auto_report_defers_empty_early_completion() -> None:
+    counts = {"confirmed": 0, "probable": 0, "potential": 0}
+
+    reason = BingoTerminal._auto_report_defer_reason(
+        "Recon complete.\nTASK_COMPLETE",
+        counts,
+        loop_count=3,
+        trigger="task_complete",
+    )
+
+    assert "early reconnaissance" in reason
+
+
+def test_auto_report_allows_candidate_report_after_evidence_exists() -> None:
+    counts = {"confirmed": 0, "probable": 0, "potential": 1}
+
+    reason = BingoTerminal._auto_report_defer_reason(
+        "TASK_COMPLETE", counts, loop_count=10, trigger="task_complete"
+    )
+
+    assert reason == ""
+
+
 def test_dict_tool_call_is_normalized_before_code_execution() -> None:
     response = (
         "```python\n"
@@ -712,6 +805,22 @@ for m in re.findall(r'(?:api|base)[_-]?url[\"'\s:=]+[\"']([^\"']+)[\"']', html, 
     assert "SyntaxError" not in result["output"]
 
 
+def test_run_python_repairs_redundant_list_fromkeys_wrapper() -> None:
+    code = r"""
+import re
+html = '<a href="/balance/main.do">main</a>'
+hrefs = list(list(dict.fromkeys(re.findall(r'''href=["\']([^"\']+)["\']''', html, re.I)))
+print(hrefs[0])
+"""
+
+    result = run_python(code, timeout=10)
+
+    assert result["success"] is True
+    assert "/balance/main.do" in result["output"]
+    assert "PYTHON_SYNTAX_AUTO_REPAIRED" in result["output"]
+    assert "SyntaxError" not in result["output"]
+
+
 def test_run_python_precheck_rejects_unrepairable_syntax_before_execution() -> None:
     result = run_python("print('before')\nif True print('broken')\n", timeout=10)
 
@@ -782,6 +891,12 @@ def test_direct_http_sqli_probe_is_not_transport_blocked(monkeypatch) -> None:
 def test_system_prompt_ends_with_evidence_driven_offense_contract() -> None:
     prompt = get_pentest_system_prompt("deepseek")
 
+    assert "HYBRID AI-LED MODE" in prompt
+    assert "CLAUDE CLI IDENTICAL MODE" not in prompt
+    assert "Skills are Bingo's technique memory" in prompt
+    assert "Do not flood TOOL_CALLs" in prompt
+    assert "CONFIRMED/TASK_COMPLETE/FINDINGS line is not evidence by itself" in prompt
+    assert "Preserve the exact active target host" in prompt
     assert "EVIDENCE-DRIVEN SECURITY TESTING" in prompt
     assert (
         "Reports contain verified vulnerabilities only. Probable/potential candidates stay\n"
@@ -823,6 +938,48 @@ def test_glm_custom_prompt_avoids_provider_refusal_triggers(monkeypatch) -> None
     assert get_warmup_history("custom glm-5.2") == []
     for phrase in blocked_phrases:
         assert phrase not in combined
+
+
+def test_runtime_confirmed_claim_is_downgraded_without_finding_evidence(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
+    response = (
+        "[CONFIRMED ✅] SQL Injection confirmed and Critical.\n"
+        "TASK_COMPLETE\n"
+        "```python\n"
+        "print('CONFIRMED marker inside code stays untouched')\n"
+        "```"
+    )
+
+    sanitized = BingoTerminal._sanitize_runtime_claims_by_evidence(response, exporter)
+
+    assert "PROBABLE" in sanitized
+    assert "Critical" not in sanitized
+    assert "Potential" in sanitized
+    assert "print('CONFIRMED marker inside code stays untouched')" in sanitized
+
+
+def test_finding_evidence_counts_use_exporter_stats() -> None:
+    exporter = SimpleNamespace(
+        stats=lambda: {
+            "confirmed": 0,
+            "probable": 1,
+            "potential": 0,
+            "potential_critical": 2,
+            "potential_high": 1,
+            "blocked": 3,
+            "quarantined": 4,
+        }
+    )
+
+    counts = BingoTerminal._finding_evidence_counts(exporter)
+
+    assert counts == {
+        "confirmed": 0,
+        "probable": 1,
+        "potential": 3,
+        "blocked": 3,
+        "quarantined": 4,
+    }
 
 
 def test_repeated_inconclusive_attack_automatically_pivots(tmp_path: Path) -> None:
@@ -1168,6 +1325,27 @@ def test_high_value_api_endpoint_is_meaningful_loop_progress() -> None:
     output = "https://example.test/common/jwt -> loReqtNo\n"
 
     assert BingoTerminal._has_meaningful_loop_progress(output)
+
+
+def test_repeated_progress_signature_ignores_dynamic_trace_markers() -> None:
+    first = (
+        "[HTTP_METHOD] https://example.test/login\n"
+        "[HIGH] TRACE: TRACE request echo confirmed\n"
+        "Cookie: JSESSIONID=TRACE_COOKIE_PROOF_12345; SECRET=stealme\n"
+        "X-Bingo-Trace: TRACE_HEADER_PROOF\n"
+    )
+    second = (
+        "[HTTP_METHOD] https://example.test/login\n"
+        "[HIGH] TRACE: TRACE request echo confirmed\n"
+        "Cookie: JSESSIONID=TRACE_COOKIE_PROOF_98765; SECRET=stealme\n"
+        "X-Bingo-Trace: TRACE_HEADER_PROOF_2\n"
+    )
+
+    assert BingoTerminal._meaningful_loop_progress_signature(first)
+    assert (
+        BingoTerminal._meaningful_loop_progress_signature(first)
+        == BingoTerminal._meaningful_loop_progress_signature(second)
+    )
 
 
 def test_generic_homepage_script_is_not_an_xss_finding(tmp_path: Path) -> None:
@@ -2184,16 +2362,44 @@ def test_report_fallback_is_written_without_model(tmp_path: Path, monkeypatch) -
     BingoTerminal._auto_generate_report(obj)
 
     reports = list(tmp_path.glob("report_*.md"))
+    html_reports = list(tmp_path.glob("report_*.html"))
     assert len(reports) == 1
+    assert len(html_reports) == 1
     report = reports[0].read_text(encoding="utf-8")
+    html_report = html_reports[0].read_text(encoding="utf-8")
     assert "# Target: https://example.test" in report
     assert "Confirmed: 0" in report
     assert "Probable/Potential: 5" in report
     assert "BINGO-1" in report
+    assert "Bingo Security Report" in html_report
+    assert "Evidence-driven assessment" in html_report
+    assert "Hybrid AI-led" in html_report
+    assert "Probable / Potential" in html_report
+    assert "BINGO-1" in html_report
     vuln_section = report.split("## Vulnerabilities Found", 1)[1].split("##", 1)[0]
     assert "BINGO-1" not in vuln_section
     assert "Verification Backlog (Unconfirmed)" in report
     assert "type=sqli\nEVIDENCE LADDER RULES" in captured["ground_truth"]
+
+
+def test_html_report_renderer_escapes_content_and_adds_cards() -> None:
+    html = BingoTerminal._build_html_report(
+        "# Target: <script>alert(1)</script>\n"
+        "## Summary\n"
+        "- **Critical** candidate BINGO-0001\n"
+        "```bash\ncurl -sk https://example.test/\n```\n",
+        target="<script>alert(1)</script>",
+        confirmed_count=0,
+        potential_count=1,
+        generated_at="2026-07-20 12:00:00",
+    )
+
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert 'class="report-card"' in html
+    assert 'class="finding-id">BINGO-0001' in html
+    assert "curl -sk https://example.test/" in html
+    assert "2026-07-20 12:00:00" in html
 
 
 def test_chinese_deterministic_report_keeps_zero_confirmed_label() -> None:

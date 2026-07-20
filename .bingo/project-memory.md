@@ -67,30 +67,36 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T16:36:41+08:00
+- Last synced: 2026-07-20T16:45:41+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
-<!-- working-tree:start -->
-## Working tree snapshot (uncommitted)
-- Captured: 2026-07-20T16:36:41+08:00
+# Workspace Memory
 
-### Status
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:9f0a4f1f6a0d1a152b65ab1afc284a6b03e49ebf -->
+## Code change: fix: prevent premature scan reports
+- Commit: `9f0a4f1f6a0d`
+- Recorded: 2026-07-20T16:45:41+08:00
+- Committed: 2026-07-20T16:45:41+08:00
+
+### Files
 ```text
-M .bingo/project-memory.md
- M bingo/models/system_prompt.py
- M bingo/tools_ext/pentest_tools.py
- M bingo/ui/terminal.py
- M tests/test_terminal_completion_regressions.py
+M	.bingo/project-memory.md
+M	bingo/models/system_prompt.py
+M	bingo/tools_ext/pentest_tools.py
+M	bingo/ui/terminal.py
 ```
 
 ### Diff Stat
 ```text
-bingo/models/system_prompt.py                 |  10 +-
- bingo/tools_ext/pentest_tools.py              |  40 +++++-
- bingo/ui/terminal.py                          |  77 +++++++++++-
- tests/test_terminal_completion_regressions.py | 169 ++++++++++++++++++++++++++
- 4 files changed, 287 insertions(+), 9 deletions(-)
+9f0a4f1f6 fix: prevent premature scan reports
+ .bingo/project-memory.md         | 120 ++++++++++++--------
+ bingo/models/system_prompt.py    |  10 +-
+ bingo/tools_ext/pentest_tools.py |  40 ++++++-
+ bingo/ui/terminal.py             | 238 +++++++++++++++++++++++++++++++++++++--
+ 4 files changed, 347 insertions(+), 61 deletions(-)
 ```
 
 ### Added Highlights
@@ -124,69 +130,6 @@ bingo/models/system_prompt.py                 |  10 +-
 - `repaired_full = _pre + "\n" + repaired`
 - `try:`
 - `compile(repaired_full, "<bingo_run_python_precheck_repaired>", "exec")`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:17ec96b01fd32f23efd05e810f29cdac5c844f95 -->
-## Code change: feat: add html reports and polish hybrid ui
-- Commit: `17ec96b01fd3`
-- Recorded: 2026-07-20T16:20:28+08:00
-- Committed: 2026-07-20T16:20:28+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-M	PKG-INFO
-M	bingo/__init__.py
-M	bingo/models/system_prompt.py
-M	bingo/ui/terminal.py
-```
-
-### Diff Stat
-```text
-17ec96b01 feat: add html reports and polish hybrid ui
- .bingo/project-memory.md      | 132 ++++----
- PKG-INFO                      |   2 +-
- bingo/__init__.py             |   2 +-
- bingo/models/system_prompt.py |  52 ++-
- bingo/ui/terminal.py          | 714 +++++++++++++++++++++++++++++++++++++++---
- 5 files changed, 778 insertions(+), 124 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.225`
-- `__version__ = "6.2.225"`
-- `BINGO ENGINE v6.2 — HYBRID AI-LED MODE`
-- `║  ★★★ HYBRID AI-LED MODE — 모델 주도 + Bingo 증거 검증 ★★★        ║`
-- `║  AI 모델이 전략, 판단, 다음 행동을 주도한다.                      ║`
-- `║  Bingo는 스킬 자동주입, 툴 실행, 증거 ledger, 보고서 생성을 맡는다.║`
-- `║  Raw 모드처럼 모델의 자유 실행을 보장하되, 확정/완료/보고서는      ║`
-- `║  Bingo의 실행 증거와 Finding ID 기준으로만 승격된다.              ║`
-- `║  run_python — 복잡한 검증에 사용:                                 ║`
-- `║   • 필요한 만큼 완전한 스크립트 작성, 단 결과는 짧고 검증 가능하게 ║`
-- `║  ⚡ 중간형 원칙: 모델이 직접 판단하되 Bingo의 검증 기준을 통과해야 한다.║`
-- `║     막히면 같은 시도를 반복하지 말고 payload/transport/endpoint/vector를 바꾼다.║`
-- `║  ● Use real execution output; simulation text is not evidence     ║`
-- `║  ● The words CONFIRMED, TASK_COMPLETE, dumped, shell, admin, DB, ║`
-- `║    credential, or extracted are not proof by themselves.          ║`
-- `║  ● Confirmed findings require Bingo Finding ID or deterministic  ║`
-- `║    type-specific verifier output. Otherwise label as hypothesis.  ║`
-- `║  2. 기본은 한 번에 TOOL_CALL 하나. 독립 baseline probe만 작은 batch(최대 3) 허용║`
-- `║  3. TOOL flood 금지: 같은 목적의 10개+ 호출을 한 턴에 쏟아내지 말 것        ║`
-- `║  4. TOOL_RESULT 결과를 분석 후 다음 TOOL_CALL 또는 BINGO_SIGNAL 출력       ║`
-- `║  5. TOOL_CALL 우선; custom Python/bash/외부 도구는 fallback으로 즉시 사용   ║`
-- `Principle: Skills are Bingo's technique memory. When the task clearly matches a`
-- `known skill family, load the matching skill early, then execute real verification`
-- `with TOOL_CALL/run_python/run_bash. Skills guide technique; execution output and`
-- `Finding IDs decide what is true.`
-- `TASK_COMPLETE → only after passing all evidence gates above. It is a stop/report`
-- `signal, not proof. If Bingo has zero confirmed Finding IDs, the final report must`
-- `say no confirmed vulnerability and keep candidates in the verification backlog.`
-- `13. Hybrid mode rule: the model chooses strategy and next actions; Bingo owns`
-- `execution, skill injection, evidence ledger, and report truth. A model-written`
 <!-- bingo-project-memory:auto:end -->
 
 "`

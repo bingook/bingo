@@ -62,6 +62,14 @@ def _positive_int_env(
     return max(minimum, min(value, maximum))
 
 
+def _env_flag_enabled(name: str, default: bool = False) -> bool:
+    """Return True when an environment flag is explicitly enabled."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
 def _codeblock_exec_limits() -> tuple[int, int, int]:
     """Execution limits for markdown Python/Bash code blocks."""
     script_timeout = _positive_int_env("BINGO_EXEC_TIMEOUT", 180)
@@ -584,8 +592,19 @@ class BingoTerminal:
             self._task_graph = TaskGraph()
             self._self_reflector = SelfReflector()
             self._intel_ready = True
+            # v6.2.230: fixed mission templates are opt-in.  They are useful for
+            # explicit planning, but as a default they bias the model into a
+            # full checklist and can push runs toward the 60-loop safety limit.
+            self._task_graph_enabled = _env_flag_enabled("BINGO_TASK_GRAPH", False)
+            self._self_reflection_enabled = _env_flag_enabled("BINGO_SELF_REFLECTION", False)
         except Exception:
             self._intel_ready = False
+            self._task_graph_enabled = False
+            self._self_reflection_enabled = False
+        # v6.2.230: source-path prompt is opt-in.  A live blackbox target must
+        # not stop to ask for local source code unless the user explicitly says
+        # they have source, or BINGO_ASK_SOURCE_PATH=1 is set.
+        self._source_path_prompt_enabled = _env_flag_enabled("BINGO_ASK_SOURCE_PATH", False)
         # 네트워크 환경 (VPN 감지 결과 캐싱)
         self._net_env: dict = {}
         self._detect_network_env()
@@ -2964,6 +2983,26 @@ class BingoTerminal:
         #    (인사, 잡담, 감사, 개념 질문, 짧은 대화 등)
         return True
 
+    @staticmethod
+    def _source_path_prompt_requested(text: str) -> bool:
+        """Return True only when the user explicitly asks for source/whitebox mode."""
+        if not text:
+            return False
+        import re as _re_src
+        return bool(_re_src.search(
+            r"/whitebox\b|/wb\b|white\s*box|source\s*code|source\s*path|"
+            r"소스\s*코드|소스\s*경로|화이트\s*박스|源码|源代码|源码路径|白盒",
+            text,
+            _re_src.I,
+        ))
+
+    def _should_prompt_source_path(self, text: str) -> bool:
+        """Gate the optional whitebox prompt for new targets."""
+        return bool(
+            getattr(self, "_source_path_prompt_enabled", False)
+            or BingoTerminal._source_path_prompt_requested(text)
+        )
+
     def _get_general_system_message(self) -> "Message":
         """일반 대화용 경량 시스템 프롬프트 반환 (침투테스트 강요 없음)."""
         import datetime
@@ -3181,7 +3220,9 @@ class BingoTerminal:
                 self._stuck_count = 0
                 self._recent_results = []
                 # ── v6.2.159 Task Graph 초기화 (새 타겟 설정 시) ────────────
-                if getattr(self, "_intel_ready", False):
+                # v6.2.230: default OFF.  The fixed full-chain template is
+                # opt-in because it can over-scope normal blackbox prompts.
+                if getattr(self, "_intel_ready", False) and getattr(self, "_task_graph_enabled", False):
                     try:
                         self._task_graph.load_template(text)
                         self._self_reflector._last_reflect_loop = 0
@@ -3212,7 +3253,7 @@ class BingoTerminal:
                 import threading as _thr_wb
                 _is_main = (_thr_wb.current_thread() is _thr_wb.main_thread())
                 _src_path = ""
-                if _is_main:
+                if _is_main and self._should_prompt_source_path(text):
                     _wb_ask = self.s.get("wb_ask_path", "📂 소스코드 경로 있으면 입력 (없으면 엔터):")
                     self.console.print(f"[{THEME['primary']}]{_wb_ask}[/]", end=" ")
                     try:
@@ -10068,7 +10109,10 @@ class BingoTerminal:
                         f"r = sess.get(url, proxies=PROXIES, verify=False, timeout=15)\n"
                     )
             # ── v6.2.159 Task Graph + SubAgent 상태를 state_summary에 포함 ──
-            if getattr(self, "_intel_ready", False):
+            if (
+                getattr(self, "_intel_ready", False)
+                and getattr(self, "_task_graph_enabled", False)
+            ):
                 try:
                     _tg_next = self._task_graph.next_hint()
                     if _tg_next:
@@ -10176,7 +10220,10 @@ class BingoTerminal:
             # ─────────────────────────────────────────────────────────────────
 
             # ── v6.2.159 Self-Reflection 주기적 자기평가 (Type A) ─────────────
-            if getattr(self, "_intel_ready", False):
+            if (
+                getattr(self, "_intel_ready", False)
+                and getattr(self, "_self_reflection_enabled", False)
+            ):
                 try:
                     if self._self_reflector.should_reflect(self._exec_loop_count):
                         _hist_texts = [

@@ -2474,3 +2474,35 @@ def test_xss_reflection_output_is_candidate_not_vulnerable(monkeypatch, capsys) 
     assert "[XSS_CANDIDATE]" in result["output"]
     assert "browser_confirmed=false" in result["output"]
     assert "XSS Vulnerable" not in visible
+
+
+def test_blackbox_target_text_does_not_request_source_path_prompt() -> None:
+    text = "https://www.balance-cf.co.kr/ 绕过waf，sql渗透，管理员账号密码，webshell权限"
+
+    assert not BingoTerminal._source_path_prompt_requested(text)
+
+
+def test_whitebox_command_requests_source_path_prompt() -> None:
+    assert BingoTerminal._source_path_prompt_requested("/whitebox https://example.test")
+
+
+def test_source_code_text_requests_source_path_prompt() -> None:
+    assert BingoTerminal._source_path_prompt_requested("source code path /tmp/app")
+
+
+def test_source_path_prompt_stays_off_for_default_blackbox_runs() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._source_path_prompt_enabled = False
+
+    assert not terminal._should_prompt_source_path(
+        "https://www.balance-cf.co.kr/ 绕过waf，sql渗透，管理员账号密码，webshell权限"
+    )
+
+
+def test_source_path_prompt_can_be_forced_by_flag() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._source_path_prompt_enabled = True
+
+    assert terminal._should_prompt_source_path(
+        "https://www.balance-cf.co.kr/ 绕过waf，sql渗透，管理员账号密码，webshell权限"
+    )

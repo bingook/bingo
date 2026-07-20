@@ -338,13 +338,13 @@ def _decode_response(resp) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-# ── 색상 팔레트 (Bingo cyber glass theme) ────────────────────────
+# ── 색상 팔레트 (Bingo ops terminal theme) ───────────────────────
 THEME = {
-    "primary":   "#6cffb2",   # neon mint
-    "secondary": "#35d6ff",   # cyber blue
-    "accent":    "#b388ff",   # violet accent
-    "dim":       "#6b7c8f",   # cool slate
-    "border":    "#1c3f52",   # glass border
+    "primary":   "#00ff88",   # terminal green
+    "secondary": "#00d7ff",   # signal cyan
+    "accent":    "#ff2bd6",   # magenta trace
+    "dim":       "#627386",   # tactical slate
+    "border":    "#16313d",   # low-contrast frame
     "user_bg":   "#0d1117",
     "ai_bg":     "#0d1117",
     "error":     "#ff1744",   # 크리티컬 레드
@@ -357,22 +357,16 @@ THEME = {
 }
 
 BANNER = r"""
-[#6cffb2]
-  ██████╗ ██╗███╗   ██╗ ██████╗  ██████╗
-  ██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗
-  ██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║
-  ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║
-  ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝
-  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝[/#6cffb2]
-[#35d6ff]  AI Red Team Terminal[/#35d6ff] [#6b7c8f]·[/#6b7c8f] [#b388ff]v{ver}[/#b388ff] [#6b7c8f]·[/#6b7c8f] [#6cffb2]Hybrid AI-led[/#6cffb2]
+[#627386]━━[/] [#00ff88]bingo[/] [#627386]//[/] [#d7ffe8]red team operations console[/] [#627386]//[/] [#00d7ff]v{ver}[/] [#627386]//[/] [#ff2bd6]multi-model arsenal[/]
 """
 
 PT_STYLE = PTStyle.from_dict({
-    "":              "#6cffb2",
-    "prompt":        "#6cffb2 bold",
-    "prompt.corner": "#6b7c8f",   # ┌─ 꺾쇠
-    "prompt.target": "#35d6ff",   # 타겟 URL
-    "prompt.arrow":  "#b388ff bold",  # └─▶
+    "":              "#00ff88",
+    "prompt":        "#00ff88 bold",
+    "prompt.brand":  "#00ff88 bold",
+    "prompt.host":   "#00d7ff",
+    "prompt.dim":    "#627386",
+    "prompt.arrow":  "#ff2bd6 bold",
 })
 
 
@@ -939,7 +933,7 @@ class BingoTerminal:
         except Exception:
             _db_count = 0
         _total = _hs_count + 6 + 5 + _db_count
-        # ── Rich glass status card ──────────────────────────────────
+        # ── Operator telemetry card ─────────────────────────────────
         # 수동 패딩 계산은 Rich 마크업 태그 길이/이모지/한자 폭으로 인해
         # 우측 테두리가 항상 어긋난다 → Panel/Table에 위임하면 자동 정렬.
         from rich.panel import Panel as _StPanel
@@ -959,23 +953,23 @@ class BingoTerminal:
             return _txt
 
         _grid.add_row(
-            _cell("model", _model_name, THEME["secondary"]),
-            _cell("lang", lang_label, THEME["accent"]),
-            _cell("skills", f"{_total} ready", THEME["success"]),
-            _cell("report", "MD + HTML", THEME["primary"]),
+            _cell("MODEL", _model_name, THEME["secondary"]),
+            _cell("LOCALE", lang_label, THEME["accent"]),
+            _cell("ARSENAL", f"{_total} skills", THEME["success"]),
+            _cell("OUTPUT", "MD · HTML", THEME["primary"]),
         )
 
         _subtitle = (
-            f"[{THEME['dim']}]strategy[/] [{THEME['primary']}]AI-led[/]  "
+            f"[{THEME['dim']}]planner[/] [{THEME['primary']}]model[/]  "
             f"[{THEME['dim']}]execution[/] [{THEME['secondary']}]tools+skills[/]  "
-            f"[{THEME['dim']}]truth[/] [{THEME['accent']}]evidence ledger[/]"
+            f"[{THEME['dim']}]proof[/] [{THEME['accent']}]evidence ledger[/]"
         )
         self.console.print(_StPanel(
             _grid,
-            title=f"[{THEME['primary']}] BINGO CONTROL DECK [/]",
+            title=f"[{THEME['primary']}] BINGO OPS MATRIX [/]",
             subtitle=_subtitle,
             border_style=THEME["border"],
-            padding=(1, 2),
+            padding=(0, 2),
         ))
         self.console.print()
         # 네트워크 환경 표시
@@ -993,10 +987,10 @@ class BingoTerminal:
         name = model_cfg.display_name() if model_cfg else "—"
         now = datetime.now().strftime("%H:%M:%S")
         _target = self._agent_state.get("target", "") if hasattr(self, "_agent_state") else ""
-        _target_str = f" ◈ [{THEME['accent']}]{_target}[/]" if _target else ""
+        _target_str = f" [{THEME['dim']}]//[/] [{THEME['accent']}]{_target}[/]" if _target else ""
         self.console.print(
             Rule(
-                f"[{THEME['dim']}]⬡ {name}[/]{_target_str}[{THEME['dim']}]  {now}[/]",
+                f"[{THEME['dim']}]bingo[/] [{THEME['primary']}]{name}[/]{_target_str}[{THEME['dim']}]  {now}[/]",
                 style=THEME["dim"],
                 characters="─",
             )
@@ -1326,14 +1320,13 @@ class BingoTerminal:
                 _m = _rp.match(r"https?://([^/]+)", _t)
                 _target = _m.group(1) if _m else _t
         _target_part = (
-            f'<style bg="#0d1f2d" fg="#00e5ff">─[{_target}]</style>'
+            f'<style fg="#627386"> //</style><style fg="#00d7ff"> {_target}</style>'
             if _target else ""
         )
         _prompt_html = HTML(
-            f'<style fg="#546e7a">┌─</style>'
-            f'<style fg="#00ff41" bg="#0a1a0a"><b>[bingo]</b></style>'
+            f'<style fg="#00ff88"><b>bingo</b></style>'
             f'{_target_part}'
-            f'<style fg="#546e7a">─▶</style> '
+            f'<style fg="#627386"> </style><style fg="#ff2bd6"><b>›</b></style> '
         )
         try:
             return self._session.prompt(
@@ -1343,7 +1336,7 @@ class BingoTerminal:
         except RuntimeError:
             # v6.0.3: Python 3.12 + prompt_toolkit asyncio 충돌
             import sys as _sys
-            _sys.stdout.write("┌─[bingo]─▶ ")
+            _sys.stdout.write("bingo › ")
             _sys.stdout.flush()
             return input()
 
@@ -4281,11 +4274,11 @@ class BingoTerminal:
         full = ""
         _interrupted = False  # Ctrl+C로 스트림이 중단됐는지 여부
 
-        # ── v6.2.74: 해커 스타일 AI 응답 헤더 ──────────────────────
+        # ── compact operator response header ────────────────────────
         _now_str = datetime.now().strftime("%H:%M:%S")
         self.console.print(
-            f"\n[{THEME['dim']}]╔═[/][{THEME['secondary']}][BINGO][/]"
-            f"[{THEME['dim']}]══ {_now_str} ══▶[/]"
+            f"\n[{THEME['dim']}]──[/] [{THEME['secondary']}]bingo[/]"
+            f" [{THEME['dim']}]// {_now_str} //[/] [{THEME['primary']}]operator stream[/]"
         )
 
         # 스트리밍 중: 코드 블록 접힌 상태로 실시간 표시
@@ -12054,7 +12047,7 @@ class BingoTerminal:
         # ── 보고서 상단 배너 (Rich Panel) ─────────────────────────────
         _now = _dt.now().strftime("%Y-%m-%d  %H:%M:%S")
         _bt = _T()
-        _bt.append("BINGO PENETRATION TEST REPORT\n", style=THEME["primary"])
+        _bt.append("BINGO FIELD REPORT\n", style=THEME["primary"])
         _bt.append("─" * 48 + "\n", style=THEME["dim"])
         _bt.append("TARGET : ", style=THEME["dim"])
         _bt.append(_esc(target) + "\n", style=THEME["accent"])
@@ -13108,10 +13101,10 @@ class BingoTerminal:
 
         # 저장 경로 미리 출력 — 사용자가 어디 저장되는지 알 수 있게
         self.console.print(
-            f"\n[{THEME['warn']}]📁 REPORT SAVE PATH:\n"
-            f"   [bold white]{report_path.absolute()}[/bold white]\n"
-            f"   [{THEME['dim']}]HTML: {html_report_path.absolute()}[/]\n"
-            f"   (set BINGO_REPORTS_DIR env var to override location)[/]\n"
+            f"\n[{THEME['secondary']}]ARTIFACTS[/] [{THEME['dim']}]// report sink[/]\n"
+            f"   [{THEME['primary']}]MD[/]   [bold white]{report_path.absolute()}[/bold white]\n"
+            f"   [{THEME['primary']}]HTML[/] [{THEME['dim']}]{html_report_path.absolute()}[/]\n"
+            f"   [{THEME['dim']}]override with BINGO_REPORTS_DIR[/]\n"
         )
 
         # AI에게 보고서 생성 요청 (히스토리 오염 없이)
@@ -13252,10 +13245,15 @@ class BingoTerminal:
         from rich.panel import Panel as _HdrPanel
         from rich.text import Text as _HdrText
         _ht = _HdrText()
-        _ht.append("▌ BINGO PENTEST REPORT GENERATOR\n", style=THEME["primary"])
-        _ht.append("target : ", style=THEME["dim"])
+        _ht.append("BINGO REPORT FORGE\n", style=THEME["primary"])
+        _ht.append("target  ", style=THEME["dim"])
         _ht.append(target, style=THEME["accent"])
-        self.console.print(_HdrPanel(_ht, border_style=THEME["dim"], padding=(0, 2)))
+        self.console.print(_HdrPanel(
+            _ht,
+            title=f"[{THEME['secondary']}] artifact pipeline [/]",
+            border_style=THEME["border"],
+            padding=(0, 2),
+        ))
 
         full = ""
         _deterministic_report = False
@@ -13264,8 +13262,8 @@ class BingoTerminal:
                 model = ModelRegistry.build(model_cfg)
                 _now_r = datetime.now().strftime("%H:%M:%S")
                 self.console.print(
-                    f"\n[{THEME['dim']}]╔═[/][{THEME['secondary']}][REPORT GEN][/]"
-                    f"[{THEME['dim']}]══ {_now_r} ══▶[/]"
+                    f"\n[{THEME['dim']}]──[/] [{THEME['secondary']}]report[/]"
+                    f" [{THEME['dim']}]// {_now_r} //[/] [{THEME['primary']}]rendering[/]"
                 )
 
                 with Live(console=self.console, refresh_per_second=15, transient=True) as live:

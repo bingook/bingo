@@ -67,7 +67,7 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T16:45:41+08:00
+- Last synced: 2026-07-20T16:47:11+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
@@ -75,61 +75,61 @@
 
 > Automatically records committed code changes. Newest entries appear first.
 
-<!-- commit:9f0a4f1f6a0d1a152b65ab1afc284a6b03e49ebf -->
-## Code change: fix: prevent premature scan reports
-- Commit: `9f0a4f1f6a0d`
-- Recorded: 2026-07-20T16:45:41+08:00
-- Committed: 2026-07-20T16:45:41+08:00
+<!-- commit:529d683ec84a4722f9d1165f6e00fbc49c2c6678 -->
+## Code change: fix: prevent premature reports and bump version to 6.2.226
+- Commit: `529d683ec84a`
+- Recorded: 2026-07-20T16:47:11+08:00
+- Committed: 2026-07-20T16:47:11+08:00
 
 ### Files
 ```text
 M	.bingo/project-memory.md
-M	bingo/models/system_prompt.py
-M	bingo/tools_ext/pentest_tools.py
-M	bingo/ui/terminal.py
+M	PKG-INFO
+M	bingo/__init__.py
+M	tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-9f0a4f1f6 fix: prevent premature scan reports
- .bingo/project-memory.md         | 120 ++++++++++++--------
- bingo/models/system_prompt.py    |  10 +-
- bingo/tools_ext/pentest_tools.py |  40 ++++++-
- bingo/ui/terminal.py             | 238 +++++++++++++++++++++++++++++++++++++--
- 4 files changed, 347 insertions(+), 61 deletions(-)
+529d683ec fix: prevent premature reports and bump version to 6.2.226
+ .bingo/project-memory.md                      |  99 +++----------
+ PKG-INFO                                      |   2 +-
+ bingo/__init__.py                             |   2 +-
+ tests/test_terminal_completion_regressions.py | 206 ++++++++++++++++++++++++++
+ 4 files changed, 229 insertions(+), 80 deletions(-)
 ```
 
 ### Added Highlights
-- `15. Preserve the exact active target host. Never rewrite the TLD, country suffix,`
-- `subdomain, or domain spelling from memory. If the active target is`
-- `www.example.co.kr, do not emit www.example.co.jp, example.com, an IP URL, or`
-- `a lookalike host unless execution evidence shows an in-scope redirect.`
-- `16. For SQLi, preserve the complete request profile: method, query/body format,`
-- `17. Use the adaptive SQLi profile and its DBMS-specific expressions. Accept an`
-- `18. A stable oracle without DB metadata or extracted values remains probable.`
-- `if line.startswith("r'''", start):`
-- `end3 = line.find("'''", start + 4)`
-- `if end3 < 0:`
-- `out.append(line[start:])`
-- `break`
-- `out.append(line[start:end3 + 3])`
-- `i = end3 + 3`
-- `continue`
-- `def _repair_common_model_python_syntax(c: str) -> str:`
-- `"""Repair narrow, recurring model syntax mistakes after compile failure."""`
-- `repaired = c`
-- `while "list(list(dict.fromkeys(" in repaired:`
-- `repaired = repaired.replace("list(list(dict.fromkeys(", "list(dict.fromkeys(")`
-- `repaired = repaired.replace(r'([^"\']+))["\']', r'([^"\']+)["\']')`
-- `repaired = repaired.replace(r"([^\"']+))[\"']", r"([^\"']+)[\"']")`
-- `return repaired`
-- `def _exec_code(c: str, allow_repair: bool = True) -> dict:`
-- `if allow_repair:`
-- `repaired = _repair_common_model_python_syntax(c)`
-- `if repaired != c:`
-- `repaired_full = _pre + "\n" + repaired`
-- `try:`
-- `compile(repaired_full, "<bingo_run_python_precheck_repaired>", "exec")`
+- `Version: 6.2.226`
+- `__version__ = "6.2.226"`
+- `def test_plain_tool_call_payloads_are_compacted_for_logs_and_history() -> None:`
+- `long_script = "echo start\\n" + ("curl -sk https://example.test/a\\n" * 120)`
+- `text = (`
+- `"Run probes\n"`
+- `f'TOOL_CALL:{{"name":"run_bash","args":{{"script":"{long_script}"}}}}\n'`
+- `'TOOL_CALL:{"name":"http_get","args":{"url":"https://example.test/login","timeout":30}}\n'`
+- `)`
+- `compacted = BingoTerminal._compact_tool_call_payloads(text, max_calls=1)`
+- `assert "[bingo action] run_bash" in compacted`
+- `legacy_marker = "TOOL_CALL" + "_SUMMARY"`
+- `assert legacy_marker not in compacted`
+- `assert "script=<" in compacted`
+- `assert "curl -sk https://example.test/a" not in compacted`
+- `assert "additional deferred call" in compacted`
+- `def test_latest_assistant_tool_history_is_compacted_without_blocking_execution() -> None:`
+- `response = (`
+- `'TOOL_CALL:{"name":"run_python","args":{"code":"'`
+- `+ ("print(1)\\n" * 80)`
+- `+ '"}}'`
+- `)`
+- `terminal = BingoTerminal.__new__(BingoTerminal)`
+- `terminal.history = [Message(role="assistant", content=response)]`
+- `terminal._compact_latest_assistant_tool_history(response)`
+- `assert "[bingo action] run_python" in terminal.history[-1].content`
+- `legacy_marker = "TOOL_CALL" + "_SUMMARY"`
+- `assert legacy_marker not in terminal.history[-1].content`
+- `assert "print(1)" not in terminal.history[-1].content`
+- `def test_echoed_tool_call_summary_payload_is_compacted_again() -> None:`
 <!-- bingo-project-memory:auto:end -->
 
 "`

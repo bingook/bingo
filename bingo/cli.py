@@ -39,13 +39,7 @@ def _s(lang: str = "en") -> dict:
 
 console = Console(highlight=False)
 
-BANNER_SMALL = r"""[#00ff41]
-  ██████╗ ██╗███╗   ██╗ ██████╗  ██████╗ 
-  ██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗
-  ██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║
-  ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║
-  ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝
-  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝[/#00ff41]"""
+BANNER_SMALL = r"""[#627386]━━[/] [#00ff88]bingo[/] [#627386]//[/] [#d7ffe8]red team operations console[/] [#627386]//[/] [#00d7ff]multi-model[/]"""
 
 
 def _onboarding(cfg: BingoConfig) -> BingoConfig:
@@ -54,9 +48,10 @@ def _onboarding(cfg: BingoConfig) -> BingoConfig:
     console.print(BANNER_SMALL)
     console.print()
     console.print(Panel(
-        "[#00d4aa]Bingo[/] — AI Terminal  |  Multi-Model  |  Hacker Style\n"
-        "[#4a4a4a]DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom[/]",
-        border_style="#00ff41",
+        "[#00ff88]Bingo[/] [#627386]//[/] offensive security ops console\n"
+        "[#627386]providers[/] DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom",
+        title="[#00d7ff] operator setup [/#00d7ff]",
+        border_style="#16313d",
         padding=(0, 2),
     ))
     console.print()
@@ -595,7 +590,7 @@ def main() -> None:
 
     if args and args[0] == "--version":
         from . import __version__
-        console.print(f"[#00ff41]bingo[/] v{__version__} — Official Release")
+        console.print(f"[#00ff88]bingo[/] [#627386]//[/] v{__version__} [#627386]//[/] official build")
         return
 
     if args and args[0] == "--update":

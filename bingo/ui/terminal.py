@@ -624,6 +624,7 @@ class BingoTerminal:
             pass  # 복원 성공 (배너는 _start_banner에서 출력)
         # v3.2.80: 프록시 교체 알림 콜백 등록
         self._proxy.on_switch = self._on_proxy_switched
+        self._sync_proxy_runtime()
         # ── v3.2.71 추가 ────────────────────────────────────────────────
         # 브루트포스 연속 실패 카운터 (자동 포기 + 벡터 전환용)
         self._bruteforce_fail_count: int = 0
@@ -5459,6 +5460,7 @@ class BingoTerminal:
 
     def _on_proxy_switched(self, old_entry, new_entry, reason: str) -> None:
         """프록시 교체 시 콘솔 알림 (v3.2.80)."""
+        self._sync_proxy_runtime()
         _old_str = str(old_entry) if old_entry else "—"
         _new_str = str(new_entry)
         _key = "proxy_switch_ban" if reason == "ban" else "proxy_switch_rotate"
@@ -5468,6 +5470,15 @@ class BingoTerminal:
             _tpl = _tpl.get(_lang, _tpl.get("en", "🔄 Proxy switched → {new}"))
         msg = _tpl.format(old=_old_str, new=_new_str)
         self.console.print(f"\n[{THEME['success']}]{msg}[/]\n")
+
+    def _sync_proxy_runtime(self) -> None:
+        """Synchronize /proxy state into pentest tool execution runtime."""
+        try:
+            from ..tools_ext.pentest_tools import set_runtime_proxy
+            cur = self._proxy.current() if self._proxy.enabled else None
+            set_runtime_proxy(cur.url if cur else "")
+        except Exception:
+            pass
 
     def _cmd_history(self) -> None:
         if not self.history:
@@ -5840,6 +5851,7 @@ class BingoTerminal:
                     self.s.get("proxy_added", "✅ 프록시 추가됨: {url}").format(url=sub_arg)
                 )
                 pm.save_config()  # v3.2.77: 세션 간 저장
+                self._sync_proxy_runtime()
             else:
                 self._warn(
                     self.s.get("proxy_add_fail", "❌ 추가 실패 (중복 또는 형식 오류): {url}").format(url=sub_arg)
@@ -5875,6 +5887,7 @@ class BingoTerminal:
                     self.s.get("proxy_file_loaded", "📂 파일에서 {n}개 프록시 로드됨").format(n=n)
                 )
                 pm.save_config()  # v3.2.77: 세션 간 저장
+                self._sync_proxy_runtime()
             return
 
         # ─ api ───────────────────────────────────────────────────────
@@ -5886,6 +5899,9 @@ class BingoTerminal:
                 self._success(
                     self.s.get("proxy_api_fetched", "🌐 API에서 {n}개 프록시 수집됨").format(n=n)
                 )
+                if n > 0:
+                    pm.save_config()
+                    self._sync_proxy_runtime()
             else:
                 # 프리셋 선택
                 presets = pm.free_api_urls()
@@ -5910,6 +5926,7 @@ class BingoTerminal:
                 )
                 if n > 0:
                     pm.save_config()  # v3.2.77: 세션 간 저장
+                    self._sync_proxy_runtime()
             return
 
         # ─ tor ───────────────────────────────────────────────────────
@@ -5927,6 +5944,7 @@ class BingoTerminal:
                 if not pm.pool_status()["stem"]:
                     self.console.print(f"[dim]{self.s.get('proxy_tor_stem_missing', '   Tor 회로 자동 교체 비활성화 (stem 미설치)\\n   → pip install stem  후 재실행')}[/dim]")
                 pm.save_config()  # v3.2.77: 세션 간 저장
+                self._sync_proxy_runtime()
             else:
                 self._warn(self.s.get("proxy_tor_fail", "Tor 추가 실패."))
             return
@@ -5938,6 +5956,7 @@ class BingoTerminal:
                 self._success(
                     self.s.get("proxy_rotated", "🔄 프록시 교체됨 → {url}").format(url=str(entry))
                 )
+                self._sync_proxy_runtime()
             else:
                 self._warn(self.s.get("proxy_pool_empty", "⚠ 사용 가능한 프록시 없음"))
             return
@@ -5997,12 +6016,14 @@ class BingoTerminal:
             self._success(
                 self.s.get("proxy_unban", "✅ 밴 해제됨: {n}개").format(n=n)
             )
+            self._sync_proxy_runtime()
             return
 
         # ─ clear ─────────────────────────────────────────────────────
         if sub == "clear":
             pm.clear()
             pm.save_config()  # v3.2.77: 세션 간 저장 (빈 풀로 덮어씀)
+            self._sync_proxy_runtime()
             self._success(self.s.get("proxy_cleared", "🗑 프록시 풀 초기화됨"))
             return
 
@@ -6010,6 +6031,7 @@ class BingoTerminal:
         if sub == "off":
             pm.disable()
             pm.save_config()  # v3.2.77: 비활성화 상태도 저장
+            self._sync_proxy_runtime()
             self._success(self.s.get("proxy_disabled", "⛔ 프록시 비활성화됨"))
             return
 
@@ -6049,6 +6071,7 @@ class BingoTerminal:
             ).format(ok=ok_count, fail=fail_count)
             self.console.print(f"[cyan]{_summary}[/cyan]")
             pm.save_config()  # 테스트 후 밴된 정보 반영해서 저장
+            self._sync_proxy_runtime()
             return
 
         self._warn(self.s.get("proxy_usage",

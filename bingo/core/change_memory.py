@@ -250,7 +250,7 @@ def record_worktree_snapshot(
 
 
 def _bingo_auto_block(source_path: Path, source_content: str, repo: Path) -> str:
-    content = source_content.strip() or "_No captured workspace memory yet._"
+    content = _compact_project_memory_source(source_content) or "_No captured workspace memory yet._"
     return (
         f"{BINGO_AUTO_START}\n"
         "## Auto-captured workspace memory\n\n"
@@ -260,6 +260,54 @@ def _bingo_auto_block(source_path: Path, source_content: str, repo: Path) -> str
         f"{content}\n"
         f"{BINGO_AUTO_END}\n"
     )
+
+
+def _first_commit_block(content: str) -> str:
+    marker = "<!-- commit:"
+    start = content.find(marker)
+    if start < 0:
+        return ""
+    candidates = [
+        pos for pos in (
+            content.find("\n<!-- commit:", start + len(marker)),
+            content.find("\n# Workspace Memory", start + len(marker)),
+        )
+        if pos > start
+    ]
+    end = min(candidates) if candidates else len(content)
+    return content[start:end].strip()
+
+
+def _compact_project_memory_source(source_content: str) -> str:
+    """Keep project memory concise and prevent stale generated history nesting.
+
+    Workspace MEMORY.md can accumulate previous project-memory sync output when
+    committed memory files are recorded.  For the tracked `.bingo` mirror, keep
+    only the current worktree snapshot and newest commit entry so old deleted
+    file names or large prompt payloads do not reappear in future sessions.
+    """
+    source_content = source_content.strip()
+    if not source_content:
+        return ""
+
+    sections: list[str] = []
+    worktree_match = re.search(
+        rf"{re.escape(WORKTREE_START)}.*?{re.escape(WORKTREE_END)}",
+        source_content,
+        flags=re.DOTALL,
+    )
+    if worktree_match:
+        sections.append(worktree_match.group(0).strip())
+
+    commit_block = _first_commit_block(source_content)
+    if commit_block:
+        sections.append(
+            "# Workspace Memory\n\n"
+            "> Automatically records committed code changes. Newest entries appear first.\n\n"
+            + commit_block
+        )
+
+    return "\n\n".join(sections) if sections else source_content
 
 
 def _drop_generated_bingo_tail(tail: str) -> str:

@@ -13533,25 +13533,102 @@ class BingoTerminal:
     def _has_meaningful_loop_progress(text: str) -> bool:
         """Return True only for execution evidence that advances the mission."""
         import re as _re_progress
+        from urllib.parse import urlparse as _urlparse_progress
 
         if not text:
             return False
-        patterns = (
+
+        strong_patterns = (
             r"\bBINGO_SIGNAL\s*:",
             r"\b(?:CONFIRMED|VERIFIED)\b",
             r"(?:credential|password|passwd|username)\s*(?:found|extracted|[:=])",
             r"(?:자격증명|비밀번호|계정)\s*(?:발견|추출|[:=])",
             r"(?:凭据|密码|用户名)\s*(?:发现|提取|[:：=])",
-            r"(?:database|table|column|endpoint)\s+(?:name\s+)?(?:extracted|enumerated)",
-            r"(?:^|\n)\s*(?:https?://\S+|/[A-Za-z0-9_./-]+)\s*->\s*[A-Za-z_][A-Za-z0-9_]*",
-            r"(?:DB|테이블|컬럼|엔드포인트)\s*(?:추출|열거|확인)",
-            r"(?:数据库|表名|列名|端点)\s*(?:提取|枚举|确认)",
-            r"(?:발견|发现|found)\s*[:：]?\s*(?:새로운?\s*)?(?:endpoint|parameter|엔드포인트|파라미터|端点|参数)",
+            r"(?:database|table|column)\s+(?:name\s+)?(?:extracted|enumerated)",
+            r"(?:DB|테이블|컬럼)\s*(?:추출|열거|확인)",
+            r"(?:数据库|表名|列名)\s*(?:提取|枚举|确认)",
             r"(?:shell|RCE)\s*(?:obtained|confirmed|verified)",
             r"(?:셸|RCE)\s*(?:획득|확인)",
             r"(?:Shell|RCE)\s*(?:获取|确认)",
         )
-        return any(_re_progress.search(p, text, _re_progress.IGNORECASE) for p in patterns)
+        if any(_re_progress.search(p, text, _re_progress.IGNORECASE) for p in strong_patterns):
+            return True
+
+        noise_host_markers = (
+            "google.", "google-", "googletagmanager", "googleadservices",
+            "doubleclick", "googlesyndication", "gstatic", "facebook.",
+            "analytics", "hotjar", "clarity.ms", "adservice", "tracking",
+            "tagmanager", "pixel",
+        )
+        noise_path_markers = (
+            "/collect", "/gtm.js", "/analytics", "/pixel", "/beacon",
+            "/tag/", "/ads/", "/adservice", "/favicon", "/robots.txt",
+            "/sitemap.xml",
+        )
+        static_exts = (
+            ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
+            ".woff", ".woff2", ".ttf", ".map", ".webp", ".mp4", ".mp3",
+        )
+        noise_params = {
+            "random", "cv", "fst", "fmt", "bg", "rcb", "frm", "auid", "dt",
+            "en", "dl", "dr", "sr", "vp", "cid", "tid", "gtm", "_ga", "_gl",
+            "utm_source", "utm_medium", "utm_campaign",
+        }
+        high_value_path_markers = (
+            "api", "auth", "jwt", "token", "login", "logout", "admin",
+            "user", "member", "account", "mypage", "profile", "order",
+            "payment", "checkout", "loan", "apply", "upload", "file",
+            "storage", "download", "report", "search", "product", "cart",
+            "graphql", "oauth", "password", "reset", "verify", "session",
+            "callback",
+        )
+        high_value_params = (
+            "id", "idx", "uid", "user", "userid", "user_id", "member",
+            "member_id", "no", "seq", "token", "jwt", "redirect", "return",
+            "next", "url", "uri", "file", "path", "q", "query", "search",
+            "page", "order", "order_id", "product", "product_id", "callback",
+            "loreqtno",
+        )
+
+        def _actionable_endpoint(endpoint: str, param: str = "") -> bool:
+            endpoint = endpoint.strip().strip("'\"`),]")
+            param_l = (param or "").strip().lower()
+            try:
+                parsed = _urlparse_progress(endpoint)
+            except Exception:
+                parsed = None
+            host = (parsed.netloc if parsed else "").lower()
+            path = (parsed.path if parsed and parsed.path else endpoint).lower()
+            if host and any(marker in host for marker in noise_host_markers):
+                return False
+            if any(marker in path for marker in noise_path_markers):
+                return False
+            if path.endswith(static_exts):
+                return False
+            if param_l in noise_params:
+                return False
+            if any(marker in path for marker in high_value_path_markers):
+                return True
+            return any(param_l == hv or param_l.endswith(hv) for hv in high_value_params)
+
+        endpoint_param_re = _re_progress.compile(
+            r"(?m)(https?://[^\s\"'<>]+|/[A-Za-z0-9_./?=&%:-]+)\s*->\s*([A-Za-z_][A-Za-z0-9_-]*)"
+        )
+        for match in endpoint_param_re.finditer(text):
+            if _actionable_endpoint(match.group(1), match.group(2)):
+                return True
+
+        explicit_endpoint_re = _re_progress.compile(
+            r"(?:new\s+high[- ]value\s+endpoint|"
+            r"高价值端点|"
+            r"고가치\s*엔드포인트)\s*[:：]?\s*(https?://[^\s\"'<>]+|/[A-Za-z0-9_./?=&%:-]+)",
+            _re_progress.IGNORECASE,
+        )
+        for match in explicit_endpoint_re.finditer(text):
+            if _actionable_endpoint(match.group(1)):
+                return True
+
+        return False
 
     @staticmethod
     def _hashes_from_error_context(text: str, hashes: list[str]) -> set[str]:

@@ -6,6 +6,7 @@ from pathlib import Path
 from bingo.core.change_memory import (
     BINGO_AUTO_END,
     BINGO_AUTO_START,
+    WORKTREE_END,
     WORKTREE_START,
     _worktree_fingerprint,
     bingo_project_memory_path,
@@ -162,6 +163,39 @@ def test_bingo_project_memory_sync_drops_stale_generated_tail(tmp_path: Path) ->
     assert "stale generated tail" not in content
     assert content.count(BINGO_AUTO_START) == 1
     assert content.count(BINGO_AUTO_END) == 1
+
+
+def test_bingo_project_memory_sync_compacts_nested_workspace_history(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    memory_root = repo / ".bingo" / "bingo-memory"
+    source = workspace_memory_path(repo, memory_root)
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "# Workspace Memory\n\n"
+        f"{WORKTREE_START}\n"
+        "## Working tree snapshot (uncommitted)\n"
+        "tracked.py\n"
+        f"{WORKTREE_END}\n\n"
+        "# Workspace Memory\n\n"
+        "<!-- commit:new -->\n"
+        "## Code change: latest safe change\n"
+        "tracked.py\n\n"
+        "# Workspace Memory\n\n"
+        "<!-- commit:old -->\n"
+        "## Code change: stale generated payload\n"
+        "stale/generated/payload.txt\n",
+        encoding="utf-8",
+    )
+
+    project_memory = sync_bingo_project_memory(repo, memory_root)
+    content = project_memory.read_text(encoding="utf-8")
+
+    assert "Working tree snapshot" in content
+    assert "latest safe change" in content
+    assert "stale generated payload" not in content
+    assert "stale/generated/payload.txt" not in content
 
 
 def test_worktree_highlights_skip_agents_and_bingo_instruction_noise(tmp_path: Path) -> None:

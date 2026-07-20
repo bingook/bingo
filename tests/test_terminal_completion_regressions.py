@@ -25,6 +25,7 @@ from bingo.models.system_prompt import (
 from bingo.models.base import Message, ModelConfig
 from bingo.orchestrator.engine import _board_value_anchored, _goal_completion_allowed
 from bingo.tools_ext import autoexploit_modules
+from bingo.tools_ext.builtin import security_audit
 from bingo.tools_ext.pentest_tools import (
     TOOL_REGISTRY,
     _build_adaptive_boolean_candidates,
@@ -696,6 +697,30 @@ print(len(hidden_fields))
     assert "SyntaxError" not in result["output"]
 
 
+def test_run_python_repairs_escaped_raw_regex_quote_class_syntax_error() -> None:
+    code = r"""
+import re
+html = 'base_url = "https://api.example.test"'
+for m in re.findall(r'(?:api|base)[_-]?url[\"'\s:=]+[\"']([^\"']+)[\"']', html, re.I):
+    print('BASEURL:', m)
+"""
+
+    result = run_python(code, timeout=10)
+
+    assert result["success"] is True
+    assert "BASEURL: https://api.example.test" in result["output"]
+    assert "SyntaxError" not in result["output"]
+
+
+def test_run_python_precheck_rejects_unrepairable_syntax_before_execution() -> None:
+    result = run_python("print('before')\nif True print('broken')\n", timeout=10)
+
+    assert result["success"] is False
+    assert result["exit_code"] == -98
+    assert "PYTHON_PRECHECK_SYNTAX_ERROR" in result["output"]
+    assert "before" not in result["output"]
+
+
 def test_inline_python_with_suffix_redirection_does_not_poison_heredoc() -> None:
     script = (
         'TITLE=$(printf "<title>x</title>" | python3 -c "'
@@ -1129,6 +1154,22 @@ def test_discovered_endpoint_parameter_is_meaningful_progress() -> None:
     assert BingoTerminal._has_meaningful_loop_progress(output)
 
 
+def test_advertising_xhr_is_not_meaningful_loop_progress() -> None:
+    output = (
+        "[GET] https://www.google.com/rmkt/collect/701929338/?random=1&cv=11 — random, cv, fst\n"
+        "[GET] https://www.google.com/ccm/collect?rcb=3&frm=0&auid=1 — rcb, frm, auid\n"
+        "found endpoint parameter\n"
+    )
+
+    assert not BingoTerminal._has_meaningful_loop_progress(output)
+
+
+def test_high_value_api_endpoint_is_meaningful_loop_progress() -> None:
+    output = "https://example.test/common/jwt -> loReqtNo\n"
+
+    assert BingoTerminal._has_meaningful_loop_progress(output)
+
+
 def test_generic_homepage_script_is_not_an_xss_finding(tmp_path: Path) -> None:
     exporter = FindingsExporter(target="https://example.test", output_dir=str(tmp_path))
     homepage = (
@@ -1352,6 +1393,48 @@ def test_label_only_personal_page_is_blocked(tmp_path: Path) -> None:
     assert finding.vuln_type == "info_disclosure"
     assert finding.confidence == "blocked"
     assert not finding.confirmed
+
+
+def test_info_disclosure_ignores_standalone_cache_hashes(monkeypatch) -> None:
+    class _Resp:
+        status_code = 404
+        content = b"short"
+        text = (
+            "asset.0123456789abcdef0123456789abcdef.js\n"
+            "cache_token ABCDEFGHIJKLMNOPQRSTUVWXYZabcd1234567890\n"
+        )
+
+    class _Sess:
+        def get(self, *_args, **_kwargs):
+            return _Resp()
+
+    monkeypatch.setattr(security_audit, "_sess", lambda _headers: _Sess())
+
+    result = security_audit.info_disclosure_scan("https://example.test/")
+
+    assert not any(f.get("type") == "key_exposure" for f in result["findings"])
+
+
+def test_info_disclosure_keeps_contextual_secret_tokens(monkeypatch) -> None:
+    class _Resp:
+        status_code = 404
+        content = b"short"
+        text = (
+            "aws_secret_access_key = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcd1234567890'\n"
+            "session_id = 0123456789abcdef0123456789abcdef\n"
+        )
+
+    class _Sess:
+        def get(self, *_args, **_kwargs):
+            return _Resp()
+
+    monkeypatch.setattr(security_audit, "_sess", lambda _headers: _Sess())
+
+    result = security_audit.info_disclosure_scan("https://example.test/")
+    key_types = {f.get("key_type") for f in result["findings"]}
+
+    assert "AWS Secret Access Key" in key_types
+    assert "Contextual MD5/Token (32 hex chars)" in key_types
 
 
 def test_structured_time_measurement_requires_repeated_passes(tmp_path: Path) -> None:

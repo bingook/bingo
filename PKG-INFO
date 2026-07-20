@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: bingo-ai
-Version: 6.2.228
+Version: 6.2.229
 Summary: AI-powered red team terminal — Zero-Hallucination · WAF bypass · XSS·Upload·SSRF·OAuth·GraphQL·Smuggling exploit chains · CVE/Exploit KB (trickest+exploitarium) · role-based testing · vuln manager · attack chain · HITL · LLM Orchestrator · multi-model · multi-language
 Author-email: bingook <bingook@users.noreply.github.com>
 License: MIT

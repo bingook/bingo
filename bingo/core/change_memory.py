@@ -113,6 +113,13 @@ def _added_highlights(patch: str) -> list[str]:
         text = line[1:].strip()
         if not text or text.startswith(("#", "//", "*")):
             continue
+        if "<!-- commit:" in text or text in {
+            WORKTREE_START,
+            WORKTREE_END,
+            BINGO_AUTO_START,
+            BINGO_AUTO_END,
+        }:
+            continue
         if SECRET_LINE_RE.search(text):
             continue
         highlights.append(text[:180])

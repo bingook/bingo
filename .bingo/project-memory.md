@@ -8,8 +8,8 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.223`.
-- Restored workspace from `/Users/jmaker/Desktop/bingo_ai-6.2.218.tar.gz` on 2026-07-20; removed bundled prompt profile txt files and external profile loader changes; bumped package version to `6.2.223` for PyPI release. PyPI check: latest `6.2.222`, `6.2.223` not present. Validation after restore: `pytest -q` → `237 passed`.
+- Current stable version after Bingo memory rebrand: `6.2.224`.
+- Restored workspace from `/Users/jmaker/Desktop/bingo_ai-6.2.218.tar.gz` on 2026-07-20; removed bundled prompt profile txt files and external profile loader changes; bumped package version to `6.2.224` for PyPI release. Validation after restore: `pytest -q` → `237 passed`.
 - Latest GLM/custom prompt-hygiene fix as of v6.2.218:
   - Removed model-facing jailbreak-style trigger phrases such as `pre-granted`, `BEHAVIOR OVERRIDE`, `No refusals`, `No disclaimers`, and `CONTINUE REQUIRED` from the main prompt/task/retry/hook paths.
   - `custom` models with names/aliases/base URLs containing `glm`, `qwen`, `zhipu`, `alibaba`, or `dashscope` now route to the GLM/Qwen compatibility prompt instead of the Claude/GPT/custom prompt.
@@ -63,19 +63,50 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T12:27:45+08:00
+- Last synced: 2026-07-20T12:31:59+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
-- Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
+- Source: `.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
+
+<!-- working-tree:start -->
+## Working tree snapshot (uncommitted)
+- Captured: 2026-07-20T12:31:59+08:00
+
+### Status
+```text
+M .bingo/project-memory.md
+ M PKG-INFO
+ M bingo/__init__.py
+ M bingo/core/change_memory.py
+```
+
+### Diff Stat
+```text
+PKG-INFO                    | 2 +-
+ bingo/__init__.py           | 2 +-
+ bingo/core/change_memory.py | 7 +++++++
+ 3 files changed, 9 insertions(+), 2 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.224`
+- `__version__ = "6.2.224"`
+- `WORKTREE_START,`
+- `WORKTREE_END,`
+- `BINGO_AUTO_START,`
+- `BINGO_AUTO_END,`
+- `}:`
+- `continue`
+<!-- working-tree:end -->
 
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
 
-<!-- commit:50afb9b5c3e5ea7d934b8916920969e63f27fd30 -->
+<!-- commit:549afad3865229b3600717a8c779e058dfa40116 -->
 ## Code change: fix: stabilize scan loop and python tool execution
-- Commit: `50afb9b5c3e5`
-- Recorded: 2026-07-20T12:27:45+08:00
-- Committed: 2026-07-20T12:27:45+08:00
+- Commit: `549afad38652`
+- Recorded: 2026-07-20T12:29:02+08:00
+- Committed: 2026-07-20T12:29:02+08:00
 
 ### Files
 ```text
@@ -84,17 +115,21 @@ M	bingo/core/change_memory.py
 M	bingo/tools_ext/builtin/security_audit.py
 M	bingo/tools_ext/pentest_tools.py
 M	bingo/ui/terminal.py
+M	tests/test_change_memory.py
+M	tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-50afb9b5c fix: stabilize scan loop and python tool execution
- .bingo/project-memory.md                  | 954 +++---------------------------
- bingo/core/change_memory.py               |  50 +-
- bingo/tools_ext/builtin/security_audit.py |  12 +-
- bingo/tools_ext/pentest_tools.py          |  25 +-
- bingo/ui/terminal.py                      |  91 ++-
- 5 files changed, 241 insertions(+), 891 deletions(-)
+549afad38 fix: stabilize scan loop and python tool execution
+ .bingo/project-memory.md                      | 927 ++------------------------
+ bingo/core/change_memory.py                   |  50 +-
+ bingo/tools_ext/builtin/security_audit.py     |  12 +-
+ bingo/tools_ext/pentest_tools.py              |  25 +-
+ bingo/ui/terminal.py                          |  91 ++-
+ tests/test_change_memory.py                   |  34 +
+ tests/test_terminal_completion_regressions.py |  83 +++
+ 7 files changed, 329 insertions(+), 893 deletions(-)
 ```
 
 ### Added Highlights

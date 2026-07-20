@@ -3779,12 +3779,16 @@ Use this section to keep model output grounded in executable evidence.
 14. Keep output compact. Prefer one atomic next action, or at most a small batch of
     independent baseline probes. Do not flood TOOL_CALLs; read results before
     choosing the next branch.
-15. For SQLi, preserve the complete request profile: method, query/body format,
+15. Preserve the exact active target host. Never rewrite the TLD, country suffix,
+    subdomain, or domain spelling from memory. If the active target is
+    www.example.co.kr, do not emit www.example.co.jp, example.com, an IP URL, or
+    a lookalike host unless execution evidence shows an in-scope redirect.
+16. For SQLi, preserve the complete request profile: method, query/body format,
     cookies, CSRF value, headers, redirects, and content type. Never rebuild a
     session-sensitive request from only URL+parameter.
-16. Use the adaptive SQLi profile and its DBMS-specific expressions. Accept an
+17. Use the adaptive SQLi profile and its DBMS-specific expressions. Accept an
     oracle only after repeated stable controls; reuse only revalidated checkpoints.
-17. A stable oracle without DB metadata or extracted values remains probable.
+18. A stable oracle without DB metadata or extracted values remains probable.
     Use the generated sqlmap/ghauri handoff for bounded cross-validation, and only
     promote after deterministic extraction evidence.
 """.strip()

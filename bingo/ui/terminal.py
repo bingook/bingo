@@ -4140,6 +4140,57 @@ class BingoTerminal:
         if "TOOL_CALL" not in text:
             return text
 
+        def _compact_leaked_summaries(value: str) -> str:
+            """Hide previously compacted tool summaries if a model echoes them."""
+            lines = value.splitlines()
+            out: list[str] = []
+            skip_multiline_payload = False
+            omitted_payload_lines = 0
+            import re as _re_leak
+            _legacy_marker = "TOOL_CALL" + "_SUMMARY:"
+
+            def _flush_omitted() -> None:
+                nonlocal omitted_payload_lines
+                if omitted_payload_lines:
+                    out.append(f"[bingo action] omitted {omitted_payload_lines} echoed code line(s)")
+                    omitted_payload_lines = 0
+
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith(_legacy_marker):
+                    _flush_omitted()
+                    skip_multiline_payload = False
+                    name_m = _re_leak.search(
+                        _re_leak.escape(_legacy_marker) + r"\s*([a-zA-Z0-9_]+)",
+                        stripped,
+                    )
+                    name = name_m.group(1) if name_m else "tool"
+                    if _re_leak.search(r"\b(?:code|script)\s*=", stripped):
+                        size_m = _re_leak.search(r"<\d+\s+chars/\d+L>", stripped)
+                        summary = size_m.group(0) if size_m else "<code omitted>"
+                        out.append(f"[bingo action] {name}(code={summary})")
+                        if "<" not in stripped[stripped.find("code="):]:
+                            skip_multiline_payload = True
+                        continue
+                    out.append(stripped.replace(_legacy_marker, "[bingo action]", 1))
+                    continue
+
+                if skip_multiline_payload:
+                    if not stripped:
+                        skip_multiline_payload = False
+                        _flush_omitted()
+                        out.append(line)
+                        continue
+                    if stripped.startswith(_legacy_marker):
+                        skip_multiline_payload = False
+                    else:
+                        omitted_payload_lines += 1
+                        continue
+
+                out.append(line)
+            _flush_omitted()
+            return "\n".join(out)
+
         spans: list[tuple[int, int, str]] = []
         for match in _re_tc.finditer(r"TOOL_CALL\s*:\s*", text):
             pos = match.end()
@@ -4168,7 +4219,7 @@ class BingoTerminal:
                 j += 1
 
         if not spans:
-            return text
+            return _compact_leaked_summaries(text)
 
         parts: list[str] = []
         cursor = 0
@@ -4202,14 +4253,14 @@ class BingoTerminal:
                     value_s = value_s[:93] + "..."
                 arg_bits.append(f"{key}={value_s}")
             arg_text = ", ".join(arg_bits)
-            parts.append(f"TOOL_CALL_SUMMARY: {name}({arg_text})")
+            parts.append(f"[bingo action] {name}({arg_text})")
             cursor = end
 
         parts.append(text[cursor:])
         compacted = "".join(parts)
         if omitted:
-            compacted += f"\n[TOOL_CALL_SUMMARY] {omitted} additional deferred call(s) omitted from log/context."
-        return compacted
+            compacted += f"\n[bingo action] {omitted} additional deferred call(s) omitted from log/context."
+        return _compact_leaked_summaries(compacted)
 
     def _compact_latest_assistant_tool_history(self, original_response: str) -> None:
         """Replace the latest assistant history item with compact TOOL_CALL text."""
@@ -6688,9 +6739,20 @@ class BingoTerminal:
                     _hdr_run  = 0
                     _suppressed_html = 0
                     _suppressed_hdr  = 0
-                    for _ln in _out.splitlines()[:120]:  # 최대 120줄 검사
+                    _suppressed_body = 0
+                    _out_lower_preview = _out[:4096].lower()
+                    _html_doc_like = bool(
+                        "<html" in _out_lower_preview
+                        or "<!doctype" in _out_lower_preview
+                        or "<script" in _out_lower_preview
+                    )
+                    _max_preview_lines = 36 if _html_doc_like else 80
+                    for _ln in _out.splitlines()[:160]:  # 검사량은 넉넉히, 표시량은 아래에서 제한
                         _s = _ln.strip()
                         if not _s:
+                            continue
+                        if len(_disp_lines) >= _max_preview_lines:
+                            _suppressed_body += 1
                             continue
                         # 항상 표시: 중요 패턴
                         if _IMP_TR.search(_s):
@@ -6732,11 +6794,16 @@ class BingoTerminal:
                                 _suppressed_html = 0
                             _html_run = 0
                         # 일반 줄 (200자 제한)
+                        if _html_doc_like and len(_disp_lines) >= 18:
+                            _suppressed_body += 1
+                            continue
                         _disp_lines.append(_ln[:200])
                     if _suppressed_html:
                         _disp_lines.append(f"  ⋯ {_suppressed_html} HTML lines hidden")
                     if _suppressed_hdr:
                         _disp_lines.append(f"  ⋯ {_suppressed_hdr} header lines hidden")
+                    if _suppressed_body:
+                        _disp_lines.append(f"  ⋯ {_suppressed_body} body lines hidden (full output kept for AI)")
                     _preview = "\n".join(_disp_lines)
                     try:
                         self.console.print(f"[{THEME['dim']}]{_esc(_preview)}[/]")
@@ -9141,11 +9208,13 @@ class BingoTerminal:
         # ── 메인 에이전트 루프 (while — 재귀 없음) ────────────────────
         current_response = response
         _no_code_retry = 0  # AI가 코드 없이 텍스트만 보낸 횟수
+        _auto_report_defer_count = 0
 
         while True:
             # 코드 블록 없으면 → AI에게 코드 작성 재촉 (최대 3회)
             # v5.2.2: TOOL_CALL이 있으면 "코드 없음" 처리 우회 — _run_code_blocks에서 처리
             if "```" not in current_response and "TOOL_CALL:" not in current_response:
+                _defer_reason = ""
                 # ── v3.2.86: Web3/DApp 감사 JSON은 코드 블록 없어도 정상 완료 ──
                 _web3_data = self._is_web3_audit_json(current_response.strip())
                 if _web3_data is not None:
@@ -9163,9 +9232,25 @@ class BingoTerminal:
                     break
 
                 if _no_code_retry >= 3:
-                    # 3회 재촉해도 코드 없으면 진짜 완료로 판단
-                    self._auto_generate_report()
-                    break
+                    _done_counts = BingoTerminal._finding_evidence_counts(
+                        getattr(self, "_findings_exporter", None)
+                    )
+                    _defer_reason = BingoTerminal._auto_report_defer_reason(
+                        current_response,
+                        _done_counts,
+                        getattr(self, "_exec_loop_count", 0),
+                        trigger="no_code_retry",
+                    )
+                    if _defer_reason:
+                        _auto_report_defer_count += 1
+                        if _auto_report_defer_count >= 4:
+                            self._suggest_next_steps()
+                            break
+                        _no_code_retry = 0
+                    else:
+                        # 3회 재촉해도 코드 없고 evidence gate를 통과하면 완료로 판단
+                        self._auto_generate_report()
+                        break
                 _no_code_retry += 1
                 _lang = getattr(self.config, "lang", "en")
                 _nudge = {
@@ -9173,6 +9258,25 @@ class BingoTerminal:
                     "zh": "如需继续，请给出一个可执行的 bash 或 python 代码块来验证下一个假设，并保留当前 URL/Cookie/Header/基线响应。",
                     "en": "If continuing, provide a runnable bash or python code block that verifies the next hypothesis while preserving the current URL/cookies/headers/baseline.",
                 }.get(_lang, "Provide a runnable verification code block while preserving current request state.")
+                if _defer_reason:
+                    _defer_hint = {
+                        "ko": (
+                            "\n[REPORT_DEFERRED_NO_EVIDENCE]\n"
+                            f"자동 보고서는 보류됨: {_defer_reason}. "
+                            "보고서 대신 실제 실행 가능한 단일 TOOL_CALL 또는 코드 블록으로 계속 검증하세요."
+                        ),
+                        "zh": (
+                            "\n[REPORT_DEFERRED_NO_EVIDENCE]\n"
+                            f"自动报告已延后: {_defer_reason}. "
+                            "不要生成报告，继续输出一个可执行的 TOOL_CALL 或代码块进行验证。"
+                        ),
+                        "en": (
+                            "\n[REPORT_DEFERRED_NO_EVIDENCE]\n"
+                            f"Auto report deferred: {_defer_reason}. "
+                            "Do not report yet; continue with one executable TOOL_CALL or code block."
+                        ),
+                    }.get(_lang, f"\n[REPORT_DEFERRED_NO_EVIDENCE]\nAuto report deferred: {_defer_reason}.")
+                    _nudge += _defer_hint
                 self.history.append(Message(role="user", content=f"[BINGO_EXECUTION_HINT]\n{_nudge}"))
                 from ..models.registry import ModelRegistry as _MR
                 _mc = self.config.get_active_model_config()
@@ -11037,6 +11141,46 @@ class BingoTerminal:
                 _done_counts = BingoTerminal._finding_evidence_counts(
                     getattr(self, "_findings_exporter", None)
                 )
+                _defer_done_reason = BingoTerminal._auto_report_defer_reason(
+                    followup_response,
+                    _done_counts,
+                    getattr(self, "_exec_loop_count", 0),
+                    trigger="task_complete",
+                )
+                if _defer_done_reason:
+                    _auto_report_defer_count += 1
+                    _lang = getattr(self.config, "lang", "en")
+                    _defer_done_msg = {
+                        "ko": (
+                            "⏳ TASK_COMPLETE 무시 — 자동 보고서 보류: "
+                            f"{_defer_done_reason}. 다음 실제 검증을 계속합니다."
+                        ),
+                        "zh": (
+                            "⏳ 已忽略 TASK_COMPLETE — 自动报告延后: "
+                            f"{_defer_done_reason}. 继续执行下一步真实验证。"
+                        ),
+                        "en": (
+                            "⏳ TASK_COMPLETE ignored — auto report deferred: "
+                            f"{_defer_done_reason}. Continuing real verification."
+                        ),
+                    }.get(_lang, f"⏳ TASK_COMPLETE ignored: {_defer_done_reason}.")
+                    self.console.print(f"\n[{THEME['warn']}]{_defer_done_msg}[/]\n")
+                    self.history.append(Message(
+                        role="user",
+                        content=(
+                            "[AUTO_REPORT_DEFERRED]\n"
+                            f"Reason: {_defer_done_reason}\n"
+                            "Do not emit TASK_COMPLETE again until there is confirmed/probable/potential "
+                            "Finding-ID evidence or the user explicitly asks for a report.\n"
+                            "If you already included a TOOL_CALL or code block above, continue from it. "
+                            "Otherwise emit one concrete executable next action now."
+                        ),
+                    ))
+                    if _auto_report_defer_count >= 4:
+                        self._suggest_next_steps()
+                        break
+                    current_response = followup_response
+                    continue
                 if _done_counts.get("confirmed", 0) > 0:
                     self.console.print(
                         f"\n[{THEME['success']}]✅ {_s.get('agent_done', 'Agent task complete')}[/]\n"
@@ -11263,6 +11407,28 @@ class BingoTerminal:
             _is_soft_stuck = len(_last5) >= 3 and len(set(_last5[-3:])) == 1
 
             if _is_hard_stuck:
+                _stuck_counts = BingoTerminal._finding_evidence_counts(
+                    getattr(self, "_findings_exporter", None)
+                )
+                _stuck_defer_reason = BingoTerminal._auto_report_defer_reason(
+                    followup_response,
+                    _stuck_counts,
+                    getattr(self, "_exec_loop_count", 0),
+                    trigger="hard_stuck",
+                )
+                if _stuck_defer_reason:
+                    self.history.append(Message(
+                        role="user",
+                        content=(
+                            "[STUCK_BUT_REPORT_DEFERRED]\n"
+                            f"Reason: {_stuck_defer_reason}\n"
+                            "The current loop is stuck, but there is not enough evidence for an automatic report. "
+                            "Switch to a different vector and emit one concrete executable action."
+                        ),
+                    ))
+                    self._stuck_count = 0
+                    self._recent_results.clear()
+                    continue
                 # 5루프 전부 동일 → 더 이상 진전 불가, 보고서 생성 후 종료
                 self.console.print(
                     f"\n[{THEME['warn']}]⚠ {_s.get('agent_stuck', 'Agent stuck — generating report')}...[/]\n"
@@ -12361,6 +12527,62 @@ class BingoTerminal:
         except Exception:
             pass
         return counts
+
+    @staticmethod
+    def _response_has_executable_intent(text: str) -> bool:
+        """Return True when a model response still contains runnable next action.
+
+        This is used only to arbitrate auto-report completion.  It does not
+        block tools, payloads, skills, or attack logic; it prevents a premature
+        TASK_COMPLETE from winning over pending execution.
+        """
+        if not text:
+            return False
+        import re as _intent_re
+        if _intent_re.search(r"\bTOOL_CALL\s*:", text):
+            return True
+        if _intent_re.search(r"<tool_call\b", text, _intent_re.I):
+            return True
+        if _intent_re.search(r"```(?:bash|sh|zsh|python)\b", text, _intent_re.I):
+            return True
+        if "[bingo action]" in text:
+            return True
+        if ("TOOL_CALL" + "_SUMMARY") in text:
+            return True
+        return False
+
+    @staticmethod
+    def _auto_report_defer_reason(
+        response: str,
+        evidence_counts: dict[str, int] | None,
+        loop_count: int,
+        *,
+        trigger: str = "task_complete",
+    ) -> str:
+        """Explain why automatic report generation should be deferred.
+
+        Manual report generation and explicit hard stops stay untouched.  This
+        guard only handles model-authored completion signals and no-code
+        fallbacks, where hallucinated completion can otherwise end a scan before
+        any usable evidence exists.
+        """
+        counts = evidence_counts or {}
+        confirmed = int(counts.get("confirmed", 0) or 0)
+        probable = int(counts.get("probable", 0) or 0)
+        potential = int(counts.get("potential", 0) or 0)
+        evidence_total = confirmed + probable + potential
+
+        if trigger in {"manual_report", "loop_limit", "user_interrupt", "target_failed", "web3"}:
+            return ""
+        if confirmed > 0:
+            return ""
+        if BingoTerminal._response_has_executable_intent(response):
+            return "pending executable action exists"
+        if trigger == "no_code_retry" and evidence_total == 0:
+            return "no executable evidence has been collected"
+        if evidence_total == 0 and int(loop_count or 0) < 8:
+            return "no findings exist and the scan is still in early reconnaissance"
+        return ""
 
     @staticmethod
     def _sanitize_runtime_claims_by_evidence(text: str, exporter) -> str:

@@ -67,32 +67,93 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T16:19:20+08:00
+- Last synced: 2026-07-20T16:36:41+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-20T16:19:20+08:00
+- Captured: 2026-07-20T16:36:41+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
- M PKG-INFO
- M bingo/__init__.py
  M bingo/models/system_prompt.py
+ M bingo/tools_ext/pentest_tools.py
  M bingo/ui/terminal.py
  M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |   2 +-
- bingo/__init__.py                             |   2 +-
- bingo/models/system_prompt.py                 |  52 +-
- bingo/ui/terminal.py                          | 714 ++++++++++++++++++++++++--
- tests/test_terminal_completion_regressions.py | 127 +++++
- 5 files changed, 838 insertions(+), 59 deletions(-)
+bingo/models/system_prompt.py                 |  10 +-
+ bingo/tools_ext/pentest_tools.py              |  40 +++++-
+ bingo/ui/terminal.py                          |  77 +++++++++++-
+ tests/test_terminal_completion_regressions.py | 169 ++++++++++++++++++++++++++
+ 4 files changed, 287 insertions(+), 9 deletions(-)
+```
+
+### Added Highlights
+- `15. Preserve the exact active target host. Never rewrite the TLD, country suffix,`
+- `subdomain, or domain spelling from memory. If the active target is`
+- `www.example.co.kr, do not emit www.example.co.jp, example.com, an IP URL, or`
+- `a lookalike host unless execution evidence shows an in-scope redirect.`
+- `16. For SQLi, preserve the complete request profile: method, query/body format,`
+- `17. Use the adaptive SQLi profile and its DBMS-specific expressions. Accept an`
+- `18. A stable oracle without DB metadata or extracted values remains probable.`
+- `if line.startswith("r'''", start):`
+- `end3 = line.find("'''", start + 4)`
+- `if end3 < 0:`
+- `out.append(line[start:])`
+- `break`
+- `out.append(line[start:end3 + 3])`
+- `i = end3 + 3`
+- `continue`
+- `def _repair_common_model_python_syntax(c: str) -> str:`
+- `"""Repair narrow, recurring model syntax mistakes after compile failure."""`
+- `repaired = c`
+- `while "list(list(dict.fromkeys(" in repaired:`
+- `repaired = repaired.replace("list(list(dict.fromkeys(", "list(dict.fromkeys(")`
+- `repaired = repaired.replace(r'([^"\']+))["\']', r'([^"\']+)["\']')`
+- `repaired = repaired.replace(r"([^\"']+))[\"']", r"([^\"']+)[\"']")`
+- `return repaired`
+- `def _exec_code(c: str, allow_repair: bool = True) -> dict:`
+- `if allow_repair:`
+- `repaired = _repair_common_model_python_syntax(c)`
+- `if repaired != c:`
+- `repaired_full = _pre + "\n" + repaired`
+- `try:`
+- `compile(repaired_full, "<bingo_run_python_precheck_repaired>", "exec")`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:17ec96b01fd32f23efd05e810f29cdac5c844f95 -->
+## Code change: feat: add html reports and polish hybrid ui
+- Commit: `17ec96b01fd3`
+- Recorded: 2026-07-20T16:20:28+08:00
+- Committed: 2026-07-20T16:20:28+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/models/system_prompt.py
+M	bingo/ui/terminal.py
+```
+
+### Diff Stat
+```text
+17ec96b01 feat: add html reports and polish hybrid ui
+ .bingo/project-memory.md      | 132 ++++----
+ PKG-INFO                      |   2 +-
+ bingo/__init__.py             |   2 +-
+ bingo/models/system_prompt.py |  52 ++-
+ bingo/ui/terminal.py          | 714 +++++++++++++++++++++++++++++++++++++++---
+ 5 files changed, 778 insertions(+), 124 deletions(-)
 ```
 
 ### Added Highlights
@@ -126,45 +187,6 @@ PKG-INFO                                      |   2 +-
 - `say no confirmed vulnerability and keep candidates in the verification backlog.`
 - `13. Hybrid mode rule: the model chooses strategy and next actions; Bingo owns`
 - `execution, skill injection, evidence ledger, and report truth. A model-written`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:126aed157903ff2227ca94549039314a8a192229 -->
-## Code change: chore: bump version to 6.2.224
-- Commit: `126aed157903`
-- Recorded: 2026-07-20T12:32:43+08:00
-- Committed: 2026-07-20T12:32:43+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-M	PKG-INFO
-M	bingo/__init__.py
-M	bingo/core/change_memory.py
-```
-
-### Diff Stat
-```text
-126aed157 chore: bump version to 6.2.224
- .bingo/project-memory.md    | 65 ++++++++++++++++++++++++++++++++++-----------
- PKG-INFO                    |  2 +-
- bingo/__init__.py           |  2 +-
- bingo/core/change_memory.py |  7 +++++
- 4 files changed, 59 insertions(+), 17 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.224`
-- `__version__ = "6.2.224"`
-- `WORKTREE_START,`
-- `WORKTREE_END,`
-- `BINGO_AUTO_START,`
-- `BINGO_AUTO_END,`
-- `}:`
-- `continue`
 <!-- bingo-project-memory:auto:end -->
 
 "`

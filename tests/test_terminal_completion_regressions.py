@@ -35,9 +35,12 @@ from bingo.tools_ext.pentest_tools import (
     _check_script_target_drift,
     _classify_dbms_with_oracle,
     _fix_bash_script,
+    _host_matches_current_target,
     _inject_real_ip_notice,
     _load_sqli_checkpoint,
+    _remember_related_domains_from_text,
     _save_sqli_checkpoint,
+    _same_target_scope,
     _inject_post_exploit_notice,
     _inject_sqli_trigger_notice,
     _inject_vuln_trigger_notice,
@@ -317,6 +320,97 @@ def test_domain_bound_target_allows_ip_transport_with_current_host_header() -> N
             "bash",
         )
         assert reason is None
+    finally:
+        set_target_domain("")
+
+
+def test_target_scope_allows_same_root_subdomain_pivot() -> None:
+    set_target_domain("https://www.example.co.kr/")
+    try:
+        assert _host_matches_current_target("api.example.co.kr")
+        assert _host_matches_current_target("admin.dev.example.co.kr")
+        reason = _check_script_target_drift(
+            "curl -sk 'https://api.example.co.kr/login?id=1%27%20OR%201=1--'",
+            "bash",
+        )
+        assert reason is None
+    finally:
+        set_target_domain("")
+
+
+def test_target_scope_blocks_lookalike_and_unrelated_domains() -> None:
+    set_target_domain("https://www.example.com/")
+    try:
+        assert not _host_matches_current_target("evil-example.com")
+        assert not _host_matches_current_target("example.net")
+        reason = _check_script_target_drift(
+            "curl -sk 'https://evil-example.com/login?id=1%27%20OR%201=1--'",
+            "bash",
+        )
+        assert reason is not None
+        assert "TARGET_DRIFT_BLOCKED" in reason
+    finally:
+        set_target_domain("")
+
+
+def test_terminal_target_scope_allows_scheme_and_subdomain_switch() -> None:
+    assert _same_target_scope(
+        "http://www.example.com/start",
+        "https://api.example.com/login",
+    )
+    assert not _same_target_scope(
+        "https://www.example.com/",
+        "https://example.com.evil.test/",
+    )
+
+
+def test_related_target_scope_learns_first_party_flow_domain() -> None:
+    set_target_domain("https://www.balance-cf.co.kr/")
+    try:
+        before = _check_script_target_drift(
+            "curl -sk 'https://balance-sa.ccse.co.kr/login?id=1 OR 1=1--'",
+            "bash",
+        )
+        assert before is not None
+        assert "TARGET_DRIFT_BLOCKED" in before
+
+        added = _remember_related_domains_from_text(
+            "https://www.balance-cf.co.kr/",
+            '<form method="post" action="https://balance-sa.ccse.co.kr/login">',
+        )
+        assert added == ["balance-sa.ccse.co.kr"]
+        assert _host_matches_current_target("balance-sa.ccse.co.kr")
+
+        after = _check_script_target_drift(
+            "curl -sk 'https://balance-sa.ccse.co.kr/login?id=1 OR 1=1--'",
+            "bash",
+        )
+        assert after is None
+
+        sibling = _check_script_target_drift(
+            "curl -sk 'https://other.ccse.co.kr/login?id=1 OR 1=1--'",
+            "bash",
+        )
+        assert sibling is not None
+        assert "TARGET_DRIFT_BLOCKED" in sibling
+    finally:
+        set_target_domain("")
+
+
+def test_related_target_scope_ignores_unbranded_plain_links() -> None:
+    set_target_domain("https://www.example.com/")
+    try:
+        added = _remember_related_domains_from_text(
+            "https://www.example.com/",
+            '<a href="https://facebook.com/example">SNS</a>',
+        )
+        assert added == []
+        reason = _check_script_target_drift(
+            "curl -sk 'https://facebook.com/example?id=1 OR 1=1--'",
+            "bash",
+        )
+        assert reason is not None
+        assert "TARGET_DRIFT_BLOCKED" in reason
     finally:
         set_target_domain("")
 

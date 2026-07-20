@@ -1079,6 +1079,9 @@ WAF NEW SIGNATURES (auto-detected, auto-bypassed):
   3. port_scan(host) → find admin panels, API ports, dev servers
   4. fingerprint_tech(url) → stack detection (Spring/Laravel/Django/Korean CMS)
   5. Output feeds: subdomains → SubdomainTakeoverScanner, open ports → targeted testing
+  6. If the main host has no actionable surface, probe live same-root subdomains
+     (e.g. admin/api/dev under the same registrable domain) and continue there;
+     never pivot to unrelated domains or direct IP URLs without Host binding.
 
 [SUBDOMAIN TAKEOVER — bingo.tools.subdomain_takeover]
   Trigger: when subdomain recon is explicitly requested, or recon engine found subdomains
@@ -3792,6 +3795,9 @@ Use this section to keep model output grounded in executable evidence.
     subdomain, or domain spelling from memory. If the active target is
     www.example.co.kr, do not emit www.example.co.jp, example.com, an IP URL, or
     a lookalike host unless execution evidence shows an in-scope redirect.
+    Same registrable-domain subdomains discovered by recon remain in scope
+    (www.example.co.kr → api.example.co.kr/admin.example.co.kr) and are valid
+    pivot candidates when the main host has no exploitable surface.
 16. For SQLi, preserve the complete request profile: method, query/body format,
     cookies, CSRF value, headers, redirects, and content type. Never rebuild a
     session-sensitive request from only URL+parameter.

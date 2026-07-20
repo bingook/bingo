@@ -3202,7 +3202,12 @@ class BingoTerminal:
                 _new_parsed = _up.urlparse(new_target)
                 _ex_domain = f"{_ex_parsed.scheme}://{_ex_parsed.netloc}".lower()
                 _new_domain = f"{_new_parsed.scheme}://{_new_parsed.netloc}".lower()
-                if _ex_domain != _new_domain and _new_domain not in ("://", "//"):
+                try:
+                    from ..tools_ext.pentest_tools import _same_target_scope
+                    _same_scope = _same_target_scope(_existing_target, new_target)
+                except Exception:
+                    _same_scope = _ex_domain == _new_domain
+                if not _same_scope and _new_domain not in ("://", "//"):
                     # 다른 도메인 → TARGET_LOCK 발동 → 사용자에게 확인 요청
                     _lang = getattr(self.config, "lang", "en")
                     _lock_warn = {

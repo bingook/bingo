@@ -67,106 +67,131 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-20T17:08:14+08:00
+- Last synced: 2026-07-21T02:38:46+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
+
+<!-- working-tree:start -->
+## Working tree snapshot (uncommitted)
+- Captured: 2026-07-21T02:38:46+08:00
+
+### Status
+```text
+M .bingo/project-memory.md
+ M PKG-INFO
+ M bingo/__init__.py
+ M bingo/core/change_memory.py
+ M bingo/proxy/manager.py
+ M bingo/tools_ext/pentest_tools.py
+ M bingo/ui/terminal.py
+ M tests/test_change_memory.py
+ M tests/test_terminal_completion_regressions.py
+?? AGENTS.md
+```
+
+### Diff Stat
+```text
+PKG-INFO                                      |   2 +-
+ bingo/__init__.py                             |   2 +-
+ bingo/core/change_memory.py                   |   4 +
+ bingo/proxy/manager.py                        | 245 ++++++++++++++++++++++++--
+ bingo/tools_ext/pentest_tools.py              |  71 +++++++-
+ bingo/ui/terminal.py                          |  23 +++
+ tests/test_change_memory.py                   |  38 ++++
+ tests/test_terminal_completion_regressions.py | 112 ++++++++++++
+ 8 files changed, 469 insertions(+), 28 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.239`
+- `__version__ = "6.2.239"`
+- `or WORKTREE_END in stripped`
+- `or BINGO_AUTO_START in stripped`
+- `or BINGO_AUTO_END in stripped`
+- `or "## Working tree snapshot" in stripped`
+- `import urllib.parse`
+- `_SCHEME_ALIASES = {`
+- `"http": "http",`
+- `"https": "https",`
+- `"socks": "socks5",`
+- `"socks4": "socks4",`
+- `"socks4a": "socks4a",`
+- `"socks5": "socks5",`
+- `"socks5h": "socks5h",`
+- `}`
+- `_HOST_RE = re.compile(r"^(?:\[[0-9a-f:]+\]|[a-z0-9._-]+)$", re.I)`
+- `"""URL 문자열 → ProxyEntry 파싱. 실패 시 None.`
+- `Accepts common proxy-list formats:`
+- `- scheme://host:port`
+- `- scheme://user:pass@host:port`
+- `- host:port`
+- `- user:pass@host:port`
+- `- host:port:user:pass`
+- `- user:pass:host:port`
+- `- host port user pass / host,port,user,pass / host|port|user|pass`
+- `"""`
+- `raw = (url or "").strip().strip("'\"")`
+- `if not raw or raw.startswith("#"):`
+- `return None`
+<!-- working-tree:end -->
 
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
 
-<!-- commit:094240208a8956a5e6c2418e31a2d09640c9f3ca -->
-## Code change: refactor: make waf and sqli ai-led with bingo verification
-- Commit: `094240208a89`
-- Recorded: 2026-07-20T17:08:14+08:00
-- Committed: 2026-07-20T17:08:14+08:00
+<!-- commit:d7ae7da64fe32b39846f95c95b90a7df373c8674 -->
+## Code change: fix: prevent next-step menu from blocking scans
+- Commit: `d7ae7da64fe3`
+- Recorded: 2026-07-21T00:58:02+08:00
+- Committed: 2026-07-21T00:58:01+08:00
 
 ### Files
 ```text
-M	.bingo/project-memory.md
 M	PKG-INFO
 M	bingo/__init__.py
-M	bingo/cli.py
-M	bingo/lang/strings.py
-M	bingo/models/system_prompt.py
-M	bingo/tools_ext/builtin/mission_orchestrator.py
 M	bingo/ui/terminal.py
 M	tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-094240208 refactor: make waf and sqli ai-led with bingo verification
- .bingo/project-memory.md                        | 88 +++++++++++++------------
- PKG-INFO                                        |  2 +-
- bingo/__init__.py                               |  2 +-
- bingo/cli.py                                    | 16 ++---
- bingo/lang/strings.py                           |  6 +-
- bingo/models/system_prompt.py                   | 63 ++++++++++++------
- bingo/tools_ext/builtin/mission_orchestrator.py |  5 +-
- bingo/ui/terminal.py                            | 73 +++++++++++---------
- tests/test_terminal_completion_regressions.py   | 15 ++++-
- 9 files changed, 156 insertions(+), 114 deletions(-)
+d7ae7da64 fix: prevent next-step menu from blocking scans
+ PKG-INFO                                      |   2 +-
+ bingo/__init__.py                             |   2 +-
+ bingo/ui/terminal.py                          |  42 +++++++--
+ tests/test_terminal_completion_regressions.py | 122 +++++++++++++++++++++++++-
+ 4 files changed, 159 insertions(+), 9 deletions(-)
 ```
 
 ### Added Highlights
-- `Version: 6.2.228`
-- `__version__ = "6.2.228"`
-- `engine = WafBypassEngine(probe)`
-- `console.print(f"\n[#00d4aa]AI-led WAF plan:[/]")`
-- `console.print("[#4a4a4a]  Auto bypass spray is disabled. Use model + waf_bypass skill to choose one bounded verifier.[/]")`
-- `console.print(f"[#4a4a4a]{engine.get_bypass_summary(result.waf_type)}[/]")`
-- `"ko": "[AI 주도 피벗 권고] SQLi 대조가 반복 차단됨. 현재 실행은 막지 않지만, 다음 판단은 sqli/waf_bypass skill 기반으로 새 검증기 또는 JS/API/IDOR/XSS/LFI/인증 벡터를 선택하세요.",`
-- `"zh": "[AI主导切换建议] SQLi 对照请求重复受阻。当前执行不被拦截；下一步请基于 sqli/waf_bypass skill 选择新的验证器或 JS/API/IDOR/XSS/LFI/认证向量。",`
-- `"en": "[AI-led pivot advisory] Repeated SQLi controls were blocked. Current execution is not suppressed; next choose a new verifier or JS/API/IDOR/XSS/LFI/auth vector using sqli/wa`
-- `RULE #27: SQLi 후보 발견 시 모델+sqli skill이 먼저 가설과 검증 순서를 정한다.`
-- `sqli_autoexploit는 baseline/profile이 충분할 때 선택하는 bounded verifier다.`
-- `RULE #30: [SQLI_TRIGGER_DETECTED] → AI/skill이 다음 SQLi verifier를 선택한다.`
-- `custom/sqlmap/ghauri/sqli_autoexploit는 교차검증 도구이며 이름 자체가 증거는 아니다.`
-- `=== WAF BYPASS — AI/SKILL LED STRATEGY SELECTION ===`
-- `When WAF is suspected, first capture the blocked-vs-control evidence, then let`
-- `the model choose one technique using waf_bypass skill memory. Bingo executes and`
-- `measures the result; do not run a fixed automatic bypass pipeline just because a`
-- `vendor name appears.`
-- `These are selectable skill references, not an autopilot queue. Apply one small`
-- `branch at a time, read the evidence, then choose the next branch.`
-- `[REFERENCE: BLIND SQLi 데이터 추출 — bounded custom script]`
-- `WAF 환경 blind SQLi 데이터 추출은 안정적인 TRUE/FALSE 오라클이 생긴 뒤에만`
-- `아래 형태의 Python 검증 스크립트를 작성/실행:`
-- `⚠️  SQLi VERIFIER/HANDOFF [v6.2.228]: AI/skill first, Bingo verifies ⚠️`
-- `★★★ 핵심 계약 (v6.2.228) ★★★`
-- `SQLi 전략은 모델과 sqli/waf_bypass skill이 먼저 선택한다.`
-- `sqli_autoexploit()은 제거하지 않는다. 단, 첫 반응에서 무조건 호출하는`
-- `자동완료 엔진이 아니라, 요청 프로필과 baseline이 충분할 때 쓰는`
-- `bounded verifier / handoff 도구다.`
-- `선택 호출 예시:`
-<!-- bingo-project-memory:auto:end -->
-
-"`
-- `".bingo/instruction.md",`
-- `WORKTREE_SKIP_PREFIXES = (".bingo/",)`
-- `def bingo_project_memory_path(cwd: str | Path) -> Path:`
-- `"""Return the project-local memory file that AGENTS.md tells Bingo to read."""`
-- `return Path(cwd).resolve() / BINGO_MEMORY_FILE`
-- `return result.stdout.strip()`
-- `if current_file in HIGHLIGHT_SKIP_PATHS or current_file.startswith(".bingo/"):`
-- `diff_stat = _git(repo, ["show", "--format=", "--stat", "--oneline", commit_id])`
-- `def _bingo_auto_block(source_path: Path, source_content: str, repo: Path) -> str:`
-- `f"{BINGO_AUTO_START}\n"`
-- `f"{BINGO_AUTO_END}\n"`
-- `def _drop_generated_bingo_tail(tail: str) -> str:`
-- `def sync_bingo_project_memory(`
-- `"""Mirror workspace memory into '.bingo/project-memory.md' for future Bingo runs.`
-- `The auto block is replaced on every sync while any manual notes outside the`
-- `block are preserved. AGENTS.md is responsible for making future Bingo`
-- `sessions load this file.`
-- `path = bingo_project_memory_path(repo)`
-- `"> Project-local persistent memory for Bingo sessions launched from this repository.\n"`
-- `"- Next Bingo session must read this file before modifying the project.\n"`
-- `auto_block = _bingo_auto_block(source, source_content, repo)`
-- `elif BINGO_AUTO_START in existing and BINGO_AUTO_END in existing:`
-- `before, _, rest = existing.partition(BINGO_AUTO_START)`
-- `_, _, after = rest.partition(BINGO_AUTO_END)`
-- `after = _drop_generated_bingo_tail(after)`
-<!-- working-tree:end -->
+- `Version: 6.2.238`
+- `__version__ = "6.2.238"`
+- `_auto_report_defer_count = 0`
+- `_no_code_retry = 0`
+- `_defer_reason = (`
+- `f"{_defer_reason}; repeated non-executable completion attempt — "`
+- `"force a different executable branch"`
+- `)`
+- `_auto_report_defer_count = 0`
+- `self.history.append(Message(`
+- `role="user",`
+- `content=(`
+- `"[FORCED_SCAN_CONTINUATION]\n"`
+- `"Repeated premature completion was deferred. Do not summarize or ask for a menu. "`
+- `"Choose a different untested branch and emit exactly one concrete executable "`
+- `"TOOL_CALL, run_python, or run_bash action now."`
+- `),`
+- `))`
+- `from ..models.registry import ModelRegistry as _MR_done`
+- `_mc_done = self.config.get_active_model_config()`
+- `if not _mc_done:`
+- `break`
+- `_m_done = _MR_done.build(_mc_done)`
+- `current_response = self._stream_response(`
+- `_m_done.chat_stream(self._build_messages(""))`
+- `)`
+- `if current_response:`
+- `self.history.append(Message(role="assistant", content=current_response))`
+- `continue`
+- `"[NEXT STEP SUGGESTIONS — PENTEST CONTINUATION]\n\n"`
 <!-- bingo-project-memory:auto:end -->

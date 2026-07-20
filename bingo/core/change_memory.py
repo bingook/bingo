@@ -325,7 +325,11 @@ def _drop_generated_bingo_tail(tail: str) -> str:
     if (
         stripped.startswith("# Workspace Memory")
         or WORKTREE_START in stripped
+        or WORKTREE_END in stripped
+        or BINGO_AUTO_START in stripped
+        or BINGO_AUTO_END in stripped
         or "<!-- commit:" in stripped
+        or "## Working tree snapshot" in stripped
     ):
         return ""
     return tail

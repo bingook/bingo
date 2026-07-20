@@ -165,6 +165,44 @@ def test_bingo_project_memory_sync_drops_stale_generated_tail(tmp_path: Path) ->
     assert content.count(BINGO_AUTO_END) == 1
 
 
+def test_bingo_project_memory_sync_drops_partial_generated_tail(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    tracked = repo / "tracked.txt"
+    tracked.write_text("before\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "initial"], cwd=repo, check=True)
+    tracked.write_text("before\nafter\n", encoding="utf-8")
+    memory_root = repo / ".bingo" / "bingo-memory"
+
+    project_memory = bingo_project_memory_path(repo)
+    project_memory.parent.mkdir(parents=True, exist_ok=True)
+    project_memory.write_text(
+        "# Bingo Project Memory\n\n"
+        "## Persistent Notes\n\n"
+        "- manual note\n\n"
+        f"{BINGO_AUTO_START}\nold auto\n{BINGO_AUTO_END}\n\n"
+        '"`\n'
+        "- `stale generated highlight`\n"
+        f"{WORKTREE_END}\n"
+        f"{BINGO_AUTO_END}\n",
+        encoding="utf-8",
+    )
+
+    record_worktree_snapshot(repo, memory_root)
+    sync_bingo_project_memory(repo, memory_root)
+
+    content = project_memory.read_text(encoding="utf-8")
+    assert "- manual note" in content
+    assert "old auto" not in content
+    assert "stale generated highlight" not in content
+    assert content.count(BINGO_AUTO_START) == 1
+    assert content.count(BINGO_AUTO_END) == 1
+
+
 def test_bingo_project_memory_sync_compacts_nested_workspace_history(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

@@ -67,48 +67,98 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-21T02:38:46+08:00
+- Last synced: 2026-07-21T03:23:45+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-21T02:38:46+08:00
+- Captured: 2026-07-21T03:23:45+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
  M PKG-INFO
  M bingo/__init__.py
- M bingo/core/change_memory.py
- M bingo/proxy/manager.py
- M bingo/tools_ext/pentest_tools.py
  M bingo/ui/terminal.py
- M tests/test_change_memory.py
  M tests/test_terminal_completion_regressions.py
-?? AGENTS.md
 ```
 
 ### Diff Stat
 ```text
 PKG-INFO                                      |   2 +-
  bingo/__init__.py                             |   2 +-
- bingo/core/change_memory.py                   |   4 +
- bingo/proxy/manager.py                        | 245 ++++++++++++++++++++++++--
- bingo/tools_ext/pentest_tools.py              |  71 +++++++-
- bingo/ui/terminal.py                          |  23 +++
- tests/test_change_memory.py                   |  38 ++++
- tests/test_terminal_completion_regressions.py | 112 ++++++++++++
- 8 files changed, 469 insertions(+), 28 deletions(-)
+ bingo/ui/terminal.py                          | 340 +++++++++++++++++++++++++-
+ tests/test_terminal_completion_regressions.py | 244 ++++++++++++++++++
+ 4 files changed, 577 insertions(+), 11 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.241`
+- `__version__ = "6.2.241"`
+- `self._action_ledger: dict[str, dict] = {}`
+- `_action_sig, _action_summary = BingoTerminal._action_ledger_signature(`
+- `_tool_name, _tool_args`
+- `)`
+- `_skip_action_reason = self._action_ledger_skip_reason(`
+- `_action_sig, _action_summary`
+- `)`
+- `if _skip_action_reason:`
+- `_skip_result = (`
+- `f"=== TOOL_RESULT: {_tool_name or '?'} ===\n"`
+- `"exit_code=-96 success=false\n"`
+- `"--- output ---\n"`
+- `f"[ACTION_LEDGER_SKIP] {_skip_action_reason}\n"`
+- `"This action is already done/blocked in the executor ledger. "`
+- `"Choose a different pending vector, endpoint, parameter, or payload class.\n"`
+- `f"signature={_action_sig}\n"`
+- `f"summary={_action_summary}\n"`
+- `"=== END TOOL_RESULT ==="`
+- `)`
+- `tool_results.append(_skip_result)`
+- `continue`
+- `self._action_ledger_start(_action_sig, _action_summary)`
+- `self._action_ledger_finish(`
+- `_action_sig,`
+- `_action_summary,`
+- `output=_result_str,`
+- `success=bool(_ok),`
+- `exit_code=int(_ec) if isinstance(_ec, int) else -1,`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:4fdc9f65591f660d32c9a7461681ecc1703ae679 -->
+## Code change: fix: improve proxy parsing and runtime sync
+- Commit: `4fdc9f65591f`
+- Recorded: 2026-07-21T02:46:47+08:00
+- Committed: 2026-07-21T02:46:47+08:00
+
+### Files
+```text
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/proxy/manager.py
+M	bingo/tools_ext/pentest_tools.py
+M	bingo/ui/terminal.py
+```
+
+### Diff Stat
+```text
+4fdc9f655 fix: improve proxy parsing and runtime sync
+ PKG-INFO                         |   2 +-
+ bingo/__init__.py                |   2 +-
+ bingo/proxy/manager.py           | 245 ++++++++++++++++++++++++++++++++++++---
+ bingo/tools_ext/pentest_tools.py |  71 ++++++++++--
+ bingo/ui/terminal.py             |  23 ++++
+ 5 files changed, 315 insertions(+), 28 deletions(-)
 ```
 
 ### Added Highlights
 - `Version: 6.2.239`
 - `__version__ = "6.2.239"`
-- `or WORKTREE_END in stripped`
-- `or BINGO_AUTO_START in stripped`
-- `or BINGO_AUTO_END in stripped`
-- `or "## Working tree snapshot" in stripped`
 - `import urllib.parse`
 - `_SCHEME_ALIASES = {`
 - `"http": "http",`
@@ -133,65 +183,8 @@ PKG-INFO                                      |   2 +-
 - `raw = (url or "").strip().strip("'\"")`
 - `if not raw or raw.startswith("#"):`
 - `return None`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:d7ae7da64fe32b39846f95c95b90a7df373c8674 -->
-## Code change: fix: prevent next-step menu from blocking scans
-- Commit: `d7ae7da64fe3`
-- Recorded: 2026-07-21T00:58:02+08:00
-- Committed: 2026-07-21T00:58:01+08:00
-
-### Files
-```text
-M	PKG-INFO
-M	bingo/__init__.py
-M	bingo/ui/terminal.py
-M	tests/test_terminal_completion_regressions.py
-```
-
-### Diff Stat
-```text
-d7ae7da64 fix: prevent next-step menu from blocking scans
- PKG-INFO                                      |   2 +-
- bingo/__init__.py                             |   2 +-
- bingo/ui/terminal.py                          |  42 +++++++--
- tests/test_terminal_completion_regressions.py | 122 +++++++++++++++++++++++++-
- 4 files changed, 159 insertions(+), 9 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.238`
-- `__version__ = "6.2.238"`
-- `_auto_report_defer_count = 0`
-- `_no_code_retry = 0`
-- `_defer_reason = (`
-- `f"{_defer_reason}; repeated non-executable completion attempt — "`
-- `"force a different executable branch"`
-- `)`
-- `_auto_report_defer_count = 0`
-- `self.history.append(Message(`
-- `role="user",`
-- `content=(`
-- `"[FORCED_SCAN_CONTINUATION]\n"`
-- `"Repeated premature completion was deferred. Do not summarize or ask for a menu. "`
-- `"Choose a different untested branch and emit exactly one concrete executable "`
-- `"TOOL_CALL, run_python, or run_bash action now."`
-- `),`
-- `))`
-- `from ..models.registry import ModelRegistry as _MR_done`
-- `_mc_done = self.config.get_active_model_config()`
-- `if not _mc_done:`
-- `break`
-- `_m_done = _MR_done.build(_mc_done)`
-- `current_response = self._stream_response(`
-- `_m_done.chat_stream(self._build_messages(""))`
-- `)`
-- `if current_response:`
-- `self.history.append(Message(role="assistant", content=current_response))`
-- `continue`
-- `"[NEXT STEP SUGGESTIONS — PENTEST CONTINUATION]\n\n"`
+- `raw = re.split(r"\s+#", raw, 1)[0].strip()`
+- `if not raw:`
+- `return None`
+- `parsed = _normalise_proxy_parts(raw)`
 <!-- bingo-project-memory:auto:end -->

@@ -27,6 +27,7 @@ from bingo.models.system_prompt import (
 )
 from bingo.models.base import Message, ModelConfig
 from bingo.orchestrator.engine import _board_value_anchored, _goal_completion_allowed
+from bingo.proxy.manager import ProxyManager, _extract_proxy_candidates, _parse_proxy_url
 from bingo.tools_ext import autoexploit_modules
 from bingo.tools_ext.builtin import security_audit
 from bingo.tools_ext.pentest_tools import (
@@ -37,6 +38,7 @@ from bingo.tools_ext.pentest_tools import (
     _calibrate_boolean_oracle,
     _check_script_target_drift,
     _classify_dbms_with_oracle,
+    _curl_base,
     _fix_bash_script,
     _host_matches_current_target,
     _inject_real_ip_notice,
@@ -48,9 +50,12 @@ from bingo.tools_ext.pentest_tools import (
     _inject_sqli_trigger_notice,
     _inject_vuln_trigger_notice,
     execute_tool,
+    get_runtime_proxy,
+    run_bash,
     run_python,
     run_ghauri,
     run_sqlmap,
+    set_runtime_proxy,
     set_target_domain,
     sqli_autoexploit,
     ssrf_chain_exploit,
@@ -1472,6 +1477,138 @@ def test_high_value_api_endpoint_is_meaningful_loop_progress() -> None:
     assert BingoTerminal._has_meaningful_loop_progress(output)
 
 
+def test_stack_leak_evidence_is_meaningful_progress_once() -> None:
+    output = (
+        "[stack] st=500 size=5277 title='HTTP 상태 500 – 내부 서버 오류'\n"
+        "LEAK True\n"
+        "javax.el.ELException: Cannot convert [INVALID_BINGO]\n"
+        "org.apache.jasper.JasperException\n"
+    )
+
+    assert BingoTerminal._has_meaningful_loop_progress(output)
+    assert BingoTerminal._meaningful_loop_progress_signature(output)
+
+
+def test_timeout_only_output_is_not_meaningful_progress() -> None:
+    output = (
+        "CPing TimeoutError timed out\n"
+        "[ERR] http://example.test:8080/ ReadTimeout\n"
+        "[TIMEOUT 120s 초과 — 프로세스 강제 종료됨]\n"
+        "Request timeout — possible WAF silent drop\n"
+    )
+
+    assert not BingoTerminal._has_meaningful_loop_progress(output)
+
+
+def test_doom_loop_cutoff_stops_after_second_no_progress_escape() -> None:
+    reason = BingoTerminal._doom_loop_cutoff_reason(
+        no_progress_count=6,
+        escape_attempts=1,
+        loop_count=12,
+        confirmed_count=0,
+    )
+
+    assert "repeated no-progress" in reason
+
+
+def test_doom_loop_cutoff_stops_zero_confirmed_after_excessive_loops() -> None:
+    reason = BingoTerminal._doom_loop_cutoff_reason(
+        no_progress_count=6,
+        escape_attempts=0,
+        loop_count=30,
+        confirmed_count=0,
+    )
+
+    assert "zero confirmed" in reason
+
+
+def test_action_ledger_signature_groups_rewritten_ajp_probe() -> None:
+    first, first_summary = BingoTerminal._action_ledger_signature(
+        "run_python",
+        {
+            "code": (
+                "HOST='116.127.120.142'\n"
+                "PORT=8009\n"
+                "print('AJP CPing short')\n"
+            )
+        },
+    )
+    second, second_summary = BingoTerminal._action_ledger_signature(
+        "run_python",
+        {
+            "code": (
+                "# Ghostcat WEB-INF probe\n"
+                "sock.connect(('116.127.120.142', 8009))\n"
+                "print('cping')\n"
+            )
+        },
+    )
+
+    assert first == second
+    assert "ajp_ghostcat" in first_summary
+    assert "ajp_ghostcat" in second_summary
+
+
+def test_action_ledger_blocks_after_two_timeouts() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._action_ledger = {}
+    terminal._exec_loop_count = 10
+    sig, summary = BingoTerminal._action_ledger_signature(
+        "run_python",
+        {"code": "HOST='116.127.120.142'; PORT=8009; print('AJP CPing')"},
+    )
+
+    terminal._action_ledger_start(sig, summary)
+    terminal._action_ledger_finish(
+        sig,
+        summary,
+        output="CPing TimeoutError timed out",
+        success=False,
+        exit_code=-1,
+    )
+    assert terminal._action_ledger_skip_reason(sig, summary) == ""
+
+    terminal._action_ledger_start(sig, summary)
+    entry = terminal._action_ledger_finish(
+        sig,
+        summary,
+        output="[ERR] ReadTimeout timed out",
+        success=False,
+        exit_code=-1,
+    )
+
+    assert entry["status"] == "blocked_timeout"
+    assert "blocked_timeout" in terminal._action_ledger_skip_reason(sig, summary)
+
+
+def test_action_ledger_done_action_is_not_rerun() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._action_ledger = {}
+    terminal._exec_loop_count = 4
+    sig, summary = BingoTerminal._action_ledger_signature(
+        "run_python",
+        {
+            "code": (
+                "r=sess.get(BASE + '/balance/apply/interest.do?returntype=abc')\n"
+                "print('LEAK True')\n"
+                "print('javax.el.ELException')\n"
+            )
+        },
+    )
+
+    terminal._action_ledger_start(sig, summary)
+    terminal._action_ledger_finish(
+        sig,
+        summary,
+        output="LEAK True\njavax.el.ELException\norg.apache.jasper.JasperException\n",
+        success=True,
+        exit_code=0,
+    )
+
+    assert "already done" in terminal._action_ledger_skip_reason(sig, summary)
+    assert "status=done" in terminal._action_ledger_context()
+
+
 def test_repeated_progress_signature_ignores_dynamic_trace_markers() -> None:
     first = (
         "[HTTP_METHOD] https://example.test/login\n"
@@ -2765,3 +2902,110 @@ def test_scan_slash_command_removed_from_chat_ui() -> None:
 
         assert "/scan" not in commands
         assert "/scan <url>" not in strings["help_text"]
+
+
+def test_proxy_parser_accepts_common_provider_formats() -> None:
+    cases = {
+        "1.2.3.4:8080": "http://1.2.3.4:8080",
+        "http://1.2.3.4:8080": "http://1.2.3.4:8080",
+        "https://1.2.3.4:8443": "https://1.2.3.4:8443",
+        "socks5://1.2.3.4:1080": "socks5://1.2.3.4:1080",
+        "socks5h://user:pass@1.2.3.4:1080": "socks5h://user:pass@1.2.3.4:1080",
+        "user:pass@1.2.3.4:8080": "http://user:pass@1.2.3.4:8080",
+        "1.2.3.4:8080:user:pass": "http://user:pass@1.2.3.4:8080",
+        "user:pass:1.2.3.4:8080": "http://user:pass@1.2.3.4:8080",
+        "1.2.3.4 8080 user pass": "http://user:pass@1.2.3.4:8080",
+        "1.2.3.4,8080,user,pass": "http://user:pass@1.2.3.4:8080",
+        "1.2.3.4|8080|user|pass": "http://user:pass@1.2.3.4:8080",
+        "socks5 1.2.3.4 1080 user pass": "socks5://user:pass@1.2.3.4:1080",
+        "http,1.2.3.4,8080,user,pass": "http://user:pass@1.2.3.4:8080",
+        "http://user:p@ss@1.2.3.4:8080": "http://user:p%40ss@1.2.3.4:8080",
+        "http://user:pa:ss@1.2.3.4:8080": "http://user:pa%3Ass@1.2.3.4:8080",
+    }
+
+    for raw, expected in cases.items():
+        entry = _parse_proxy_url(raw)
+
+        assert entry is not None, raw
+        assert entry.url == expected
+
+
+def test_proxy_api_json_extraction_accepts_nested_provider_objects() -> None:
+    candidates = _extract_proxy_candidates(
+        {
+            "data": [
+                {"ip": "1.2.3.4", "port": 8080, "protocols": ["socks5"]},
+                {"host": "proxy.example.com", "port": "3128", "protocol": "http"},
+                {"proxy": "user:pass@5.6.7.8:9000"},
+            ]
+        }
+    )
+
+    parsed = [_parse_proxy_url(item).url for item in candidates if _parse_proxy_url(item)]
+
+    assert "socks5://1.2.3.4:8080" in parsed
+    assert "http://proxy.example.com:3128" in parsed
+    assert "http://user:pass@5.6.7.8:9000" in parsed
+
+
+def test_proxy_command_add_syncs_runtime_execution_layer() -> None:
+    set_runtime_proxy("")
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.s = {}
+    terminal.config = SimpleNamespace(lang="en")
+    terminal.console = _Console()
+    terminal._proxy = ProxyManager()
+    terminal._proxy.save_config = lambda *_args, **_kwargs: True  # type: ignore[method-assign]
+    terminal._success = lambda msg: terminal.console.print(msg)
+    terminal._warn = lambda msg: terminal.console.print(msg)
+
+    terminal._cmd_proxy("add 1.2.3.4:8080:user:pass")
+
+    assert get_runtime_proxy() == "http://user:pass@1.2.3.4:8080"
+    assert "--proxy" in _curl_base(5)
+    set_runtime_proxy("")
+
+
+def test_proxy_off_clears_runtime_execution_layer() -> None:
+    set_runtime_proxy("")
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.s = {}
+    terminal.config = SimpleNamespace(lang="en")
+    terminal.console = _Console()
+    terminal._proxy = ProxyManager()
+    terminal._proxy.save_config = lambda *_args, **_kwargs: True  # type: ignore[method-assign]
+    terminal._success = lambda msg: terminal.console.print(msg)
+    terminal._warn = lambda msg: terminal.console.print(msg)
+
+    terminal._cmd_proxy("add 1.2.3.4:8080")
+    assert get_runtime_proxy() == "http://1.2.3.4:8080"
+
+    terminal._cmd_proxy("off")
+
+    assert get_runtime_proxy() == ""
+
+
+def test_runtime_proxy_env_reaches_bash_tool() -> None:
+    proxy_url = "http://127.0.0.1:1"
+    set_runtime_proxy(proxy_url)
+    try:
+        result = run_bash("printf '%s' \"$BINGO_PROXY_URL\"", timeout=5)
+    finally:
+        set_runtime_proxy("")
+
+    assert result["success"] is True
+    assert result["output"] == proxy_url
+
+
+def test_run_python_drops_runtime_proxy_when_preflight_fails() -> None:
+    set_runtime_proxy("http://127.0.0.1:1")
+    try:
+        result = run_python(
+            "import os\nprint('BINGO=' + os.environ.get('BINGO_PROXY_URL', ''))",
+            timeout=5,
+        )
+    finally:
+        set_runtime_proxy("")
+
+    assert result["success"] is True
+    assert "BINGO=\n" in result["output"]

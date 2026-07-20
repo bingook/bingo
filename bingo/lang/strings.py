@@ -87,7 +87,6 @@ _STRINGS = {
 /hint <메시지>           💬 AI 실행 도중 힌트 주입 (재실행 없이 방향 전환)
 /retry                   🔁 마지막 실패 단계만 재실행 (처음부터 재시작 불필요)
 /ctf <url>               🏁 웹 실습 환경 보안 점검 (--status / --resume=no / --headless=no)
-/scan <url>              빠른 정찰: WAF + 핑거프린트 + 민감파일
 /waf <url>               WAF 탐지 + 자동 우회 시도
 /crack [hash]            해시 크랙 — 온라인 조회 → 오프라인 크랙
 /stop                    실행 중인 크랙/스캔 중단
@@ -115,7 +114,6 @@ _STRINGS = {
 /hint <消息>             💬 执行中注入提示 (无需重启即可改变方向)
 /retry                   🔁 仅重试上次失败步骤 (无需从头重新启动)
 /ctf <url>               🏁 Web实验环境安全扫描 (--status / --resume=no / --headless=no)
-/scan <url>              快速侦察：WAF + 指纹识别 + 敏感文件
 /waf <url>               WAF 检测 + 自动绕过尝试
 /crack [hash]            哈希破解 — 在线查询 → 离线破解
 /stop                    停止正在运行的破解/扫描
@@ -143,7 +141,6 @@ _STRINGS = {
 /hint <message>          💬 Inject hint mid-execution (redirect without restart)
 /retry                   🔁 Retry only the last failed step (no full restart)
 /ctf <url>               🏁 Web lab security scan (--status / --resume=no / --headless=no)
-/scan <url>              Quick recon: WAF + fingerprint + sensitive files
 /waf <url>               WAF detection + auto bypass attempt
 /crack [hash]            Hash crack — online lookup → offline crack
 /stop                    Stop running crack/scan
@@ -1008,7 +1005,6 @@ _SLASH_DESC = {
     "/history": {"ko": "대화 기록 보기",               "zh": "查看对话历史",          "en": "View chat history"},
     "/export":  {"ko": "대화 기록 파일로 저장",         "zh": "导出对话为 .md 文件",   "en": "Export chat as .md"},
     "/lang":    {"ko": "언어 변경",                    "zh": "切换语言",             "en": "Change language"},
-    "/scan":    {"ko": "빠른 레드팀 스캔  /scan <url>", "zh": "快速侦察  /scan <url>","en": "Quick recon  /scan <url>"},
     "/waf":     {"ko": "WAF 탐지 + 자동 우회  /waf <url>","zh": "WAF检测+绕过  /waf <url>","en": "WAF detect + bypass  /waf <url>"},
     "/crack":   {"ko": "해시 크랙  /crack [hash]  (인자 없으면 자동 추출)",
                  "zh": "哈希破解  /crack [hash]  (省略则自动提取)",
@@ -7491,11 +7487,6 @@ _STRINGS.update({
         "ko": "🧬 Nuclei 결과:",
         "zh": "🧬 Nuclei 结果:",
         "en": "🧬 Nuclei results:",
-    },
-    "scan_usage": {
-        "ko": "사용법: /scan <url>  예) /scan https://target.com",
-        "zh": "用法: /scan <url>  示例: /scan https://target.com",
-        "en": "Usage: /scan <url>  e.g. /scan https://target.com",
     },
     "mscan_usage": {
         "ko": "사용법: /mscan <url>  예) /mscan https://target.com",

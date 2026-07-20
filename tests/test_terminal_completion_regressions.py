@@ -11,7 +11,7 @@ from bingo.ui.terminal import (
     _normalize_tool_call_response,
     _repair_mixed_bash_python,
 )
-from bingo.lang.strings import get_strings
+from bingo.lang.strings import get_slash_commands, get_strings
 from bingo.tools.findings_exporter import FindingsExporter
 from bingo.tools.playwright_engine import PlaywrightEngine
 from bingo.core.execution_anchor import ExecutionAnchorEngine, _has_exec_evidence
@@ -2509,7 +2509,7 @@ def test_source_code_text_requests_source_path_prompt() -> None:
     assert BingoTerminal._source_path_prompt_requested("source code path /tmp/app")
 
 
-def test_source_path_prompt_stays_off_for_default_blackbox_runs() -> None:
+def test_source_path_prompt_can_be_disabled_for_blackbox_runs() -> None:
     terminal = BingoTerminal.__new__(BingoTerminal)
     terminal._source_path_prompt_enabled = False
 
@@ -2525,3 +2525,29 @@ def test_source_path_prompt_can_be_forced_by_flag() -> None:
     assert terminal._should_prompt_source_path(
         "https://www.balance-cf.co.kr/ 绕过waf，sql渗透，管理员账号密码，webshell权限"
     )
+
+
+def test_report_command_uses_auto_md_html_report_pipeline() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.s = {}
+    terminal.console = _Console()
+    called: list[bool] = []
+    warnings: list[str] = []
+    terminal._auto_generate_report = lambda: called.append(True)
+    terminal._warn = lambda msg: warnings.append(str(msg))
+
+    terminal._cmd_proof_report("")
+    terminal._cmd_proof_report("save")
+    terminal._cmd_proof_report("bad")
+
+    assert called == [True, True]
+    assert warnings
+
+
+def test_scan_slash_command_removed_from_chat_ui() -> None:
+    for lang in ("ko", "zh", "en"):
+        commands = {cmd for cmd, _desc in get_slash_commands(lang)}
+        strings = get_strings(lang)
+
+        assert "/scan" not in commands
+        assert "/scan <url>" not in strings["help_text"]

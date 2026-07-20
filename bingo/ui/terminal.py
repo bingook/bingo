@@ -601,10 +601,10 @@ class BingoTerminal:
             self._self_reflection_enabled = False
             self._self_reflection_visible = False
         self._compact_operator_ui = _env_flag_enabled("BINGO_COMPACT_UI", True)
-        # v6.2.230: source-path prompt is opt-in.  A live blackbox target must
-        # not stop to ask for local source code unless the user explicitly says
-        # they have source, or BINGO_ASK_SOURCE_PATH=1 is set.
-        self._source_path_prompt_enabled = _env_flag_enabled("BINGO_ASK_SOURCE_PATH", False)
+        # Preserve the hybrid workflow: when a new target is entered, offer a
+        # source path so blackbox+whitebox can be combined. Set
+        # BINGO_ASK_SOURCE_PATH=0 to suppress this prompt in automation.
+        self._source_path_prompt_enabled = _env_flag_enabled("BINGO_ASK_SOURCE_PATH", True)
         # 네트워크 환경 (VPN 감지 결과 캐싱)
         self._net_env: dict = {}
         self._detect_network_env()
@@ -4707,11 +4707,6 @@ class BingoTerminal:
                     "Usage: /install exe-deps\n"
                     "       Installs EXE Phase 0 analysis libraries (pefile, lief, yara, ssdeep, requests)"
                 )
-        elif name == "/scan":
-            if arg:
-                self._cmd_scan(arg)
-            else:
-                self._warn(self.s.get('scan_usage', 'Usage: /scan <url>  e.g. /scan https://target.com'))
         elif name == "/mscan":
             if arg:
                 self._cmd_mscan(arg)
@@ -5075,12 +5070,11 @@ class BingoTerminal:
     # ── /report ───────────────────────────────────────────────────────
     def _cmd_proof_report(self, arg: str) -> None:
         """
-        /report       — 현재 세션 Proof-by-exploitation 리포트 출력
-        /report save  — 파일 저장
+        /report       — 현재 세션 증거 기반 리포트 생성 + 터미널 렌더 + md/html 저장
+        /report save  — 동일
         /report clear — 초기화
         """
         cmd = arg.strip().lower()
-        target = getattr(self, "_current_target", "unknown")
 
         if cmd == "clear":
             from ..core.vuln_agents import ProofReport
@@ -5090,18 +5084,11 @@ class BingoTerminal:
             )
             return
 
-        md = self._proof_report.generate_markdown(target)
+        if cmd and cmd not in {"save", "show"}:
+            self._warn(self.s.get("report_usage", "Usage: /report [save|clear]"))
+            return
 
-        if cmd == "save":
-            import time
-            fname = f"proof_report_{target.replace('://', '_').replace('/', '_')}_{int(time.time())}.md"
-            Path(fname).write_text(md, encoding="utf-8")
-            self.console.print(
-                f"[{THEME['success']}]{self.s.get('report_saved', '리포트 저장됨')}: {fname}[/]"
-            )
-        else:
-            from rich.markdown import Markdown
-            self.console.print(Markdown(md))
+        self._auto_generate_report()
 
     def _cmd_help(self) -> None:
         self.console.print(
@@ -6327,56 +6314,6 @@ class BingoTerminal:
             )
         ))
         self._send_message("")
-
-    def _cmd_scan(self, url: str = "") -> None:
-        if not url:
-            url = Prompt.ask(f"[{THEME['primary']}]{self.s['target_url_prompt']}[/]").strip()
-        if not url:
-            return
-
-        self.console.print(f"\n[{THEME['error']}]{self.s['scan_title']}: {url}[/]")
-        self.console.print(f"[{THEME['dim']}]{self.s['scan_hint'].format(url=url)}[/]\n")
-
-        from ..tools.http_probe import HttpProbe
-        from ..tools.waf_bypass import WafDetector
-        from ..redteam.phases import __init__ as _  # noqa
-
-        probe = HttpProbe(url, delay=0.3)
-
-        # 빠른 정찰
-        with self.console.status(f"[{THEME['secondary']}]{self.s['scan_recon']}[/]"):
-            fp = probe.fingerprint()
-            sensitive = probe.scan_sensitive_files()
-            admin = probe.check_admin_panels()
-
-            # WAF
-            detector = WafDetector(probe)
-            waf = detector.detect(url)
-
-        # 결과 출력
-        table = Table(title=f"[{THEME['primary']}]{self.s['scan_result_title']}[/]",
-                      border_style=THEME["primary"], show_header=True)
-        table.add_column(self.s["scan_col_item"], style=THEME["secondary"])
-        table.add_column(self.s["scan_col_result"], style="white")
-
-        table.add_row(self.s["scan_tech"], ", ".join(fp.get("tech", [])) or "-")
-        table.add_row("CMS", fp.get("cms", "-"))
-        table.add_row(self.s["scan_waf"], f"{waf.waf_type} ({waf.confidence})" if waf.detected else self.s["scan_waf_none"])
-        table.add_row(self.s["scan_sensitive"], str(len(sensitive)))
-        table.add_row(self.s["scan_admin"], str(len(admin)))
-        self.console.print(table)
-
-        if sensitive:
-            self.console.print(f"\n[{THEME['error']}]{self.s['scan_sensitive_found']}:[/]")
-            for s in sensitive[:5]:
-                self.console.print(f"  [{THEME['warn']}]{s['path']}[/] [{s['status']}]")
-
-        if admin:
-            self.console.print(f"\n[{THEME['error']}]{self.s['scan_admin_found']}:[/]")
-            for a in admin[:3]:
-                self.console.print(f"  [{THEME['warn']}]{a['path']}[/] [{a['status']}]")
-
-        self.console.print(f"\n[{THEME['dim']}]{self.s['scan_full_hint'].format(url=url)}[/]\n")
 
     def _cmd_waf(self, url: str = "") -> None:
         if not url:

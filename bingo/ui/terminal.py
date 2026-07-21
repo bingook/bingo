@@ -576,6 +576,8 @@ class BingoTerminal:
         self._dl_no_progress: int = 0       # 연속 "진전 없음" 루프 수
         self._dl_progress_sigs: set[str] = set()
         self._dl_escape_attempts: int = 0
+        self._dl_ledger_skip_total: int = 0
+        self._dl_ledger_skip_streak: int = 0
         # Claude Code-style executor state: model proposes, executor owns action state.
         self._action_ledger: dict[str, dict] = {}
         # ── v6.2.151 2-pass Compaction 상태 ──────────────────────────────
@@ -10249,6 +10251,17 @@ class BingoTerminal:
             _dl_doom_detected = len(_dl_window) >= 6 and (
                 max(_dl_window.count(s) for s in set(_dl_window)) >= 4
             )
+            _dl_counts = BingoTerminal._finding_evidence_counts(
+                getattr(self, "_findings_exporter", None)
+            )
+            _dl_confirmed_count = int(_dl_counts.get("confirmed", 0) or 0)
+            _dl_ledger_skip_count = raw_results.count("[ACTION_LEDGER_SKIP]")
+            if _dl_ledger_skip_count > 0:
+                self._dl_ledger_skip_total += _dl_ledger_skip_count
+                self._dl_ledger_skip_streak += 1
+            else:
+                self._dl_ledger_skip_streak = 0
+
             # HTTP 200/found 같은 일반 문구가 반복을 영구 리셋하지 않도록
             # 검증된 신규 증거만 진행으로 인정한다.
             _dl_has_progress = self._has_meaningful_loop_progress(raw_results)
@@ -10259,7 +10272,8 @@ class BingoTerminal:
                 elif _dl_progress_sig:
                     self._dl_progress_sigs.add(_dl_progress_sig)
             if not _dl_has_progress:
-                self._dl_no_progress += 1
+                _dl_skip_penalty = min(3, max(1, _dl_ledger_skip_count))
+                self._dl_no_progress += _dl_skip_penalty
             else:
                 self._dl_escape_attempts = 0
                 if self._dl_no_progress > 0:
@@ -10270,7 +10284,15 @@ class BingoTerminal:
                     self.console.print(f"[{THEME['success']}]{_progress_msg}[/]")
                 self._dl_no_progress = 0
             _dl_escape_threshold = 6
-            if _dl_doom_detected or self._dl_no_progress >= _dl_escape_threshold:
+            _dl_ledger_pressure = (
+                _dl_confirmed_count == 0
+                and (
+                    (_dl_ledger_skip_count >= 2 and self._exec_loop_count >= 20)
+                    or (self._dl_ledger_skip_total >= 6 and self._exec_loop_count >= 24)
+                    or (self._dl_ledger_skip_streak >= 2 and self._exec_loop_count >= 20)
+                )
+            )
+            if _dl_doom_detected or self._dl_no_progress >= _dl_escape_threshold or _dl_ledger_pressure:
                 from ..i18n import t as _t_dl, get_lang as _gl_dl
                 _dl_escape_map = {
                     "ko": (
@@ -10303,15 +10325,15 @@ class BingoTerminal:
                 }
                 _dl_lang = getattr(self.config, "lang", "en")
                 _dl_msg = _dl_escape_map.get(_dl_lang, _dl_escape_map["en"])
-                _dl_counts = BingoTerminal._finding_evidence_counts(
-                    getattr(self, "_findings_exporter", None)
-                )
                 _dl_stop_reason = BingoTerminal._doom_loop_cutoff_reason(
                     no_progress_count=self._dl_no_progress,
                     escape_attempts=self._dl_escape_attempts,
                     loop_count=self._exec_loop_count,
                     doom_detected=_dl_doom_detected,
-                    confirmed_count=int(_dl_counts.get("confirmed", 0) or 0),
+                    confirmed_count=_dl_confirmed_count,
+                    ledger_skip_count=_dl_ledger_skip_count,
+                    ledger_skip_total=getattr(self, "_dl_ledger_skip_total", 0),
+                    ledger_skip_streak=getattr(self, "_dl_ledger_skip_streak", 0),
                 )
                 self._dl_escape_attempts += 1
                 if _dl_stop_reason:
@@ -10334,6 +10356,8 @@ class BingoTerminal:
                     self._dl_tool_sigs.clear()
                     self._dl_no_progress = 0
                     self._dl_escape_attempts = 0
+                    self._dl_ledger_skip_total = 0
+                    self._dl_ledger_skip_streak = 0
                     break
                 self.history.append(Message(role="user", content=_dl_msg))
                 self._dl_tool_sigs.clear()
@@ -14572,10 +14596,26 @@ class BingoTerminal:
         if not text:
             return False
 
+        # Executor skip notices are control-plane feedback, not new target
+        # evidence.  Keep any real tool output in the same turn, but remove the
+        # ledger notice itself before applying progress heuristics.
+        if "[ACTION_LEDGER_SKIP]" in text:
+            text = "\n".join(
+                line
+                for line in text.splitlines()
+                if "[ACTION_LEDGER_SKIP]" not in line
+                and "already done/blocked in the executor ledger" not in line
+                and not line.strip().startswith(("signature=", "summary="))
+            )
+            if not text.strip():
+                return False
+
         strong_patterns = (
             r"\bBINGO_SIGNAL\s*:",
-            r"\bBINGO-\d{4,}\b.{0,120}\b(?:confirmed|probable|potential)\b",
-            r"\b(?:CONFIRMED|VERIFIED)\b",
+            r"\bBINGO-\d{4,}\b(?=[^\n]{0,180}\b(?:tier|confidence|conf)\s*[:=]\s*confirmed\b)",
+            r"\bBINGO-\d{4,}\b(?=[^\n]{0,180}\bconfirmed\s*[:=]\s*(?:true|yes|1)\b)",
+            r"\b(?:CONFIRMED|VERIFIED)\b(?!\s*[:=]\s*(?:false|no|0)\b)",
+            r"\bconfirmed\s*[:=]\s*(?:true|yes|1)\b",
             r"\bLEAK\s+True\b",
             r"(?:stack|trace|exception).{0,60}(?:leak|exposed|disclosed|confirmed)",
             r"(?:堆栈|异常).{0,30}(?:泄露|确认|已确认)",
@@ -14678,8 +14718,18 @@ class BingoTerminal:
         loop_count: int,
         doom_detected: bool = False,
         confirmed_count: int = 0,
+        ledger_skip_count: int = 0,
+        ledger_skip_total: int = 0,
+        ledger_skip_streak: int = 0,
     ) -> str:
         """Return a stop reason when the agent loop should report instead of pivoting again."""
+        if int(confirmed_count or 0) == 0:
+            if int(ledger_skip_count or 0) >= 2 and int(loop_count or 0) >= 20:
+                return "action ledger exhausted pending vectors"
+            if int(ledger_skip_streak or 0) >= 2 and int(loop_count or 0) >= 20:
+                return "repeated action ledger skip turns"
+            if int(ledger_skip_total or 0) >= 6 and int(loop_count or 0) >= 24:
+                return "cumulative action ledger skips without confirmed findings"
         if not doom_detected and int(no_progress_count or 0) < 6:
             return ""
         next_escape_attempt = int(escape_attempts or 0) + 1
@@ -15076,9 +15126,35 @@ class BingoTerminal:
             stripped = line.strip()
             if not stripped or not signal_re.search(stripped):
                 continue
+            if _re_progress_sig.search(
+                r"^(?:#|import |from |def |for |if |elif |else:|try:|except |with |return |print\(|"
+                r"[A-Za-z_][A-Za-z0-9_]*\s*=|r[\"']|f[\"'])",
+                stripped,
+            ):
+                continue
+            if _re_progress_sig.search(r"\b(?:re\.search|re\.findall|for\s+\w+\s+in|body\.splitlines)\b", stripped):
+                continue
             stripped = _re_progress_sig.sub(
                 r"BINGO(?:_[A-Z0-9]+){1,}|TRACE_[A-Z0-9_]+|[a-f0-9]{16,}",
                 "<id>",
+                stripped,
+                flags=_re_progress_sig.IGNORECASE,
+            )
+            stripped = _re_progress_sig.sub(
+                r"(for input string:)\s*(?:&quot;[^&]{0,160}&quot;|\"[^\"]{0,160}\"|'[^']{0,160}'|[^\s<]{1,160})",
+                r"\1 <value>",
+                stripped,
+                flags=_re_progress_sig.IGNORECASE,
+            )
+            stripped = _re_progress_sig.sub(
+                r"(NumberFormatException:)\s*.*",
+                r"\1 <value>",
+                stripped,
+                flags=_re_progress_sig.IGNORECASE,
+            )
+            stripped = _re_progress_sig.sub(
+                r"\b\d{3}/\d{3,8}B\b",
+                "<status>/<size>",
                 stripped,
                 flags=_re_progress_sig.IGNORECASE,
             )

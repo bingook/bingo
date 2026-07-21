@@ -1500,6 +1500,44 @@ def test_timeout_only_output_is_not_meaningful_progress() -> None:
     assert not BingoTerminal._has_meaningful_loop_progress(output)
 
 
+def test_ledger_skip_probable_boolean_is_not_meaningful_progress() -> None:
+    output = (
+        "[ACTION_LEDGER_SKIP] family negative/no-progress already tested 3 time(s)\n"
+        "BINGO-0001 type=sqli tier=probable confirmed=False\n"
+        "Conf : probable  reason=boolean_true_false_diff\n"
+    )
+
+    assert not BingoTerminal._has_meaningful_loop_progress(output)
+
+
+def test_confirmed_false_finding_line_is_not_meaningful_progress() -> None:
+    output = (
+        "id=BINGO-0005 type=sqli sev=HIGH tier=probable confirmed=False\n"
+        "reason=boolean_true_false_diff notes=ladder:probable:boolean_true_false_diff\n"
+    )
+
+    assert not BingoTerminal._has_meaningful_loop_progress(output)
+
+
+def test_stack_leak_progress_signature_dedupes_payload_value() -> None:
+    first = (
+        "[STACK] 500/5516B nfe=True spring=True\n"
+        "org.apache.jasper.JasperException: java.lang.NumberFormatException: For input string: \"INVALID_BINGO\"\n"
+        "org.apache.jasper.servlet.JspServletWrapper.handleJspException(JspServletWrapper.java:599)\n"
+    )
+    second = (
+        "[STACK] 500/5522B nfe=True spring=True\n"
+        "org.apache.jasper.JasperException: java.lang.NumberFormatException: For input string: \"NOTANUM\"\n"
+        "org.apache.jasper.servlet.JspServletWrapper.handleJspException(JspServletWrapper.java:599)\n"
+    )
+
+    assert BingoTerminal._meaningful_loop_progress_signature(first)
+    assert (
+        BingoTerminal._meaningful_loop_progress_signature(first)
+        == BingoTerminal._meaningful_loop_progress_signature(second)
+    )
+
+
 def test_doom_loop_cutoff_stops_after_second_no_progress_escape() -> None:
     reason = BingoTerminal._doom_loop_cutoff_reason(
         no_progress_count=6,
@@ -1520,6 +1558,30 @@ def test_doom_loop_cutoff_stops_zero_confirmed_after_excessive_loops() -> None:
     )
 
     assert "zero confirmed" in reason
+
+
+def test_doom_loop_cutoff_stops_late_ledger_skip_pressure() -> None:
+    reason = BingoTerminal._doom_loop_cutoff_reason(
+        no_progress_count=1,
+        escape_attempts=0,
+        loop_count=20,
+        confirmed_count=0,
+        ledger_skip_count=2,
+    )
+
+    assert "action ledger exhausted" in reason
+
+
+def test_doom_loop_cutoff_stops_cumulative_ledger_skips() -> None:
+    reason = BingoTerminal._doom_loop_cutoff_reason(
+        no_progress_count=1,
+        escape_attempts=0,
+        loop_count=24,
+        confirmed_count=0,
+        ledger_skip_total=6,
+    )
+
+    assert "cumulative action ledger skips" in reason
 
 
 def test_action_ledger_signature_groups_rewritten_ajp_probe() -> None:

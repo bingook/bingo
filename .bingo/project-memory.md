@@ -67,18 +67,17 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-21T12:30:19+08:00
+- Last synced: 2026-07-21T14:55:46+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-21T12:30:19+08:00
+- Captured: 2026-07-21T14:55:46+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
- M PKG-INFO
  M bingo/__init__.py
  M bingo/ui/terminal.py
  M tests/test_terminal_completion_regressions.py
@@ -86,11 +85,73 @@ M .bingo/project-memory.md
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |   2 +-
+bingo/__init__.py                             |  2 +-
+ bingo/ui/terminal.py                          | 92 ++++++++++++++++++++++++---
+ tests/test_terminal_completion_regressions.py | 62 ++++++++++++++++++
+ 3 files changed, 147 insertions(+), 9 deletions(-)
+```
+
+### Added Highlights
+- `__version__ = "6.2.243"`
+- `self._dl_ledger_skip_total: int = 0`
+- `self._dl_ledger_skip_streak: int = 0`
+- `_dl_counts = BingoTerminal._finding_evidence_counts(`
+- `getattr(self, "_findings_exporter", None)`
+- `)`
+- `_dl_confirmed_count = int(_dl_counts.get("confirmed", 0) or 0)`
+- `_dl_ledger_skip_count = raw_results.count("[ACTION_LEDGER_SKIP]")`
+- `if _dl_ledger_skip_count > 0:`
+- `self._dl_ledger_skip_total += _dl_ledger_skip_count`
+- `self._dl_ledger_skip_streak += 1`
+- `else:`
+- `self._dl_ledger_skip_streak = 0`
+- `_dl_skip_penalty = min(3, max(1, _dl_ledger_skip_count))`
+- `self._dl_no_progress += _dl_skip_penalty`
+- `_dl_ledger_pressure = (`
+- `_dl_confirmed_count == 0`
+- `and (`
+- `(_dl_ledger_skip_count >= 2 and self._exec_loop_count >= 20)`
+- `or (self._dl_ledger_skip_total >= 6 and self._exec_loop_count >= 24)`
+- `or (self._dl_ledger_skip_streak >= 2 and self._exec_loop_count >= 20)`
+- `)`
+- `)`
+- `if _dl_doom_detected or self._dl_no_progress >= _dl_escape_threshold or _dl_ledger_pressure:`
+- `confirmed_count=_dl_confirmed_count,`
+- `ledger_skip_count=_dl_ledger_skip_count,`
+- `ledger_skip_total=getattr(self, "_dl_ledger_skip_total", 0),`
+- `ledger_skip_streak=getattr(self, "_dl_ledger_skip_streak", 0),`
+- `self._dl_ledger_skip_total = 0`
+- `self._dl_ledger_skip_streak = 0`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:babdc3f1449ae9e946d9c8494f07d385486ebee0 -->
+## Code change: fix: make action ledger visible and block repeated probe families
+- Commit: `babdc3f1449a`
+- Recorded: 2026-07-21T12:56:20+08:00
+- Committed: 2026-07-21T12:56:20+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+babdc3f14 fix: make action ledger visible and block repeated probe families
+ .bingo/project-memory.md                      | 132 ++++++++++-----------
+ PKG-INFO                                      |   2 +-
  bingo/__init__.py                             |   2 +-
  bingo/ui/terminal.py                          | 159 ++++++++++++++++++++++++--
  tests/test_terminal_completion_regressions.py |  70 ++++++++++++
- 4 files changed, 220 insertions(+), 13 deletions(-)
+ 5 files changed, 286 insertions(+), 79 deletions(-)
 ```
 
 ### Added Highlights
@@ -124,67 +185,4 @@ PKG-INFO                                      |   2 +-
 - `f"timeouts={_action_done.get('timeouts', 0)}[/]"`
 - `)`
 - `("unauth_mypage", r"(?:/balance/mypage/|cust_limit|app_status|custinfo|receipt_account|certification)"),`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:2c304181e505c338da73bb2bb3d31d7ab26ddb9d -->
-## Code change: fix: add action ledger to prevent repeated scan loops
-- Commit: `2c304181e505`
-- Recorded: 2026-07-21T03:33:19+08:00
-- Committed: 2026-07-21T03:33:19+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-M	PKG-INFO
-M	bingo/__init__.py
-M	bingo/ui/terminal.py
-M	tests/test_terminal_completion_regressions.py
-```
-
-### Diff Stat
-```text
-2c304181e fix: add action ledger to prevent repeated scan loops
- .bingo/project-memory.md                      | 151 ++++++------
- PKG-INFO                                      |   2 +-
- bingo/__init__.py                             |   2 +-
- bingo/ui/terminal.py                          | 340 +++++++++++++++++++++++++-
- tests/test_terminal_completion_regressions.py | 244 ++++++++++++++++++
- 5 files changed, 649 insertions(+), 90 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.241`
-- `__version__ = "6.2.241"`
-- `self._action_ledger: dict[str, dict] = {}`
-- `_action_sig, _action_summary = BingoTerminal._action_ledger_signature(`
-- `_tool_name, _tool_args`
-- `)`
-- `_skip_action_reason = self._action_ledger_skip_reason(`
-- `_action_sig, _action_summary`
-- `)`
-- `if _skip_action_reason:`
-- `_skip_result = (`
-- `f"=== TOOL_RESULT: {_tool_name or '?'} ===\n"`
-- `"exit_code=-96 success=false\n"`
-- `"--- output ---\n"`
-- `f"[ACTION_LEDGER_SKIP] {_skip_action_reason}\n"`
-- `"This action is already done/blocked in the executor ledger. "`
-- `"Choose a different pending vector, endpoint, parameter, or payload class.\n"`
-- `f"signature={_action_sig}\n"`
-- `f"summary={_action_summary}\n"`
-- `"=== END TOOL_RESULT ==="`
-- `)`
-- `tool_results.append(_skip_result)`
-- `continue`
-- `self._action_ledger_start(_action_sig, _action_summary)`
-- `self._action_ledger_finish(`
-- `_action_sig,`
-- `_action_summary,`
-- `output=_result_str,`
-- `success=bool(_ok),`
-- `exit_code=int(_ec) if isinstance(_ec, int) else -1,`
 <!-- bingo-project-memory:auto:end -->

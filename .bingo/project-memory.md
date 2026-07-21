@@ -69,142 +69,63 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-22T04:21:20+08:00
+- Last synced: 2026-07-22T05:01:22+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
-
-<!-- working-tree:start -->
-## Working tree snapshot (uncommitted)
-- Captured: 2026-07-22T04:21:20+08:00
-
-### Status
-```text
-M .bingo/project-memory.md
- M PKG-INFO
- M README.md
- M bingo/__init__.py
- M bingo/core/executor_state.py
- M bingo/ui/terminal.py
- M docs/ENGINEERING.md
- M tests/test_terminal_completion_regressions.py
-?? bingo/core/session_bridge.py
-?? bingo/core/v7/
-?? docs/BINGO_V7_ARCHITECTURE.md
-?? tests/test_v7_architecture.py
-```
-
-### Diff Stat
-```text
-PKG-INFO                                      |   11 +-
- README.md                                     |    9 +-
- bingo/__init__.py                             |    2 +-
- bingo/core/executor_state.py                  |  476 +++----
- bingo/ui/terminal.py                          | 1824 ++++++-------------------
- docs/ENGINEERING.md                           |   24 +
- tests/test_terminal_completion_regressions.py |  302 +++-
- 7 files changed, 875 insertions(+), 1773 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.251`
-- `[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `| v6.2.251 | **Bingo v7 foundation** — added 'bingo/core/v7/' as the new typed core: mission state machine, coverage ledger, evidence graph, executor action envelope, and determini`
-- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.251 executor runtime-budget instrumentation, so loop risk is b`
-- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.251 executor runtime-budget instrumentation. Cursor-patt`
-- `[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `| v6.2.251 | **Bingo v7 foundation** — added 'bingo/core/v7/' as the new typed core: mission state machine, coverage ledger, evidence graph, executor action envelope, and determini`
-- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.251 executor runtime-budget instrumentation, so loop risk is b`
-- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.251 executor runtime-budget instrumentation. Cursor-patt`
-- `[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `__version__ = "6.2.251"`
-- `from .v7.loop_policy import (`
-- `doom_loop_cutoff_reason,`
-- `has_meaningful_loop_progress,`
-- `ledger_skip_count,`
-- `low_value_reentry_count,`
-- `meaningful_loop_progress_signature,`
-- `no_progress_penalty,`
-- `repeated_response_pattern,`
-- `response_pattern_signature,`
-- `strip_action_ledger_skip_noise,`
-- `target_drift_block_count,`
-- `)`
-- `def canonical_action_args(tool_name: str, args: dict) -> dict:`
-- `"""Return executor-normalized args for stable action identity.`
-- `This mirrors execution-time target canonicalization so the action ledger`
-- `never stores model-drifted hosts as distinct identities.`
-- `"""`
-- `if not isinstance(args, dict):`
-<!-- working-tree:end -->
 
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
 
-<!-- commit:0985c1b55b59b996fbe183788cf47899b073e92b -->
-## Code change: fix: promote runtime evidence into executor state
-- Commit: `0985c1b55b59`
-- Recorded: 2026-07-21T23:45:57+08:00
-- Committed: 2026-07-21T23:45:57+08:00
+<!-- commit:53912d70b4f4ff81f4e44a3ffd4fedf91c2ec5cd -->
+## Code change: fix: restore v7 status contract dispatch
+- Commit: `53912d70b4f4`
+- Recorded: 2026-07-22T05:01:22+08:00
+- Committed: 2026-07-22T05:01:21+08:00
 
 ### Files
 ```text
-M	.bingo/project-memory.md
-M	PKG-INFO
-M	README.md
-M	bingo/__init__.py
-M	bingo/core/executor_state.py
-M	bingo/tools/findings_exporter.py
 M	bingo/ui/terminal.py
-M	docs/ENGINEERING.md
 M	tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-0985c1b55 fix: promote runtime evidence into executor state
- .bingo/project-memory.md                      | 186 ++++++++++----------
- PKG-INFO                                      |  11 +-
- README.md                                     |   9 +-
- bingo/__init__.py                             |   2 +-
- bingo/core/executor_state.py                  |  35 ++++
- bingo/tools/findings_exporter.py              | 239 +++++++++++++++++++++++++-
- bingo/ui/terminal.py                          |  42 ++++-
- docs/ENGINEERING.md                           |  39 ++++-
- tests/test_terminal_completion_regressions.py |  83 +++++++++
- 9 files changed, 541 insertions(+), 105 deletions(-)
+53912d70b fix: restore v7 status contract dispatch
+ bingo/ui/terminal.py                          | 14 ++++++++++++++
+ tests/test_terminal_completion_regressions.py | 28 +++++++++++++++++++++++++++
+ 2 files changed, 42 insertions(+)
 ```
 
 ### Added Highlights
-- `Version: 6.2.250`
-- `[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `| v6.2.250 | **Executor evidence-state upgrade** — promotes concrete runtime observations such as public 'composer.json'/'composer.lock'/'vendor/composer/installed.json', server st`
-- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.250 executor runtime-budget instrumentation, so loop risk is b`
-- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.250 executor runtime-budget instrumentation. Cursor-patt`
-- `[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `| v6.2.250 | **Executor evidence-state upgrade** — promotes concrete runtime observations such as public 'composer.json'/'composer.lock'/'vendor/composer/installed.json', server st`
-- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.250 executor runtime-budget instrumentation, so loop risk is b`
-- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.250 executor runtime-budget instrumentation. Cursor-patt`
-- `[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `__version__ = "6.2.250"`
-- `r"/(?:composer\.(?:json|lock)|vendor/composer/installed\.json)\s*->\s*200\b",`
-- `r"\bPKG\s+[a-z0-9_.-]+/[a-z0-9_.-]+@?v?\d",`
-- `r"(?:ADMIN\s+ENUM|USER(?:NAME)?[_ -]?ENUM).{0,400}"`
-- `r"(?:Fatal\s+error:\s*Uncaught|Uncaught\s+(?:TypeError|Error|Exception)).{0,500}"`
-- `r"(?:called\s+in\s+/|Stack\s+trace)",`
-- `if int(confirmed_count or 0) > 0:`
-- `if int(no_progress_count or 0) >= 4 and int(loop_count or 0) >= 10:`
-- `return "confirmed evidence plateau; report current findings"`
-- `if int(low_value_reentry_count or 0) >= 2 and int(loop_count or 0) >= 12:`
-- `return "confirmed evidence reached; low-value re-entry exhausted"`
-- `("artifact_exposure", r"(?:composer\.(?:json|lock)|vendor/composer/installed\.json|package-lock\.json|yarn\.lock)"),`
-- `def _looks_transport_proxy_endpoint(host: str, port: str) -> bool:`
-- `host_l = str(host or "").lower().strip("[]")`
-- `port_s = str(port or "")`
-- `if host_l not in {"127.0.0.1", "localhost", "::1", "0.0.0.0"}:`
-- `return False`
-- `if port_s not in {"9050", "9051", "1080", "1086", "1087", "7890", "7891", "8080", "8081", "8118"}:`
-- `return False`
+- `@staticmethod`
+- `def _v7_status_call(status: object, method_name: str, *args, default=None, **kwargs):`
+- `if status is None or not method_name:`
+- `return default`
+- `member = getattr(status, method_name, None)`
+- `if callable(member):`
+- `try:`
+- `return member(*args, **kwargs)`
+- `except Exception:`
+- `return default`
+- `if member is None:`
+- `return default`
+- `return member`
+- `def test_terminal_v7_status_call_delegates_to_runtime_status_contract() -> None:`
+- `status = RuntimeStatus(`
+- `target="https://example.kr",`
+- `phase=MissionPhase.VALIDATE,`
+- `reason="surface coverage exists but no confirmed evidence yet",`
+- `report_now=False,`
+- `pivot_now=True,`
+- `next_focus=("auth:session_boundary", "api:error_paths", "artifact:manifest_fetch"),`
+- `loop_count=7,`
+- `plateau_turns=1,`
+- `observation_count=1,`
+- `candidate_count=1,`
+- `confirmed_count=0,`
+- `)`
+- `contract = BingoTerminal._v7_status_call(`
+- `status,`
+- `"action_contract",`
 <!-- bingo-project-memory:auto:end -->

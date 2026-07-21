@@ -81,25 +81,16 @@ _STRINGS = {
     },
     # ── 명령어 ────────────────────────────────────────────────────
     "help_text": {
-        "ko": """/login <url> <id> <pw>   🔑 실제 로그인 실행 + 세션 쿠키 자동 저장
-/cred <id> <pw> [쿠키]  🔑 자격증명 수동 저장 (쿠키 없어도 OK)
-/session                 현재 인증 세션 확인 | /session clear 초기화
-/hint <메시지>           💬 AI 실행 도중 힌트 주입 (재실행 없이 방향 전환)
-/retry                   🔁 마지막 실패 단계만 재실행 (처음부터 재시작 불필요)
-/ctf <url>               🏁 웹 실습 환경 보안 점검 (--status / --resume=no / --headless=no)
-/waf <url>               WAF 탐지 + 자동 우회 시도
-/crack [hash]            해시 크랙 — 온라인 조회 → 오프라인 크랙
-/stop                    실행 중인 크랙/스캔 중단
-/whitebox <경로|paste>   🔍 소스코드 화이트박스 분석 → 취약점 힌트 추출
-/agent [list|plan|priority] 🤖 취약점 전담 에이전트 관리
-/report [save|clear]     📋 Proof-by-exploitation 리포트
-/load <세션파일경로>      📂 이전 세션 불러오기 + AI 자동 재개 (경로 직접 붙여넣기도 가능)
-/tools                   도구 목록 + 자동 설치
-/tools install <이름>    특정 도구 자동 설치
-/tools install all       미설치 도구 전체 설치
+        "ko": """/help                    도움말 표시
+/hint <메시지>           AI 실행 도중 힌트 주입
+/retry                   마지막 요청/실패 단계 재시도
+/load <세션파일경로>      이전 세션 불러오기 + AI 자동 재개
+/report [save|clear]     현재 작업 리포트 생성/저장
+/login <url> <id> <pw>   인증 세션 저장
+/cred <id> <pw> [쿠키]   자격증명 수동 저장
+/session [clear]         현재 인증 세션 확인/초기화
+/proxy [list|add|off]    프록시 상태 관리
 /model                   AI 모델 추가/변경
-/skill <키워드>          스킬 지식베이스 검색
-/kb                      로컬 지식베이스  /kb [list|search <kw>|show <name>|reload]
 /history                 대화 기록 보기
 /export                  대화를 .md 파일로 저장
 /config                  현재 설정 보기
@@ -108,25 +99,16 @@ _STRINGS = {
 /quit                    종료
 
 ⚡ Ctrl+C → 힌트 입력창 → 텍스트 입력 시 루프 유지 / Enter 시 중단""",
-        "zh": """/login <url> <id> <pw>   🔑 执行实际登录 + 自动保存会话 Cookie
-/cred <id> <pw> [Cookie] 🔑 手动保存凭据（无 Cookie 也可）
-/session                 查看当前认证会话 | /session clear 清除
-/hint <消息>             💬 执行中注入提示 (无需重启即可改变方向)
-/retry                   🔁 仅重试上次失败步骤 (无需从头重新启动)
-/ctf <url>               🏁 Web实验环境安全扫描 (--status / --resume=no / --headless=no)
-/waf <url>               WAF 检测 + 自动绕过尝试
-/crack [hash]            哈希破解 — 在线查询 → 离线破解
-/stop                    停止正在运行的破解/扫描
-/whitebox <路径|paste>   🔍 白盒源码分析 → 提取漏洞提示
-/agent [list|plan|priority] 🤖 漏洞专属代理管理
-/report [save|clear]     📋 漏洞利用证明报告
-/load <会话文件路径>      📂 加载历史会话 + AI自动续接 (直接粘贴路径也可)
-/tools                   工具列表 + 自动安装
-/tools install <名称>    自动安装指定工具
-/tools install all       安装所有缺失工具
+        "zh": """/help                    显示帮助
+/hint <消息>             执行中注入提示
+/retry                   重试上一次请求/失败步骤
+/load <会话文件路径>      加载历史会话 + AI自动续接
+/report [save|clear]     生成/保存当前任务报告
+/login <url> <id> <pw>   保存认证会话
+/cred <id> <pw> [Cookie] 手动保存凭据
+/session [clear]         查看/清除当前认证会话
+/proxy [list|add|off]    管理代理状态
 /model                   添加/切换 AI 模型
-/skill <关键词>          搜索技能知识库
-/kb                      本地知识库  /kb [list|search <kw>|show <name>|reload]
 /history                 查看对话历史
 /export                  导出对话为 .md 文件
 /config                  查看当前配置
@@ -135,25 +117,16 @@ _STRINGS = {
 /quit                    退出
 
 ⚡ Ctrl+C → 提示输入框 → 输入文字继续 / 直接回车停止""",
-        "en": """/login <url> <id> <pw>   🔑 Perform real login + auto-save session cookies
-/cred <id> <pw> [cookie] 🔑 Manually store credentials (cookie optional)
-/session                 View auth session | /session clear to reset
-/hint <message>          💬 Inject hint mid-execution (redirect without restart)
-/retry                   🔁 Retry only the last failed step (no full restart)
-/ctf <url>               🏁 Web lab security scan (--status / --resume=no / --headless=no)
-/waf <url>               WAF detection + auto bypass attempt
-/crack [hash]            Hash crack — online lookup → offline crack
-/stop                    Stop running crack/scan
-/whitebox <path|paste>   🔍 Whitebox source code analysis → extract attack hints
-/agent [list|plan|priority] 🤖 Vulnerability specialist agent management
-/report [save|clear]     📋 Proof-by-exploitation report
-/load <session-file>     📂 Load previous session + auto-resume AI (paste path directly too)
-/tools                   Tool list + auto-install
-/tools install <name>    Auto-install a specific tool
-/tools install all       Install all missing tools
+        "en": """/help                    Show help
+/hint <message>          Inject a hint during AI execution
+/retry                   Retry the last request or failed step
+/load <session-file>     Load previous session + auto-resume AI
+/report [save|clear]     Generate/save the current task report
+/login <url> <id> <pw>   Save authenticated session
+/cred <id> <pw> [cookie] Manually store credentials
+/session [clear]         View/reset auth session
+/proxy [list|add|off]    Manage proxy state
 /model                   Add or switch AI model
-/skill <keyword>         Search skill knowledge base
-/kb                      Local knowledge base  /kb [list|search <kw>|show <name>|reload]
 /history                 View chat history
 /export                  Export chat as .md file
 /config                  View current settings
@@ -1103,6 +1076,25 @@ _SLASH_DESC = {
                        "zh": "🔍 信息/资产收集: passive|active|full|js|nuclei|dorks",
                        "en": "🔍 Recon/asset collection: passive|active|full|js|nuclei|dorks"},
 }
+
+_CHAT_MODE_SLASH_COMMANDS = (
+    "/help",
+    "/hint",
+    "/retry",
+    "/load",
+    "/report",
+    "/login",
+    "/cred",
+    "/session",
+    "/proxy",
+    "/model",
+    "/history",
+    "/export",
+    "/config",
+    "/lang",
+    "/clear",
+    "/quit",
+)
 
 # ── v3.6.0: CVE/KB 메시지 (_STRINGS 에 추가 — get_strings() 반환 대상) ──────
 _STRINGS.update({
@@ -10064,7 +10056,10 @@ def get_slash_commands(lang: str = "en") -> list:
         def has_hangul(s: str) -> bool:  # type: ignore
             return False
     result = []
-    for cmd, desc in _SLASH_DESC.items():
+    for cmd in _CHAT_MODE_SLASH_COMMANDS:
+        desc = _SLASH_DESC.get(cmd)
+        if not desc:
+            continue
         val = desc.get(lang, "") or ""
         if lang == "zh" and has_hangul(val):
             val = desc.get("en", "") or val

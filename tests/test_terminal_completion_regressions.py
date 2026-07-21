@@ -28,7 +28,7 @@ from bingo.models.system_prompt import (
     rephrase_refused_request,
     wrap_task,
 )
-from bingo.models.base import Message, ModelConfig
+from bingo.models.base import Message, ModelConfig, StreamChunk
 from bingo.orchestrator.engine import _board_value_anchored, _goal_completion_allowed
 from bingo.proxy.manager import ProxyManager, _extract_proxy_candidates, _parse_proxy_url
 from bingo.tools_ext import autoexploit_modules
@@ -451,7 +451,41 @@ def test_target_state_canonicalizes_tool_url_headers_and_host_header() -> None:
     assert rewritten["headers"]["Origin"] == "https://moneyknock.kr"
     assert rewritten["headers"]["Host"] == "moneyknock.kr"
     assert "TARGET_CANONICALIZED" in notice
-    assert "moneyknock.jp" not in notice
+
+
+def test_stream_response_canonicalizes_visible_target_text_before_rendering() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    output = io.StringIO()
+    terminal.console = Console(file=output, force_terminal=False, color_system=None, width=120)
+    terminal.s = {"api_error": "API Error"}
+    terminal.config = SimpleNamespace(lang="en")
+    terminal.history = []
+    terminal._agent_state = {"target": "https://moneyknock.kr"}
+    terminal._current_target = "https://moneyknock.kr"
+    terminal._agent_stop_flag = threading.Event()
+    terminal._session_log_path = None
+
+    set_target_domain("https://moneyknock.kr")
+    try:
+        result = terminal._stream_response(
+            iter([
+                StreamChunk(
+                    text=(
+                        "Target https://moneyknock.jp/ reset.\n"
+                        'TOOL_CALL:{"name":"http_get","args":{"url":"https://moneyknock.jp/admin"}}'
+                    )
+                ),
+                StreamChunk(text="", done=True),
+            ])
+        )
+    finally:
+        set_target_domain("")
+
+    rendered = output.getvalue()
+    assert "moneyknock.kr" in result
+    assert "moneyknock.jp" not in result
+    assert "moneyknock.kr" in rendered
+    assert "moneyknock.jp" not in rendered
 
 
 def test_script_target_scope_canonicalizes_lookalike_without_attack_payload() -> None:
@@ -3634,12 +3668,62 @@ def test_report_command_uses_auto_md_html_report_pipeline() -> None:
 
 
 def test_scan_slash_command_removed_from_chat_ui() -> None:
+    expected = {
+        "/help",
+        "/hint",
+        "/retry",
+        "/load",
+        "/report",
+        "/login",
+        "/cred",
+        "/session",
+        "/proxy",
+        "/model",
+        "/history",
+        "/export",
+        "/config",
+        "/lang",
+        "/clear",
+        "/quit",
+    }
+    hidden_legacy = {
+        "/scan",
+        "/tools",
+        "/tools-ext",
+        "/skill",
+        "/skill install",
+        "/waf",
+        "/webshell",
+        "/mscan",
+        "/ctf",
+        "/whitebox",
+        "/agent",
+        "/role",
+        "/vulns",
+        "/board",
+        "/kb",
+        "/batch",
+        "/chain",
+        "/hitl",
+        "/orch",
+        "/recon",
+        "/install",
+        "/undo",
+        "/snapshots",
+        "/cost",
+        "/crack",
+        "/stop",
+    }
     for lang in ("ko", "zh", "en"):
         commands = {cmd for cmd, _desc in get_slash_commands(lang)}
         strings = get_strings(lang)
 
-        assert "/scan" not in commands
+        assert commands == expected
+        assert not hidden_legacy & commands
         assert "/scan <url>" not in strings["help_text"]
+        assert "/tools" not in strings["help_text"]
+        assert "/waf" not in strings["help_text"]
+        assert "/skill" not in strings["help_text"]
 
 
 def test_proxy_parser_accepts_common_provider_formats() -> None:

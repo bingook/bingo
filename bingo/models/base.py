@@ -29,6 +29,16 @@ class StreamChunk:
     text: str
     done: bool = False
     error: str | None = None
+    finish_reason: str | None = None
+    diagnostics: str | None = None
+
+
+@dataclass
+class _NormalizedStreamEvent:
+    text: str = ""
+    finish_reason: str | None = None
+    error: str | None = None
+    shape: str = "unknown"
 
 
 # ── DeepSeek V4 Pro 기본 시스템 프롬프트 ──────────────────────────
@@ -91,6 +101,157 @@ class BaseModel:
         self.config = config
         # v4.0.0: Amplifier 활성화 여부 플래그 (오케스트레이터는 별도 제어)
         self._amplifier_enabled: bool = True
+
+    @staticmethod
+    def _compact_event_shape(obj: object) -> str:
+        """Return a short schema fingerprint for stream diagnostics."""
+        if not isinstance(obj, dict):
+            return type(obj).__name__
+        keys = ",".join(sorted(str(k) for k in obj.keys())[:8])
+        if isinstance(obj.get("choices"), list) and obj["choices"]:
+            choice = obj["choices"][0]
+            if isinstance(choice, dict):
+                choice_keys = ",".join(sorted(str(k) for k in choice.keys())[:8])
+                delta = choice.get("delta")
+                if isinstance(delta, dict):
+                    delta_keys = ",".join(sorted(str(k) for k in delta.keys())[:8])
+                    return f"choices[{choice_keys}].delta[{delta_keys}]"
+                message = choice.get("message")
+                if isinstance(message, dict):
+                    msg_keys = ",".join(sorted(str(k) for k in message.keys())[:8])
+                    return f"choices[{choice_keys}].message[{msg_keys}]"
+                return f"choices[{choice_keys}]"
+        return keys or "empty-object"
+
+    @staticmethod
+    def _extract_text_value(value: object) -> str:
+        """Normalize common provider text containers into plain text."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return "".join(BaseModel._extract_text_value(item) for item in value)
+        if isinstance(value, dict):
+            for key in (
+                "text",
+                "content",
+                "output_text",
+                "reasoning_content",
+                "summary_text",
+            ):
+                if key in value:
+                    extracted = BaseModel._extract_text_value(value.get(key))
+                    if extracted:
+                        return extracted
+            delta = value.get("delta")
+            if isinstance(delta, (dict, list, str)):
+                extracted = BaseModel._extract_text_value(delta)
+                if extracted:
+                    return extracted
+        return ""
+
+    @staticmethod
+    def _normalize_openai_compatible_event(obj: object) -> _NormalizedStreamEvent:
+        """Parse OpenAI-compatible stream variants without dropping evidence.
+
+        Providers that advertise OpenAI compatibility often diverge in small
+        ways: structured content arrays, message-shaped terminal chunks,
+        reasoning_content fields, top-level errors, or non-SSE JSON bodies.
+        The transport layer owns those variations so the UI does not mistake an
+        unparsed HTTP 200 body for a valid empty assistant answer.
+        """
+        shape = BaseModel._compact_event_shape(obj)
+        if not isinstance(obj, dict):
+            return _NormalizedStreamEvent(shape=shape)
+
+        error_obj = obj.get("error")
+        if error_obj:
+            if isinstance(error_obj, dict):
+                message = (
+                    error_obj.get("message")
+                    or error_obj.get("detail")
+                    or json.dumps(error_obj, ensure_ascii=False)[:300]
+                )
+            else:
+                message = str(error_obj)
+            return _NormalizedStreamEvent(error=str(message), shape=shape)
+
+        choices = obj.get("choices")
+        if isinstance(choices, list) and choices:
+            choice = choices[0]
+            if not isinstance(choice, dict):
+                return _NormalizedStreamEvent(shape=shape)
+
+            finish = choice.get("finish_reason")
+            text = ""
+            delta = choice.get("delta")
+            if isinstance(delta, dict):
+                for key in ("content", "text", "output_text", "reasoning_content"):
+                    text = BaseModel._extract_text_value(delta.get(key))
+                    if text:
+                        break
+            elif delta is not None:
+                text = BaseModel._extract_text_value(delta)
+
+            if not text:
+                message = choice.get("message")
+                if isinstance(message, dict):
+                    for key in ("content", "text", "output_text", "reasoning_content"):
+                        text = BaseModel._extract_text_value(message.get(key))
+                        if text:
+                            break
+                elif message is not None:
+                    text = BaseModel._extract_text_value(message)
+
+            if not text:
+                text = BaseModel._extract_text_value(choice.get("text"))
+
+            return _NormalizedStreamEvent(
+                text=text,
+                finish_reason=str(finish) if finish is not None else None,
+                shape=shape,
+            )
+
+        # OpenAI Responses-style and other top-level JSON variants.
+        event_type = str(obj.get("type") or "")
+        if event_type in {"response.output_text.delta", "response.text.delta"}:
+            return _NormalizedStreamEvent(
+                text=BaseModel._extract_text_value(obj.get("delta")),
+                shape=shape,
+            )
+        if event_type in {"message_stop", "response.completed", "response.done"}:
+            return _NormalizedStreamEvent(finish_reason="stop", shape=shape)
+
+        for key in ("content", "text", "output_text", "reasoning_content"):
+            text = BaseModel._extract_text_value(obj.get(key))
+            if text:
+                return _NormalizedStreamEvent(text=text, shape=shape)
+
+        return _NormalizedStreamEvent(shape=shape)
+
+    @staticmethod
+    def _stream_diagnostics(
+        *,
+        status_code: int,
+        parsed_events: int,
+        text_events: int,
+        ignored_events: int,
+        finish_reason: str | None,
+        shapes: list[str],
+        reason: str,
+    ) -> str:
+        unique_shapes: list[str] = []
+        for shape in shapes:
+            if shape and shape not in unique_shapes:
+                unique_shapes.append(shape)
+        shape_text = "; ".join(unique_shapes[:5]) or "none"
+        finish = finish_reason or "none"
+        return (
+            f"MODEL_STREAM_PROTOCOL reason={reason}; http={status_code}; "
+            f"parsed={parsed_events}; text_events={text_events}; "
+            f"ignored={ignored_events}; finish={finish}; shapes={shape_text}"
+        )
 
     @staticmethod
     def _grok_403_bypass_rewrite(messages: list[Message]) -> list[Message]:
@@ -285,20 +446,86 @@ class BaseModel:
                                               error=f"HTTP {resp.status_code}: {body[:200]}")
                             return
 
-                        for line in resp.iter_lines():
-                            if not line or line == "data: [DONE]":
+                        parsed_events = 0
+                        text_events = 0
+                        ignored_events = 0
+                        finish_reason: str | None = None
+                        shapes: list[str] = []
+
+                        for raw_line in resp.iter_lines():
+                            line = (
+                                raw_line.decode("utf-8", "replace")
+                                if isinstance(raw_line, bytes)
+                                else raw_line
+                            )
+                            if not line:
+                                continue
+                            if line.startswith("event:"):
+                                continue
+                            if line == "data: [DONE]":
+                                finish_reason = finish_reason or "done"
                                 continue
                             if line.startswith("data: "):
                                 line = line[6:]
                             try:
                                 obj = json.loads(line)
-                                delta = obj["choices"][0].get("delta", {})
-                                text = delta.get("content") or ""
-                                finish = obj["choices"][0].get("finish_reason")
-                                yield StreamChunk(text=text, done=finish is not None)
-                            except (json.JSONDecodeError, KeyError, IndexError):
+                            except json.JSONDecodeError:
+                                ignored_events += 1
+                                if len(shapes) < 5:
+                                    shapes.append("json-decode-error")
                                 continue
-                        success = True
+
+                            parsed_events += 1
+                            event = BaseModel._normalize_openai_compatible_event(obj)
+                            if event.shape:
+                                shapes.append(event.shape)
+                            if event.error:
+                                diag = BaseModel._stream_diagnostics(
+                                    status_code=resp.status_code,
+                                    parsed_events=parsed_events,
+                                    text_events=text_events,
+                                    ignored_events=ignored_events,
+                                    finish_reason=finish_reason,
+                                    shapes=shapes,
+                                    reason="provider-error",
+                                )
+                                yield StreamChunk(
+                                    text="",
+                                    done=True,
+                                    error=event.error,
+                                    diagnostics=diag,
+                                )
+                                return
+                            if event.finish_reason:
+                                finish_reason = event.finish_reason
+                            if event.text:
+                                text_events += 1
+                                yield StreamChunk(
+                                    text=event.text,
+                                    done=False,
+                                    finish_reason=finish_reason,
+                                )
+
+                        if text_events > 0:
+                            yield StreamChunk(
+                                text="",
+                                done=True,
+                                finish_reason=finish_reason or "stream_end",
+                            )
+                            success = True
+                            return
+
+                        reason = "no-json-events" if parsed_events == 0 else "no-usable-text"
+                        diag = BaseModel._stream_diagnostics(
+                            status_code=resp.status_code,
+                            parsed_events=parsed_events,
+                            text_events=text_events,
+                            ignored_events=ignored_events,
+                            finish_reason=finish_reason,
+                            shapes=shapes,
+                            reason=reason,
+                        )
+                        yield StreamChunk(text="", done=True, error=diag, diagnostics=diag)
                         return
 
             except (httpx.RemoteProtocolError, httpx.ReadError) as e:

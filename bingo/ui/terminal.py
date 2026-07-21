@@ -1145,7 +1145,7 @@ class BingoTerminal:
 
     def _append_to_session_log(self, role: str, content: str) -> None:
         """대화 한 턴을 세션 로그에 추가"""
-        if not self._session_log_path:
+        if not getattr(self, "_session_log_path", None):
             return
         try:
             ts = datetime.now().strftime("%H:%M:%S")
@@ -1154,6 +1154,8 @@ class BingoTerminal:
                 label = "**YOU**"
             elif role == "tool_result":
                 label = "**TOOL_RESULT**"
+            elif role == "diagnostic":
+                label = "**DIAGNOSTIC**"
             else:
                 label = "**bingo**"
             # v6.2.169: 쿠키/토큰 평문 마스킹 후 저장
@@ -4546,6 +4548,8 @@ class BingoTerminal:
     def _stream_response(self, stream: Iterator[StreamChunk]) -> str:
         full = ""
         _interrupted = False  # Ctrl+C로 스트림이 중단됐는지 여부
+        _stream_diagnostics: list[str] = []
+        _target_notice = ""
 
         # ── compact operator response header ────────────────────────
         _now_str = datetime.now().strftime("%H:%M:%S")
@@ -4562,14 +4566,25 @@ class BingoTerminal:
                 if self._agent_stop_flag.is_set():
                     _interrupted = True
                     break
+                if getattr(chunk, "diagnostics", None):
+                    _stream_diagnostics.append(str(chunk.diagnostics))
                 if chunk.error:
                     live.stop()
                     self._last_stream_error = chunk.error  # v6.2.148: 에러 캐시
+                    if _stream_diagnostics:
+                        self._last_stream_diagnostics = _stream_diagnostics[-1]
+                        self._append_to_session_log(
+                            "diagnostic",
+                            "[MODEL_STREAM_DIAGNOSTICS]\n" + _stream_diagnostics[-1],
+                        )
                     self._error(f"{self.s['api_error']}: {chunk.error}")
                     return ""
                 if chunk.text:
                     full += chunk.text
                     visible = self._filter_ai_monologue(full)
+                    visible, _notice = self._canonicalize_assistant_target_scope_response(visible)
+                    if _notice and not _target_notice:
+                        _target_notice = _notice
                     visible = self._compact_tool_call_payloads(visible, max_calls=3)
                     # 스트리밍 중: 코드 블록 접기 + 내부 키워드 제거
                     collapsed = self._collapse_code_blocks(visible)
@@ -4599,6 +4614,17 @@ class BingoTerminal:
 
         # 최종 출력: 코드 블록 접기 + 내부 제어 키워드 제거
         final = self._filter_ai_monologue(full)
+        final, _final_notice = self._canonicalize_assistant_target_scope_response(final)
+        if _final_notice:
+            _target_notice = _final_notice
+        if _target_notice and final.strip() and not final.startswith("[TARGET_CANONICALIZED]"):
+            final = _target_notice + "\n" + final
+        if _stream_diagnostics and not final.strip():
+            self._last_stream_diagnostics = _stream_diagnostics[-1]
+            self._append_to_session_log(
+                "diagnostic",
+                "[MODEL_STREAM_DIAGNOSTICS]\n" + _stream_diagnostics[-1],
+            )
         final_for_display = self._compact_tool_call_payloads(final, max_calls=3)
         display = self._collapse_code_blocks(final_for_display)
         display = self._filter_agent_noise(display)

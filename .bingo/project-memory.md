@@ -69,7 +69,7 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-22T05:01:22+08:00
+- Last synced: 2026-07-22T05:03:23+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
@@ -77,55 +77,29 @@
 
 > Automatically records committed code changes. Newest entries appear first.
 
-<!-- commit:53912d70b4f4ff81f4e44a3ffd4fedf91c2ec5cd -->
-## Code change: fix: restore v7 status contract dispatch
-- Commit: `53912d70b4f4`
-- Recorded: 2026-07-22T05:01:22+08:00
-- Committed: 2026-07-22T05:01:21+08:00
+<!-- commit:9549c0723d731e33d3ff36dc1d0d6253d0265d19 -->
+## Code change: release: bump version to 6.2.252
+- Commit: `9549c0723d73`
+- Recorded: 2026-07-22T05:03:23+08:00
+- Committed: 2026-07-22T05:03:23+08:00
 
 ### Files
 ```text
-M	bingo/ui/terminal.py
-M	tests/test_terminal_completion_regressions.py
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
 ```
 
 ### Diff Stat
 ```text
-53912d70b fix: restore v7 status contract dispatch
- bingo/ui/terminal.py                          | 14 ++++++++++++++
- tests/test_terminal_completion_regressions.py | 28 +++++++++++++++++++++++++++
- 2 files changed, 42 insertions(+)
+9549c0723 release: bump version to 6.2.252
+ .bingo/project-memory.md | 159 ++++++++++++-----------------------------------
+ PKG-INFO                 |   2 +-
+ bingo/__init__.py        |   2 +-
+ 3 files changed, 42 insertions(+), 121 deletions(-)
 ```
 
 ### Added Highlights
-- `@staticmethod`
-- `def _v7_status_call(status: object, method_name: str, *args, default=None, **kwargs):`
-- `if status is None or not method_name:`
-- `return default`
-- `member = getattr(status, method_name, None)`
-- `if callable(member):`
-- `try:`
-- `return member(*args, **kwargs)`
-- `except Exception:`
-- `return default`
-- `if member is None:`
-- `return default`
-- `return member`
-- `def test_terminal_v7_status_call_delegates_to_runtime_status_contract() -> None:`
-- `status = RuntimeStatus(`
-- `target="https://example.kr",`
-- `phase=MissionPhase.VALIDATE,`
-- `reason="surface coverage exists but no confirmed evidence yet",`
-- `report_now=False,`
-- `pivot_now=True,`
-- `next_focus=("auth:session_boundary", "api:error_paths", "artifact:manifest_fetch"),`
-- `loop_count=7,`
-- `plateau_turns=1,`
-- `observation_count=1,`
-- `candidate_count=1,`
-- `confirmed_count=0,`
-- `)`
-- `contract = BingoTerminal._v7_status_call(`
-- `status,`
-- `"action_contract",`
+- `Version: 6.2.252`
+- `__version__ = "6.2.252"`
 <!-- bingo-project-memory:auto:end -->

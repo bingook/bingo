@@ -9,14 +9,16 @@ Bingo uses a Claude Code-style split:
 1. The model proposes actions.
 2. The executor owns action state and canonical target identity.
 3. The Action Ledger decides whether an action family is pending, done, negative, or blocked.
-4. The loop guard decides whether to pivot, continue, or stop and generate a report.
-5. Target canonicalization rewrites model-proposed URL hosts before execution/history.
-6. The target-scope guard remains a fallback for cases canonicalization must not rewrite, such as direct IP transport without a current-target Host binding.
+4. The Evidence Ledger promotes concrete runtime observations into findings.
+5. The loop guard decides whether to pivot, continue, or stop and generate a report.
+6. Target canonicalization rewrites model-proposed URL hosts before execution/history.
+7. The target-scope guard remains a fallback for cases canonicalization must not rewrite, such as direct IP transport without a current-target Host binding.
 
 The policy implementation lives in:
 
 - `bingo/core/executor_state.py`
 - `bingo/core/target_state.py`
+- `bingo/tools/findings_exporter.py`
 - `bingo/ui/terminal.py` wrapper methods for backward-compatible tests and UI integration
 
 ## Canonical target ownership
@@ -58,6 +60,29 @@ Retired/converted categories:
 - admin path brute-force exhaustion → `admin_path_family_exhausted` state;
 - `INFINITE_LOOP_RISK` precheck block → runtime budget instrumentation.
 
+## Evidence Ledger promotion
+
+The report must be built from executor-observed evidence, not from model
+phrasing. When runtime output contains concrete HTTP observations, the
+FindingsExporter promotes them before generic SQLi/XSS pattern matching.
+
+Confirmed non-payload observations include:
+
+- public dependency artifacts with HTTP `200` and manifest content, such as
+  `composer.json`, `composer.lock`, and `vendor/composer/installed.json`;
+- server stack/error disclosure with filesystem/class context;
+- admin login username-enumeration differentials where an unknown account and a
+  known account with the wrong password produce stable, distinct responses.
+
+These findings are evidence, not brute-force success. They should be reported
+with appropriate severity and should not be inflated to Critical unless there is
+credential extraction, RCE, SQLi data extraction, or equivalent impact evidence.
+
+The Action Ledger must key UI state from executor-canonicalized arguments. A
+model-drifted host that is rewritten before execution must not remain as the
+ledger target, because that pollutes the next model context and makes healthy
+canonicalization look like a failed run.
+
 Fallback categories that may still emit a guard result:
 
 - direct IP URL for a domain-bound target without a matching `Host` binding;
@@ -82,7 +107,11 @@ The executor must skip `done`, `blocked_timeout`, and repeated `negative` famili
 
 ## Loop cutoff policy
 
-The loop should stop and report when there is no confirmed finding and one of these conditions is met:
+The loop should stop and report when confirmed evidence has plateaued, or when
+there is no confirmed finding and one of these conditions is met:
+
+- confirmed evidence exists, loop `>= 10`, and new evidence has plateaued;
+- confirmed evidence exists, loop `>= 12`, and low-value executor families re-enter;
 
 - repeated `TARGET_DRIFT_BLOCKED` appears after canonicalization failed or was intentionally bypassed;
 - loop `>= 20` and the current turn has at least 2 ledger skips;
@@ -109,6 +138,8 @@ These can count as progress:
 - confirmed finding IDs;
 - real credential/database/table/column extraction;
 - first-time stack/exception leakage evidence;
+- public dependency artifact exposure;
+- admin username-enumeration differentials;
 - high-value endpoint/parameter discovery.
 
 ## Regression log acceptance criteria

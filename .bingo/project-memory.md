@@ -8,7 +8,8 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current stable version after Bingo memory rebrand: `6.2.224`.
+- Current local working version after executor evidence-state upgrade: `6.2.250`.
+- v6.2.250 root-fix direction: do not solve quality failures by adding more hard blocks. Promote executor-observed evidence into state: public dependency artifacts, stack traces, and admin username-enumeration differentials become confirmed findings; UI/action ledger keys canonicalized args, not model-drifted hosts; confirmed-evidence plateau stops with report-first instead of more low-value loops.
 - Restored workspace from `/Users/jmaker/Desktop/bingo_ai-6.2.218.tar.gz` on 2026-07-20; removed bundled prompt profile txt files and external profile loader changes; bumped package version to `6.2.224` for PyPI release. Validation after restore: `pytest -q` → `237 passed`.
 - Latest GLM/custom prompt-hygiene fix as of v6.2.218:
   - Removed model-facing jailbreak-style trigger phrases such as `pre-granted`, `BEHAVIOR OVERRIDE`, `No refusals`, `No disclaimers`, and `CONTINUE REQUIRED` from the main prompt/task/retry/hook paths.
@@ -67,47 +68,121 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-21T22:05:46+08:00
+- Last synced: 2026-07-21T23:45:03+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-21T22:05:46+08:00
+- Captured: 2026-07-21T23:45:03+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
- M AGENTS.md
  M PKG-INFO
  M README.md
  M bingo/__init__.py
- M bingo/core/code_guard.py
  M bingo/core/executor_state.py
- M bingo/orchestrator/engine.py
- M bingo/tools_ext/pentest_tools.py
+ M bingo/tools/findings_exporter.py
  M bingo/ui/terminal.py
- M tests/test_advanced_scanner_false_positives.py
+ M docs/ENGINEERING.md
  M tests/test_terminal_completion_regressions.py
-?? bingo/core/target_state.py
-?? docs/
-?? tests/fixtures/
 ```
 
 ### Diff Stat
 ```text
-AGENTS.md                                      |  12 +
- PKG-INFO                                       |  10 +-
- README.md                                      |   8 +-
- bingo/__init__.py                              |   2 +-
- bingo/core/code_guard.py                       |   7 +-
- bingo/core/executor_state.py                   |  65 +++-
- bingo/orchestrator/engine.py                   |  12 +-
- bingo/tools_ext/pentest_tools.py               | 498 +++++++++++++++++--------
- bingo/ui/terminal.py                           | 401 ++++++++++----------
- tests/test_advanced_scanner_false_positives.py |   5 +-
- tests/test_terminal_completion_regressions.py  | 354 +++++++++++++++++-
- 11 files changed, 1008 insertions(+), 366 deletions(-)
+PKG-INFO                                      |  11 +-
+ README.md                                     |   9 +-
+ bingo/__init__.py                             |   2 +-
+ bingo/core/executor_state.py                  |  35 ++++
+ bingo/tools/findings_exporter.py              | 239 +++++++++++++++++++++++++-
+ bingo/ui/terminal.py                          |  42 ++++-
+ docs/ENGINEERING.md                           |  39 ++++-
+ tests/test_terminal_completion_regressions.py |  83 +++++++++
+ 8 files changed, 443 insertions(+), 17 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.250`
+- `[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `| v6.2.250 | **Executor evidence-state upgrade** — promotes concrete runtime observations such as public 'composer.json'/'composer.lock'/'vendor/composer/installed.json', server st`
+- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.250 executor runtime-budget instrumentation, so loop risk is b`
+- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.250 executor runtime-budget instrumentation. Cursor-patt`
+- `[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `| v6.2.250 | **Executor evidence-state upgrade** — promotes concrete runtime observations such as public 'composer.json'/'composer.lock'/'vendor/composer/installed.json', server st`
+- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.250 executor runtime-budget instrumentation, so loop risk is b`
+- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.250 executor runtime-budget instrumentation. Cursor-patt`
+- `[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `__version__ = "6.2.250"`
+- `r"/(?:composer\.(?:json|lock)|vendor/composer/installed\.json)\s*->\s*200\b",`
+- `r"\bPKG\s+[a-z0-9_.-]+/[a-z0-9_.-]+@?v?\d",`
+- `r"(?:ADMIN\s+ENUM|USER(?:NAME)?[_ -]?ENUM).{0,400}"`
+- `r"(?:Fatal\s+error:\s*Uncaught|Uncaught\s+(?:TypeError|Error|Exception)).{0,500}"`
+- `r"(?:called\s+in\s+/|Stack\s+trace)",`
+- `if int(confirmed_count or 0) > 0:`
+- `if int(no_progress_count or 0) >= 4 and int(loop_count or 0) >= 10:`
+- `return "confirmed evidence plateau; report current findings"`
+- `if int(low_value_reentry_count or 0) >= 2 and int(loop_count or 0) >= 12:`
+- `return "confirmed evidence reached; low-value re-entry exhausted"`
+- `("artifact_exposure", r"(?:composer\.(?:json|lock)|vendor/composer/installed\.json|package-lock\.json|yarn\.lock)"),`
+- `def _looks_transport_proxy_endpoint(host: str, port: str) -> bool:`
+- `host_l = str(host or "").lower().strip("[]")`
+- `port_s = str(port or "")`
+- `if host_l not in {"127.0.0.1", "localhost", "::1", "0.0.0.0"}:`
+- `return False`
+- `if port_s not in {"9050", "9051", "1080", "1086", "1087", "7890", "7891", "8080", "8081", "8118"}:`
+- `return False`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:2bec15c0bb5cbc176cfac60774e64771ace3ede7 -->
+## Code change: refactor: retire guard debt into executor state
+- Commit: `2bec15c0bb5c`
+- Recorded: 2026-07-21T22:10:50+08:00
+- Committed: 2026-07-21T22:10:50+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	AGENTS.md
+M	PKG-INFO
+M	README.md
+M	bingo/__init__.py
+M	bingo/core/code_guard.py
+M	bingo/core/executor_state.py
+A	bingo/core/target_state.py
+M	bingo/orchestrator/engine.py
+M	bingo/tools_ext/pentest_tools.py
+M	bingo/ui/terminal.py
+A	docs/ENGINEERING.md
+A	tests/fixtures/loop_logs/late_low_value_reentry.log
+M	tests/test_advanced_scanner_false_positives.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+2bec15c0b refactor: retire guard debt into executor state
+ .bingo/project-memory.md                           | 148 +++---
+ AGENTS.md                                          |  12 +
+ PKG-INFO                                           |  10 +-
+ README.md                                          |   8 +-
+ bingo/__init__.py                                  |   2 +-
+ bingo/core/code_guard.py                           |   7 +-
+ bingo/core/executor_state.py                       |  65 ++-
+ bingo/core/target_state.py                         | 385 ++++++++++++++++
+ bingo/orchestrator/engine.py                       |  12 +-
+ bingo/tools_ext/pentest_tools.py                   | 498 +++++++++++++++------
+ bingo/ui/terminal.py                               | 401 +++++++++--------
+ docs/ENGINEERING.md                                | 146 ++++++
+ .../fixtures/loop_logs/late_low_value_reentry.log  |  15 +
+ tests/test_advanced_scanner_false_positives.py     |   5 +-
+ tests/test_terminal_completion_regressions.py      | 354 ++++++++++++++-
+ 15 files changed, 1651 insertions(+), 417 deletions(-)
 ```
 
 ### Added Highlights
@@ -141,69 +216,4 @@ AGENTS.md                                      |  12 +
 - `r"승인되지 않은 외부 도메인에 (?:공격 시도|HTTP 요청) 감지)"`
 - `r"\s*:\s*([^\n]+)",`
 - `text or "",`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:d0861653e09f232c096585b07f8699fed3ad511f -->
-## Code change: refactor: extract executor state and tighten loop cutoff
-- Commit: `d0861653e09f`
-- Recorded: 2026-07-21T19:31:34+08:00
-- Committed: 2026-07-21T19:31:34+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-M	PKG-INFO
-M	README.md
-M	bingo/__init__.py
-A	bingo/core/executor_state.py
-M	bingo/ui/terminal.py
-```
-
-### Diff Stat
-```text
-d0861653e refactor: extract executor state and tighten loop cutoff
- .bingo/project-memory.md     | 107 +++++-----
- PKG-INFO                     |   6 +-
- README.md                    |   6 +-
- bingo/__init__.py            |   2 +-
- bingo/core/executor_state.py | 492 +++++++++++++++++++++++++++++++++++++++++++
- bingo/ui/terminal.py         | 450 ++++-----------------------------------
- 6 files changed, 602 insertions(+), 461 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.245`
-- `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `Engineering notes: see [docs/ENGINEERING.md](docs/ENGINEERING.md) for the executor/state-machine model, loop cutoff policy, and regression log criteria.`
-- `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `__version__ = "6.2.245"`
-- `"""Executor-owned state helpers for Bingo's agent loop.`
-- `The model may propose actions, but this module owns the repeat/novelty policy:`
-- `what counts as target progress, what belongs to the action ledger, and when a`
-- `loop should stop and report instead of pivoting again.`
-- `"""`
-- `from __future__ import annotations`
-- `import hashlib`
-- `import json`
-- `import re`
-- `from urllib.parse import urlparse`
-- `LOW_VALUE_LEDGER_RE = re.compile(`
-- `r"(?:"`
-- `r"tool=(?:http_head|web_tech_detect|security_headers_check|clickjacking_autotest|"`
-- `r"open_redirect_autotest|waf_detect)|"`
-- `r"vector=(?:tomcat_admin|stack_leak|ajp_ghostcat)"`
-- `r")",`
-- `re.IGNORECASE,`
-- `)`
-- `def response_pattern_signature(response: str) -> str:`
-- `"""Short signature for repeated model-response pattern detection."""`
-- `return hashlib.md5((response or "")[:200].encode()).hexdigest()[:12]`
-- `def repeated_response_pattern(signatures: list[str], *, window: int = 6, threshold: int = 4) -> bool:`
-- `"""Return True when recent response signatures show a repeated pattern."""`
 <!-- bingo-project-memory:auto:end -->

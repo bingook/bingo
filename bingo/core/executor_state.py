@@ -150,6 +150,12 @@ def has_meaningful_loop_progress(text: str) -> bool:
         r"(?:credential|password|passwd|username)\s*(?:found|extracted|[:=])",
         r"(?:자격증명|비밀번호|계정)\s*(?:발견|추출|[:=])",
         r"(?:凭据|密码|用户名)\s*(?:发现|提取|[:：=])",
+        r"/(?:composer\.(?:json|lock)|vendor/composer/installed\.json)\s*->\s*200\b",
+        r"\bPKG\s+[a-z0-9_.-]+/[a-z0-9_.-]+@?v?\d",
+        r"(?:ADMIN\s+ENUM|USER(?:NAME)?[_ -]?ENUM).{0,400}"
+        r"(?:not_registered|등록되지\s*않은|bad_password|비밀번호가\s*맞지)",
+        r"(?:Fatal\s+error:\s*Uncaught|Uncaught\s+(?:TypeError|Error|Exception)).{0,500}"
+        r"(?:called\s+in\s+/|Stack\s+trace)",
         r"(?:database|table|column)\s+(?:name\s+)?(?:extracted|enumerated)",
         r"(?:DB|테이블|컬럼)\s*(?:추출|열거|확인)",
         r"(?:数据库|表名|列名)\s*(?:提取|枚举|确认)",
@@ -258,6 +264,11 @@ def doom_loop_cutoff_reason(
             return "repeated target drift after scope lock"
         if int(target_drift_total or 0) >= 4:
             return "excessive target drift blocks"
+    if int(confirmed_count or 0) > 0:
+        if int(no_progress_count or 0) >= 4 and int(loop_count or 0) >= 10:
+            return "confirmed evidence plateau; report current findings"
+        if int(low_value_reentry_count or 0) >= 2 and int(loop_count or 0) >= 12:
+            return "confirmed evidence reached; low-value re-entry exhausted"
     if int(confirmed_count or 0) == 0:
         if int(ledger_skip_count or 0) >= 2 and int(loop_count or 0) >= 20:
             return "action ledger exhausted pending vectors"
@@ -292,6 +303,8 @@ def action_ledger_signature(tool_name: str, args: dict) -> tuple[str, str]:
     lowered = combined.lower()
 
     vector_rules = (
+        ("artifact_exposure", r"(?:composer\.(?:json|lock)|vendor/composer/installed\.json|package-lock\.json|yarn\.lock)"),
+        ("user_enum", r"(?:ADMIN\s+ENUM|USER(?:NAME)?[_ -]?ENUM|not_registered|bad_password|등록되지\s*않은|비밀번호가\s*맞지)"),
         ("ajp_ghostcat", r"\b(?:ajp|ghostcat|cping|8009)\b"),
         ("tomcat_admin", r"(?:tomcat|manager/html|host-manager|:8080|:8000|:8443)"),
         ("unauth_mypage", r"(?:/balance/mypage/|cust_limit|app_status|custinfo|receipt_account|certification)"),
@@ -320,6 +333,22 @@ def action_ledger_signature(tool_name: str, args: dict) -> tuple[str, str]:
     hosts: set[str] = set()
     ports: set[str] = set()
     paths: set[str] = set()
+
+    def _looks_transport_proxy_endpoint(host: str, port: str) -> bool:
+        host_l = str(host or "").lower().strip("[]")
+        port_s = str(port or "")
+        if host_l not in {"127.0.0.1", "localhost", "::1", "0.0.0.0"}:
+            return False
+        if port_s not in {"9050", "9051", "1080", "1086", "1087", "7890", "7891", "8080", "8081", "8118"}:
+            return False
+        return bool(
+            re.search(
+                r"\b(?:proxy|proxies|socks5?|tor|BINGO_PROXY_URL|HTTP_PROXY|HTTPS_PROXY|http_proxy|https_proxy)\b",
+                combined,
+                re.IGNORECASE,
+            )
+        )
+
     for raw_url in url_values:
         raw_url = raw_url.strip().strip("'\"`),]")
         try:
@@ -338,6 +367,8 @@ def action_ledger_signature(tool_name: str, args: dict) -> tuple[str, str]:
         lowered,
         re.IGNORECASE,
     ):
+        if _looks_transport_proxy_endpoint(host, port):
+            continue
         hosts.add(f"{host.lower()}:{port}")
         ports.add(port)
     for host, port in re.findall(
@@ -345,6 +376,8 @@ def action_ledger_signature(tool_name: str, args: dict) -> tuple[str, str]:
         combined,
         re.IGNORECASE,
     ):
+        if _looks_transport_proxy_endpoint(host, port):
+            continue
         hosts.add(f"{host.lower()}:{port}")
         ports.add(port)
     host_var = re.search(
@@ -499,6 +532,8 @@ def meaningful_loop_progress_signature(text: str) -> str:
         r"CONFIRMED|VERIFIED|credential|password|passwd|username|"
         r"database|table|column|endpoint|TRACE|clickjacking|csrf|"
         r"x-frame-options|frame-ancestors|content-security-policy|"
+        r"composer\.(?:json|lock)|vendor/composer/installed\.json|"
+        r"ADMIN\s+ENUM|USER(?:NAME)?[_ -]?ENUM|not_registered|bad_password|"
         r"RCE|shell|BINGO_SIGNAL|BINGO-\d{4,}|VULNERABLE|HIGH|CRITICAL|"
         r"LEAK\s+True|ELException|JasperException|stack|trace|exception|"
         r"堆栈|异常|스택|예외"

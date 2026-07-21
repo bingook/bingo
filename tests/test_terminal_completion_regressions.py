@@ -3491,3 +3491,86 @@ def test_run_python_drops_runtime_proxy_when_preflight_fails() -> None:
 
     assert result["success"] is True
     assert "BINGO=\n" in result["output"]
+
+
+def test_runtime_artifact_and_admin_enum_are_confirmed_findings(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.kr", output_dir=str(tmp_path))
+    output = """
+=== INFO DISCLOSURE CONFIRM ===
+/composer.json -> 200 195B ct= application/json { "require": { "phpmailer/phpmailer": "^6.0" } }
+/composer.lock -> 200 29162B ct=  { "_readme": [ "This file locks the dependencies of your project" ] }
+/vendor/composer/installed.json -> 200 26502B ct= application/json [ { "name": "guzzlehttp/guzzle", "version": "6.3.3" } ]
+PKG guzzlehttp/guzzle 6.3.3
+=== ADMIN ENUM + account check ===
+ENUM no_such_user_xyz -> 200 123B not_registered <script>alert("등록되지 않은 정보입니다.");</script>
+ENUM jcorp -> 200 123B bad_password <script>alert("비밀번호가 맞지 않습니다.");</script>
+"""
+
+    finding = exporter.process(output, code_snippet="requests.get(TARGET + '/composer.lock')")
+
+    assert finding is not None
+    by_reason = {item.reason_code: item for item in exporter.findings}
+    assert by_reason["public_dependency_artifact"].confirmed is True
+    assert by_reason["admin_username_enumeration"].confirmed is True
+    assert exporter.stats()["confirmed"] == 2
+
+
+def test_stack_trace_disclosure_counts_as_meaningful_progress(tmp_path: Path) -> None:
+    exporter = FindingsExporter(target="https://example.kr", output_dir=str(tmp_path))
+    output = (
+        "OPEN /api/otp/make_new_otp.php -> 200 516B application/json [] "
+        "Fatal error: Uncaught TypeError: Argument 1 passed to "
+        "App\\Service::checkDupPhone() must be of the type string, null given, "
+        "called in /srv/www/api/otp/make_new_otp.php on line 12"
+    )
+
+    finding = exporter.process(output, code_snippet="requests.get(TARGET + '/api/otp/make_new_otp.php')")
+
+    assert finding is not None
+    assert finding.vuln_type == "info_disclosure"
+    assert finding.reason_code == "stack_trace_disclosure"
+    assert finding.confirmed is True
+    assert executor_state.has_meaningful_loop_progress(output)
+
+
+def test_action_ledger_uses_canonical_target_not_model_drift() -> None:
+    set_target_domain("https://moneyknock.kr")
+    try:
+        args = {
+            "code": (
+                "import requests\n"
+                "requests.get('https://moneyknock.jp/admin/login.php', timeout=5)\n"
+            )
+        }
+
+        canonical = BingoTerminal._executor_canonical_action_args("run_python", args)
+        _sig, summary = BingoTerminal._action_ledger_signature("run_python", canonical)
+    finally:
+        set_target_domain("")
+
+    assert "moneyknock.kr" in summary
+    assert "moneyknock.jp" not in summary
+
+
+def test_action_ledger_separates_proxy_endpoint_from_target_identity() -> None:
+    code = (
+        "PROXIES={'http':'socks5://127.0.0.1:9050','https':'socks5://127.0.0.1:9050'}\n"
+        "import requests\n"
+        "requests.get('https://example.kr/admin/login.php', proxies=PROXIES, timeout=5)\n"
+    )
+
+    _sig, summary = executor_state.action_ledger_signature("run_python", {"code": code})
+
+    assert "example.kr" in summary
+    assert "127.0.0.1:9050" not in summary
+
+
+def test_confirmed_evidence_plateau_reports_instead_of_reentering_low_value_loop() -> None:
+    reason = executor_state.doom_loop_cutoff_reason(
+        no_progress_count=4,
+        escape_attempts=0,
+        loop_count=10,
+        confirmed_count=1,
+    )
+
+    assert reason == "confirmed evidence plateau; report current findings"

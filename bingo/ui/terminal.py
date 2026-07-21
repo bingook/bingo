@@ -6764,8 +6764,11 @@ class BingoTerminal:
                         )
                         continue
 
-                _action_sig, _action_summary = BingoTerminal._action_ledger_signature(
+                _ledger_tool_args = BingoTerminal._executor_canonical_action_args(
                     _tool_name, _tool_args
+                )
+                _action_sig, _action_summary = BingoTerminal._action_ledger_signature(
+                    _tool_name, _ledger_tool_args
                 )
                 _skip_action_reason = self._action_ledger_skip_reason(
                     _action_sig, _action_summary
@@ -6804,7 +6807,7 @@ class BingoTerminal:
                 # ── v6.2.74: 도구 실행 해커 스타일 헤더 ───────────────
                 if getattr(self, "_compact_operator_ui", True):
                     _preview_bits: list[str] = []
-                    for _ak, _av in list(_tool_args.items())[:6]:
+                    for _ak, _av in list(_ledger_tool_args.items())[:6]:
                         if _ak in {"script", "code"}:
                             _avs = str(_av)
                             _av_lines = _avs.count("\n") + (1 if _avs else 0)
@@ -14643,6 +14646,41 @@ class BingoTerminal:
             target_drift_total=target_drift_total,
             target_drift_streak=target_drift_streak,
         )
+
+    @staticmethod
+    def _executor_canonical_action_args(tool_name: str, args: dict) -> dict:
+        """Return executor-normalized args for UI ledger/preview state.
+
+        The real tool path still owns execution-time normalization and notices.
+        This copy exists so the action ledger never stores model-drifted hosts
+        such as TARGET.kr -> TARGET.jp as if they were the action identity.
+        """
+        if not isinstance(args, dict):
+            return {}
+        normalized = dict(args)
+        name = str(tool_name or "").strip().lower()
+        try:
+            if name == "run_python" and "code" in normalized:
+                from ..tools_ext.pentest_tools import _canonicalize_script_target_urls
+
+                rewritten, _notice = _canonicalize_script_target_urls(
+                    str(normalized.get("code") or "")
+                )
+                normalized["code"] = rewritten
+            elif name == "run_bash" and "script" in normalized:
+                from ..tools_ext.pentest_tools import _canonicalize_script_target_urls
+
+                rewritten, _notice = _canonicalize_script_target_urls(
+                    str(normalized.get("script") or "")
+                )
+                normalized["script"] = rewritten
+            else:
+                from ..tools_ext.pentest_tools import _canonicalize_tool_args_target_urls
+
+                normalized, _notice = _canonicalize_tool_args_target_urls(normalized)
+        except Exception:
+            return dict(args)
+        return normalized
 
     @staticmethod
     def _action_ledger_signature(tool_name: str, args: dict) -> tuple[str, str]:

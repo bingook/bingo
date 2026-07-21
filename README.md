@@ -6,7 +6,7 @@
 
 **The #1 AI-Powered Red Team Terminal**
 
-[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey)](https://github.com/bingook/bingo)
@@ -2090,6 +2090,7 @@ export HUNTER_KEY="your_hunter_io_key"
 
 | Version | Summary |
 |---------|---------|
+| v6.2.251 | **Bingo v7 foundation** — added `bingo/core/v7/` as the new typed core: mission state machine, coverage ledger, evidence graph, executor action envelope, and deterministic assessment director; the UI shell stays, but planner intent no longer owns authority or target identity |
 | v6.2.250 | **Executor evidence-state upgrade** — promotes concrete runtime observations such as public `composer.json`/`composer.lock`/`vendor/composer/installed.json`, server stack traces, and admin login username-enumeration differentials into confirmed evidence instead of losing them as pattern-only noise; action ledger now keys UI state from executor-canonicalized args so lookalike hosts rewritten at execution time no longer pollute ledger summaries; loop cutoff switches to report-first once confirmed evidence plateaus; proxy transport endpoints are separated from target identity |
 | v3.6.0 | **Offline CVE/Exploit KB (115,529 files · 466 MB embedded)** — `trickest/cve` 2018–2025 + `bikini/exploitarium` committed directly into `bingo/knowledge/base/` (no internet required); **Chat auto-injection**: 40+ security keywords (`sql`, `xss`, `rce`, `cve-*`, `exploit`, etc.) trigger automatic `KBLoader.search()` → top-4 docs prepended to AI context with `📚 KB auto-loaded` notification; `/kb` command: list · search · show · reload; `/cve` command: status · search `<kw>` · `CVE-ID` direct lookup · optional `sync` for future CVEs; `KBLoader` bidirectional keyword matching; `cve_sync.py` optional GitHub syncer; 16 new i18n keys (KO/ZH/EN) including `kb_auto_loaded`, `kb_auto_hint`; multi-language provider labels for all 7 AI providers; `pyproject.toml` version bump to 3.6.0 |
 | v3.5.22 | **Recon Module Suite** — New `bingo/core/recon/` package: passive recon (crt.sh, BGPView, Shodan, FOFA, Hunter.io, Google/GitHub Dorks), active recon (subdomain brute-force with subfinder/amass fallback, HTTP probing with httpx/urllib fallback, port scan with nmap/masscan/socket fallback, WAF/tech fingerprinting, JS endpoint+secret mining), AssetDB with P0-P3 automated priority classification, Nuclei integration, JSON+TXT report saving; `/recon` slash command; chat-mode auto-detection for 5 recon contexts; 13 new multilingual i18n keys (KO/ZH/EN) |
@@ -2110,10 +2111,10 @@ export HUNTER_KEY="your_hunter_io_key"
 | v3.2.97 | **Advanced Web Attack Skill Pack (+28 skills)** — 28 new skills across SQLi×6 (numeric/single-quote/double-quote/bracket/cookie-header/time-based+filter-bypass), XSS×3 (HTML/JS-context/file-upload), file-upload bypass×11, JWT×3 (alg:none/RS256→HS256/jku), XXE, IDOR×3, business-logic×2 (auth-bypass/transaction-fraud), SSRF, RCE×2 (PHP-cmd/LFI→RCE), path-traversal, shop-logic×24, brute-force, open-redirect, secret-key-exposure, CRLF, PHP-deserialization, directory-listing, request-smuggling, probability-manipulation; total skills 367→**395**, total tags **1,639** |
 | v3.2.96 | **Real-time Findings Engine + XSS Playwright Verify + Headless CI Mode** — `FindingsExporter` auto-detects RCE/LFI/CRED/SSRF/XSS/SQLi from code execution output, saves findings JSON to Desktop every 5 detections and on session end; Playwright engine auto-verifies detected XSS payloads in real browser (confirms/screenshots); `--silent --target <url>` headless mode for non-interactive auto-pentest in CI/CD pipelines with JSON output and exit codes 0/1; 10 new i18n keys (KO/ZH/EN) |
 | v3.2.95 | **INFINITE_LOOP_RISK false positive fix + iteration limiter injection** — string literals and comments stripped before `TOP 1` check (eliminates false positives from SQL payloads in code); override mechanism replaced: instead of injecting `seen=set()`, injects a hard 500-iteration limiter `_bingo_ilr_guard` with indentation-aware `break` into loop body; expanded cursor-pattern recognition (OFFSET/ROW_NUMBER/NOT IN/last_hex/last_name vars) |
-| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.250 executor runtime-budget instrumentation, so loop risk is bounded at execution time instead of retried through model text |
+| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.251 executor runtime-budget instrumentation, so loop risk is bounded at execution time instead of retried through model text |
 | v3.2.93 | **i18n deduplication** — removed 21 redundant top-level duplicate keys from `strings.py`; all multilingual output verified consistent across KO/ZH/EN |
 | v3.2.92 | **i18n: extract hint_loop_paused + stream_interrupted to strings.py** — `_prompt_mid_task_hint` and `_stream_response` now use `get_strings()` instead of hardcoded dicts; `hint_loop_paused` / `stream_interrupted` keys added (KO/ZH/EN) |
-| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.250 executor runtime-budget instrumentation. Cursor-pattern detection remains, but execution bounds are now owned by the executor instead of response rejection loops |
+| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.251 executor runtime-budget instrumentation. Cursor-pattern detection remains, but execution bounds are now owned by the executor instead of response rejection loops |
 | v3.2.90 | **Hotfix: model label dict crash** — Fixed  in ; v3.2.89 changed provider labels to multilingual dicts but missed this reference; now uses  consistently |
 | v3.2.89 | **Model Menu i18n** — `BUILTIN_PROVIDERS` labels converted from hardcoded Korean strings to multilingual `{ko/zh/en}` dicts; `get_provider_label(info, lang)` helper added; `provider_list(lang)` now accepts a lang arg; `_cmd_model` reads current language setting and renders labels in the correct language (`★ 추천` → `★ 推荐` / `★ Recommended`; `(로컬)` → `(本地)` / `(Local)`; `커스텀/직접 입력` → `自定义/直接输入` / `Custom/Enter directly`) |
 | v3.2.88 | **Session Feed (`/load`)** — paste any previous session `.md` file path directly into the prompt; bingo detects it automatically, reconstructs full conversation history, extracts target URL, and immediately resumes via AI continuation prompt; `/load <path>` explicit command also added; smart path auto-detection in `_chat_loop` (no `/load` prefix needed); 6 new i18n keys (KO/ZH/EN) for load status messages; `/load` added to `/help` and slash autocomplete |
@@ -2209,7 +2210,7 @@ MIT © 2026 bingook
 
 *The only AI pentest terminal with built-in engines, HTTP smuggling, anti-hallucination guard, role-based testing, vuln manager, target memory, and LLM Orchestrator.*
 
-[![Version](https://img.shields.io/badge/version-6.2.250-brightgreen)](https://github.com/bingook/bingo/releases)
+[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)
 [![PyPI](https://img.shields.io/pypi/v/bingo-ai.svg)](https://pypi.org/project/bingo-ai/)
 
 </div>

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 from rich.console import Console
 
+from bingo.core.v7 import MissionPhase, RuntimeSessionState, RuntimeStatus
 from bingo.ui.terminal import (
     BingoTerminal,
     _codeblock_exec_limits,
@@ -75,6 +76,12 @@ class _Console:
 
     def print(self, *args, **_kwargs) -> None:
         self.messages.append(" ".join(str(arg) for arg in args))
+
+
+def _ledger_for(terminal: BingoTerminal) -> executor_state.ActionLedger:
+    ledger = executor_state.ActionLedger.coerce(getattr(terminal, "_action_ledger", None))
+    terminal._action_ledger = ledger
+    return ledger
 
 
 def test_attack_hypothesis_is_warned_but_not_blocked() -> None:
@@ -1719,8 +1726,8 @@ def test_ssrf_chain_rejects_identical_200_responses(monkeypatch) -> None:
 
 def test_generic_http_output_is_not_meaningful_progress() -> None:
     text = "HTTP/1.1 200 OK\nendpoint found\nWAF detected\nsuccess=True"
-    assert not BingoTerminal._has_meaningful_loop_progress(text)
-    assert BingoTerminal._has_meaningful_loop_progress(
+    assert not executor_state.has_meaningful_loop_progress(text)
+    assert executor_state.has_meaningful_loop_progress(
         "Credentials extracted: username=admin password=secret"
     )
 
@@ -1731,7 +1738,7 @@ def test_discovered_endpoint_parameter_is_meaningful_progress() -> None:
         "/main/clinic/view.do -> mc_idx\n"
         "https://example.test/main/center/view.do -> mc_idx\n"
     )
-    assert BingoTerminal._has_meaningful_loop_progress(output)
+    assert executor_state.has_meaningful_loop_progress(output)
 
 
 def test_advertising_xhr_is_not_meaningful_loop_progress() -> None:
@@ -1741,13 +1748,13 @@ def test_advertising_xhr_is_not_meaningful_loop_progress() -> None:
         "found endpoint parameter\n"
     )
 
-    assert not BingoTerminal._has_meaningful_loop_progress(output)
+    assert not executor_state.has_meaningful_loop_progress(output)
 
 
 def test_high_value_api_endpoint_is_meaningful_loop_progress() -> None:
     output = "https://example.test/common/jwt -> loReqtNo\n"
 
-    assert BingoTerminal._has_meaningful_loop_progress(output)
+    assert executor_state.has_meaningful_loop_progress(output)
 
 
 def test_stack_leak_evidence_is_meaningful_progress_once() -> None:
@@ -1758,8 +1765,8 @@ def test_stack_leak_evidence_is_meaningful_progress_once() -> None:
         "org.apache.jasper.JasperException\n"
     )
 
-    assert BingoTerminal._has_meaningful_loop_progress(output)
-    assert BingoTerminal._meaningful_loop_progress_signature(output)
+    assert executor_state.has_meaningful_loop_progress(output)
+    assert executor_state.meaningful_loop_progress_signature(output)
 
 
 def test_timeout_only_output_is_not_meaningful_progress() -> None:
@@ -1770,7 +1777,7 @@ def test_timeout_only_output_is_not_meaningful_progress() -> None:
         "Request timeout — possible WAF silent drop\n"
     )
 
-    assert not BingoTerminal._has_meaningful_loop_progress(output)
+    assert not executor_state.has_meaningful_loop_progress(output)
 
 
 def test_ledger_skip_probable_boolean_is_not_meaningful_progress() -> None:
@@ -1780,7 +1787,7 @@ def test_ledger_skip_probable_boolean_is_not_meaningful_progress() -> None:
         "Conf : probable  reason=boolean_true_false_diff\n"
     )
 
-    assert not BingoTerminal._has_meaningful_loop_progress(output)
+    assert not executor_state.has_meaningful_loop_progress(output)
 
 
 def test_confirmed_false_finding_line_is_not_meaningful_progress() -> None:
@@ -1789,7 +1796,7 @@ def test_confirmed_false_finding_line_is_not_meaningful_progress() -> None:
         "reason=boolean_true_false_diff notes=ladder:probable:boolean_true_false_diff\n"
     )
 
-    assert not BingoTerminal._has_meaningful_loop_progress(output)
+    assert not executor_state.has_meaningful_loop_progress(output)
 
 
 def test_stack_leak_progress_signature_dedupes_payload_value() -> None:
@@ -1804,15 +1811,15 @@ def test_stack_leak_progress_signature_dedupes_payload_value() -> None:
         "org.apache.jasper.servlet.JspServletWrapper.handleJspException(JspServletWrapper.java:599)\n"
     )
 
-    assert BingoTerminal._meaningful_loop_progress_signature(first)
+    assert executor_state.meaningful_loop_progress_signature(first)
     assert (
-        BingoTerminal._meaningful_loop_progress_signature(first)
-        == BingoTerminal._meaningful_loop_progress_signature(second)
+        executor_state.meaningful_loop_progress_signature(first)
+        == executor_state.meaningful_loop_progress_signature(second)
     )
 
 
 def test_doom_loop_cutoff_stops_after_second_no_progress_escape() -> None:
-    reason = BingoTerminal._doom_loop_cutoff_reason(
+    reason = executor_state.doom_loop_cutoff_reason(
         no_progress_count=6,
         escape_attempts=1,
         loop_count=12,
@@ -1822,8 +1829,127 @@ def test_doom_loop_cutoff_stops_after_second_no_progress_escape() -> None:
     assert "repeated no-progress" in reason
 
 
+def test_v7_guidance_message_uses_structured_focus_instead_of_generic_stop() -> None:
+    status = RuntimeStatus(
+        target="https://example.kr",
+        phase=MissionPhase.ENUMERATE,
+        reason="plateau reached before critical surface coverage was complete; pivot to the missing surfaces instead of retrying the same probe family",
+        report_now=False,
+        pivot_now=True,
+        next_focus=("route:/", "surface:auth", "surface:api"),
+        loop_count=6,
+        plateau_turns=2,
+        observation_count=0,
+        candidate_count=0,
+        confirmed_count=0,
+    )
+
+    message = status.guidance_message(lang="en")
+
+    assert "[V7_NEXT_FOCUS]" in message
+    assert "authoritative_target=https://example.kr" in message
+    assert "Pick exactly one focus item" in message
+    assert "route:/" in message
+
+
+def test_v7_action_contract_prefers_executor_focus_over_generic_advice() -> None:
+    status = RuntimeStatus(
+        target="https://example.kr",
+        phase=MissionPhase.VALIDATE,
+        reason="surface coverage exists but no confirmed evidence yet",
+        report_now=False,
+        pivot_now=True,
+        next_focus=("auth:session_boundary", "api:error_paths", "artifact:manifest_fetch"),
+        loop_count=7,
+        plateau_turns=1,
+        observation_count=1,
+        candidate_count=1,
+        confirmed_count=0,
+    )
+
+    contract = status.action_contract(
+        adaptive_pivot_context="[ADAPTIVE_OFFENSE_PIVOT]\nnext=cross_vector"
+    )
+
+    assert "Follow V7_MISSION next_focus" in contract
+    assert "auth:session_boundary / api:error_paths / artifact:manifest_fetch" in contract
+    assert "ADAPTIVE_OFFENSE_PIVOT" not in contract
+
+
+def test_v7_record_action_prefers_agent_target_and_sets_default_goal() -> None:
+    calls: dict[str, object] = {}
+
+    class _Runtime:
+        def record_action(self, tool_name: str, args: dict, *, target: str = "", goal: str = "") -> None:
+            calls["tool_name"] = tool_name
+            calls["args"] = args
+            calls["target"] = target
+            calls["goal"] = goal
+
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._agent_state = {"target": "https://agent.example"}
+    terminal._current_target = "https://current.example"
+    terminal._v7_session = RuntimeSessionState(runtime=_Runtime())
+
+    terminal._v7_session.record_action(
+        "http_get",
+        {"url": "https://agent.example/"},
+        agent_state=terminal._agent_state,
+        current_target=terminal._current_target,
+    )
+
+    assert calls["tool_name"] == "http_get"
+    assert calls["target"] == "https://agent.example"
+    assert calls["goal"] == "chat security assessment"
+    assert terminal._v7_session.goal == "chat security assessment"
+
+
+def test_v7_advance_runtime_uses_current_target_fallback_and_caches_status() -> None:
+    calls: dict[str, object] = {}
+    status = RuntimeStatus(
+        target="https://current.example",
+        phase=MissionPhase.RECON,
+        reason="executor-owned mission state active",
+        report_now=False,
+        pivot_now=False,
+        next_focus=("route:/",),
+        loop_count=2,
+        plateau_turns=0,
+        observation_count=0,
+        candidate_count=0,
+        confirmed_count=0,
+    )
+
+    class _Runtime:
+        def ensure_target(self, target: str, goal: str = "") -> None:
+            calls["ensure"] = (target, goal)
+
+        def advance_loop(self, *, progress: bool, exporter=None, loop_signals=None):
+            calls["advance"] = (progress, exporter, loop_signals)
+            return status
+
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._agent_state = {}
+    terminal._current_target = "https://current.example"
+    terminal._v7_session = RuntimeSessionState(runtime=_Runtime(), goal="resumed chat assessment")
+    terminal._findings_exporter = object()
+
+    result = terminal._v7_session.advance_runtime(
+        agent_state=terminal._agent_state,
+        current_target=terminal._current_target,
+        exporter=terminal._findings_exporter,
+        progress=True,
+        loop_signals="loop-signals",
+    )
+
+    assert calls["ensure"] == ("https://current.example", "resumed chat assessment")
+    assert calls["advance"] == (True, terminal._findings_exporter, "loop-signals")
+    assert result is status
+    assert terminal._v7_session.last_status is status
+
+
 def test_doom_loop_cutoff_stops_zero_confirmed_after_excessive_loops() -> None:
-    reason = BingoTerminal._doom_loop_cutoff_reason(
+    reason = executor_state.doom_loop_cutoff_reason(
         no_progress_count=6,
         escape_attempts=0,
         loop_count=30,
@@ -1834,7 +1960,7 @@ def test_doom_loop_cutoff_stops_zero_confirmed_after_excessive_loops() -> None:
 
 
 def test_doom_loop_cutoff_stops_late_ledger_skip_pressure() -> None:
-    reason = BingoTerminal._doom_loop_cutoff_reason(
+    reason = executor_state.doom_loop_cutoff_reason(
         no_progress_count=1,
         escape_attempts=0,
         loop_count=20,
@@ -1846,7 +1972,7 @@ def test_doom_loop_cutoff_stops_late_ledger_skip_pressure() -> None:
 
 
 def test_doom_loop_cutoff_stops_cumulative_ledger_skips() -> None:
-    reason = BingoTerminal._doom_loop_cutoff_reason(
+    reason = executor_state.doom_loop_cutoff_reason(
         no_progress_count=1,
         escape_attempts=0,
         loop_count=24,
@@ -1871,7 +1997,7 @@ def test_executor_state_counts_low_value_late_loop_reentry() -> None:
 
 
 def test_doom_loop_cutoff_stops_late_low_value_reentry() -> None:
-    reason = BingoTerminal._doom_loop_cutoff_reason(
+    reason = executor_state.doom_loop_cutoff_reason(
         no_progress_count=0,
         escape_attempts=0,
         loop_count=24,
@@ -1890,7 +2016,7 @@ def test_sanitized_late_low_value_log_fixture_triggers_cutoff() -> None:
         / "late_low_value_reentry.log"
     )
     output = fixture.read_text(encoding="utf-8")
-    reason = BingoTerminal._doom_loop_cutoff_reason(
+    reason = executor_state.doom_loop_cutoff_reason(
         no_progress_count=0,
         escape_attempts=0,
         loop_count=24,
@@ -1916,7 +2042,7 @@ def test_target_scope_lock_notice_extracts_forbidden_drift_domain() -> None:
 
 
 def test_doom_loop_cutoff_stops_repeated_target_drift() -> None:
-    reason = BingoTerminal._doom_loop_cutoff_reason(
+    reason = executor_state.doom_loop_cutoff_reason(
         no_progress_count=2,
         escape_attempts=0,
         loop_count=10,
@@ -1935,7 +2061,7 @@ def test_response_pattern_detection_is_executor_state_owned() -> None:
 
 
 def test_action_ledger_signature_groups_rewritten_ajp_probe() -> None:
-    first, first_summary = BingoTerminal._action_ledger_signature(
+    first, first_summary = executor_state.action_ledger_signature(
         "run_python",
         {
             "code": (
@@ -1945,7 +2071,7 @@ def test_action_ledger_signature_groups_rewritten_ajp_probe() -> None:
             )
         },
     )
-    second, second_summary = BingoTerminal._action_ledger_signature(
+    second, second_summary = executor_state.action_ledger_signature(
         "run_python",
         {
             "code": (
@@ -1965,79 +2091,86 @@ def test_action_ledger_blocks_after_two_timeouts() -> None:
     terminal = BingoTerminal.__new__(BingoTerminal)
     terminal._action_ledger = {}
     terminal._exec_loop_count = 10
-    sig, summary = BingoTerminal._action_ledger_signature(
+    ledger = _ledger_for(terminal)
+    sig, summary = executor_state.action_ledger_signature(
         "run_python",
         {"code": "HOST='116.127.120.142'; PORT=8009; print('AJP CPing')"},
     )
 
-    terminal._action_ledger_start(sig, summary)
-    terminal._action_ledger_finish(
+    ledger.start(sig, summary, loop_count=terminal._exec_loop_count)
+    ledger.finish(
         sig,
         summary,
         output="CPing TimeoutError timed out",
         success=False,
         exit_code=-1,
+        loop_count=terminal._exec_loop_count,
     )
-    assert terminal._action_ledger_skip_reason(sig, summary) == ""
+    assert ledger.skip_reason(sig, summary) == ""
 
-    terminal._action_ledger_start(sig, summary)
-    entry = terminal._action_ledger_finish(
+    ledger.start(sig, summary, loop_count=terminal._exec_loop_count)
+    entry = ledger.finish(
         sig,
         summary,
         output="[ERR] ReadTimeout timed out",
         success=False,
         exit_code=-1,
+        loop_count=terminal._exec_loop_count,
     )
 
     assert entry["status"] == "blocked_timeout"
-    assert "timeout-exhausted" in terminal._action_ledger_skip_reason(sig, summary)
+    assert "timeout-exhausted" in ledger.skip_reason(sig, summary)
 
 
 def test_action_ledger_family_blocks_rewritten_timeout_probe() -> None:
     terminal = BingoTerminal.__new__(BingoTerminal)
     terminal._action_ledger = {}
     terminal._exec_loop_count = 10
+    ledger = _ledger_for(terminal)
 
-    first, first_summary = BingoTerminal._action_ledger_signature(
+    first, first_summary = executor_state.action_ledger_signature(
         "run_python",
         {"code": "HOST='116.127.120.142'; PORT=8009; print('AJP CPing')"},
     )
-    second, second_summary = BingoTerminal._action_ledger_signature(
+    second, second_summary = executor_state.action_ledger_signature(
         "run_python",
         {"code": "print('Ghostcat WEB-INF'); sock.connect(('116.127.120.142', 8009))"},
     )
-    third, third_summary = BingoTerminal._action_ledger_signature(
+    third, third_summary = executor_state.action_ledger_signature(
         "run_python",
         {"code": "print('AJP CPing retry'); target='116.127.120.142:8009'"},
     )
 
     assert first == second == third
-    terminal._action_ledger_start(first, first_summary)
-    terminal._action_ledger_finish(
+    ledger.start(first, first_summary, loop_count=terminal._exec_loop_count)
+    ledger.finish(
         first,
         first_summary,
         output="CPing TimeoutError timed out",
         success=False,
         exit_code=-1,
+        loop_count=terminal._exec_loop_count,
     )
-    terminal._action_ledger_start(second, second_summary)
-    terminal._action_ledger_finish(
+    ledger.start(second, second_summary, loop_count=terminal._exec_loop_count)
+    ledger.finish(
         second,
         second_summary,
         output="ReadTimeout timed out",
         success=False,
         exit_code=-1,
+        loop_count=terminal._exec_loop_count,
     )
 
-    reason = terminal._action_ledger_skip_reason(third, third_summary)
+    reason = ledger.skip_reason(third, third_summary)
     assert "timeout-exhausted" in reason
-    assert "family" in terminal._action_ledger_context()
+    assert "family" in ledger.context()
 
 
 def test_action_ledger_family_blocks_different_no_progress_scripts() -> None:
     terminal = BingoTerminal.__new__(BingoTerminal)
     terminal._action_ledger = {}
     terminal._exec_loop_count = 20
+    ledger = _ledger_for(terminal)
     scripts = [
         "BASE='https://example.test'; sess.get(BASE + '/balance/mypage/cust_limit.do')",
         "BASE='https://example.test'; sess.get(BASE + '/balance/mypage/app_status.do')",
@@ -2045,29 +2178,31 @@ def test_action_ledger_family_blocks_different_no_progress_scripts() -> None:
     ]
 
     for script in scripts:
-        sig, summary = BingoTerminal._action_ledger_signature("run_python", {"code": script})
-        terminal._action_ledger_start(sig, summary)
-        terminal._action_ledger_finish(
+        sig, summary = executor_state.action_ledger_signature("run_python", {"code": script})
+        ledger.start(sig, summary, loop_count=terminal._exec_loop_count)
+        ledger.finish(
             sig,
             summary,
             output="HTTP 200 OK\nloginish=False mypageish=False\n",
             success=True,
             exit_code=0,
+            loop_count=terminal._exec_loop_count,
         )
 
-    sig, summary = BingoTerminal._action_ledger_signature(
+    sig, summary = executor_state.action_ledger_signature(
         "run_python",
         {"code": "BASE='https://example.test'; sess.get(BASE + '/balance/mypage/receipt_account.do')"},
     )
 
-    assert "negative/no-progress" in terminal._action_ledger_skip_reason(sig, summary)
+    assert "negative/no-progress" in ledger.skip_reason(sig, summary)
 
 
 def test_action_ledger_done_action_is_not_rerun() -> None:
     terminal = BingoTerminal.__new__(BingoTerminal)
     terminal._action_ledger = {}
     terminal._exec_loop_count = 4
-    sig, summary = BingoTerminal._action_ledger_signature(
+    ledger = _ledger_for(terminal)
+    sig, summary = executor_state.action_ledger_signature(
         "run_python",
         {
             "code": (
@@ -2078,17 +2213,56 @@ def test_action_ledger_done_action_is_not_rerun() -> None:
         },
     )
 
-    terminal._action_ledger_start(sig, summary)
-    terminal._action_ledger_finish(
+    ledger.start(sig, summary, loop_count=terminal._exec_loop_count)
+    ledger.finish(
         sig,
         summary,
         output="LEAK True\njavax.el.ELException\norg.apache.jasper.JasperException\n",
         success=True,
         exit_code=0,
+        loop_count=terminal._exec_loop_count,
     )
 
-    assert "already done" in terminal._action_ledger_skip_reason(sig, summary)
-    assert "status=done" in terminal._action_ledger_context()
+    assert "already done" in ledger.skip_reason(sig, summary)
+    assert "status=done" in ledger.context()
+
+
+def test_action_ledger_legacy_dict_is_upgraded_to_executor_owned_object() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._action_ledger = {}
+    terminal._exec_loop_count = 8
+    ledger = _ledger_for(terminal)
+
+    sig, summary = executor_state.action_ledger_signature(
+        "run_python",
+        {"code": "HOST='116.127.120.142'; PORT=8009; print('AJP CPing')"},
+    )
+
+    ledger.start(sig, summary, loop_count=terminal._exec_loop_count)
+    ledger.finish(
+        sig,
+        summary,
+        output="ReadTimeout timed out",
+        success=False,
+        exit_code=-1,
+        loop_count=terminal._exec_loop_count,
+    )
+
+    assert isinstance(terminal._action_ledger, executor_state.ActionLedger)
+    assert "status=timeout" in ledger.context()
+
+
+def test_terminal_assessment_session_bridge_syncs_legacy_compatibility_fields() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._action_ledger = {}
+    terminal._v7_session = RuntimeSessionState(runtime=SimpleNamespace())
+
+    session = terminal._assessment_session()
+
+    assert terminal._assessment_session_bridge is session
+    assert terminal._action_ledger is session.action_ledger
+    assert terminal._v7_session is session.runtime_session
+    assert isinstance(terminal._action_ledger, executor_state.ActionLedger)
 
 
 def test_repeated_progress_signature_ignores_dynamic_trace_markers() -> None:
@@ -2105,10 +2279,10 @@ def test_repeated_progress_signature_ignores_dynamic_trace_markers() -> None:
         "X-Bingo-Trace: TRACE_HEADER_PROOF_2\n"
     )
 
-    assert BingoTerminal._meaningful_loop_progress_signature(first)
+    assert executor_state.meaningful_loop_progress_signature(first)
     assert (
-        BingoTerminal._meaningful_loop_progress_signature(first)
-        == BingoTerminal._meaningful_loop_progress_signature(second)
+        executor_state.meaningful_loop_progress_signature(first)
+        == executor_state.meaningful_loop_progress_signature(second)
     )
 
 
@@ -3543,13 +3717,35 @@ def test_action_ledger_uses_canonical_target_not_model_drift() -> None:
             )
         }
 
-        canonical = BingoTerminal._executor_canonical_action_args("run_python", args)
-        _sig, summary = BingoTerminal._action_ledger_signature("run_python", canonical)
+        canonical = executor_state.canonical_action_args("run_python", args)
+        _sig, summary = executor_state.action_ledger_signature("run_python", canonical)
     finally:
         set_target_domain("")
 
     assert "moneyknock.kr" in summary
     assert "moneyknock.jp" not in summary
+
+
+def test_executor_action_ledger_identity_canonicalizes_before_signature() -> None:
+    set_target_domain("https://moneyknock.kr")
+    try:
+        args = {
+            "code": (
+                "import requests\n"
+                "requests.get('https://moneyknock.jp/admin/login.php', timeout=5)\n"
+            )
+        }
+
+        canonical, _sig, summary = executor_state.action_ledger_identity(
+            "run_python",
+            args,
+        )
+    finally:
+        set_target_domain("")
+
+    assert "moneyknock.kr" in str(canonical.get("code", ""))
+    assert "moneyknock.jp" not in str(canonical.get("code", ""))
+    assert "moneyknock.kr" in summary
 
 
 def test_action_ledger_separates_proxy_endpoint_from_target_identity() -> None:

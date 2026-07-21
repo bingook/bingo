@@ -8,7 +8,8 @@
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
-- Current local working version after executor evidence-state upgrade: `6.2.250`.
+- Current local working version after v7 foundation start: `6.2.251`.
+- v6.2.251 architecture direction: keep the chat UI shell, but rebuild the core around `bingo/core/v7/` typed contracts. Planner proposes intent only; mission state machine owns phase; executor owns action envelopes and target identity; coverage ledger owns remaining test surfaces; evidence graph owns finding promotion and report truth.
 - v6.2.250 root-fix direction: do not solve quality failures by adding more hard blocks. Promote executor-observed evidence into state: public dependency artifacts, stack traces, and admin username-enumeration differentials become confirmed findings; UI/action ledger keys canonicalized args, not model-drifted hosts; confirmed-evidence plateau stops with report-first instead of more low-value loops.
 - Restored workspace from `/Users/jmaker/Desktop/bingo_ai-6.2.218.tar.gz` on 2026-07-20; removed bundled prompt profile txt files and external profile loader changes; bumped package version to `6.2.224` for PyPI release. Validation after restore: `pytest -q` → `237 passed`.
 - Latest GLM/custom prompt-hygiene fix as of v6.2.218:
@@ -68,13 +69,13 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-21T23:45:03+08:00
+- Last synced: 2026-07-22T04:21:20+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-21T23:45:03+08:00
+- Captured: 2026-07-22T04:21:20+08:00
 
 ### Status
 ```text
@@ -83,15 +84,88 @@ M .bingo/project-memory.md
  M README.md
  M bingo/__init__.py
  M bingo/core/executor_state.py
- M bingo/tools/findings_exporter.py
  M bingo/ui/terminal.py
  M docs/ENGINEERING.md
  M tests/test_terminal_completion_regressions.py
+?? bingo/core/session_bridge.py
+?? bingo/core/v7/
+?? docs/BINGO_V7_ARCHITECTURE.md
+?? tests/test_v7_architecture.py
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |  11 +-
+PKG-INFO                                      |   11 +-
+ README.md                                     |    9 +-
+ bingo/__init__.py                             |    2 +-
+ bingo/core/executor_state.py                  |  476 +++----
+ bingo/ui/terminal.py                          | 1824 ++++++-------------------
+ docs/ENGINEERING.md                           |   24 +
+ tests/test_terminal_completion_regressions.py |  302 +++-
+ 7 files changed, 875 insertions(+), 1773 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.251`
+- `[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `| v6.2.251 | **Bingo v7 foundation** — added 'bingo/core/v7/' as the new typed core: mission state machine, coverage ledger, evidence graph, executor action envelope, and determini`
+- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.251 executor runtime-budget instrumentation, so loop risk is b`
+- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.251 executor runtime-budget instrumentation. Cursor-patt`
+- `[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `| v6.2.251 | **Bingo v7 foundation** — added 'bingo/core/v7/' as the new typed core: mission state machine, coverage ledger, evidence graph, executor action envelope, and determini`
+- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.251 executor runtime-budget instrumentation, so loop risk is b`
+- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.251 executor runtime-budget instrumentation. Cursor-patt`
+- `[![Version](https://img.shields.io/badge/version-6.2.251-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `__version__ = "6.2.251"`
+- `from .v7.loop_policy import (`
+- `doom_loop_cutoff_reason,`
+- `has_meaningful_loop_progress,`
+- `ledger_skip_count,`
+- `low_value_reentry_count,`
+- `meaningful_loop_progress_signature,`
+- `no_progress_penalty,`
+- `repeated_response_pattern,`
+- `response_pattern_signature,`
+- `strip_action_ledger_skip_noise,`
+- `target_drift_block_count,`
+- `)`
+- `def canonical_action_args(tool_name: str, args: dict) -> dict:`
+- `"""Return executor-normalized args for stable action identity.`
+- `This mirrors execution-time target canonicalization so the action ledger`
+- `never stores model-drifted hosts as distinct identities.`
+- `"""`
+- `if not isinstance(args, dict):`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:0985c1b55b59b996fbe183788cf47899b073e92b -->
+## Code change: fix: promote runtime evidence into executor state
+- Commit: `0985c1b55b59`
+- Recorded: 2026-07-21T23:45:57+08:00
+- Committed: 2026-07-21T23:45:57+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	README.md
+M	bingo/__init__.py
+M	bingo/core/executor_state.py
+M	bingo/tools/findings_exporter.py
+M	bingo/ui/terminal.py
+M	docs/ENGINEERING.md
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+0985c1b55 fix: promote runtime evidence into executor state
+ .bingo/project-memory.md                      | 186 ++++++++++----------
+ PKG-INFO                                      |  11 +-
  README.md                                     |   9 +-
  bingo/__init__.py                             |   2 +-
  bingo/core/executor_state.py                  |  35 ++++
@@ -99,7 +173,7 @@ PKG-INFO                                      |  11 +-
  bingo/ui/terminal.py                          |  42 ++++-
  docs/ENGINEERING.md                           |  39 ++++-
  tests/test_terminal_completion_regressions.py |  83 +++++++++
- 8 files changed, 443 insertions(+), 17 deletions(-)
+ 9 files changed, 541 insertions(+), 105 deletions(-)
 ```
 
 ### Added Highlights
@@ -133,87 +207,4 @@ PKG-INFO                                      |  11 +-
 - `return False`
 - `if port_s not in {"9050", "9051", "1080", "1086", "1087", "7890", "7891", "8080", "8081", "8118"}:`
 - `return False`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:2bec15c0bb5cbc176cfac60774e64771ace3ede7 -->
-## Code change: refactor: retire guard debt into executor state
-- Commit: `2bec15c0bb5c`
-- Recorded: 2026-07-21T22:10:50+08:00
-- Committed: 2026-07-21T22:10:50+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-M	AGENTS.md
-M	PKG-INFO
-M	README.md
-M	bingo/__init__.py
-M	bingo/core/code_guard.py
-M	bingo/core/executor_state.py
-A	bingo/core/target_state.py
-M	bingo/orchestrator/engine.py
-M	bingo/tools_ext/pentest_tools.py
-M	bingo/ui/terminal.py
-A	docs/ENGINEERING.md
-A	tests/fixtures/loop_logs/late_low_value_reentry.log
-M	tests/test_advanced_scanner_false_positives.py
-M	tests/test_terminal_completion_regressions.py
-```
-
-### Diff Stat
-```text
-2bec15c0b refactor: retire guard debt into executor state
- .bingo/project-memory.md                           | 148 +++---
- AGENTS.md                                          |  12 +
- PKG-INFO                                           |  10 +-
- README.md                                          |   8 +-
- bingo/__init__.py                                  |   2 +-
- bingo/core/code_guard.py                           |   7 +-
- bingo/core/executor_state.py                       |  65 ++-
- bingo/core/target_state.py                         | 385 ++++++++++++++++
- bingo/orchestrator/engine.py                       |  12 +-
- bingo/tools_ext/pentest_tools.py                   | 498 +++++++++++++++------
- bingo/ui/terminal.py                               | 401 +++++++++--------
- docs/ENGINEERING.md                                | 146 ++++++
- .../fixtures/loop_logs/late_low_value_reentry.log  |  15 +
- tests/test_advanced_scanner_false_positives.py     |   5 +-
- tests/test_terminal_completion_regressions.py      | 354 ++++++++++++++-
- 15 files changed, 1651 insertions(+), 417 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.249`
-- `[![Version](https://img.shields.io/badge/version-6.2.249-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.249 executor runtime-budget instrumentation, so loop risk is b`
-- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.249 executor runtime-budget instrumentation. Cursor-patt`
-- `[![Version](https://img.shields.io/badge/version-6.2.249-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `[![Version](https://img.shields.io/badge/version-6.2.249-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.249 executor runtime-budget instrumentation, so loop risk is b`
-- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.249 executor runtime-budget instrumentation. Cursor-patt`
-- `[![Version](https://img.shields.io/badge/version-6.2.249-brightgreen)](https://github.com/bingook/bingo/releases)`
-- `__version__ = "6.2.249"`
-- `파싱하여 무한루프 패턴을 탐지한다. 호출자는 이 결과를 실행 차단이`
-- `아니라 executor-owned runtime budget 주입 신호로 사용한다.`
-- `str 포맷:  "INFINITE_LOOP_RISK: ..." (runtime budget 주입 사유)`
-- `호출자는 이 값을 runtime budget 주입 사유로 사용한다.`
-- `and "already terminal/exhausted in the executor ledger" not in line`
-- `def target_drift_block_count(text: str) -> int:`
-- `"""Count target-scope guard blocks in one execution result batch."""`
-- `haystack = text or ""`
-- `return haystack.count("[TARGET_DRIFT_BLOCKED]") + haystack.count("TARGET_DOMAIN_MISMATCH")`
-- `def target_drift_domains(text: str) -> list[str]:`
-- `"""Extract blocked off-scope domains from target drift guard output."""`
-- `domains: set[str] = set()`
-- `for match in re.finditer(`
-- `r"(?:Unauthorized external URL\(s\)|未授权外部域名URL|승인되지 않은 외부 도메인 URL|"`
-- `r"Attack payload detected on unauthorized domain\(s\)|"`
-- `r"Unauthorized external-domain .*? detected|"`
-- `r"检测到对未授权外部域名的(?:攻击尝试|HTTP请求)|"`
-- `r"승인되지 않은 외부 도메인에 (?:공격 시도|HTTP 요청) 감지)"`
-- `r"\s*:\s*([^\n]+)",`
-- `text or "",`
 <!-- bingo-project-memory:auto:end -->

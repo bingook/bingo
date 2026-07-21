@@ -43,6 +43,54 @@ from ..lang.strings import get_strings, get_slash_commands, SUPPORTED_LANGS
 from ..i18n import t
 from ..proxy import ProxyManager
 from ..core import executor_state as _executor_state
+from ..core.session_bridge import AssessmentSessionBridge
+
+try:
+    from ..core.v7 import (
+        FindingsArtifactSnapshot,
+        NextStepSuggestion,
+        EvidenceSnapshot,
+        MissionRuntimeCoordinator,
+        ReportGroundTruthSnapshot,
+        ReportArtifactPlan,
+        ReportSessionSnapshot,
+        RuntimeSessionState,
+        build_artifact_convergence_plan as _v7_build_artifact_convergence_plan,
+        build_html_report as _v7_build_html_report,
+        build_next_step_prompt as _v7_build_next_step_prompt,
+        build_report_generation_prompt as _v7_build_report_generation_prompt,
+        build_evidence_based_next_steps as _v7_build_evidence_based_next_steps,
+        build_fallback_report as _v7_build_fallback_report,
+        filter_verified_report_credentials as _v7_filter_verified_report_credentials,
+        filter_next_steps_by_evidence as _v7_filter_next_steps_by_evidence,
+        next_step_panel_title as _v7_next_step_panel_title,
+        parse_next_step_response as _v7_parse_next_step_response,
+        resolve_report_artifact_plan as _v7_resolve_report_artifact_plan,
+        sanitize_next_step_summary as _v7_sanitize_next_step_summary,
+        validate_report_finding_ids as _v7_validate_report_finding_ids,
+    )
+except ImportError:
+    FindingsArtifactSnapshot = None  # type: ignore[assignment]
+    NextStepSuggestion = None  # type: ignore[assignment]
+    EvidenceSnapshot = None  # type: ignore[assignment]
+    MissionRuntimeCoordinator = None  # type: ignore[assignment]
+    ReportArtifactPlan = None  # type: ignore[assignment]
+    ReportGroundTruthSnapshot = None  # type: ignore[assignment]
+    ReportSessionSnapshot = None  # type: ignore[assignment]
+    RuntimeSessionState = None  # type: ignore[assignment]
+    _v7_build_artifact_convergence_plan = None  # type: ignore[assignment]
+    _v7_build_html_report = None  # type: ignore[assignment]
+    _v7_build_next_step_prompt = None  # type: ignore[assignment]
+    _v7_build_report_generation_prompt = None  # type: ignore[assignment]
+    _v7_build_evidence_based_next_steps = None  # type: ignore[assignment]
+    _v7_build_fallback_report = None  # type: ignore[assignment]
+    _v7_filter_verified_report_credentials = None  # type: ignore[assignment]
+    _v7_filter_next_steps_by_evidence = None  # type: ignore[assignment]
+    _v7_next_step_panel_title = None  # type: ignore[assignment]
+    _v7_parse_next_step_response = None  # type: ignore[assignment]
+    _v7_resolve_report_artifact_plan = None  # type: ignore[assignment]
+    _v7_sanitize_next_step_summary = None  # type: ignore[assignment]
+    _v7_validate_report_finding_ids = None  # type: ignore[assignment]
 
 
 def _positive_int_env(
@@ -542,6 +590,14 @@ class BingoTerminal:
         self._findings_exporter = FindingsExporter(
             target=getattr(self._agent_state, "get", lambda k, d=None: d)("target", "")
         )
+        self._assessment_session_bridge = AssessmentSessionBridge.create()
+        self._action_ledger = self._assessment_session_bridge.action_ledger
+        self._v7_session = self._assessment_session_bridge.runtime_session
+        _v7_resume_target = str(
+            getattr(self._agent_state, "get", lambda k, d=None: d)("target", "") or ""
+        ).strip()
+        if self._v7_session is not None and _v7_resume_target:
+            self._v7_session.reset_runtime(_v7_resume_target, goal="resumed chat assessment")
         # ── 전담 에이전트 계획 ─────────────────────────────────────
         self._agent_plan = None                   # AgentPlan 객체
         # 롤백 매니저
@@ -571,18 +627,7 @@ class BingoTerminal:
         # Stuck 감지 — 마지막 N개 결과의 해시값 (반복 시 자동 전략 전환)
         self._recent_results: list[str] = []
         self._stuck_count: int = 0
-        # ── v6.2.151 Doom Loop 감지기 (bingo 자체 설계) ──────────────────
-        # 최근 도구 호출 시그니처 목록 (이름+인자 해시) — 반복 패턴 감지용
-        self._dl_tool_sigs: list[str] = []
-        self._dl_no_progress: int = 0       # 연속 "진전 없음" 루프 수
-        self._dl_progress_sigs: set[str] = set()
-        self._dl_escape_attempts: int = 0
-        self._dl_ledger_skip_total: int = 0
-        self._dl_ledger_skip_streak: int = 0
-        self._dl_target_drift_total: int = 0
-        self._dl_target_drift_streak: int = 0
-        # Claude Code-style executor state: model proposes, executor owns action state.
-        self._action_ledger: dict[str, dict] = {}
+        # Claude Code-style executor state lives behind the assessment-session bridge.
         # ── v6.2.151 2-pass Compaction 상태 ──────────────────────────────
         self._compaction_summary: str = ""  # 배경 LLM 생성 요약
         self._compaction_lock = __import__("threading").Lock()
@@ -3341,6 +3386,9 @@ class BingoTerminal:
                 self._reset_agent_state()
                 self._agent_state["target"] = new_target
                 self._current_target = new_target
+                _session = self._assessment_session()
+                if _session.runtime_session is not None:
+                    _session.reset_runtime(new_target, goal=text)
                 self._exec_loop_count = 0
                 self._stuck_count = 0
                 self._recent_results = []
@@ -4940,6 +4988,9 @@ class BingoTerminal:
         if target_url:
             # 현재 세션의 타깃 URL로 등록 (자동완성·스캔에 사용)
             self._current_target = target_url
+            _session = self._assessment_session()
+            if _session.runtime_session is not None:
+                _session.reset_runtime(target_url, goal="hybrid whitebox + live assessment")
             self.console.print(
                 f"[{THEME['success']}]"
                 f"{self.s.get('wb_hybrid_target', '🎯 하이브리드 모드: 타깃 URL → {url}').format(url=target_url)}"
@@ -5126,6 +5177,13 @@ class BingoTerminal:
                 if url_match and not getattr(self, "_current_target", None):
                     self._current_target = url_match.group(0)
                 break
+        if getattr(self, "_current_target", None):
+            _session = self._assessment_session()
+            if _session.runtime_session is not None:
+                _session.reset_runtime(
+                    str(getattr(self, "_current_target", "") or ""),
+                    goal="resumed loaded session",
+                )
 
         _msg = {
             "ko": f"✅ 세션 복원 완료 — {loaded_count}개 메시지 로드됨 ({path.name})\n   이전 작업을 이어 진행합니다...",
@@ -6764,15 +6822,13 @@ class BingoTerminal:
                         )
                         continue
 
-                _ledger_tool_args = BingoTerminal._executor_canonical_action_args(
-                    _tool_name, _tool_args
-                )
-                _action_sig, _action_summary = BingoTerminal._action_ledger_signature(
-                    _tool_name, _ledger_tool_args
-                )
-                _skip_action_reason = self._action_ledger_skip_reason(
-                    _action_sig, _action_summary
-                )
+                (
+                    _ledger_tool_args,
+                    _action_sig,
+                    _action_summary,
+                ) = _executor_state.action_ledger_identity(_tool_name, _tool_args)
+                _session = self._assessment_session()
+                _skip_action_reason = _session.action_skip_reason(_action_sig, _action_summary)
                 if _skip_action_reason:
                     self.console.print(f"[{THEME['warn']}]⚠ [ACTION_LEDGER_SKIP] {_skip_action_reason}[/]")
                     _flush_ui()
@@ -6789,20 +6845,32 @@ class BingoTerminal:
                     )
                     tool_results.append(_skip_result)
                     continue
-                _action_entry = self._action_ledger_start(_action_sig, _action_summary)
+                _action_entry = _session.start_action(
+                    _action_sig,
+                    _action_summary,
+                    loop_count=getattr(self, "_exec_loop_count", 0),
+                )
 
                 if execute_tool is None:
-                    self._action_ledger_finish(
+                    _session.finish_action(
                         _action_sig,
                         _action_summary,
                         output="pentest_tools not available",
                         success=False,
                         exit_code=-1,
+                        loop_count=getattr(self, "_exec_loop_count", 0),
                     )
                     tool_results.append(
                         f"TOOL_RESULT:{{'name':'{_tool_name}','error':'pentest_tools not available','success':false}}"
                     )
                     continue
+                if _session.runtime_session is not None:
+                    _session.record_action(
+                        _tool_name,
+                        _ledger_tool_args,
+                        agent_state=getattr(self, "_agent_state", {}),
+                        current_target=str(getattr(self, "_current_target", "") or ""),
+                    )
 
                 # ── v6.2.74: 도구 실행 해커 스타일 헤더 ───────────────
                 if getattr(self, "_compact_operator_ui", True):
@@ -7083,12 +7151,13 @@ class BingoTerminal:
                         )
                 # ── 감지 끝 ────────────────────────────────────────────────────────────────
 
-                _action_done = self._action_ledger_finish(
+                _action_done = _session.finish_action(
                     _action_sig,
                     _action_summary,
                     output=_result_str,
                     success=bool(_ok),
                     exit_code=int(_ec) if isinstance(_ec, int) else -1,
+                    loop_count=getattr(self, "_exec_loop_count", 0),
                 )
                 if _action_done and not (
                     getattr(self, "_hint_input_active", None)
@@ -10188,7 +10257,8 @@ class BingoTerminal:
             self._parse_agent_state(raw_results)
             state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
             state_summary += verification_context + adaptive_pivot_context
-            state_summary += self._action_ledger_context()
+            _session = self._assessment_session()
+            state_summary += _session.action_context(limit=8)
             _scope_lock_notice = _executor_state.target_scope_lock_notice(
                 str(self._agent_state.get("target") or getattr(self, "_current_target", "") or ""),
                 raw_results,
@@ -10224,85 +10294,73 @@ class BingoTerminal:
             self._show_token_usage()
             self._exec_loop_count += 1
 
-            # ── v6.2.151 Doom Loop 감지기 (Type A) ───────────────────────────
-            # 연속 동일 응답 패턴 감지 → 전략 전환 힌트 자동 주입
-            # 조건: 최근 6개 시그니처 중 4개 이상 동일 → doom loop 탈출 힌트 주입
-            _dl_sig = _executor_state.response_pattern_signature(current_response or "")
-            self._dl_tool_sigs.append(_dl_sig)
-            if len(self._dl_tool_sigs) > 12:
-                self._dl_tool_sigs = self._dl_tool_sigs[-12:]
-            _dl_doom_detected = _executor_state.repeated_response_pattern(self._dl_tool_sigs)
-            _dl_counts = BingoTerminal._finding_evidence_counts(
-                getattr(self, "_findings_exporter", None)
-            )
-            _dl_confirmed_count = int(_dl_counts.get("confirmed", 0) or 0)
-            _dl_ledger_skip_count = _executor_state.ledger_skip_count(raw_results)
-            _dl_low_value_reentry_count = _executor_state.low_value_reentry_count(raw_results)
-            _dl_target_drift_count = _executor_state.target_drift_block_count(raw_results)
-            if _dl_ledger_skip_count > 0:
-                self._dl_ledger_skip_total += _dl_ledger_skip_count
-                self._dl_ledger_skip_streak += 1
-            else:
-                self._dl_ledger_skip_streak = 0
-            if _dl_target_drift_count > 0:
-                self._dl_target_drift_total += _dl_target_drift_count
-                self._dl_target_drift_streak += 1
-            else:
-                self._dl_target_drift_streak = 0
-
-            # HTTP 200/found 같은 일반 문구가 반복을 영구 리셋하지 않도록
-            # 검증된 신규 증거만 진행으로 인정한다.
-            _dl_has_progress = self._has_meaningful_loop_progress(raw_results)
-            if _dl_has_progress:
-                _dl_progress_sig = self._meaningful_loop_progress_signature(raw_results)
-                if _dl_progress_sig and _dl_progress_sig in self._dl_progress_sigs:
-                    _dl_has_progress = False
-                elif _dl_progress_sig:
-                    self._dl_progress_sigs.add(_dl_progress_sig)
-            if not _dl_has_progress:
-                _dl_skip_penalty = max(
-                    _executor_state.no_progress_penalty(_dl_ledger_skip_count),
-                    _executor_state.no_progress_penalty(_dl_target_drift_count),
+            # ── v7 loop tracker: terminal은 raw result만 넘기고 신호 해석은 runtime이 담당 ──
+            _v7_signals = (
+                _session.observe_loop(
+                    current_response or "",
+                    raw_results,
                 )
-                self._dl_no_progress += _dl_skip_penalty
-            else:
-                self._dl_escape_attempts = 0
-                if self._dl_no_progress > 0:
-                    _progress_msg = self.s.get(
-                        "doom_progress_autocorrected",
-                        "Auto-corrected: new reconnaissance evidence resets the no-progress counter",
-                    )
-                    self.console.print(f"[{THEME['success']}]{_progress_msg}[/]")
-                self._dl_no_progress = 0
+                if _session.runtime_session is not None
+                else None
+            )
+            _dl_has_progress = bool(getattr(_v7_signals, "progress", False))
+            if bool(getattr(_v7_signals, "recovered_progress", False)):
+                _progress_msg = self.s.get(
+                    "doom_progress_autocorrected",
+                    "Auto-corrected: new reconnaissance evidence resets the no-progress counter",
+                )
+                self.console.print(f"[{THEME['success']}]{_progress_msg}[/]")
+            _v7_status = (
+                _session.advance_runtime(
+                    agent_state=getattr(self, "_agent_state", {}),
+                    current_target=str(getattr(self, "_current_target", "") or ""),
+                    exporter=getattr(self, "_findings_exporter", None),
+                    progress=_dl_has_progress,
+                    loop_signals=_v7_signals,
+                )
+                if _session.runtime_session is not None
+                else None
+            )
+            if _session.runtime_session is not None:
+                state_summary += _session.prompt_block()
+            if _v7_status and getattr(_v7_status, "report_now", False):
+                _lang_v7 = getattr(self.config, "lang", "en")
+                _v7_stop_msg = {
+                    "ko": (
+                        "⛔ [V7_REPORT_STOP] executor state가 충분한 증거와 plateau를 확인했습니다. "
+                        f"사유: {_v7_status.reason}. 현재 증거로 보고서를 생성합니다."
+                    ),
+                    "zh": (
+                        "⛔ [V7_REPORT_STOP] executor state 已确认足够证据且进入平台期。"
+                        f"原因: {_v7_status.reason}。将基于当前证据生成报告。"
+                    ),
+                    "en": (
+                        "⛔ [V7_REPORT_STOP] The executor state confirmed sufficient evidence and a plateau. "
+                        f"Reason: {_v7_status.reason}. Generating the report from current evidence."
+                    ),
+                }.get(_lang_v7, "⛔ [V7_REPORT_STOP] Executor requested report generation.")
+                self.console.print(f"[{THEME['warn']}]{_v7_stop_msg}[/]")
+                self._auto_generate_report()
+                if _session.runtime_session is not None:
+                    _session.reset_loop_window(full=True)
+                break
+            if _v7_status and getattr(_v7_status, "pivot_now", False):
+                _dl_lang = getattr(self.config, "lang", "en")
+                try:
+                    _v7_guidance = _v7_status.guidance_message(lang=_dl_lang)
+                except Exception:
+                    _v7_guidance = ""
+                if _v7_guidance:
+                    self.history.append(Message(role="user", content=_v7_guidance))
+                    if _session.runtime_session is not None:
+                        _session.reset_loop_window(full=False)
+                    continue
             _dl_escape_threshold = 6
-            _dl_ledger_pressure = (
-                _dl_confirmed_count == 0
-                and (
-                    (_dl_ledger_skip_count >= 2 and self._exec_loop_count >= 20)
-                    or (self._dl_ledger_skip_total >= 6 and self._exec_loop_count >= 24)
-                    or (self._dl_ledger_skip_streak >= 2 and self._exec_loop_count >= 20)
-                )
-            )
-            _dl_late_low_value_pressure = (
-                _dl_confirmed_count == 0
-                and _dl_low_value_reentry_count >= 2
-                and self._exec_loop_count >= 24
-            )
-            _dl_target_drift_pressure = (
-                _dl_target_drift_count > 0
-                and (
-                    self._dl_target_drift_streak >= 2
-                    or self._dl_target_drift_total >= 4
-                )
-            )
             if (
-                _dl_doom_detected
-                or self._dl_no_progress >= _dl_escape_threshold
-                or _dl_ledger_pressure
-                or _dl_late_low_value_pressure
-                or _dl_target_drift_pressure
+                bool(getattr(_v7_signals, "doom_detected", False))
+                or int(getattr(_v7_signals, "no_progress_count", 0) or 0) >= _dl_escape_threshold
             ):
-                from ..i18n import t as _t_dl, get_lang as _gl_dl
+                _dl_lang = getattr(self.config, "lang", "en")
                 _dl_escape_map = {
                     "ko": (
                         "⚠️ [DOOM_LOOP] 반복 패턴 감지됨 — 전략을 바꿔야 합니다.\n"
@@ -10332,51 +10390,10 @@ class BingoTerminal:
                         "Change strategy immediately and continue."
                     ),
                 }
-                _dl_lang = getattr(self.config, "lang", "en")
                 _dl_msg = _dl_escape_map.get(_dl_lang, _dl_escape_map["en"])
-                _dl_stop_reason = BingoTerminal._doom_loop_cutoff_reason(
-                    no_progress_count=self._dl_no_progress,
-                    escape_attempts=self._dl_escape_attempts,
-                    loop_count=self._exec_loop_count,
-                    doom_detected=_dl_doom_detected,
-                    confirmed_count=_dl_confirmed_count,
-                    ledger_skip_count=_dl_ledger_skip_count,
-                    ledger_skip_total=getattr(self, "_dl_ledger_skip_total", 0),
-                    ledger_skip_streak=getattr(self, "_dl_ledger_skip_streak", 0),
-                    low_value_reentry_count=_dl_low_value_reentry_count,
-                    target_drift_count=_dl_target_drift_count,
-                    target_drift_total=getattr(self, "_dl_target_drift_total", 0),
-                    target_drift_streak=getattr(self, "_dl_target_drift_streak", 0),
-                )
-                self._dl_escape_attempts += 1
-                if _dl_stop_reason:
-                    _stop_msg = {
-                        "ko": (
-                            "⛔ [NO_NEW_PROGRESS_STOP] 새 증거 없이 반복 탐지가 계속되어 자동 종료합니다. "
-                            f"사유: {_dl_stop_reason}. 현재 증거로 보고서를 생성합니다."
-                        ),
-                        "zh": (
-                            "⛔ [NO_NEW_PROGRESS_STOP] 未出现新证据且重复探测持续，自动停止。"
-                            f"原因: {_dl_stop_reason}。将基于当前证据生成报告。"
-                        ),
-                        "en": (
-                            "⛔ [NO_NEW_PROGRESS_STOP] Repeated probing without new evidence; auto-stopping. "
-                            f"Reason: {_dl_stop_reason}. Generating the report from current evidence."
-                        ),
-                    }.get(_dl_lang, "⛔ [NO_NEW_PROGRESS_STOP] No new progress; stop and report.")
-                    self.console.print(f"[{THEME['warn']}]{_stop_msg}[/]")
-                    self._auto_generate_report()
-                    self._dl_tool_sigs.clear()
-                    self._dl_no_progress = 0
-                    self._dl_escape_attempts = 0
-                    self._dl_ledger_skip_total = 0
-                    self._dl_ledger_skip_streak = 0
-                    self._dl_target_drift_total = 0
-                    self._dl_target_drift_streak = 0
-                    break
                 self.history.append(Message(role="user", content=_dl_msg))
-                self._dl_tool_sigs.clear()
-                self._dl_no_progress = 0
+                if _session.runtime_session is not None:
+                    _session.reset_loop_window(full=False)
             # ─────────────────────────────────────────────────────────────────
 
             # ── v6.2.159 Self-Reflection 주기적 자기평가 (Type A) ─────────────
@@ -11204,18 +11221,26 @@ class BingoTerminal:
                     f"  - If CAPTCHA: look for API endpoint that bypasses frontend\n"
                 )
 
-            _next_action_contract = (
-                "NEXT ACTION: Treat ADAPTIVE_OFFENSE_PIVOT as an AI-led advisory. "
-                "Prefer a non-SQLi vector after repeated blocked controls, unless you can state "
-                "the new SQLi/WAF hypothesis and execute one distinct bounded verifier. "
-                "Do not repeat the same blocked request.\n"
-                if adaptive_pivot_context and "next=cross_vector" in adaptive_pivot_context
-                else (
-                    "NEXT ACTION: Continue from where you left off. "
-                    "DO NOT re-extract already known facts above. "
-                    "Proceed to the next unknown step.\n"
-                )
+            _next_action_contract = self._v7_status_call(
+                _v7_status,
+                "action_contract",
+                default="",
+                adaptive_pivot_context=adaptive_pivot_context,
             )
+            if not _next_action_contract:
+                if adaptive_pivot_context and "next=cross_vector" in adaptive_pivot_context:
+                    _next_action_contract = (
+                        "NEXT ACTION: Treat ADAPTIVE_OFFENSE_PIVOT as an AI-led advisory. "
+                        "Prefer a non-SQLi vector after repeated blocked controls, unless you can state "
+                        "the new SQLi/WAF hypothesis and execute one distinct bounded verifier. "
+                        "Do not repeat the same blocked request.\n"
+                    )
+                else:
+                    _next_action_contract = (
+                        "NEXT ACTION: Continue from where you left off. "
+                        "DO NOT re-extract already known facts above. "
+                        "Proceed to the next unknown step.\n"
+                    )
             injection = (
                 "=== BINGO REAL EXECUTION RESULTS ===\n"
                 + trimmed
@@ -12388,286 +12413,15 @@ class BingoTerminal:
         potential_count: int = 0,
         generated_at: str | None = None,
     ) -> str:
-        """Render the evidence-gated markdown report as a polished standalone HTML file."""
-        import html as _html
-        import re as _html_re
-        from datetime import datetime as _html_dt
-
-        generated_at = generated_at or _html_dt.now().strftime("%Y-%m-%d %H:%M:%S")
-        safe_target = _html.escape(target or "unknown")
-
-        def _inline(text: str) -> str:
-            out = _html.escape(text)
-            out = _html_re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", out)
-            out = _html_re.sub(r"`([^`]+)`", r"<code>\1</code>", out)
-            out = _html_re.sub(
-                r"\b(BINGO-(?:Q)?\d{4})\b",
-                r'<span class="finding-id">\1</span>',
-                out,
-            )
-            severity_map = {
-                "Critical": "critical",
-                "CRITICAL": "critical",
-                "High": "high",
-                "HIGH": "high",
-                "Medium": "medium",
-                "MEDIUM": "medium",
-                "Low": "low",
-                "LOW": "low",
-                "Confirmed": "confirmed",
-                "CONFIRMED": "confirmed",
-                "Potential": "potential",
-                "POTENTIAL": "potential",
-                "Probable": "potential",
-                "PROBABLE": "potential",
-                "Unconfirmed": "unconfirmed",
-                "UNCONFIRMED": "unconfirmed",
-            }
-            for word, cls in severity_map.items():
-                out = _html_re.sub(
-                    rf"(?<![>\w-]){_html_re.escape(word)}(?![\w-])",
-                    f'<span class="badge {cls}">{word}</span>',
-                    out,
-                )
-            return out
-
-        body: list[str] = []
-        in_ul = False
-        in_code = False
-        in_section = False
-        code_lines: list[str] = []
-
-        def _close_ul() -> None:
-            nonlocal in_ul
-            if in_ul:
-                body.append("</ul>")
-                in_ul = False
-
-        def _close_section() -> None:
-            nonlocal in_section
-            _close_ul()
-            if in_section:
-                body.append("</section>")
-                in_section = False
-
-        for raw in (md_text or "").splitlines():
-            line = raw.rstrip()
-            if line.strip().startswith("```"):
-                if in_code:
-                    body.append(
-                        "<pre><code>"
-                        + _html.escape("\n".join(code_lines))
-                        + "</code></pre>"
-                    )
-                    code_lines = []
-                    in_code = False
-                else:
-                    _close_ul()
-                    in_code = True
-                    code_lines = []
-                continue
-            if in_code:
-                code_lines.append(line)
-                continue
-
-            if not line.strip():
-                _close_ul()
-                continue
-
-            heading = _html_re.match(r"^(#{1,3})\s+(.+)$", line)
-            if heading:
-                _close_section()
-                level = min(len(heading.group(1)), 3)
-                title = _inline(heading.group(2).strip())
-                if level == 1:
-                    body.append(f'<h1 class="md-title">{title}</h1>')
-                else:
-                    body.append(f'<section class="report-card"><h{level}>{title}</h{level}>')
-                    in_section = True
-                continue
-
-            bullet = _html_re.match(r"^\s*[-*]\s+(.+)$", line)
-            if bullet:
-                if not in_ul:
-                    body.append("<ul>")
-                    in_ul = True
-                body.append(f"<li>{_inline(bullet.group(1).strip())}</li>")
-                continue
-
-            numbered = _html_re.match(r"^\s*(\d+)[.)]\s+(.+)$", line)
-            if numbered:
-                if not in_ul:
-                    body.append("<ul>")
-                    in_ul = True
-                body.append(
-                    f'<li><span class="step-no">{numbered.group(1)}</span> '
-                    f"{_inline(numbered.group(2).strip())}</li>"
-                )
-                continue
-
-            body.append(f"<p>{_inline(line)}</p>")
-
-        if in_code:
-            body.append("<pre><code>" + _html.escape("\n".join(code_lines)) + "</code></pre>")
-        _close_section()
-
-        html_body = "\n".join(body)
-        return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bingo Security Report - {safe_target}</title>
-  <style>
-    :root {{
-      --bg: #071018;
-      --card: rgba(13, 22, 35, .86);
-      --card2: rgba(8, 15, 26, .92);
-      --line: rgba(108, 255, 178, .24);
-      --mint: #6cffb2;
-      --blue: #35d6ff;
-      --violet: #b388ff;
-      --yellow: #ffd600;
-      --red: #ff4d6d;
-      --text: #e8f3ff;
-      --muted: #8ea1b7;
-      --shadow: 0 24px 80px rgba(0, 0, 0, .45);
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 15% 12%, rgba(53, 214, 255, .18), transparent 30%),
-        radial-gradient(circle at 85% 8%, rgba(179, 136, 255, .20), transparent 28%),
-        radial-gradient(circle at 50% 95%, rgba(108, 255, 178, .10), transparent 36%),
-        var(--bg);
-      font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
-      min-height: 100vh;
-    }}
-    .shell {{ width: min(1120px, calc(100vw - 40px)); margin: 34px auto 56px; }}
-    .hero {{
-      border: 1px solid var(--line);
-      background: linear-gradient(145deg, rgba(13,22,35,.96), rgba(7,16,24,.82));
-      border-radius: 28px;
-      padding: 30px;
-      box-shadow: var(--shadow);
-      position: relative;
-      overflow: hidden;
-    }}
-    .hero:before {{
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(108,255,178,.08), transparent);
-      transform: translateX(-70%);
-      pointer-events: none;
-    }}
-    .brand {{ color: var(--mint); letter-spacing: .18em; font-size: 12px; font-weight: 800; }}
-    .hero h1 {{ margin: 10px 0 8px; font-size: clamp(32px, 5vw, 54px); line-height: 1.05; }}
-    .hero .target {{ color: var(--blue); word-break: break-all; }}
-    .meta {{ color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }}
-    .metrics {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 18px 0 24px; }}
-    .metric {{
-      border: 1px solid rgba(53, 214, 255, .18);
-      background: var(--card);
-      border-radius: 18px;
-      padding: 16px 18px;
-    }}
-    .metric .label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }}
-    .metric .value {{ font-size: 28px; font-weight: 800; margin-top: 4px; }}
-    .metric.confirmed .value {{ color: var(--mint); }}
-    .metric.potential .value {{ color: var(--yellow); }}
-    .metric.mode .value {{ color: var(--violet); font-size: 20px; }}
-    .report-card {{
-      border: 1px solid rgba(108, 255, 178, .18);
-      background: var(--card2);
-      border-radius: 22px;
-      padding: 22px 24px;
-      margin: 16px 0;
-      box-shadow: 0 18px 54px rgba(0,0,0,.26);
-    }}
-    .report-card h2, .report-card h3 {{ margin: 0 0 14px; color: var(--blue); }}
-    .md-title {{ display: none; }}
-    p {{ margin: 10px 0; }}
-    ul {{ margin: 8px 0 0; padding: 0; list-style: none; }}
-    li {{ margin: 9px 0; padding-left: 24px; position: relative; }}
-    li:before {{ content: "▸"; position: absolute; left: 0; color: var(--mint); }}
-    code {{
-      color: #d6faff;
-      background: rgba(53, 214, 255, .10);
-      border: 1px solid rgba(53, 214, 255, .14);
-      border-radius: 7px;
-      padding: 1px 6px;
-    }}
-    pre {{
-      overflow: auto;
-      border-radius: 16px;
-      padding: 16px;
-      background: #050b12;
-      border: 1px solid rgba(108, 255, 178, .16);
-    }}
-    pre code {{ background: transparent; border: 0; padding: 0; color: #d9fff0; }}
-    strong {{ color: #ffffff; }}
-    .finding-id {{
-      display: inline-block;
-      color: #061018;
-      background: linear-gradient(90deg, var(--mint), var(--blue));
-      border-radius: 999px;
-      padding: 1px 8px;
-      font-weight: 800;
-      letter-spacing: .03em;
-    }}
-    .badge {{
-      display: inline-block;
-      border-radius: 999px;
-      padding: 1px 8px;
-      font-size: .82em;
-      font-weight: 800;
-      border: 1px solid currentColor;
-    }}
-    .badge.critical {{ color: var(--red); }}
-    .badge.high {{ color: var(--yellow); }}
-    .badge.medium {{ color: #ff9f43; }}
-    .badge.low {{ color: var(--blue); }}
-    .badge.confirmed {{ color: var(--mint); }}
-    .badge.potential, .badge.unconfirmed {{ color: var(--yellow); }}
-    .step-no {{ color: var(--violet); font-weight: 800; margin-right: 6px; }}
-    footer {{ margin-top: 24px; color: var(--muted); text-align: center; font-size: 12px; }}
-    @media (max-width: 780px) {{
-      .shell {{ width: min(100vw - 24px, 1120px); margin-top: 16px; }}
-      .hero {{ padding: 22px; border-radius: 22px; }}
-      .metrics {{ grid-template-columns: 1fr; }}
-    }}
-    @media print {{
-      body {{ background: white; color: #121821; }}
-      .hero, .metric, .report-card {{ box-shadow: none; background: white; color: #121821; }}
-      .report-card, .metric, .hero {{ border-color: #cfd8e3; }}
-    }}
-  </style>
-</head>
-<body>
-  <main class="shell">
-    <header class="hero">
-      <div class="brand">BINGO · SECURITY REPORT</div>
-      <h1>Evidence-driven assessment</h1>
-      <div class="target">{safe_target}</div>
-      <div class="meta">
-        <span>Generated: {_html.escape(generated_at)}</span>
-        <span>Report truth: Finding-ID ledger</span>
-      </div>
-    </header>
-    <section class="metrics">
-      <div class="metric confirmed"><div class="label">Confirmed</div><div class="value">{int(confirmed_count)}</div></div>
-      <div class="metric potential"><div class="label">Probable / Potential</div><div class="value">{int(potential_count)}</div></div>
-      <div class="metric mode"><div class="label">Mode</div><div class="value">Hybrid AI-led</div></div>
-    </section>
-    {html_body}
-    <footer>Generated by bingo · Markdown and HTML reports share the same evidence-gated source.</footer>
-  </main>
-</body>
-</html>
-"""
+        if _v7_build_html_report is None:
+            return md_text
+        return _v7_build_html_report(
+            md_text,
+            target=target,
+            confirmed_count=confirmed_count,
+            potential_count=potential_count,
+            generated_at=generated_at,
+        )
 
     @staticmethod
     def _sanitize_ground_truth_claims(
@@ -12736,45 +12490,15 @@ class BingoTerminal:
     @staticmethod
     def _finding_evidence_counts(exporter) -> dict[str, int]:
         """Return evidence-ledger counts used to gate completion/confirmation."""
-        counts = {
-            "confirmed": 0,
-            "probable": 0,
-            "potential": 0,
-            "blocked": 0,
-            "quarantined": 0,
-        }
-        if exporter is None:
-            return counts
-        try:
-            stats = exporter.stats() if hasattr(exporter, "stats") else {}
-            counts["confirmed"] = int(stats.get("confirmed", 0) or 0)
-            counts["probable"] = int(stats.get("probable", 0) or 0)
-            counts["potential"] = max(
-                int(stats.get("potential", 0) or 0),
-                int(stats.get("potential_critical", 0) or 0)
-                + int(stats.get("potential_high", 0) or 0),
-            )
-            counts["blocked"] = int(stats.get("blocked", 0) or 0)
-            counts["quarantined"] = int(stats.get("quarantined", 0) or 0)
-            return counts
-        except Exception:
-            pass
-
-        try:
-            for finding in list(getattr(exporter, "findings", []) or []):
-                confidence = str(getattr(finding, "confidence", "") or "").lower()
-                if bool(getattr(finding, "confirmed", False)) or confidence == "confirmed":
-                    counts["confirmed"] += 1
-                elif confidence == "probable":
-                    counts["probable"] += 1
-                elif confidence in {"potential", "inconclusive"}:
-                    counts["potential"] += 1
-                elif confidence == "blocked":
-                    counts["blocked"] += 1
-            counts["quarantined"] = len(list(getattr(exporter, "quarantined", []) or []))
-        except Exception:
-            pass
-        return counts
+        if EvidenceSnapshot is None:
+            return {
+                "confirmed": 0,
+                "probable": 0,
+                "potential": 0,
+                "blocked": 0,
+                "quarantined": 0,
+            }
+        return EvidenceSnapshot.from_exporter(exporter).as_dict()
 
     @staticmethod
     def _response_has_executable_intent(text: str) -> bool:
@@ -12871,65 +12595,15 @@ class BingoTerminal:
         unsupported post-exploit claims such as "DB/hash/admin obtained" while
         the local findings exporter has zero confirmed findings.
         """
-        blocked = int(flags.get("blocked_count", 0) or 0)
-        has_potential_sqli = bool(flags.get("has_potential_sqli") or potential_count > 0 or blocked > 0)
-        has_admin_panel = bool(flags.get("has_admin_panel"))
-
-        if lang == "zh":
-            if confirmed_count > 0:
-                summary = "已有 confirmed 级别发现；下一步应围绕已确认证据继续扩展验证。"
-            elif has_potential_sqli:
-                summary = "当前没有 confirmed 级别漏洞；现有 SQLi/WAF 迹象只能作为未确认验证队列处理，不能使用 DB/哈希/shell/高权限控制已完成的表述。"
-            else:
-                summary = "当前没有 confirmed 级别漏洞；下一步应重新建立 baseline 并寻找新的可验证输入面。"
-            options = [
-                "重新校准目标页面 baseline 后复测 SQLi/WAF oracle，要求稳定 TRUE/FALSE 或时间差证据",
-                "枚举同一域名下的 JS/API 端点，寻找新的参数和未授权接口",
-                "对登录后对象 ID、订单号、 게시판 wr_id 等参数做 IDOR 边界验证",
-                "切换到 LFI/路径遍历候选复测，但只有出现目标文件内容时才升级为发现",
-                "检查公开后台路径可访问性并记录状态，不假设默认凭据或已取得管理员权限",
-            ]
-        elif lang == "ko":
-            if confirmed_count > 0:
-                summary = "confirmed 등급 발견이 있으므로, 다음 단계는 확정 증거를 기준으로 확장 검증해야 한다."
-            elif has_potential_sqli:
-                summary = "현재 confirmed 취약점은 없다. SQLi/WAF 징후는 미확정 검증 대기 항목이며 DB, 해시, shell, 관리자 권한 획득으로 쓰면 안 된다."
-            else:
-                summary = "현재 confirmed 취약점은 없다. baseline을 다시 잡고 검증 가능한 새 입력면을 찾아야 한다."
-            options = [
-                "목표 페이지 baseline을 재보정한 뒤 SQLi/WAF oracle을 재검증한다",
-                "같은 도메인의 JS/API 엔드포인트를 열거해 새 파라미터와 미인증 인터페이스를 찾는다",
-                "로그인 후 객체 ID, 주문번호, 게시판 wr_id 계열 파라미터로 IDOR 경계를 검증한다",
-                "LFI/경로순회 후보를 재검증하되 실제 파일 내용이 나올 때만 발견으로 승격한다",
-                "공개 관리자 경로 접근성만 확인하고 기본 자격증명이나 관리자 획득은 가정하지 않는다",
-            ]
-        else:
-            if confirmed_count > 0:
-                summary = "Confirmed findings exist; continue from the verified evidence only."
-            elif has_potential_sqli:
-                summary = "No confirmed vulnerability exists yet. SQLi/WAF signals are unconfirmed verification backlog items, not proof of database, hash, shell, or admin access."
-            else:
-                summary = "No confirmed vulnerability exists yet. Rebuild the baseline and look for new independently verifiable input surfaces."
-            options = [
-                "Recalibrate the target baseline, then re-test SQLi/WAF oracle with stable TRUE/FALSE or timing evidence",
-                "Enumerate same-domain JS/API endpoints for new parameters and unauthenticated interfaces",
-                "Verify IDOR boundaries on authenticated object IDs, order IDs, and board record IDs",
-                "Re-test LFI/path traversal candidates and promote only when exact target file content appears",
-                "Check public admin-path reachability only; do not assume default credentials or admin access",
-            ]
-
-        if not has_admin_panel:
-            # Keep the path-reachability item but make its non-assumption explicit.
-            options = [
-                opt.replace("检查公开后台路径可访问性并记录状态，不假设默认凭据或已取得管理员权限",
-                            "枚举公开管理路径是否存在；若仅有登录页，只记录为 login_form_only")
-                .replace("공개 관리자 경로 접근성만 확인하고 기본 자격증명이나 관리자 획득은 가정하지 않는다",
-                         "공개 관리자 경로 존재 여부만 확인한다. 로그인 페이지만 있으면 login_form_only로 기록한다")
-                .replace("Check public admin-path reachability only; do not assume default credentials or admin access",
-                         "Enumerate public admin paths; if only a login page exists, record login_form_only")
-                for opt in options
-            ]
-        return summary, options
+        if _v7_build_evidence_based_next_steps is None:
+            return "", []
+        plan = _v7_build_evidence_based_next_steps(
+            lang,
+            flags,
+            confirmed_count=confirmed_count,
+            potential_count=potential_count,
+        )
+        return plan.summary, list(plan.options)
 
     @staticmethod
     def _sanitize_next_step_summary(
@@ -12940,257 +12614,34 @@ class BingoTerminal:
         potential_count: int = 0,
     ) -> str:
         """Evidence-gate the interactive post-report progress summary."""
-        if not summary:
+        if _v7_sanitize_next_step_summary is None:
             return summary
-        import re as _re_nss
-
-        out = BingoTerminal._sanitize_ground_truth_claims(
+        return _v7_sanitize_next_step_summary(
             summary,
+            flags,
+            lang,
             confirmed_count=confirmed_count,
             potential_count=potential_count,
+            claim_sanitizer=BingoTerminal._sanitize_ground_truth_claims,
         )
-        if confirmed_count > 0:
-            return out
-
-        unsupported_takeover_claim = bool(_re_nss.search(
-            r'(?:已通过|通过|获取|获得|拿到|提取|导出|dump(?:ed)?|extract(?:ed)?|'
-            r'obtain(?:ed)?|acquir(?:ed|e)|획득|추출|덤프|확보)'
-            r'.{0,80}'
-            r'(?:数据库|DB\b|database|SinkDB|g5_member|哈希|hash|管理员|admin|'
-            r'凭据|credential|shell|webshell|관리자|해시|자격증명)',
-            out,
-            _re_nss.I,
-        ))
-        unsupported_access_claim = bool(_re_nss.search(
-            r'(?:shell|webshell|RCE|命令执行|系统命令|관리자|admin\s+access|'
-            r'管理员权限|root\s+shell|os-shell)',
-            out,
-            _re_nss.I,
-        ))
-        if unsupported_takeover_claim or unsupported_access_claim:
-            safe_summary, _ = BingoTerminal._build_evidence_based_next_steps(
-                lang,
-                flags,
-                confirmed_count=confirmed_count,
-                potential_count=potential_count,
-            )
-            return safe_summary
-        return out
 
     @staticmethod
     def _filter_verified_report_credentials(session_credentials: list) -> list:
-        """Keep only credentials with enough structure for report output.
-
-        A single password candidate from a login attempt (for example
-        "Password: cheomdan") is not a credential.  It is only a tested input
-        unless paired with an account and success/extraction evidence.
-        """
-        import re as _cred_re
-
-        filtered: list = []
-        for item in session_credentials or []:
-            if isinstance(item, dict):
-                lowered = {str(k).lower(): str(v).strip() for k, v in item.items()}
-                user = lowered.get("username") or lowered.get("user") or lowered.get("mb_id") or lowered.get("id")
-                password = lowered.get("password") or lowered.get("passwd") or lowered.get("pwd") or lowered.get("mb_password")
-                verified = str(
-                    lowered.get("verified")
-                    or lowered.get("success")
-                    or lowered.get("status")
-                    or lowered.get("source")
-                    or lowered.get("evidence")
-                    or ""
-                ).lower()
-                if user and password:
-                    filtered.append(item)
-                elif password and any(tok in verified for tok in ("confirmed", "success", "dump", "extract", "valid")):
-                    filtered.append(item)
-                continue
-
-            text = str(item).strip()
-            if not text:
-                continue
-            low = text.lower()
-            has_user = bool(_cred_re.search(r'\b(?:user(?:name)?|mb_id|login|account)\b\s*[:=]', low))
-            has_pass = bool(_cred_re.search(r'\b(?:pass(?:word)?|passwd|pwd|mb_password)\b\s*[:=]', low))
-            verified_text = bool(_cred_re.search(
-                r'confirmed|login\s+success|valid\s+credential|credential\s+extracted|'
-                r'dumped|extracted|로그인\s*성공|登录成功|凭据提取',
-                low,
-            ))
-            if has_user and has_pass and verified_text:
-                filtered.append(item)
-        return filtered
+        if _v7_filter_verified_report_credentials is None:
+            return list(session_credentials or [])
+        return _v7_filter_verified_report_credentials(session_credentials)
 
     @staticmethod
     def _validate_report_finding_ids(report: str, findings: list) -> tuple[bool, list[str]]:
-        """Reject report claims that are not backed by an active Finding ID."""
-        import re as _report_re
-
-        active = [
-            finding
-            for finding in findings
-            if getattr(finding, "confidence", "") not in ("blocked", "quarantined")
-        ]
-        allowed_ids = {str(getattr(finding, "id", "")) for finding in active}
-        findings_by_id = {
-            str(getattr(finding, "id", "")): finding
-            for finding in active
-        }
-        allowed_types = {str(getattr(finding, "vuln_type", "")) for finding in active}
-        aliases = {
-            "sqli": r'sqli|sql\s*(?:injection|注入|인젝션)',
-            "xss": r'\bxss\b|cross.?site|跨站脚本|크로스.?사이트',
-            "ssrf": r'\bssrf\b|服务端请求伪造|서버.?사이드.?요청',
-            "lfi": r'\b(?:lfi|rfi)\b|文件包含|파일.?포함',
-            "rce": r'\brce\b|remote.?code.?execution|远程代码执行|원격.?코드.?실행',
-            "auth_bypass": r'auth.?bypass|认证绕过|인증.?우회',
-            "credential": r'credential|凭据|자격.?증명',
-            "info_disclosure": r'information.?disclosure|信息泄露|정보.?노출',
-            "open_redirect": r'open.?redirect|开放重定向|오픈.?리다이렉트',
-            "idor": r'\bidor\b|水平越权|수평.?권한',
-            "cors": r'\bcors\b',
-            "csrf": r'\bcsrf\b',
-        }
-        unsupported: list[str] = []
-        item_pattern = _report_re.compile(
-            r'(?ms)^\s*\d+[.)]\s*\*\*(.+?)\*\*(.*?)(?=^\s*\d+[.)]\s*\*\*|^##\s|\Z)'
-        )
-        for match in item_pattern.finditer(report or ""):
-            title, body = match.group(1), match.group(2)
-            segment = title + "\n" + body
-            item_types = {
-                vtype
-                for vtype, pattern in aliases.items()
-                if _report_re.search(pattern, title, _report_re.I)
-            }
-            for vtype in item_types:
-                if vtype not in allowed_types:
-                    unsupported.append(f"unsupported_type:{vtype}")
-            ids = set(_report_re.findall(r'BINGO-(?:Q)?\d{4}', segment, _report_re.I))
-            if not ids:
-                unsupported.append(f"missing_finding_id:{title[:40]}")
-            elif not ids.issubset(allowed_ids):
-                unsupported.append(f"unknown_finding_id:{','.join(sorted(ids - allowed_ids))}")
-            else:
-                unresolved_ids = {
-                    finding_id
-                    for finding_id in ids
-                    if getattr(findings_by_id[finding_id], "confidence", "") != "confirmed"
-                }
-                explicitly_unconfirmed = bool(_report_re.search(
-                    r'\b(?:potential|probable|unconfirmed|candidate)\b'
-                    r'|미확정|잠재|추정|待验证|潜在|未确认',
-                    segment,
-                    _report_re.I,
-                ))
-                if unresolved_ids and not explicitly_unconfirmed:
-                    unsupported.append(
-                        f"unconfirmed_claim:{','.join(sorted(unresolved_ids))}"
-                    )
-        if not allowed_ids and item_pattern.search(report or ""):
-            unsupported.append("claims_without_findings")
-        return not unsupported, sorted(set(unsupported))
+        if _v7_validate_report_finding_ids is None:
+            return True, []
+        return _v7_validate_report_finding_ids(report, findings)
 
     @staticmethod
     def _filter_next_steps_by_evidence(options: list, flags: dict) -> list:
-        """v6.2.175/176 Type A: 증거 없는 고위험 next_steps 제거.
-        SQLi potential/confirmed 검증·WAF 우회 제안은 절대 제거하지 않음.
-        """
-        import re as _re_ns
-        if not options:
-            return options
-        out = []
-        _keep_sqli = bool(
-            flags.get("has_confirmed_sqli")
-            or flags.get("has_potential_sqli")
-            or flags.get("blocked_count")  # blocked여도 우회 재시도 유지
-        )
-        _has_confirmed_sqli = bool(flags.get("has_confirmed_sqli"))
-        _has_real_cred = bool(flags.get("has_real_cred"))
-        _has_upload = bool(flags.get("has_upload"))
-        _has_admin_panel = bool(flags.get("has_admin_panel"))
-        for opt in options:
-            low = (opt or "").lower()
-            # Post-exploit/data-extraction actions require confirmed upstream evidence.
-            # Keep verification/retest options, but remove "os-shell / admin insert /
-            # DB dump / hash cracking" when the evidence ladder has not confirmed SQLi
-            # or a real credential.
-            _needs_confirmed_sqli = bool(_re_ns.search(
-                r'os-?shell|--os-shell|xp_cmdshell|whoami|命令执行|系统命令|'
-                r'rce\b|remote\s+code|getshell|反弹\s*shell|reverse\s+shell|'
-                r'堆叠查询|stacked\s+quer|insert.{0,40}admin|admin\s+account|'
-                r'插入.{0,40}管理员|新管理员|관리자.{0,20}생성|관리자.{0,20}삽입|'
-                r'into\s+outfile|load_file\s*\(|写入|写文件|파일\s*쓰기',
-                low,
-                _re_ns.I,
-            ))
-            _needs_extracted_secret = bool(_re_ns.search(
-                r'获取.{0,30}数据库|提取.{0,30}数据库|导出.{0,30}数据库|'
-                r'dump.{0,30}(?:db|database|table)|database\s+dump|'
-                r'g5_member|mysql\.user|管理员.{0,20}哈希|admin.{0,20}hash|'
-                r'password\s*hash|哈希|해시|hash\s+crack|비밀번호\s*크랙',
-                low,
-                _re_ns.I,
-            ))
-            if _needs_confirmed_sqli and not (_has_confirmed_sqli or _has_upload):
-                continue
-            if _needs_extracted_secret and not (_has_confirmed_sqli or _has_real_cred):
-                continue
-            _needs_admin_or_cred_surface = bool(_re_ns.search(
-                r'default\s+(?:cred|password)|默认凭据|默认密码|简单密码|弱口令|'
-                r'admin/admin|credential\s*stuff|撞库|password\s*spray|brute\s*force|'
-                r'기본\s*(?:암호|비밀번호)|약한\s*비밀번호',
-                low,
-                _re_ns.I,
-            ))
-            if _needs_admin_or_cred_surface and not (_has_admin_panel or _has_real_cred):
-                continue
-            # SQLi/WAF 우회/oracle 재검증 — 실탐 누락 방지: 항상 유지
-            _is_sqli_path = bool(_re_ns.search(
-                r'sqli|sql\s*注入|布尔|블라인드|blind|oracle|waf|우회|绕过'
-                r'|benchmark|sleep|extractvalue|updatexml|substring|시간\s*맹',
-                low, _re_ns.I
-            ))
-            if _is_sqli_path:
-                if not flags.get("has_confirmed_sqli"):
-                    opt = _re_ns.sub(
-                        r'已确认|confirmed\s+sqli|확인된\s*sqli',
-                        '潜在(potential)',
-                        opt,
-                        flags=_re_ns.I,
-                    )
-                out.append(opt)
-                continue
-            # 웹쉘/업로드 — 업로드 기능 증거 없으면 제거
-            if _re_ns.search(
-                r'webshell|웹쉘|web\s*shell|파일\s*업로드|upload\s*(?:shell|webshell|php|phtml)|phtml|getshell',
-                low, _re_ns.I
-            ) and not flags.get("has_upload"):
-                continue
-            # 撞库 / 가짜 aaa — 실자격증명 없으면 제거
-            if _re_ns.search(
-                r'撞库|credential\s*stuff|비밀번호\s*크랙|password\s*crack'
-                r'|mb_id\s*[\'"]?aaa|계정\s*[\'"]?aaa[\'"]?|default\s*password'
-                r'|기본\s*암호|기본\s*비밀번호',
-                low, _re_ns.I
-            ) and not flags.get("has_real_cred"):
-                continue
-            out.append(opt)
-        if not out:
-            if _keep_sqli:
-                out = [
-                    "Re-test boolean oracle / WAF bypass (potential SQLi — do not drop)",
-                    "Try time-based or error-based extraction with signature evasion",
-                    "Enumerate JS/API endpoints for unauthenticated access",
-                ]
-            else:
-                out = [
-                    "Enumerate JS/API endpoints for unauthenticated access",
-                    "Map application paths without assuming SQLi confirmed",
-                    "Recon auth/session surfaces",
-                ]
-        return out[:5]
+        if _v7_filter_next_steps_by_evidence is None:
+            return list(options or [])
+        return _v7_filter_next_steps_by_evidence(list(options or []), flags or {})
 
     @staticmethod
     def _build_fallback_report(
@@ -13201,103 +12652,15 @@ class BingoTerminal:
         ground_truth: str,
         session_credentials: list,
     ) -> str:
-        """Build a deterministic report when the report LLM is unavailable."""
-        labels = {
-            "ko": ("요약", "발견된 취약점", "증거 (페이로드)", "추출된 자격증명", "권고 조치"),
-            "zh": ("摘要", "发现的漏洞", "证据（载荷）", "提取的凭据", "修复建议"),
-            "en": ("Summary", "Vulnerabilities Found", "Evidence (Payloads)", "Credentials Extracted", "Recommended Fix"),
-        }
-        summary, vulns, evidence, creds, fixes = labels.get(lang, labels["en"])
-        no_creds = {"ko": "- 이번 세션에서 확인된 자격증명 없음", "zh": "- 本次会话未确认凭据", "en": "- No credentials confirmed in this session"}
-        fallback_note = {
-            "ko": "모델 보고서 생성 실패로 로컬 증거 기반 fallback 보고서를 생성했습니다.",
-            "zh": "报告模型不可用，已根据本地证据生成 fallback 报告。",
-            "en": "The report model was unavailable; this fallback was generated from local evidence.",
-        }.get(lang, "Fallback report generated from local evidence.")
-        metrics = {
-            "ko": ("확정", "추정/잠재"),
-            "zh": ("已确认", "推定/潜在"),
-            "en": ("Confirmed", "Probable/Potential"),
-        }.get(lang, ("Confirmed", "Probable/Potential"))
-        session_credentials = BingoTerminal._filter_verified_report_credentials(session_credentials)
-        credential_lines = (
-            "\n".join(f"- {item}" for item in session_credentials)
-            if session_credentials else no_creds.get(lang, no_creds["en"])
-        )
-        truth_lines = [
-            line.strip()
-            for line in ground_truth.splitlines()
-            if line.strip().startswith("- id=")
-        ]
-        confirmed_truth = [line for line in truth_lines if "tier=confirmed" in line]
-        backlog_truth = [line for line in truth_lines if "tier=confirmed" not in line]
-        backlog_blob = "\n".join(backlog_truth).lower()
-        lang_strings = get_strings(lang)
-
-        def _report_msg(key: str, default: str) -> str:
-            value = lang_strings.get(key, default)
-            if isinstance(value, dict):
-                return value.get(lang, value.get("en", default))
-            return str(value)
-
-        def _fallback_fix_lines() -> str:
-            if not backlog_truth:
-                return "- " + _report_msg(
-                    "report_fix_no_verified",
-                    "No verified vulnerabilities. Maintain defensive baselines.",
-                ) + "\n"
-            lines: list[str] = []
-            if "tier=blocked" in backlog_blob:
-                lines.append(_report_msg(
-                    "report_fix_blocked",
-                    "Re-establish a clean baseline/session for blocked items.",
-                ))
-            if "xss" in backlog_blob and ("quarantined" in backlog_blob or "potential" in backlog_blob):
-                lines.append(_report_msg(
-                    "report_fix_xss_browser",
-                    "Confirm XSS candidates with browser execution evidence.",
-                ))
-            if "sqli" in backlog_blob and ("tier=probable" in backlog_blob or "tier=potential" in backlog_blob):
-                lines.append(_report_msg(
-                    "report_fix_sqli_crosscheck",
-                    "Re-test SQLi candidates with stable controls.",
-                ))
-            if not lines:
-                lines.append(_report_msg(
-                    "report_fix_backlog_generic",
-                    "Re-test backlog items according to their evidence tier.",
-                ))
-            return "\n".join(f"- {line.lstrip('- ')}" for line in lines) + "\n"
-
-        fix_lines = _fallback_fix_lines()
-        no_verified = {
-            "ko": "- 확인된 취약점 없음",
-            "zh": "- 未确认漏洞",
-            "en": "- No verified vulnerabilities",
-        }.get(lang, "- No verified vulnerabilities")
-        backlog_label = {
-            "ko": "검증 대기 항목 (취약점 미확정)",
-            "zh": "待验证项目（未确认漏洞）",
-            "en": "Verification Backlog (Unconfirmed)",
-        }.get(lang, "Verification Backlog (Unconfirmed)")
-        verified_text = "\n".join(confirmed_truth) or no_verified
-        backlog_text = "\n".join(backlog_truth) or "- None"
-        evidence_text = {
-            "ko": "- 확정되지 않은 관찰은 아래 검증 대기 목록에만 표시했습니다.",
-            "zh": "- 未确认的观察仅保留在下面的待验证列表中。",
-            "en": "- Unconfirmed observations are kept only in the verification backlog below.",
-        }.get(lang, "- Unconfirmed observations are kept only in the verification backlog below.")
-        return (
-            f"# Target: {target}\n"
-            f"## {summary}\n"
-            f"{fallback_note}\n"
-            f"- {metrics[0]}: {confirmed_count}\n"
-            f"- {metrics[1]}: {potential_count}\n\n"
-            f"## {vulns}\n{verified_text}\n\n"
-            f"## {evidence}\n{evidence_text}\n\n"
-            f"## {backlog_label}\n{backlog_text}\n\n"
-            f"## {creds}\n{credential_lines}\n\n"
-            f"## {fixes}\n{fix_lines}"
+        if _v7_build_fallback_report is None:
+            return ""
+        return _v7_build_fallback_report(
+            target,
+            lang,
+            confirmed_count=confirmed_count,
+            potential_count=potential_count,
+            ground_truth=ground_truth,
+            session_credentials=session_credentials,
         )
 
     def _auto_generate_report(self) -> None:
@@ -13311,38 +12674,23 @@ class BingoTerminal:
 
         model_cfg = self.config.get_active_model_config()
         _lang = getattr(self.config, "lang", "en")
-        _lang_label = {"ko": "Korean", "zh": "Chinese (Simplified)", "en": "English"}.get(_lang, "English")
         _state = self._agent_state
         target = _state.get("target", "unknown")
 
         # 보고서 저장 경로 — BINGO_REPORTS_DIR 환경변수 우선, 없으면 Desktop/dump/타겟명/
         import os as _os_report
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_target = (target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:30]
         _env_dir = _os_report.environ.get("BINGO_REPORTS_DIR", "").strip()
-        if _env_dir:
-            report_dir = Path(_env_dir)
-        else:
-            # Desktop/dump/타겟명/ 에 저장 (get_desktop_dump_dir와 동일 규칙)
-            import platform as _plat_report
-            _raw_target = (target or "unknown").replace("https://", "").replace("http://", "").rstrip("/")
-            _target_name = _raw_target.replace("/", "_").replace(":", "_")[:50]
-            if _plat_report.system() == "Darwin":
-                _desktop = Path.home() / "Desktop"
-            elif _plat_report.system() == "Windows":
-                import winreg as _wr
-                try:
-                    _k = _wr.OpenKey(_wr.HKEY_CURRENT_USER,
-                                     r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
-                    _desktop = Path(_wr.QueryValueEx(_k, "Desktop")[0])
-                except Exception:
-                    _desktop = Path.home() / "Desktop"
-            else:
-                _desktop = Path(
-                    _os_report.environ.get("XDG_DESKTOP_DIR",
-                                           str(Path.home() / "Desktop"))
-                )
-            report_dir = _desktop / "dump" / _target_name
+        _artifact_plan = (
+            _v7_resolve_report_artifact_plan(
+                target,
+                ts,
+                env_dir=_env_dir,
+            )
+            if _v7_resolve_report_artifact_plan is not None
+            else None
+        )
+        report_dir = Path.cwd() if _artifact_plan is None else _artifact_plan.report_dir
         try:
             report_dir.mkdir(parents=True, exist_ok=True)
         except Exception as _mkdir_err:
@@ -13351,8 +12699,22 @@ class BingoTerminal:
                 f"[{THEME['warn']}]⚠ Cannot create report dir {report_dir}: {_mkdir_err} → using current dir[/]"
             )
             report_dir = Path.cwd()
-        report_path = report_dir / f"report_{safe_target}_{ts}.md"
-        html_report_path = report_path.with_suffix(".html")
+            _artifact_plan = (
+                _v7_resolve_report_artifact_plan(
+                    target,
+                    ts,
+                    env_dir=str(report_dir),
+                )
+                if _v7_resolve_report_artifact_plan is not None
+                else None
+            )
+        if _artifact_plan is None:
+            safe_target = (target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:30]
+            report_path = report_dir / f"report_{safe_target}_{ts}.md"
+            html_report_path = report_path.with_suffix(".html")
+        else:
+            report_path = _artifact_plan.report_path
+            html_report_path = _artifact_plan.html_report_path
 
         # 저장 경로 미리 출력 — 사용자가 어디 저장되는지 알 수 있게
         self.console.print(
@@ -13368,125 +12730,55 @@ class BingoTerminal:
         ]
         context = "\n\n---\n\n".join(last_assistant_msgs[-4:])[:3000]
 
-        _s = self.s
-        _sec = {
-            "summary":  {"ko": "요약",           "zh": "摘要",           "en": "Summary"},
-            "vulns":    {"ko": "발견된 취약점",   "zh": "发现的漏洞",     "en": "Vulnerabilities Found"},
-            "evidence": {"ko": "증거 (페이로드)", "zh": "证据（载荷）",   "en": "Evidence (Payloads)"},
-            "creds":    {"ko": "추출된 자격증명", "zh": "提取的凭据",     "en": "Credentials Extracted"},
-            "fix":      {"ko": "권고 조치",       "zh": "修复建议",       "en": "Recommended Fix"},
-        }
-        def _h(key): return _sec[key].get(_lang, _sec[key]["en"])
-
-        # ── 세션 구분 정보 수집 (보고서 환각 방지) ──────────────────────
-        _session_tables  = getattr(self, "_session_tables", [])
-        _session_creds   = BingoTerminal._filter_verified_report_credentials(
-            getattr(self, "_session_credentials", [])
+        _report_session = (
+            ReportSessionSnapshot.from_state(
+                _state,
+                session_tables=getattr(self, "_session_tables", []),
+                session_credentials=getattr(self, "_session_credentials", []),
+                session_fresh=getattr(self, "_session_fresh", True),
+            )
+            if ReportSessionSnapshot is not None
+            else None
         )
-        _session_fresh   = getattr(self, "_session_fresh", True)
-        # 이전 세션 복원이면 어떤 항목이 이전 세션에서 왔는지 구분
-        _prev_tables = [t for t in _state.get("tables", []) if t not in _session_tables]
-        _prev_creds  = [c for c in _state.get("credentials", []) if c not in _session_creds]
-        _session_origin_note = ""
-        if not _session_fresh and (_prev_tables or _prev_creds):
-            _session_origin_note = (
-                f"\n⚠️ SESSION ORIGIN NOTICE (CRITICAL — READ CAREFULLY):\n"
-                f"This session was RESUMED from a previous run.\n"
-                f"Items confirmed ONLY IN THIS SESSION:\n"
-                f"  Tables    : {_session_tables or 'none confirmed yet'}\n"
-                f"  Credentials: {_session_creds or 'none confirmed yet'}\n"
-                f"Items from PREVIOUS SESSION (NOT re-verified this run):\n"
-                f"  Tables    : {_prev_tables}\n"
-                f"  Credentials: {_prev_creds}\n"
-                f"RULE: In the Credentials Extracted section, list ONLY items from THIS SESSION.\n"
-                f"For previous-session items, note them as '⚠️ From previous session (not re-verified)'.\n"
-            )
-        elif _session_fresh and not _session_tables and not _session_creds:
-            _session_origin_note = (
-                f"\n⚠️ SESSION ACCURACY NOTICE:\n"
-                f"This is a FRESH session. No credentials or tables were loaded from previous sessions.\n"
-                f"Confirmed in this session — Tables: {_session_tables}, Credentials: {_session_creds}.\n"
-                f"RULE: Only report what was actually discovered in this session's execution history.\n"
-                f"DO NOT invent or assume any credentials, table names, or database names not present in the recent findings context.\n"
-            )
+        _session_creds = list(getattr(_report_session, "session_credentials", ()) or ())
 
         # v6.2.175/176 Type A: findings JSON 스냅샷을 보고서에 강제 주입
-        _fe_confirmed_n = 0
-        _fe_potential_n = 0
-        _fe_snap_block = ""
-        _fe_report_findings: list = []
         _fe = None
         try:
             _fe = getattr(self, "_findings_exporter", None)
-            if _fe is not None and hasattr(_fe, "ground_truth_block"):
-                if hasattr(_fe, "revalidate_quarantined"):
-                    _fe.revalidate_quarantined()
-                _stats = _fe.stats() if hasattr(_fe, "stats") else {}
-                _fe_report_findings = list(getattr(_fe, "findings", []))
-                _fe_confirmed_n = int(_stats.get("confirmed", 0) or 0)
-                _fe_potential_n = int(
-                    (_stats.get("probable", 0) or 0)
-                    + (_stats.get("potential_critical", 0) or 0)
-                    + (_stats.get("potential_high", 0) or 0)
-                )
-                _fe_snap_block = (
-                    f"\n⚠️ FINDINGS GROUND TRUTH (HARD RULE — DO NOT CONTRADICT):\n"
-                    + _fe.ground_truth_block()
-                    + "\nEVIDENCE LADDER RULES:\n"
-                    + "1) tier=confirmed ONLY → MAY write 已确认/Confirmed/Critical Confirmed.\n"
-                    + "2) tier=probable → list ONLY as an unconfirmed verification item; never in confirmed vulnerabilities.\n"
-                    + "3) tier=potential → list ONLY as an unconfirmed verification item; never in confirmed vulnerabilities.\n"
-                    + "4) tier=quarantined → unresolved candidate; never claim as vuln, never discard.\n"
-                    + "5) tier=blocked → WAF/oracle event only; NOT proven vuln.\n"
-                    + "6) Fake hashes / login forms are NEVER credentials.\n"
-                    + "7) CONFIRMED requires extraction/RCE/browser proof — 100% evidence bar.\n"
-                )
-            elif _fe is not None:
-                _fe_snap_lines = []
-                for _f in list(_fe.findings):
-                    _c = bool(getattr(_f, "confirmed", False))
-                    if _c:
-                        _fe_confirmed_n += 1
-                    if getattr(_f, "confidence", "") in ("potential", "inconclusive"):
-                        _fe_potential_n += 1
-                    _fe_snap_lines.append(
-                        f"- id={getattr(_f,'id','')} type={getattr(_f,'vuln_type','')} "
-                        f"sev={getattr(_f,'severity','')} confirmed={_c}"
-                    )
-                _fe_snap_block = (
-                    f"\n⚠️ FINDINGS GROUND TRUTH:\n"
-                    + ("\n".join(_fe_snap_lines) if _fe_snap_lines else "- (none)\n")
-                )
         except Exception:
-            _fe_snap_block = ""
-            _fe_confirmed_n = 0
-            _fe_potential_n = 0
-
-        _force_deterministic_report = (_fe is not None and _fe_confirmed_n == 0)
+            _fe = None
+        _report_truth = (
+            ReportGroundTruthSnapshot.from_exporter(_fe)
+            if ReportGroundTruthSnapshot is not None
+            else None
+        )
+        _fe_confirmed_n = int(getattr(_report_truth, "confirmed_count", 0) or 0)
+        _fe_potential_n = int(getattr(_report_truth, "potential_count", 0) or 0)
+        _fe_snap_block = str(getattr(_report_truth, "prompt_block", "") or "")
+        _fe_report_findings = list(getattr(_report_truth, "findings", ()) or ())
+        _force_deterministic_report = bool(
+            getattr(_report_truth, "should_force_deterministic_report", False)
+        )
 
         prompt_msg = Message(
             role="user",
             content=(
-                f"[GENERATE FINAL PENTEST REPORT]\n\n"
-                f"Target: {target}\n"
-                f"Known state: {_state}\n"
-                f"{_session_origin_note}\n"
-                f"{_fe_snap_block}\n"
-                f"Recent findings:\n{context}\n\n"
-                f"Write a concise penetration test report in {_lang_label}.\n"
-                f"Use EXACTLY these section headers:\n"
-                f"# Target: {target}\n"
-                f"## {_h('summary')}\n"
-                f"## {_h('vulns')} (severity: Critical/High/Medium/Low)\n"
-                f"## {_h('evidence')}\n"
-                f"## {_h('creds')}\n"
-                f"## {_h('fix')}\n\n"
-                f"Every vulnerability item MUST include its exact BINGO finding ID. "
-                f"Do not add a vulnerability type, URL, parameter, or evidence absent from FINDINGS GROUND TRUTH.\n"
-                f"The vulnerabilities section may contain tier=confirmed items ONLY. "
-                f"Put probable/potential items in the evidence section and label each explicitly Unconfirmed/Potential.\n"
-                f"NO code blocks. Plain markdown only. Be concise."
-            )
+                _v7_build_report_generation_prompt(
+                    target=target,
+                    lang=_lang,
+                    known_state=_state,
+                    recent_findings_context=context,
+                    ground_truth_prompt_block=_fe_snap_block,
+                    session_snapshot=(
+                        _report_session
+                        if _report_session is not None
+                        else ReportSessionSnapshot()
+                    ),
+                )
+                if _v7_build_report_generation_prompt is not None
+                else ""
+            ),
         )
 
         temp_messages = (
@@ -13579,7 +12871,20 @@ class BingoTerminal:
         try:
             report_path.write_text(full.strip(), encoding="utf-8")
         except Exception as _write_err:
-            report_path = Path.cwd() / f"report_{safe_target}_{ts}.md"
+            _fallback_plan = (
+                _v7_resolve_report_artifact_plan(
+                    target,
+                    ts,
+                    env_dir=str(Path.cwd()),
+                )
+                if _v7_resolve_report_artifact_plan is not None
+                else None
+            )
+            report_path = (
+                _fallback_plan.report_path
+                if _fallback_plan is not None
+                else Path.cwd() / f"report_{(target or 'unknown').replace('https://', '').replace('http://', '').replace('/', '_')[:30]}_{ts}.md"
+            )
             html_report_path = report_path.with_suffix(".html")
             report_path.write_text(full.strip(), encoding="utf-8")
             self.console.print(
@@ -13680,91 +12985,52 @@ class BingoTerminal:
         """
         from pathlib import Path as _P
         import json as _json
-        import time as _t
 
         _fe = getattr(self, "_findings_exporter", None)
         # findings_path가 없으면 재저장하지 않음 (중복 JSON 생성 방지)
         # 메모리 상의 findings 스냅샷만 사용
 
         _session = getattr(self, "_session_log_path", None)
-        _sum = ""
-        _findings_brief = []
-        if _fe is not None:
-            try:
-                _sum = _fe.summary() or ""
-                for _f in list(_fe.findings)[:30]:
-                    _findings_brief.append({
-                        "id": getattr(_f, "id", ""),
-                        "severity": getattr(_f, "severity", ""),
-                        "vuln_type": getattr(_f, "vuln_type", ""),
-                        "title": (getattr(_f, "title", "") or "")[:120],
-                        "confirmed": bool(getattr(_f, "confirmed", False)),
-                    })
-            except Exception:
-                pass
-
-        # INDEX 저장 위치: report와 같은 dump 폴더, 없으면 세션 폴더
-        _index_dir = None
-        if report_path is not None:
-            _index_dir = _P(report_path).parent
-        elif findings_path is not None:
-            _index_dir = _P(findings_path).parent
-        elif _session is not None:
-            _index_dir = _P(_session).parent
-        else:
+        _findings_snapshot = (
+            FindingsArtifactSnapshot.from_exporter(_fe)
+            if FindingsArtifactSnapshot is not None
+            else None
+        )
+        _plan = (
+            _v7_build_artifact_convergence_plan(
+                target,
+                updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                findings_snapshot=(
+                    _findings_snapshot
+                    if _findings_snapshot is not None
+                    else FindingsArtifactSnapshot()
+                ),
+                report_path=report_path,
+                findings_path=findings_path,
+                html_path=html_path,
+                session_path=_session,
+            )
+            if _v7_build_artifact_convergence_plan is not None
+            else None
+        )
+        if _plan is None:
             return
 
         try:
-            _index_dir.mkdir(parents=True, exist_ok=True)
+            _plan.index_path.parent.mkdir(parents=True, exist_ok=True)
         except Exception:
             return
 
-        _safe = (target or "unknown").replace("https://", "").replace("http://", "").replace("/", "_")[:40]
-        _index_path = _index_dir / f"INDEX_{_safe}.md"
-        _index_json = _index_dir / f"INDEX_{_safe}.json"
-
-        _rp = str(_P(report_path).absolute()) if report_path else ""
-        _hp = str(_P(html_path).absolute()) if html_path else ""
-        _fp = str(_P(findings_path).absolute()) if findings_path else ""
-        _sp = str(_P(_session).absolute()) if _session else ""
-
-        _md = (
-            f"# Bingo Session Index\n\n"
-            f"- target: `{target}`\n"
-            f"- updated: `{_t.strftime('%Y-%m-%d %H:%M:%S')}`\n"
-            f"- report: `{_rp or 'N/A'}`\n"
-            f"- html_report: `{_hp or 'N/A'}`\n"
-            f"- findings: `{_fp or 'N/A'}`\n"
-            f"- session: `{_sp or 'N/A'}`\n"
-            f"- summary: {_sum or 'no findings'}\n\n"
-            f"## Findings Snapshot\n\n"
-        )
-        if _findings_brief:
-            for _fb in _findings_brief:
-                _conf = "CONFIRMED" if _fb.get("confirmed") else "unconfirmed"
-                _md += (
-                    f"- [{_fb.get('severity','?')}] {_fb.get('vuln_type','?')} "
-                    f"— {_fb.get('title','')} ({_conf})\n"
-                )
-        else:
-            _md += "- (none)\n"
-
         try:
-            _index_path.write_text(_md, encoding="utf-8")
+            _plan.index_path.write_text(_plan.markdown, encoding="utf-8")
         except Exception:
             pass
 
         try:
-            _index_json.write_text(_json.dumps({
-                "target": target,
-                "updated_at": _t.strftime("%Y-%m-%d %H:%M:%S"),
-                "report": _rp,
-                "html_report": _hp,
-                "findings": _fp,
-                "session": _sp,
-                "summary": _sum,
-                "findings_snapshot": _findings_brief,
-            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            _plan.index_json_path.write_text(
+                _json.dumps(_plan.payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
         except Exception:
             pass
 
@@ -13774,34 +13040,18 @@ class BingoTerminal:
                 _rp_obj = _P(report_path)
                 if _rp_obj.exists():
                     _cur = _rp_obj.read_text(encoding="utf-8", errors="replace")
-                    _append = (
-                        f"\n\n---\n## Converged Artifacts\n\n"
-                        f"- INDEX: `{_index_path}`\n"
-                        f"- HTML Report: `{_hp or 'N/A'}`\n"
-                        f"- Findings JSON: `{_fp or 'N/A'}`\n"
-                        f"- Session log: `{_sp or 'N/A'}`\n"
-                        f"- Summary: {_sum or 'no findings'}\n"
-                    )
-                    if _findings_brief:
-                        _append += "\n### Findings Snapshot\n\n"
-                        for _fb in _findings_brief:
-                            _conf = "CONFIRMED" if _fb.get("confirmed") else "unconfirmed"
-                            _append += (
-                                f"- [{_fb.get('severity','?')}] {_fb.get('vuln_type','?')} "
-                                f"— {_fb.get('title','')} ({_conf})\n"
-                            )
                     if "## Converged Artifacts" in _cur:
                         # 기존 섹션 교체 (findings 경로 갱신)
                         import re as _re_cv
                         _cur = _re_cv.sub(
                             r"\n---\n## Converged Artifacts[\s\S]*$",
-                            _append.rstrip() + "\n",
+                            _plan.report_appendix.rstrip() + "\n",
                             _cur,
                             count=1,
                         )
                         _rp_obj.write_text(_cur, encoding="utf-8")
                     else:
-                        _rp_obj.write_text(_cur + _append, encoding="utf-8")
+                        _rp_obj.write_text(_cur + _plan.report_appendix, encoding="utf-8")
             except Exception:
                 pass
 
@@ -13815,27 +13065,12 @@ class BingoTerminal:
                         encoding="utf-8", errors="replace"
                     )[-3000:]
                 if not _already:
-                    self._append_to_session_log(
-                        "tool_result",
-                        (
-                            f"=== CONVERGED ARTIFACTS ===\n"
-                            f"INDEX: {_index_path}\n"
-                            f"REPORT: {_rp or 'N/A'}\n"
-                            f"HTML_REPORT: {_hp or 'N/A'}\n"
-                            f"FINDINGS: {_fp or 'N/A'}\n"
-                            f"SUMMARY: {_sum or 'no findings'}\n"
-                            f"=== END CONVERGED ==="
-                        ),
-                    )
+                    self._append_to_session_log("tool_result", _plan.session_pointer)
             except Exception:
                 pass
 
         _lang = getattr(self.config, "lang", "en")
-        _msg = {
-            "ko": f"📎 산출물 자동 수렴: {_index_path}",
-            "zh": f"📎 产物已自动汇总: {_index_path}",
-            "en": f"📎 Artifacts converged: {_index_path}",
-        }.get(_lang, f"📎 Artifacts converged: {_index_path}")
+        _msg = _plan.status_message(_lang)
         try:
             self.console.print(f"[{THEME['dim']}]{_msg}[/]")
         except Exception:
@@ -13858,14 +13093,12 @@ class BingoTerminal:
         from ..models.registry import ModelRegistry
         from rich.panel import Panel as _Panel
         from rich.rule import Rule
-        from rich.table import Table as _Table
 
         model_cfg = self.config.get_active_model_config()
         if not model_cfg:
             return
 
         _lang = getattr(self.config, "lang", "en")
-        _lang_label = {"ko": "Korean", "zh": "Chinese (Simplified)", "en": "English"}.get(_lang, "English")
 
         _state = self._agent_state
         last_ai_msgs = [
@@ -13909,62 +13142,32 @@ class BingoTerminal:
         except Exception:
             pass
 
-        _safe_hints = []
-        if _fe_flags.get("has_upload"):
-            _safe_hints.append("webshell upload (upload form confirmed)")
-        if _fe_flags.get("has_real_cred"):
-            _safe_hints.append("password cracking / credential reuse (real hash/cred confirmed)")
-        if _fe_flags.get("has_confirmed_sqli"):
-            _safe_hints.append("deep SQLi extraction (SQLi CONFIRMED)")
-        elif _fe_flags.get("has_potential_sqli") or _fe_flags.get("blocked_count"):
-            _safe_hints.append(
-                "CONTINUE SQLi verification / WAF bypass (potential or blocked — DO NOT abandon)"
-            )
-        else:
-            _safe_hints.append("re-validate boolean oracle / WAF bypass (SQLi NOT confirmed)")
-        _safe_hints.extend([
-            "API endpoint fuzzing / unauthenticated API",
-            "IDOR privilege escalation",
-            "ACPV client-side auth bypass",
-        ])
-        _untested_hint = "; ".join(_safe_hints)
-
         prompt_msg = Message(
             role="user",
             content=(
-                "[NEXT STEP SUGGESTIONS — PENTEST CONTINUATION]\n\n"
-                f"Target: {_state.get('target', 'unknown')}\n"
-                f"Current state: {_state}\n\n"
-                f"⚠️ FINDINGS GROUND TRUTH (DO NOT CONTRADICT):\n{_fe_gt or '(none)'}\n\n"
-                f"Evidence flags: {_fe_flags}\n"
-                f"HARD RULES:\n"
-                f"- If confirmed=0: summary MUST say UNCONFIRMED / 未确认, NEVER 已确认/Confirmed Critical.\n"
-                f"- Do NOT suggest webshell upload unless has_upload=true.\n"
-                f"- Do NOT suggest credential stuffing / 撞库 / mb_id 'aaa' unless has_real_cred=true.\n"
-                f"- Do NOT treat WAF 490B blocks as confirmed SQLi.\n\n"
-                f"Recent activity:\n{recent_context}\n\n"
-                f"Hint — potentially useful next actions: {_untested_hint}\n\n"
-                f"INSTRUCTIONS (CRITICAL — follow EXACTLY):\n"
-                f"1. Plain text ONLY. NO code blocks. NO markdown headers (#).\n"
-                f"2. Respond ENTIRELY in {_lang_label}.\n"
-                f"3. Output in EXACTLY this format (nothing else):\n\n"
-                f"{_summary_label}: [1-2 sentences about current status]\n\n"
-                f"{_options_label}:\n"
-                f"1. [{_option_hint}]\n"
-                f"2. [{_option_hint}]\n"
-                f"3. [{_option_hint}]\n"
-                f"4. [{_option_hint}]\n"
-                f"5. [{_option_hint}]"
-            )
+                _v7_build_next_step_prompt(
+                    target=_state.get("target", "unknown"),
+                    current_state=_state,
+                    lang=_lang,
+                    recent_context=recent_context,
+                    ground_truth=_fe_gt,
+                    evidence_flags=_fe_flags,
+                    summary_label=_summary_label,
+                    options_label=_options_label,
+                    option_hint=_option_hint,
+                )
+                if _v7_build_next_step_prompt is not None
+                else ""
+            ),
         )
 
         temp_messages = [self._get_system_message("")] + self.history[-10:] + [prompt_msg]
 
-        _after_report_title = {
-            "ko": "다음 권장 단계",
-            "zh": "建议下一步",
-            "en": "Suggested next steps",
-        }.get(_lang, "Suggested next steps")
+        _after_report_title = (
+            _v7_next_step_panel_title(_lang)
+            if _v7_next_step_panel_title is not None
+            else "Suggested next steps"
+        )
         self.console.print(Rule(
             f"[bold cyan]💡 {_after_report_title}[/bold cyan]",
             style="cyan"
@@ -13992,37 +13195,22 @@ class BingoTerminal:
             self.console.print()
 
             # ── 선택지 파싱 (1. ... / 2. ... / 3. ...) ──────────────
-            lines = full.strip().splitlines()
-            options: list[str] = []
-            summary_lines: list[str] = []
-            in_options = False
-
-            for line in lines:
-                stripped = line.strip()
-                # 선택지 섹션 시작 감지
-                _opt_markers = [
-                    _s.get("next_steps_title", "Next Options"),
-                    "Next Options", "다음 단계", "选择操作", "选项",
-                ]
-                if any(stripped.startswith(m) for m in _opt_markers):
-                    in_options = True
-                    continue
-                if in_options:
-                    # "1. xxx", "① xxx", "(1) xxx" 패턴 모두 허용
-                    m = re.match(r'^[①②③④⑤1-5][\.\)]\s*(.+)$', stripped)
-                    if m:
-                        options.append(m.group(1).strip())
-                    elif re.match(r'^[①②③④⑤]', stripped):
-                        options.append(re.sub(r'^[①②③④⑤]\s*', '', stripped))
-                elif stripped:
-                    summary_lines.append(stripped)
-
-            # 파싱 실패 시 번호 패턴으로 재시도 (전체 텍스트 대상)
-            if not options:
-                for line in lines:
-                    m = re.match(r'^[①②③④⑤1-5][\.\)\s]+(.+)$', line.strip())
-                    if m:
-                        options.append(m.group(1).strip())
+            _parsed_next_steps = (
+                _v7_parse_next_step_response(
+                    full,
+                    option_markers=(
+                        _s.get("next_steps_title", "Next Options"),
+                        "Next Options",
+                        "다음 단계",
+                        "选择操作",
+                        "选项",
+                    ),
+                )
+                if _v7_parse_next_step_response is not None
+                else None
+            )
+            options: list[str] = list(getattr(_parsed_next_steps, "options", ()) or ())
+            summary_lines: list[str] = list(getattr(_parsed_next_steps, "summary_lines", ()) or ())
 
             # ── 출력 ──────────────────────────────────────────────────
             from rich.markup import escape as _esc
@@ -14610,258 +13798,16 @@ class BingoTerminal:
         except Exception:
             return ""
 
-    @staticmethod
-    def _has_meaningful_loop_progress(text: str) -> bool:
-        """Return True only for execution evidence that advances the mission."""
-        return _executor_state.has_meaningful_loop_progress(text)
-
-    @staticmethod
-    def _doom_loop_cutoff_reason(
-        *,
-        no_progress_count: int,
-        escape_attempts: int,
-        loop_count: int,
-        doom_detected: bool = False,
-        confirmed_count: int = 0,
-        ledger_skip_count: int = 0,
-        ledger_skip_total: int = 0,
-        ledger_skip_streak: int = 0,
-        low_value_reentry_count: int = 0,
-        target_drift_count: int = 0,
-        target_drift_total: int = 0,
-        target_drift_streak: int = 0,
-    ) -> str:
-        """Return a stop reason when the agent loop should report instead of pivoting again."""
-        return _executor_state.doom_loop_cutoff_reason(
-            no_progress_count=no_progress_count,
-            escape_attempts=escape_attempts,
-            loop_count=loop_count,
-            doom_detected=doom_detected,
-            confirmed_count=confirmed_count,
-            ledger_skip_count=ledger_skip_count,
-            ledger_skip_total=ledger_skip_total,
-            ledger_skip_streak=ledger_skip_streak,
-            low_value_reentry_count=low_value_reentry_count,
-            target_drift_count=target_drift_count,
-            target_drift_total=target_drift_total,
-            target_drift_streak=target_drift_streak,
+    def _assessment_session(self):
+        session = AssessmentSessionBridge.coerce(
+            getattr(self, "_assessment_session_bridge", None),
+            action_ledger=getattr(self, "_action_ledger", None),
+            runtime_session=getattr(self, "_v7_session", None),
         )
-
-    @staticmethod
-    def _executor_canonical_action_args(tool_name: str, args: dict) -> dict:
-        """Return executor-normalized args for UI ledger/preview state.
-
-        The real tool path still owns execution-time normalization and notices.
-        This copy exists so the action ledger never stores model-drifted hosts
-        such as TARGET.kr -> TARGET.jp as if they were the action identity.
-        """
-        if not isinstance(args, dict):
-            return {}
-        normalized = dict(args)
-        name = str(tool_name or "").strip().lower()
-        try:
-            if name == "run_python" and "code" in normalized:
-                from ..tools_ext.pentest_tools import _canonicalize_script_target_urls
-
-                rewritten, _notice = _canonicalize_script_target_urls(
-                    str(normalized.get("code") or "")
-                )
-                normalized["code"] = rewritten
-            elif name == "run_bash" and "script" in normalized:
-                from ..tools_ext.pentest_tools import _canonicalize_script_target_urls
-
-                rewritten, _notice = _canonicalize_script_target_urls(
-                    str(normalized.get("script") or "")
-                )
-                normalized["script"] = rewritten
-            else:
-                from ..tools_ext.pentest_tools import _canonicalize_tool_args_target_urls
-
-                normalized, _notice = _canonicalize_tool_args_target_urls(normalized)
-        except Exception:
-            return dict(args)
-        return normalized
-
-    @staticmethod
-    def _action_ledger_signature(tool_name: str, args: dict) -> tuple[str, str]:
-        """Build a stable action signature from model-proposed tool intent.
-
-        The signature intentionally ignores script formatting so the executor can
-        recognize the same probe even when the model rewrites the code.
-        """
-        return _executor_state.action_ledger_signature(tool_name, args)
-
-    @staticmethod
-    def _action_ledger_result_status(
-        output: str,
-        *,
-        success: bool = False,
-        exit_code: int = -1,
-        has_progress: bool | None = None,
-    ) -> str:
-        return _executor_state.action_ledger_result_status(
-            output,
-            success=success,
-            exit_code=exit_code,
-            has_progress=has_progress,
-        )
-
-    def _action_ledger_store(self) -> dict:
-        ledger = getattr(self, "_action_ledger", None)
-        if not isinstance(ledger, dict):
-            ledger = {}
-            self._action_ledger = ledger
-        return ledger
-
-    @staticmethod
-    def _action_ledger_family_key(summary: str) -> str:
-        return _executor_state.action_ledger_family_key(summary)
-
-    def _action_ledger_entry_skip_reason(self, entry: dict, summary: str = "") -> str:
-        return _executor_state.action_ledger_entry_skip_reason(entry, summary)
-
-    def _action_ledger_skip_reason(self, signature: str, summary: str = "") -> str:
-        if not signature:
-            return ""
-        ledger = self._action_ledger_store()
-        entry = ledger.get(signature)
-        if entry:
-            reason = self._action_ledger_entry_skip_reason(entry, summary)
-            if reason:
-                return reason
-        family_key = BingoTerminal._action_ledger_family_key(summary)
-        family = ledger.get(family_key) if family_key else None
-        if family:
-            reason = self._action_ledger_entry_skip_reason(family, summary)
-            if reason:
-                return f"family {reason}"
-        return ""
-
-    def _action_ledger_start(self, signature: str, summary: str = "") -> dict:
-        if not signature:
-            return {}
-        ledger = self._action_ledger_store()
-        family_key = BingoTerminal._action_ledger_family_key(summary)
-        entry = ledger.setdefault(
-            signature,
-            {
-                "summary": summary,
-                "attempts": 0,
-                "timeouts": 0,
-                "status": "pending",
-                "first_loop": getattr(self, "_exec_loop_count", 0),
-                "family": family_key,
-            },
-        )
-        entry["family"] = family_key
-        entry["summary"] = summary or entry.get("summary", "")
-        entry["attempts"] = int(entry.get("attempts") or 0) + 1
-        entry["last_loop"] = getattr(self, "_exec_loop_count", 0)
-        entry["status"] = "running"
-        if family_key:
-            family = ledger.setdefault(
-                family_key,
-                {
-                    "summary": summary,
-                    "attempts": 0,
-                    "timeouts": 0,
-                    "status": "pending",
-                    "first_loop": getattr(self, "_exec_loop_count", 0),
-                    "family": family_key,
-                    "kind": "family",
-                },
-            )
-            family["summary"] = summary or family.get("summary", "")
-            family["attempts"] = int(family.get("attempts") or 0) + 1
-            family["last_loop"] = getattr(self, "_exec_loop_count", 0)
-            if family.get("status") not in {"done", "blocked_timeout", "negative"}:
-                family["status"] = "running"
-        return entry
-
-    def _action_ledger_finish(
-        self,
-        signature: str,
-        summary: str = "",
-        *,
-        output: str = "",
-        success: bool = False,
-        exit_code: int = -1,
-    ) -> dict:
-        if not signature:
-            return {}
-        ledger = self._action_ledger_store()
-        family_key = BingoTerminal._action_ledger_family_key(summary)
-        entry = ledger.setdefault(
-            signature,
-            {
-                "summary": summary,
-                "attempts": 0,
-                "timeouts": 0,
-                "status": "pending",
-                "first_loop": getattr(self, "_exec_loop_count", 0),
-                "family": family_key,
-            },
-        )
-        entry["family"] = family_key
-        status = BingoTerminal._action_ledger_result_status(
-            output, success=success, exit_code=exit_code
-        )
-        if status == "timeout":
-            entry["timeouts"] = int(entry.get("timeouts") or 0) + 1
-            status = "blocked_timeout" if int(entry["timeouts"]) >= 2 else "timeout"
-        elif status == "no_progress" and int(entry.get("attempts") or 0) >= 2:
-            status = "negative"
-        entry["status"] = status
-        entry["summary"] = summary or entry.get("summary", "")
-        entry["last_exit_code"] = exit_code
-        entry["last_success"] = bool(success)
-        entry["last_loop"] = getattr(self, "_exec_loop_count", 0)
-        if family_key:
-            family = ledger.setdefault(
-                family_key,
-                {
-                    "summary": summary,
-                    "attempts": 0,
-                    "timeouts": 0,
-                    "status": "pending",
-                    "first_loop": getattr(self, "_exec_loop_count", 0),
-                    "family": family_key,
-                    "kind": "family",
-                },
-            )
-            family["summary"] = summary or family.get("summary", "")
-            if status == "timeout":
-                family["timeouts"] = int(family.get("timeouts") or 0) + 1
-                if int(family["timeouts"]) >= 2:
-                    family["status"] = "blocked_timeout"
-                elif family.get("status") not in {"done", "blocked_timeout", "negative"}:
-                    family["status"] = "timeout"
-            elif status == "done":
-                family["status"] = "done"
-            elif status == "negative":
-                family["status"] = "negative"
-            elif status == "no_progress":
-                if int(family.get("attempts") or 0) >= 3:
-                    family["status"] = "negative"
-                elif family.get("status") not in {"done", "blocked_timeout", "negative"}:
-                    family["status"] = "no_progress"
-            elif family.get("status") not in {"done", "blocked_timeout", "negative"}:
-                family["status"] = status
-            family["last_exit_code"] = exit_code
-            family["last_success"] = bool(success)
-            family["last_loop"] = getattr(self, "_exec_loop_count", 0)
-        return entry
-
-    def _action_ledger_context(self, limit: int = 8) -> str:
-        return _executor_state.action_ledger_context(
-            getattr(self, "_action_ledger", None),
-            limit=limit,
-        )
-
-    @staticmethod
-    def _meaningful_loop_progress_signature(text: str) -> str:
-        """Stable signature for novel progress de-duplication."""
-        return _executor_state.meaningful_loop_progress_signature(text)
+        self._assessment_session_bridge = session
+        self._action_ledger = session.action_ledger
+        self._v7_session = session.runtime_session
+        return session
 
     @staticmethod
     def _hashes_from_error_context(text: str, hashes: list[str]) -> set[str]:

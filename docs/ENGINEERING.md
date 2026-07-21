@@ -2,6 +2,8 @@
 
 This document records the current product-quality direction for Bingo.
 
+For the new replacement core, see [docs/BINGO_V7_ARCHITECTURE.md](/Users/jmaker/Desktop/hacker/bingo/docs/BINGO_V7_ARCHITECTURE.md).
+
 ## Executor/state-machine model
 
 Bingo uses a Claude Code-style split:
@@ -17,9 +19,31 @@ Bingo uses a Claude Code-style split:
 The policy implementation lives in:
 
 - `bingo/core/executor_state.py`
+- `bingo/core/session_bridge.py`
 - `bingo/core/target_state.py`
 - `bingo/tools/findings_exporter.py`
 - `bingo/ui/terminal.py` wrapper methods for backward-compatible tests and UI integration
+
+The replacement foundation lives in:
+
+- `bingo/core/session_bridge.py`
+- `bingo/core/v7/contracts.py`
+- `bingo/core/v7/state_machine.py`
+- `bingo/core/v7/coverage.py`
+- `bingo/core/v7/evidence_graph.py`
+- `bingo/core/v7/executor_bridge.py`
+- `bingo/core/v7/reporting.py`
+- `bingo/core/v7/decision.py`
+
+`bingo/core/v7/reporting.py` now owns:
+
+- evidence snapshots used for completion/report gating
+- deterministic next-step fallbacks
+- report ground-truth snapshots from `FindingsExporter`
+- session-origin / fresh-session provenance notes
+- final report-generation prompt assembly
+- report artifact path planning and converged INDEX content
+- standalone HTML report artifact rendering
 
 ## Canonical target ownership
 

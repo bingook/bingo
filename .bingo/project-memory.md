@@ -69,7 +69,7 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-22T05:03:23+08:00
+- Last synced: 2026-07-22T05:13:40+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
@@ -77,29 +77,21 @@
 
 > Automatically records committed code changes. Newest entries appear first.
 
-<!-- commit:9549c0723d731e33d3ff36dc1d0d6253d0265d19 -->
-## Code change: release: bump version to 6.2.252
-- Commit: `9549c0723d73`
-- Recorded: 2026-07-22T05:03:23+08:00
-- Committed: 2026-07-22T05:03:23+08:00
+<!-- commit:cf67ae5c5a6a9100e01fa5106c6e88bb3059acb9 -->
+## Code change: docs: sync project memory
+- Commit: `cf67ae5c5a6a`
+- Recorded: 2026-07-22T05:13:39+08:00
+- Committed: 2026-07-22T05:13:39+08:00
 
 ### Files
 ```text
 M	.bingo/project-memory.md
-M	PKG-INFO
-M	bingo/__init__.py
 ```
 
 ### Diff Stat
 ```text
-9549c0723 release: bump version to 6.2.252
- .bingo/project-memory.md | 159 ++++++++++++-----------------------------------
- PKG-INFO                 |   2 +-
- bingo/__init__.py        |   2 +-
- 3 files changed, 42 insertions(+), 121 deletions(-)
+cf67ae5c5 docs: sync project memory
+ .bingo/project-memory.md | 58 +++++++++++++-----------------------------------
+ 1 file changed, 16 insertions(+), 42 deletions(-)
 ```
-
-### Added Highlights
-- `Version: 6.2.252`
-- `__version__ = "6.2.252"`
 <!-- bingo-project-memory:auto:end -->

@@ -1876,6 +1876,60 @@ def test_v7_action_contract_prefers_executor_focus_over_generic_advice() -> None
     assert "ADAPTIVE_OFFENSE_PIVOT" not in contract
 
 
+def test_recover_empty_followup_response_retries_with_recovery_prompt(monkeypatch) -> None:
+    cfg = SimpleNamespace(provider="grok", name="grok-4.5", base_url="https://api.x.ai")
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.console = _Console()
+    terminal.s = {}
+    terminal.history = []
+    terminal.config = SimpleNamespace(
+        lang="en",
+        models=[cfg],
+        get_active_model_config=lambda: cfg,
+    )
+    terminal._build_messages = lambda _skill: []
+    responses = iter(["next bounded action"])
+    terminal._stream_response = lambda _stream: next(responses, "")
+
+    monkeypatch.setattr(
+        "bingo.models.registry.ModelRegistry.build",
+        lambda _cfg: SimpleNamespace(chat_stream=lambda _messages: iter(())),
+    )
+
+    recovered = terminal._recover_empty_followup_response(cfg)
+
+    assert recovered == "next bounded action"
+    assert terminal.history
+    assert "[EMPTY_POST_TOOL_RESPONSE]" in terminal.history[-1].content
+
+
+def test_recover_empty_followup_response_uses_fallback_model_after_blank_retry(monkeypatch) -> None:
+    primary = SimpleNamespace(provider="grok", name="grok-4.5", base_url="https://api.x.ai")
+    fallback = SimpleNamespace(provider="openai", name="gpt-fallback", base_url="https://api.openai.com")
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal.console = _Console()
+    terminal.s = {}
+    terminal.history = []
+    terminal.config = SimpleNamespace(
+        lang="en",
+        models=[primary, fallback],
+        get_active_model_config=lambda: primary,
+    )
+    terminal._build_messages = lambda _skill: []
+    responses = iter(["", "fallback bounded action"])
+    terminal._stream_response = lambda _stream: next(responses, "")
+
+    monkeypatch.setattr(
+        "bingo.models.registry.ModelRegistry.build",
+        lambda _cfg: SimpleNamespace(chat_stream=lambda _messages: iter(())),
+    )
+
+    recovered = terminal._recover_empty_followup_response(primary)
+
+    assert recovered == "fallback bounded action"
+    assert any("fallback model" in msg.lower() for msg in terminal.console.messages)
+
+
 def test_terminal_v7_status_call_delegates_to_runtime_status_contract() -> None:
     status = RuntimeStatus(
         target="https://example.kr",

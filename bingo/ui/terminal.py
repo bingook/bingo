@@ -6668,6 +6668,8 @@ class BingoTerminal:
                     _action_sig, _action_summary
                 )
                 if _skip_action_reason:
+                    self.console.print(f"[{THEME['warn']}]⚠ [ACTION_LEDGER_SKIP] {_skip_action_reason}[/]")
+                    _flush_ui()
                     _skip_result = (
                         f"=== TOOL_RESULT: {_tool_name or '?'} ===\n"
                         "exit_code=-96 success=false\n"
@@ -6681,9 +6683,16 @@ class BingoTerminal:
                     )
                     tool_results.append(_skip_result)
                     continue
-                self._action_ledger_start(_action_sig, _action_summary)
+                _action_entry = self._action_ledger_start(_action_sig, _action_summary)
 
                 if execute_tool is None:
+                    self._action_ledger_finish(
+                        _action_sig,
+                        _action_summary,
+                        output="pentest_tools not available",
+                        success=False,
+                        exit_code=-1,
+                    )
                     tool_results.append(
                         f"TOOL_RESULT:{{'name':'{_tool_name}','error':'pentest_tools not available','success':false}}"
                     )
@@ -6712,6 +6721,13 @@ class BingoTerminal:
                 self.console.print(
                     f"[{THEME['dim']}]│  {_args_preview}[/]"
                 )
+                if _action_entry:
+                    _family_key = str(_action_entry.get("family", ""))[-10:] or "-"
+                    self.console.print(
+                        f"[{THEME['dim']}]│  [ACTION_LEDGER] sig={_action_sig[-8:]} "
+                        f"family={_family_key} attempts={_action_entry.get('attempts', 0)} "
+                        f"{_action_summary[:140]}[/]"
+                    )
                 _flush_ui()
 
                 _t0 = __import__("time").time()
@@ -6961,13 +6977,22 @@ class BingoTerminal:
                         )
                 # ── 감지 끝 ────────────────────────────────────────────────────────────────
 
-                self._action_ledger_finish(
+                _action_done = self._action_ledger_finish(
                     _action_sig,
                     _action_summary,
                     output=_result_str,
                     success=bool(_ok),
                     exit_code=int(_ec) if isinstance(_ec, int) else -1,
                 )
+                if _action_done and not (
+                    getattr(self, "_hint_input_active", None)
+                    and self._hint_input_active.is_set()
+                ):
+                    self.console.print(
+                        f"[{THEME['dim']}]│  [ACTION_LEDGER] status={_action_done.get('status')} "
+                        f"attempts={_action_done.get('attempts', 0)} "
+                        f"timeouts={_action_done.get('timeouts', 0)}[/]"
+                    )
                 tool_results.append(_result_str)
 
             if _deferred_names:
@@ -14687,6 +14712,7 @@ class BingoTerminal:
         vector_rules = (
             ("ajp_ghostcat", r"\b(?:ajp|ghostcat|cping|8009)\b"),
             ("tomcat_admin", r"(?:tomcat|manager/html|host-manager|:8080|:8000|:8443)"),
+            ("unauth_mypage", r"(?:/balance/mypage/|cust_limit|app_status|custinfo|receipt_account|certification)"),
             ("param_menuno", r"\bmenuno\b"),
             ("idor", r"\b(?:idor|seq|idx|object|unauth|未授权|미인증)\b"),
             ("login_form", r"(?:custlogin|/login|passwd|nm_cust|ssn)"),
@@ -14732,6 +14758,22 @@ class BingoTerminal:
         ):
             hosts.add(f"{host.lower()}:{port}")
             ports.add(port)
+        for host, port in _re_action.findall(
+            r"['\"]((?:\d{1,3}\.){3}\d{1,3}|[a-z0-9.-]+\.[a-z]{2,})['\"]\s*,\s*(\d{2,5})",
+            combined,
+            _re_action.IGNORECASE,
+        ):
+            hosts.add(f"{host.lower()}:{port}")
+            ports.add(port)
+        host_var = _re_action.search(
+            r"\bHOST\s*=\s*['\"]((?:\d{1,3}\.){3}\d{1,3}|[a-z0-9.-]+\.[a-z]{2,})['\"]",
+            combined,
+            _re_action.IGNORECASE,
+        )
+        port_var = _re_action.search(r"\bPORT\s*=\s*(\d{2,5})\b", combined, _re_action.IGNORECASE)
+        if host_var and port_var:
+            hosts.add(f"{host_var.group(1).lower()}:{port_var.group(1)}")
+            ports.add(port_var.group(1))
 
         for rel in _re_action.findall(
             r"(?i)(/[^\s\"'<>),]*(?:\.do|manager/html|host-manager|WEB-INF/web\.xml)[^\s\"'<>),]*)",
@@ -14757,7 +14799,7 @@ class BingoTerminal:
             # For infrastructure vectors, host/port/vector matters more than
             # rewritten proof code. For application vectors, path/parameter
             # keeps separate business functions distinct.
-            if vector in {"ajp_ghostcat", "tomcat_admin", "stack_leak"}:
+            if vector in {"ajp_ghostcat", "tomcat_admin", "stack_leak", "unauth_mypage"}:
                 selected_paths = sorted(paths)[:2]
             else:
                 selected_paths = sorted(paths)[:5]
@@ -14817,12 +14859,31 @@ class BingoTerminal:
             self._action_ledger = ledger
         return ledger
 
-    def _action_ledger_skip_reason(self, signature: str, summary: str = "") -> str:
-        if not signature:
+    @staticmethod
+    def _action_ledger_family_key(summary: str) -> str:
+        import hashlib as _hash_family
+
+        parts: dict[str, str] = {}
+        for token in (summary or "").split():
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            parts[key] = value
+        vector = parts.get("vector", "unknown")
+        target = parts.get("target", "")
+        path = parts.get("path", "")
+        param = parts.get("param", "")
+        if not target and not path and not param:
             return ""
-        entry = self._action_ledger_store().get(signature)
-        if not entry:
-            return ""
+        if vector in {"ajp_ghostcat", "tomcat_admin", "stack_leak", "unauth_mypage"}:
+            canonical = f"{vector}|{target}"
+        elif vector in {"sqli", "xss", "idor", "param_menuno", "login_form", "lfi"}:
+            canonical = f"{vector}|{target}|{path.split(',', 1)[0]}|{param}"
+        else:
+            canonical = f"{vector}|{target}|{path.split(',', 1)[0]}|{param.split(',', 1)[0]}"
+        return "family:" + _hash_family.sha256(canonical.encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+    def _action_ledger_entry_skip_reason(self, entry: dict, summary: str = "") -> str:
         status = str(entry.get("status") or "")
         attempts = int(entry.get("attempts") or 0)
         timeouts = int(entry.get("timeouts") or 0)
@@ -14834,10 +14895,28 @@ class BingoTerminal:
             return f"negative/no-progress already tested {attempts} time(s): {entry.get('summary') or summary}"
         return ""
 
-    def _action_ledger_start(self, signature: str, summary: str = "") -> None:
+    def _action_ledger_skip_reason(self, signature: str, summary: str = "") -> str:
         if not signature:
-            return
+            return ""
         ledger = self._action_ledger_store()
+        entry = ledger.get(signature)
+        if entry:
+            reason = self._action_ledger_entry_skip_reason(entry, summary)
+            if reason:
+                return reason
+        family_key = BingoTerminal._action_ledger_family_key(summary)
+        family = ledger.get(family_key) if family_key else None
+        if family:
+            reason = self._action_ledger_entry_skip_reason(family, summary)
+            if reason:
+                return f"family {reason}"
+        return ""
+
+    def _action_ledger_start(self, signature: str, summary: str = "") -> dict:
+        if not signature:
+            return {}
+        ledger = self._action_ledger_store()
+        family_key = BingoTerminal._action_ledger_family_key(summary)
         entry = ledger.setdefault(
             signature,
             {
@@ -14846,12 +14925,33 @@ class BingoTerminal:
                 "timeouts": 0,
                 "status": "pending",
                 "first_loop": getattr(self, "_exec_loop_count", 0),
+                "family": family_key,
             },
         )
+        entry["family"] = family_key
         entry["summary"] = summary or entry.get("summary", "")
         entry["attempts"] = int(entry.get("attempts") or 0) + 1
         entry["last_loop"] = getattr(self, "_exec_loop_count", 0)
         entry["status"] = "running"
+        if family_key:
+            family = ledger.setdefault(
+                family_key,
+                {
+                    "summary": summary,
+                    "attempts": 0,
+                    "timeouts": 0,
+                    "status": "pending",
+                    "first_loop": getattr(self, "_exec_loop_count", 0),
+                    "family": family_key,
+                    "kind": "family",
+                },
+            )
+            family["summary"] = summary or family.get("summary", "")
+            family["attempts"] = int(family.get("attempts") or 0) + 1
+            family["last_loop"] = getattr(self, "_exec_loop_count", 0)
+            if family.get("status") not in {"done", "blocked_timeout", "negative"}:
+                family["status"] = "running"
+        return entry
 
     def _action_ledger_finish(
         self,
@@ -14865,6 +14965,7 @@ class BingoTerminal:
         if not signature:
             return {}
         ledger = self._action_ledger_store()
+        family_key = BingoTerminal._action_ledger_family_key(summary)
         entry = ledger.setdefault(
             signature,
             {
@@ -14873,8 +14974,10 @@ class BingoTerminal:
                 "timeouts": 0,
                 "status": "pending",
                 "first_loop": getattr(self, "_exec_loop_count", 0),
+                "family": family_key,
             },
         )
+        entry["family"] = family_key
         status = BingoTerminal._action_ledger_result_status(
             output, success=success, exit_code=exit_code
         )
@@ -14888,6 +14991,40 @@ class BingoTerminal:
         entry["last_exit_code"] = exit_code
         entry["last_success"] = bool(success)
         entry["last_loop"] = getattr(self, "_exec_loop_count", 0)
+        if family_key:
+            family = ledger.setdefault(
+                family_key,
+                {
+                    "summary": summary,
+                    "attempts": 0,
+                    "timeouts": 0,
+                    "status": "pending",
+                    "first_loop": getattr(self, "_exec_loop_count", 0),
+                    "family": family_key,
+                    "kind": "family",
+                },
+            )
+            family["summary"] = summary or family.get("summary", "")
+            if status == "timeout":
+                family["timeouts"] = int(family.get("timeouts") or 0) + 1
+                if int(family["timeouts"]) >= 2:
+                    family["status"] = "blocked_timeout"
+                elif family.get("status") not in {"done", "blocked_timeout", "negative"}:
+                    family["status"] = "timeout"
+            elif status == "done":
+                family["status"] = "done"
+            elif status == "negative":
+                family["status"] = "negative"
+            elif status == "no_progress":
+                if int(family.get("attempts") or 0) >= 3:
+                    family["status"] = "negative"
+                elif family.get("status") not in {"done", "blocked_timeout", "negative"}:
+                    family["status"] = "no_progress"
+            elif family.get("status") not in {"done", "blocked_timeout", "negative"}:
+                family["status"] = status
+            family["last_exit_code"] = exit_code
+            family["last_success"] = bool(success)
+            family["last_loop"] = getattr(self, "_exec_loop_count", 0)
         return entry
 
     def _action_ledger_context(self, limit: int = 8) -> str:
@@ -14909,7 +15046,7 @@ class BingoTerminal:
         for sig, entry in items:
             lines.append(
                 "- "
-                f"sig={sig} status={entry.get('status')} attempts={entry.get('attempts', 0)} "
+                f"sig={sig} kind={entry.get('kind', 'action')} status={entry.get('status')} attempts={entry.get('attempts', 0)} "
                 f"timeouts={entry.get('timeouts', 0)} {entry.get('summary', '')}"
             )
         lines.append("[/ACTION_LEDGER]\n")

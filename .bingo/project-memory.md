@@ -67,13 +67,13 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-21T03:23:45+08:00
+- Last synced: 2026-07-21T12:30:19+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-21T03:23:45+08:00
+- Captured: 2026-07-21T12:30:19+08:00
 
 ### Status
 ```text
@@ -88,9 +88,72 @@ M .bingo/project-memory.md
 ```text
 PKG-INFO                                      |   2 +-
  bingo/__init__.py                             |   2 +-
+ bingo/ui/terminal.py                          | 159 ++++++++++++++++++++++++--
+ tests/test_terminal_completion_regressions.py |  70 ++++++++++++
+ 4 files changed, 220 insertions(+), 13 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.242`
+- `__version__ = "6.2.242"`
+- `self.console.print(f"[{THEME['warn']}]⚠ [ACTION_LEDGER_SKIP] {_skip_action_reason}[/]")`
+- `_flush_ui()`
+- `_action_entry = self._action_ledger_start(_action_sig, _action_summary)`
+- `self._action_ledger_finish(`
+- `_action_sig,`
+- `_action_summary,`
+- `output="pentest_tools not available",`
+- `success=False,`
+- `exit_code=-1,`
+- `)`
+- `if _action_entry:`
+- `_family_key = str(_action_entry.get("family", ""))[-10:] or "-"`
+- `self.console.print(`
+- `f"[{THEME['dim']}]│  [ACTION_LEDGER] sig={_action_sig[-8:]} "`
+- `f"family={_family_key} attempts={_action_entry.get('attempts', 0)} "`
+- `f"{_action_summary[:140]}[/]"`
+- `)`
+- `_action_done = self._action_ledger_finish(`
+- `if _action_done and not (`
+- `getattr(self, "_hint_input_active", None)`
+- `and self._hint_input_active.is_set()`
+- `):`
+- `self.console.print(`
+- `f"[{THEME['dim']}]│  [ACTION_LEDGER] status={_action_done.get('status')} "`
+- `f"attempts={_action_done.get('attempts', 0)} "`
+- `f"timeouts={_action_done.get('timeouts', 0)}[/]"`
+- `)`
+- `("unauth_mypage", r"(?:/balance/mypage/|cust_limit|app_status|custinfo|receipt_account|certification)"),`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:2c304181e505c338da73bb2bb3d31d7ab26ddb9d -->
+## Code change: fix: add action ledger to prevent repeated scan loops
+- Commit: `2c304181e505`
+- Recorded: 2026-07-21T03:33:19+08:00
+- Committed: 2026-07-21T03:33:19+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+2c304181e fix: add action ledger to prevent repeated scan loops
+ .bingo/project-memory.md                      | 151 ++++++------
+ PKG-INFO                                      |   2 +-
+ bingo/__init__.py                             |   2 +-
  bingo/ui/terminal.py                          | 340 +++++++++++++++++++++++++-
  tests/test_terminal_completion_regressions.py | 244 ++++++++++++++++++
- 4 files changed, 577 insertions(+), 11 deletions(-)
+ 5 files changed, 649 insertions(+), 90 deletions(-)
 ```
 
 ### Added Highlights
@@ -124,67 +187,4 @@ PKG-INFO                                      |   2 +-
 - `output=_result_str,`
 - `success=bool(_ok),`
 - `exit_code=int(_ec) if isinstance(_ec, int) else -1,`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:4fdc9f65591f660d32c9a7461681ecc1703ae679 -->
-## Code change: fix: improve proxy parsing and runtime sync
-- Commit: `4fdc9f65591f`
-- Recorded: 2026-07-21T02:46:47+08:00
-- Committed: 2026-07-21T02:46:47+08:00
-
-### Files
-```text
-M	PKG-INFO
-M	bingo/__init__.py
-M	bingo/proxy/manager.py
-M	bingo/tools_ext/pentest_tools.py
-M	bingo/ui/terminal.py
-```
-
-### Diff Stat
-```text
-4fdc9f655 fix: improve proxy parsing and runtime sync
- PKG-INFO                         |   2 +-
- bingo/__init__.py                |   2 +-
- bingo/proxy/manager.py           | 245 ++++++++++++++++++++++++++++++++++++---
- bingo/tools_ext/pentest_tools.py |  71 ++++++++++--
- bingo/ui/terminal.py             |  23 ++++
- 5 files changed, 315 insertions(+), 28 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.239`
-- `__version__ = "6.2.239"`
-- `import urllib.parse`
-- `_SCHEME_ALIASES = {`
-- `"http": "http",`
-- `"https": "https",`
-- `"socks": "socks5",`
-- `"socks4": "socks4",`
-- `"socks4a": "socks4a",`
-- `"socks5": "socks5",`
-- `"socks5h": "socks5h",`
-- `}`
-- `_HOST_RE = re.compile(r"^(?:\[[0-9a-f:]+\]|[a-z0-9._-]+)$", re.I)`
-- `"""URL 문자열 → ProxyEntry 파싱. 실패 시 None.`
-- `Accepts common proxy-list formats:`
-- `- scheme://host:port`
-- `- scheme://user:pass@host:port`
-- `- host:port`
-- `- user:pass@host:port`
-- `- host:port:user:pass`
-- `- user:pass:host:port`
-- `- host port user pass / host,port,user,pass / host|port|user|pass`
-- `"""`
-- `raw = (url or "").strip().strip("'\"")`
-- `if not raw or raw.startswith("#"):`
-- `return None`
-- `raw = re.split(r"\s+#", raw, 1)[0].strip()`
-- `if not raw:`
-- `return None`
-- `parsed = _normalise_proxy_parts(raw)`
 <!-- bingo-project-memory:auto:end -->

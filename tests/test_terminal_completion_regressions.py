@@ -1581,6 +1581,76 @@ def test_action_ledger_blocks_after_two_timeouts() -> None:
     assert "blocked_timeout" in terminal._action_ledger_skip_reason(sig, summary)
 
 
+def test_action_ledger_family_blocks_rewritten_timeout_probe() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._action_ledger = {}
+    terminal._exec_loop_count = 10
+
+    first, first_summary = BingoTerminal._action_ledger_signature(
+        "run_python",
+        {"code": "HOST='116.127.120.142'; PORT=8009; print('AJP CPing')"},
+    )
+    second, second_summary = BingoTerminal._action_ledger_signature(
+        "run_python",
+        {"code": "print('Ghostcat WEB-INF'); sock.connect(('116.127.120.142', 8009))"},
+    )
+    third, third_summary = BingoTerminal._action_ledger_signature(
+        "run_python",
+        {"code": "print('AJP CPing retry'); target='116.127.120.142:8009'"},
+    )
+
+    assert first == second == third
+    terminal._action_ledger_start(first, first_summary)
+    terminal._action_ledger_finish(
+        first,
+        first_summary,
+        output="CPing TimeoutError timed out",
+        success=False,
+        exit_code=-1,
+    )
+    terminal._action_ledger_start(second, second_summary)
+    terminal._action_ledger_finish(
+        second,
+        second_summary,
+        output="ReadTimeout timed out",
+        success=False,
+        exit_code=-1,
+    )
+
+    reason = terminal._action_ledger_skip_reason(third, third_summary)
+    assert "blocked_timeout" in reason
+    assert "family" in terminal._action_ledger_context()
+
+
+def test_action_ledger_family_blocks_different_no_progress_scripts() -> None:
+    terminal = BingoTerminal.__new__(BingoTerminal)
+    terminal._action_ledger = {}
+    terminal._exec_loop_count = 20
+    scripts = [
+        "BASE='https://example.test'; sess.get(BASE + '/balance/mypage/cust_limit.do')",
+        "BASE='https://example.test'; sess.get(BASE + '/balance/mypage/app_status.do')",
+        "BASE='https://example.test'; sess.get(BASE + '/balance/mypage/custinfo.do')",
+    ]
+
+    for script in scripts:
+        sig, summary = BingoTerminal._action_ledger_signature("run_python", {"code": script})
+        terminal._action_ledger_start(sig, summary)
+        terminal._action_ledger_finish(
+            sig,
+            summary,
+            output="HTTP 200 OK\nloginish=False mypageish=False\n",
+            success=True,
+            exit_code=0,
+        )
+
+    sig, summary = BingoTerminal._action_ledger_signature(
+        "run_python",
+        {"code": "BASE='https://example.test'; sess.get(BASE + '/balance/mypage/receipt_account.do')"},
+    )
+
+    assert "negative/no-progress" in terminal._action_ledger_skip_reason(sig, summary)
+
+
 def test_action_ledger_done_action_is_not_rerun() -> None:
     terminal = BingoTerminal.__new__(BingoTerminal)
     terminal._action_ledger = {}

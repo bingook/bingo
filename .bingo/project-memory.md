@@ -67,35 +67,112 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-21T19:29:36+08:00
+- Last synced: 2026-07-21T22:05:46+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-21T19:29:36+08:00
+- Captured: 2026-07-21T22:05:46+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
+ M AGENTS.md
  M PKG-INFO
  M README.md
  M bingo/__init__.py
+ M bingo/core/code_guard.py
+ M bingo/core/executor_state.py
+ M bingo/orchestrator/engine.py
+ M bingo/tools_ext/pentest_tools.py
  M bingo/ui/terminal.py
+ M tests/test_advanced_scanner_false_positives.py
  M tests/test_terminal_completion_regressions.py
-?? bingo/core/executor_state.py
+?? bingo/core/target_state.py
 ?? docs/
 ?? tests/fixtures/
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO                                      |   6 +-
- README.md                                     |   6 +-
- bingo/__init__.py                             |   2 +-
- bingo/ui/terminal.py                          | 450 +++-----------------------
- tests/test_terminal_completion_regressions.py |  51 +++
- 5 files changed, 104 insertions(+), 411 deletions(-)
+AGENTS.md                                      |  12 +
+ PKG-INFO                                       |  10 +-
+ README.md                                      |   8 +-
+ bingo/__init__.py                              |   2 +-
+ bingo/core/code_guard.py                       |   7 +-
+ bingo/core/executor_state.py                   |  65 +++-
+ bingo/orchestrator/engine.py                   |  12 +-
+ bingo/tools_ext/pentest_tools.py               | 498 +++++++++++++++++--------
+ bingo/ui/terminal.py                           | 401 ++++++++++----------
+ tests/test_advanced_scanner_false_positives.py |   5 +-
+ tests/test_terminal_completion_regressions.py  | 354 +++++++++++++++++-
+ 11 files changed, 1008 insertions(+), 366 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.249`
+- `[![Version](https://img.shields.io/badge/version-6.2.249-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.249 executor runtime-budget instrumentation, so loop risk is b`
+- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.249 executor runtime-budget instrumentation. Cursor-patt`
+- `[![Version](https://img.shields.io/badge/version-6.2.249-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `[![Version](https://img.shields.io/badge/version-6.2.249-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `| v3.2.94 | **Dead-loop detection overhaul** — legacy retry-counter design for INFINITE_LOOP_RISK; superseded by v6.2.249 executor runtime-budget instrumentation, so loop risk is b`
+- `| v3.2.91 | **Fix: INFINITE_LOOP_RISK over-detection + Ctrl+C hang** — legacy loop retry-counter design; superseded by v6.2.249 executor runtime-budget instrumentation. Cursor-patt`
+- `[![Version](https://img.shields.io/badge/version-6.2.249-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `__version__ = "6.2.249"`
+- `파싱하여 무한루프 패턴을 탐지한다. 호출자는 이 결과를 실행 차단이`
+- `아니라 executor-owned runtime budget 주입 신호로 사용한다.`
+- `str 포맷:  "INFINITE_LOOP_RISK: ..." (runtime budget 주입 사유)`
+- `호출자는 이 값을 runtime budget 주입 사유로 사용한다.`
+- `and "already terminal/exhausted in the executor ledger" not in line`
+- `def target_drift_block_count(text: str) -> int:`
+- `"""Count target-scope guard blocks in one execution result batch."""`
+- `haystack = text or ""`
+- `return haystack.count("[TARGET_DRIFT_BLOCKED]") + haystack.count("TARGET_DOMAIN_MISMATCH")`
+- `def target_drift_domains(text: str) -> list[str]:`
+- `"""Extract blocked off-scope domains from target drift guard output."""`
+- `domains: set[str] = set()`
+- `for match in re.finditer(`
+- `r"(?:Unauthorized external URL\(s\)|未授权外部域名URL|승인되지 않은 외부 도메인 URL|"`
+- `r"Attack payload detected on unauthorized domain\(s\)|"`
+- `r"Unauthorized external-domain .*? detected|"`
+- `r"检测到对未授权外部域名的(?:攻击尝试|HTTP请求)|"`
+- `r"승인되지 않은 외부 도메인에 (?:공격 시도|HTTP 요청) 감지)"`
+- `r"\s*:\s*([^\n]+)",`
+- `text or "",`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:d0861653e09f232c096585b07f8699fed3ad511f -->
+## Code change: refactor: extract executor state and tighten loop cutoff
+- Commit: `d0861653e09f`
+- Recorded: 2026-07-21T19:31:34+08:00
+- Committed: 2026-07-21T19:31:34+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	PKG-INFO
+M	README.md
+M	bingo/__init__.py
+A	bingo/core/executor_state.py
+M	bingo/ui/terminal.py
+```
+
+### Diff Stat
+```text
+d0861653e refactor: extract executor state and tighten loop cutoff
+ .bingo/project-memory.md     | 107 +++++-----
+ PKG-INFO                     |   6 +-
+ README.md                    |   6 +-
+ bingo/__init__.py            |   2 +-
+ bingo/core/executor_state.py | 492 +++++++++++++++++++++++++++++++++++++++++++
+ bingo/ui/terminal.py         | 450 ++++-----------------------------------
+ 6 files changed, 602 insertions(+), 461 deletions(-)
 ```
 
 ### Added Highlights
@@ -106,58 +183,27 @@ PKG-INFO                                      |   6 +-
 - `Engineering notes: see [docs/ENGINEERING.md](docs/ENGINEERING.md) for the executor/state-machine model, loop cutoff policy, and regression log criteria.`
 - `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
 - `__version__ = "6.2.245"`
-- `from ..core import executor_state as _executor_state`
-- `_dl_sig = _executor_state.response_pattern_signature(current_response or "")`
-- `_dl_doom_detected = _executor_state.repeated_response_pattern(self._dl_tool_sigs)`
-- `_dl_ledger_skip_count = _executor_state.ledger_skip_count(raw_results)`
-- `_dl_low_value_reentry_count = _executor_state.low_value_reentry_count(raw_results)`
-- `_dl_skip_penalty = _executor_state.no_progress_penalty(_dl_ledger_skip_count)`
-- `_dl_late_low_value_pressure = (`
-- `_dl_confirmed_count == 0`
-- `and _dl_low_value_reentry_count >= 2`
-- `and self._exec_loop_count >= 24`
+- `"""Executor-owned state helpers for Bingo's agent loop.`
+- `The model may propose actions, but this module owns the repeat/novelty policy:`
+- `what counts as target progress, what belongs to the action ledger, and when a`
+- `loop should stop and report instead of pivoting again.`
+- `"""`
+- `from __future__ import annotations`
+- `import hashlib`
+- `import json`
+- `import re`
+- `from urllib.parse import urlparse`
+- `LOW_VALUE_LEDGER_RE = re.compile(`
+- `r"(?:"`
+- `r"tool=(?:http_head|web_tech_detect|security_headers_check|clickjacking_autotest|"`
+- `r"open_redirect_autotest|waf_detect)|"`
+- `r"vector=(?:tomcat_admin|stack_leak|ajp_ghostcat)"`
+- `r")",`
+- `re.IGNORECASE,`
 - `)`
-- `if (`
-- `_dl_doom_detected`
-- `or self._dl_no_progress >= _dl_escape_threshold`
-- `or _dl_ledger_pressure`
-- `or _dl_late_low_value_pressure`
-- `):`
-- `low_value_reentry_count=_dl_low_value_reentry_count,`
-- `return _executor_state.has_meaningful_loop_progress(text)`
-- `low_value_reentry_count: int = 0,`
-- `return _executor_state.doom_loop_cutoff_reason(`
-- `no_progress_count=no_progress_count,`
-- `escape_attempts=escape_attempts,`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:05f0e945726578a0d5c67ca85f5d752c5aed8be6 -->
-## Code change: chore: bump version to 6.2.244
-- Commit: `05f0e9457265`
-- Recorded: 2026-07-21T15:04:08+08:00
-- Committed: 2026-07-21T15:04:08+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-M	PKG-INFO
-M	bingo/__init__.py
-```
-
-### Diff Stat
-```text
-05f0e9457 chore: bump version to 6.2.244
- .bingo/project-memory.md | 110 +++++++++++++++++------------------------------
- PKG-INFO                 |   2 +-
- bingo/__init__.py        |   2 +-
- 3 files changed, 41 insertions(+), 73 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.244`
-- `__version__ = "6.2.244"`
+- `def response_pattern_signature(response: str) -> str:`
+- `"""Short signature for repeated model-response pattern detection."""`
+- `return hashlib.md5((response or "")[:200].encode()).hexdigest()[:12]`
+- `def repeated_response_pattern(signatures: list[str], *, window: int = 6, threshold: int = 4) -> bool:`
+- `"""Return True when recent response signatures show a repeated pattern."""`
 <!-- bingo-project-memory:auto:end -->

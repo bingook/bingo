@@ -177,8 +177,9 @@ def test_sqli_post_without_body_get_profile_is_corrected_and_semantic_fail_dedup
 
     assert first["request_profile_corrected"] is True
     assert "method=GET" in first["output"]
-    assert second["exit_code"] == -94
-    assert "SEMANTIC_DEDUP_SKIP" in second["output"]
+    assert second["exit_code"] == 0
+    assert second["state_transition"] == "semantic_ledger_terminal"
+    assert "SEMANTIC_LEDGER_HIT" in second["output"]
 
     pentest_tools._SEMANTIC_ATTACK_LEDGER.clear()
 

@@ -579,6 +579,8 @@ class BingoTerminal:
         self._dl_escape_attempts: int = 0
         self._dl_ledger_skip_total: int = 0
         self._dl_ledger_skip_streak: int = 0
+        self._dl_target_drift_total: int = 0
+        self._dl_target_drift_streak: int = 0
         # Claude Code-style executor state: model proposes, executor owns action state.
         self._action_ledger: dict[str, dict] = {}
         # ── v6.2.151 2-pass Compaction 상태 ──────────────────────────────
@@ -634,9 +636,7 @@ class BingoTerminal:
         # 브루트포스 연속 실패 카운터 (자동 포기 + 벡터 전환용)
         self._bruteforce_fail_count: int = 0
         self._bruteforce_abort_triggered: bool = False
-        self._loop_block_consecutive: int = 0  # v3.2.91: LOOP_BLOCK 연속 차단 카운터 (무한사이클 방지)
-        self._ilr_consecutive: int = 0         # v3.2.94: INFINITE_LOOP_RISK 전용 연속 카운터
-        self._ilr_override: bool = False       # v3.2.94: ILR 3회 연속 차단 후 override 허용 플래그
+        self._runtime_budget_injected: int = 0  # executor-owned loop/runtime guard instrumentation counter
         # v6.2.20: PhantomGuard disabled — restrictions removed, kept only for VPN check
         self._phantom_guard = None  # type: ignore[assignment]
         # 도메인별 메모리 모듈 (target_memory)
@@ -2844,6 +2844,100 @@ class BingoTerminal:
             return [self._get_system_message(skill_context), ledger] + model_history
         return [self._get_system_message(skill_context)] + model_history
 
+    def _assistant_target_scope_violation(self, text: str) -> str:
+        """Return a target-scope block reason for an assistant response.
+
+        This protects the model context, not just tool execution. If the model
+        invents a lookalike/off-scope URL, we must not store that assistant
+        response as future evidence.
+        """
+        if not text or not (
+            getattr(self, "_agent_state", {}).get("target")
+            or getattr(self, "_current_target", None)
+        ):
+            return ""
+        try:
+            from ..tools_ext.pentest_tools import _check_script_target_drift
+
+            return _check_script_target_drift(text, "assistant_response") or ""
+        except Exception:
+            return ""
+
+    def _canonicalize_assistant_target_scope_response(self, text: str) -> tuple[str, str]:
+        """Normalize assistant-proposed URLs before they become context."""
+        if not text or not (
+            getattr(self, "_agent_state", {}).get("target")
+            or getattr(self, "_current_target", None)
+        ):
+            return text, ""
+        try:
+            from ..tools_ext.pentest_tools import _canonicalize_script_target_urls
+
+            return _canonicalize_script_target_urls(text)
+        except Exception:
+            return text, ""
+
+    def _target_scope_rewrite_feedback(self, block_reason: str) -> str:
+        target = str(
+            getattr(self, "_agent_state", {}).get("target")
+            or getattr(self, "_current_target", "")
+            or "CURRENT_TARGET"
+        )
+        return (
+            _executor_state.target_scope_lock_notice(target, block_reason)
+            + "\n[ASSISTANT_RESPONSE_DISCARDED]\n"
+            + "The previous assistant response proposed an off-scope target and was not stored as evidence. "
+            + "Rewrite the next response using only AUTHORITATIVE_CURRENT_TARGET. "
+            + "Do not mention, confirm, or request the forbidden domain except as forbidden scope.\n"
+        )
+
+    def _repair_assistant_target_scope_response(
+        self,
+        response: str,
+        model,
+        skill_context: str = "",
+    ) -> str:
+        """Canonicalize or one-shot correct before assistant output enters history/execution."""
+        canonical_response, canonical_notice = self._canonicalize_assistant_target_scope_response(response)
+        if canonical_notice and not self._assistant_target_scope_violation(canonical_response):
+            return canonical_notice + "\n" + canonical_response
+
+        block_reason = self._assistant_target_scope_violation(canonical_response)
+        if not block_reason:
+            return canonical_response
+
+        _lang = getattr(self.config, "lang", "en")
+        _msg = {
+            "ko": "⛔ assistant 응답의 타겟 이탈을 실행 전 폐기하고 현재 타겟으로 재작성합니다.",
+            "zh": "⛔ 已在执行前丢弃 assistant 的目标漂移响应，并强制按当前目标重写。",
+            "en": "⛔ Assistant target drift discarded before execution; forcing rewrite against current target.",
+        }.get(_lang, "⛔ Assistant target drift discarded before execution.")
+        self.console.print(f"[{THEME['warn']}]{_msg}[/]")
+        self.history.append(Message(role="user", content=self._target_scope_rewrite_feedback(block_reason)))
+        retry_response = self._stream_response(model.chat_stream(self._build_messages(skill_context)))
+        retry_response, retry_notice = self._canonicalize_assistant_target_scope_response(retry_response)
+        if retry_notice and not self._assistant_target_scope_violation(retry_response):
+            return retry_notice + "\n" + retry_response
+        if retry_response and not self._assistant_target_scope_violation(retry_response):
+            return retry_response
+
+        second_reason = self._assistant_target_scope_violation(retry_response or "") or block_reason
+        discard = (
+            "[ASSISTANT_TARGET_DRIFT_DISCARDED]\n"
+            + _executor_state.target_scope_lock_notice(
+                str(
+                    getattr(self, "_agent_state", {}).get("target")
+                    or getattr(self, "_current_target", "")
+                    or "CURRENT_TARGET"
+                ),
+                second_reason,
+            )
+            + "No tools were executed from the off-scope assistant response.\n"
+        )
+        self.history.append(Message(role="assistant", content=discard))
+        self._append_to_session_log("assistant", discard)
+        return ""
+
     def _trigger_background_compaction(self, non_system_msgs: list) -> None:
         """오래된 히스토리를 백그라운드 스레드에서 LLM으로 요약 (2-pass Compaction Pass 1)."""
         import threading as _ct
@@ -3526,6 +3620,12 @@ class BingoTerminal:
             full_response = self._intercept_text_hallucination(
                 full_response, text, model, model_cfg, skill_context
             )
+            full_response = self._repair_assistant_target_scope_response(
+                full_response,
+                model,
+                skill_context,
+            )
+        if full_response:
             self.history.append(Message(role="assistant", content=full_response))
             self._append_to_session_log("assistant", full_response)
             # AI 응답에서 명령 추출 → 실제 실행 → 결과를 컨텍스트로 주입
@@ -6678,8 +6778,8 @@ class BingoTerminal:
                         "exit_code=-96 success=false\n"
                         "--- output ---\n"
                         f"[ACTION_LEDGER_SKIP] {_skip_action_reason}\n"
-                        "This action is already done/blocked in the executor ledger. "
-                        "Choose a different pending vector, endpoint, parameter, or payload class.\n"
+                        "This action is already terminal/exhausted in the executor ledger. "
+                        "Use cached state and choose a different pending vector, endpoint, parameter, or payload class.\n"
                         f"signature={_action_sig}\n"
                         f"summary={_action_summary}\n"
                         "=== END TOOL_RESULT ==="
@@ -7379,23 +7479,41 @@ class BingoTerminal:
 
         # ── 코드 사전 검증 헬퍼 (SyntaxError / NameError 예방) ──────────
         def _precheck_python_code(code: str) -> "tuple[str | None, list[str]]":
-            """실행 전 Python 코드의 명백한 구문 오류 + 무한루프 패턴 감지 + 타임아웃 자동 주입.
-            반환: (결과코드 or None or '__BLOCKED__:...' or '__SYNTAX_ERR__', 적용된 수정 이름 리스트)
-            문제 없으면 None, 수정/주입 시 수정된 코드, 차단 시 '__BLOCKED__:reason' 반환."""
+            """실행 전 Python 코드의 명백한 구문 오류 + runtime budget 자동 주입.
+            반환: (결과코드 or None or '__SYNTAX_ERR__', 적용된 수정 이름 리스트)
+            문제 없으면 None, 수정/주입 시 수정된 코드 반환."""
             import re as _pre_re
 
             fixed = code
             # fix 추적 리스트를 함수 최상단에서 초기화 (0-A 블록에서 먼저 사용되므로)
             _applied_fix_names: list[str] = []
 
-            # ── v4.7.0 AST 정적 분석 — 무한루프 선제 차단 (최우선, Regex보다 정확) ────
-            # code_guard.check() → None(안전) | "INFINITE_LOOP_RISK: ..." (위험)
-            # Regex 0-A/0-B 보다 앞서 실행: false positive/negative 최소화.
+            def _inject_runtime_budget(src: str, reason: str, max_lines: int = 100_000) -> str:
+                if "_bingo_runtime_budget" in src:
+                    return src
+                clean_reason = reason.replace("\\", "\\\\").replace('"', "'").replace("\n", " ")[:220]
+                prelude = (
+                    "import sys as _bingo_runtime_sys\n"
+                    "_bingo_runtime_budget_counter = [0]\n"
+                    f"_bingo_runtime_budget_reason = \"{clean_reason}\"\n"
+                    "def _bingo_runtime_budget(frame, event, arg):\n"
+                    "    if event == 'line':\n"
+                    "        _bingo_runtime_budget_counter[0] += 1\n"
+                    f"        if _bingo_runtime_budget_counter[0] > {max_lines}:\n"
+                    "            raise RuntimeError('[BINGO_RUNTIME_BUDGET_EXCEEDED] ' + _bingo_runtime_budget_reason)\n"
+                    "    return _bingo_runtime_budget\n"
+                    "_bingo_runtime_sys.settrace(_bingo_runtime_budget)\n"
+                )
+                return prelude + src
+
+            # ── AST 정적 분석은 실행 차단이 아니라 runtime budget 주입 신호로만 사용 ────
             try:
                 from ..core.code_guard import check as _cg_check
                 _cg_reason = _cg_check(code)
                 if _cg_reason:
-                    return (f"__BLOCKED__:{_cg_reason}", [])
+                    fixed = _inject_runtime_budget(fixed, _cg_reason)
+                    self._runtime_budget_injected = getattr(self, "_runtime_budget_injected", 0) + 1
+                    _applied_fix_names.append("inject_runtime_budget")
             except ImportError:
                 pass  # code_guard 로드 실패 시 기존 Regex 방식으로 폴백
             except Exception:
@@ -7538,53 +7656,14 @@ class BingoTerminal:
             )
 
             if _has_range_loop and _has_query and _has_top1_no_cursor and not _has_seen:
-                # v3.2.94/95: ILR override mode — 3회 연속 차단 후 iteration limiter 주입 후 실행
-                if self._ilr_override:
-                    self._ilr_override = False  # 1회 사용 후 해제
-                    # ── v3.2.95: seen=set() 대신 실제 iteration limiter 주입 ──
-                    # for 루프 앞에 가드 카운터 초기화, 루프 본문 첫 줄에 카운터+break 주입
-                    _ilr_lines = fixed.splitlines(keepends=True)
-                    _ilr_new = []
-                    _ilr_injected = False
-                    _ilr_li = 0
-                    while _ilr_li < len(_ilr_lines):
-                        _ilr_lv = _ilr_lines[_ilr_li]
-                        _ilr_m = _pre_re.match(r'^(\s*)for\s+\w+\s+in\s+range\s*\(', _ilr_lv)
-                        if _ilr_m and not _ilr_injected:
-                            _ilr_ind = _ilr_m.group(1)
-                            # 가드 초기화를 for 앞에 삽입
-                            _ilr_new.append(
-                                f"{_ilr_ind}_bingo_ilr_guard = [0]  "
-                                f"# [bingo-ilr-override] iteration limiter\n"
-                            )
-                            _ilr_new.append(_ilr_lv)
-                            _ilr_li += 1
-                            # 빈 줄 건너뜀
-                            while _ilr_li < len(_ilr_lines) and not _ilr_lines[_ilr_li].strip():
-                                _ilr_new.append(_ilr_lines[_ilr_li])
-                                _ilr_li += 1
-                            # 루프 본문 첫 줄의 들여쓰기 파악 후 가드 체크 주입
-                            if _ilr_li < len(_ilr_lines):
-                                _body_ind = ' ' * (
-                                    len(_ilr_lines[_ilr_li]) - len(_ilr_lines[_ilr_li].lstrip())
-                                )
-                                _ilr_new.append(
-                                    f"{_body_ind}_bingo_ilr_guard[0] += 1\n"
-                                )
-                                _ilr_new.append(
-                                    f"{_body_ind}if _bingo_ilr_guard[0] > 500: "
-                                    f"break  # [bingo-ilr-override] stop at 500\n"
-                                )
-                                # _ilr_li는 전진하지 않음 — 본문 첫 줄은 다음 반복에서 추가
-                            _ilr_injected = True
-                        else:
-                            _ilr_new.append(_ilr_lv)
-                            _ilr_li += 1
-                    if _ilr_injected:
-                        fixed = ''.join(_ilr_new)
-                    _applied_fix_names.append("ilr_override_guard_injected")
-                    # fall-through: 나머지 검사 계속 진행 후 수정된 코드 반환
-                # v6.2.44: __BLOCKED__ 제거 — 루프 차단 비활성화 (사용자 요청)
+                fixed = _inject_runtime_budget(
+                    fixed,
+                    "SQL enumeration loop has TOP 1 without cursor/seen state; executor added runtime budget",
+                    max_lines=25_000,
+                )
+                if "inject_runtime_budget" not in _applied_fix_names:
+                    self._runtime_budget_injected = getattr(self, "_runtime_budget_injected", 0) + 1
+                    _applied_fix_names.append("inject_runtime_budget")
 
             # ── 0-B. 무한루프: while True + break 없음 ─────────────────────
             if _pre_re.search(r'\bwhile\s+True\s*:', fixed):
@@ -8058,135 +8137,12 @@ class BingoTerminal:
                 # "__SYNTAX_ERR__" = 수정 불가 문법 오류 (None 과 다름: None = 정상)
                 return ("__WARN_SYNTAX__" if _is_py312_fstring else "__SYNTAX_ERR__"), _applied_fix_names
 
-        # ── v6.2.0: Python 블록 실행 허용 — sqlmap 없이 Python으로 직접 SQLi ─────
         _hallucination_msgs: list[str] = []
 
-        # 모든 블록이 환각으로 차단됐을 경우 → 강제 수정 메시지 반환
-        if _hallucination_msgs and not tasks:
-            _has_ilr = any("ILR_BLOCKED" in m for m in _hallucination_msgs)
-            _has_loop_block = any("LOOP_BLOCKED" in m for m in _hallucination_msgs)
-
-            # ── v3.2.94: INFINITE_LOOP_RISK 전용 카운터 처리 ────────────────
-            # 기존 버그: ILR 탈출 후 카운터 0 리셋 → AI 무시 → 탈출-리셋 무한사이클
-            # 수정: ILR 전용 _ilr_consecutive 사용, 3회 초과 시 override 플래그 세팅
-            #        다음 코드 실행 시 _precheck에서 seen=set() 자동 주입 후 코드 실행
-            if _has_ilr:
-                self._ilr_consecutive += 1
-                _MAX_ILR = 2
-                _lang = getattr(self.config, "lang", "en")
-                _s94 = get_strings(_lang)
-                if self._ilr_consecutive > _MAX_ILR:
-                    # override 플래그 세팅 — 다음 호출 시 seen=set() 자동 주입 후 실행
-                    self._ilr_consecutive = 0
-                    self._ilr_override = True
-                    _ilr_ov_title = _s94.get(
-                        "ilr_override_title",
-                        f"⚡ ILR {_MAX_ILR + 1}x blocked — override: seen=set() auto-inject next run"
-                    )
-                    _ilr_ov_body = _s94.get(
-                        "ilr_override_body",
-                        (
-                            "INFINITE_LOOP_RISK blocked your code 3 times in a row.\n"
-                            "bingo will AUTO-INJECT seen=set() into your next for/range loop "
-                            "and run it directly — no more blocking.\n"
-                            "ACTION: regenerate the same enumeration code. "
-                            "bingo will fix the loop guard automatically."
-                        )
-                    )
-                    self.console.print(f"[{THEME['warn']}]{_ilr_ov_title}[/]")
-                    return f"[{_ilr_ov_title}]\n{_ilr_ov_body}"
-                # ILR 1~2회차: 구체적 패턴 안내
-                _fb_title = _s94.get("loop_block_feedback_title", "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED")
-                _fb_rewrite = _s94.get("loop_block_mandatory_rewrite", "MANDATORY REWRITE — Use cursor pagination:")
-                _fb_now = _s94.get("loop_block_rewrite_now", "Rewrite with the cursor pagination pattern above NOW.")
-                _hall_feedback = (
-                    f"[{_fb_title}]\n"
-                    + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
-                    + "\n\nYour enumeration loop will print the SAME table name forever!\n"
-                    "ROOT CAUSE: SELECT TOP 1 without cursor + no seen=set()\n\n"
-                    f"{_fb_rewrite}\n"
-                    "  seen = set()\n"
-                    "  last_hex = ''\n"
-                    "  while True:\n"
-                    "      cursor_clause = f' AND name > {last_hex}' if last_hex else ''\n"
-                    "      payload = f\"AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55{cursor_clause})\"\n"
-                    "      result = extract_char_by_char(payload)  # your existing extract fn\n"
-                    "      if not result or result in seen:\n"
-                    "          break\n"
-                    "      seen.add(result)\n"
-                    "      last_hex = '0x' + result.encode().hex().upper()\n"
-                    "      print(result)\n\n"
-                    "DO NOT use: for i in range(N): query('SELECT TOP 1 name ... LIKE ...')\n"
-                    f"{_fb_now}"
-                )
-
-            elif _has_loop_block:
-                # v3.2.91: 연속 LOOP_BLOCK 카운터 — 무한 재시도 사이클 방지
-                self._loop_block_consecutive += 1
-                _MAX_LOOP_BLOCK = 2
-                if self._loop_block_consecutive > _MAX_LOOP_BLOCK:
-                    # 루프 카운터 초기화 후 강제 탈출 메시지 반환
-                    self._loop_block_consecutive = 0
-                    _lang = getattr(self.config, "lang", "en")
-                    _n = _MAX_LOOP_BLOCK + 1
-                    _s91 = get_strings(_lang)
-                    _esc_title_tpl = _s91.get("loop_block_escape_title", f"⚠ LOOP_BLOCK {_n}x consecutive — switch pattern")
-                    _esc_title = _esc_title_tpl.replace("{n}", str(_n))
-                    _esc_body = _s91.get("loop_block_escape_body", (
-                        "The same loop pattern keeps getting blocked. Try a different enumeration strategy:\n"
-                        "  1) seen=set() + while True + cursor-based (name > last_hex)\n"
-                        "  2) OFFSET N pagination\n"
-                        "  3) NOT IN (already_found) subquery\n"
-                        "Rewrite code with one of these strategies NOW."
-                    ))
-                    _esc_msg = f"[{_esc_title}]\n{_esc_body}"
-                    self.console.print(f"[{THEME['warn']}]{_esc_title}[/]")
-                    return _esc_msg
-                _s91b = get_strings(getattr(self.config, "lang", "en"))
-                _fb_title = _s91b.get("loop_block_feedback_title", "⛔ CODE BLOCK REJECTED — INFINITE LOOP PATTERN DETECTED")
-                _fb_rewrite = _s91b.get("loop_block_mandatory_rewrite", "MANDATORY REWRITE — Use cursor pagination:")
-                _fb_now = _s91b.get("loop_block_rewrite_now", "Rewrite with the cursor pagination pattern above NOW.")
-                _hall_feedback = (
-                    f"[{_fb_title}]\n"
-                    + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
-                    + "\n\nYour enumeration loop will print the SAME table name forever!\n"
-                    "ROOT CAUSE: SELECT TOP 1 without cursor + no seen=set()\n\n"
-                    f"{_fb_rewrite}\n"
-                    "  seen = set()\n"
-                    "  last_hex = ''\n"
-                    "  while True:\n"
-                    "      cursor_clause = f' AND name > {last_hex}' if last_hex else ''\n"
-                    "      payload = f\"AND(1)=(SELECT TOP 1 name FROM sysobjects WHERE xtype=0x55{cursor_clause})\"\n"
-                    "      result = extract_char_by_char(payload)  # your existing extract fn\n"
-                    "      if not result or result in seen:\n"
-                    "          break\n"
-                    "      seen.add(result)\n"
-                    "      last_hex = '0x' + result.encode().hex().upper()\n"
-                    "      print(result)\n\n"
-                    "DO NOT use: for i in range(N): query('SELECT TOP 1 name ... LIKE ...')\n"
-                    f"{_fb_now}"
-                )
-            else:
-                # v4.9.5: bash/curl 방식으로 재작성 유도
-                _hall_feedback = (
-                    "[⛔ ALL CODE BLOCKS REJECTED — HALLUCINATION DETECTED]\n"
-                    + "\n".join(f"  Block #{j+1}: {m}" for j, m in enumerate(_hallucination_msgs))
-                    + "\n\nYou MUST rewrite as a bash block with real curl:\n\n"
-                    "```bash\n"
-                    "curl -s -m 10 -k \\\n"
-                    "  -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)' \\\n"
-                    "  'https://TARGET/path' \\\n"
-                    "  | /usr/bin/python3 -c \"\n"
-                    "import sys\n"
-                    "d=sys.stdin.buffer.read()\n"
-                    "t=d.decode('utf-8',errors='replace')\n"
-                    "print(f'[STATUS] {len(d)}B')\n"
-                    "print(t[:1500])\n"
-                    "\"\n"
-                    "```\n"
-                    "Use runnable bash+curl or TOOL_CALL run_python. Do not return fake JSON results."
-                )
-            return [_hall_feedback]
+        # Python code-block handling is now normalization-first:
+        # syntax fixes, import/timeout helpers, and runtime budget injection.
+        # Legacy LOOP_BLOCK/ILR response-rejection state was removed because it
+        # retried model text instead of letting the executor own runtime bounds.
 
         # ── v5.1.7: 스크립트 전처리 — curl 타임아웃 자동 주입 ─────────────────────────
         def _sanitize_script(src: str) -> str:
@@ -8262,10 +8218,9 @@ class BingoTerminal:
 
             return "\n".join(lines_out)
 
-        # v3.2.91/94: 정상 코드 실행 경로 → 연속 카운터 리셋
-        self._loop_block_consecutive = 0
-        self._ilr_consecutive = 0   # v3.2.94: ILR 카운터도 리셋
-        self._ilr_override = False  # v3.2.94: override 잔류 플래그 클리어
+        # Runtime budget state is per response; actual loop control lives in
+        # injected executor code, not in retry/block counters.
+        self._runtime_budget_injected = 0
 
         # ── v4.9.5: bash 블록 → .sh 파일 저장 후 실행 (multi-line curl+python3 지원) ──
         bash_blocks = re.findall(r"```(?:bash|sh)\s*(.*?)```", response, re.DOTALL)
@@ -9319,6 +9274,13 @@ class BingoTerminal:
                     new_response = self._stream_response(
                         model.chat_stream(self._build_messages(""))
                     )
+                    new_response = self._repair_assistant_target_scope_response(
+                        new_response,
+                        model,
+                        "",
+                    )
+                    if not new_response:
+                        return
                     self.history.append(Message(role="assistant", content=new_response))
                     if "```" in new_response:
                         self._execute_ai_commands(new_response, _depth=_depth + 1, _loaded_skills=_loaded_skills)
@@ -9363,6 +9325,21 @@ class BingoTerminal:
 
         # ── 메인 에이전트 루프 (while — 재귀 없음) ────────────────────
         current_response = response
+        _pre_scope_block = self._assistant_target_scope_violation(current_response)
+        if _pre_scope_block:
+            model_cfg_pre = self.config.get_active_model_config()
+            if not model_cfg_pre:
+                return
+            model_pre = ModelRegistry.build(model_cfg_pre)
+            current_response = self._repair_assistant_target_scope_response(
+                current_response,
+                model_pre,
+                "",
+            )
+            if not current_response:
+                return
+            self.history.append(Message(role="assistant", content=current_response))
+            self._append_to_session_log("assistant", current_response)
         _no_code_retry = 0  # AI가 코드 없이 텍스트만 보낸 횟수
         _auto_report_defer_count = 0
 
@@ -10209,6 +10186,12 @@ class BingoTerminal:
             state_summary = self._format_agent_state() if hasattr(self, "_format_agent_state") else ""
             state_summary += verification_context + adaptive_pivot_context
             state_summary += self._action_ledger_context()
+            _scope_lock_notice = _executor_state.target_scope_lock_notice(
+                str(self._agent_state.get("target") or getattr(self, "_current_target", "") or ""),
+                raw_results,
+            )
+            if _scope_lock_notice:
+                state_summary += _scope_lock_notice
             # v3.2.74: 프록시 상태를 state_summary에 포함
             if self._proxy.enabled:
                 _pe = self._proxy.current()
@@ -10252,11 +10235,17 @@ class BingoTerminal:
             _dl_confirmed_count = int(_dl_counts.get("confirmed", 0) or 0)
             _dl_ledger_skip_count = _executor_state.ledger_skip_count(raw_results)
             _dl_low_value_reentry_count = _executor_state.low_value_reentry_count(raw_results)
+            _dl_target_drift_count = _executor_state.target_drift_block_count(raw_results)
             if _dl_ledger_skip_count > 0:
                 self._dl_ledger_skip_total += _dl_ledger_skip_count
                 self._dl_ledger_skip_streak += 1
             else:
                 self._dl_ledger_skip_streak = 0
+            if _dl_target_drift_count > 0:
+                self._dl_target_drift_total += _dl_target_drift_count
+                self._dl_target_drift_streak += 1
+            else:
+                self._dl_target_drift_streak = 0
 
             # HTTP 200/found 같은 일반 문구가 반복을 영구 리셋하지 않도록
             # 검증된 신규 증거만 진행으로 인정한다.
@@ -10268,7 +10257,10 @@ class BingoTerminal:
                 elif _dl_progress_sig:
                     self._dl_progress_sigs.add(_dl_progress_sig)
             if not _dl_has_progress:
-                _dl_skip_penalty = _executor_state.no_progress_penalty(_dl_ledger_skip_count)
+                _dl_skip_penalty = max(
+                    _executor_state.no_progress_penalty(_dl_ledger_skip_count),
+                    _executor_state.no_progress_penalty(_dl_target_drift_count),
+                )
                 self._dl_no_progress += _dl_skip_penalty
             else:
                 self._dl_escape_attempts = 0
@@ -10293,11 +10285,19 @@ class BingoTerminal:
                 and _dl_low_value_reentry_count >= 2
                 and self._exec_loop_count >= 24
             )
+            _dl_target_drift_pressure = (
+                _dl_target_drift_count > 0
+                and (
+                    self._dl_target_drift_streak >= 2
+                    or self._dl_target_drift_total >= 4
+                )
+            )
             if (
                 _dl_doom_detected
                 or self._dl_no_progress >= _dl_escape_threshold
                 or _dl_ledger_pressure
                 or _dl_late_low_value_pressure
+                or _dl_target_drift_pressure
             ):
                 from ..i18n import t as _t_dl, get_lang as _gl_dl
                 _dl_escape_map = {
@@ -10341,6 +10341,9 @@ class BingoTerminal:
                     ledger_skip_total=getattr(self, "_dl_ledger_skip_total", 0),
                     ledger_skip_streak=getattr(self, "_dl_ledger_skip_streak", 0),
                     low_value_reentry_count=_dl_low_value_reentry_count,
+                    target_drift_count=_dl_target_drift_count,
+                    target_drift_total=getattr(self, "_dl_target_drift_total", 0),
+                    target_drift_streak=getattr(self, "_dl_target_drift_streak", 0),
                 )
                 self._dl_escape_attempts += 1
                 if _dl_stop_reason:
@@ -10365,6 +10368,8 @@ class BingoTerminal:
                     self._dl_escape_attempts = 0
                     self._dl_ledger_skip_total = 0
                     self._dl_ledger_skip_streak = 0
+                    self._dl_target_drift_total = 0
+                    self._dl_target_drift_streak = 0
                     break
                 self.history.append(Message(role="user", content=_dl_msg))
                 self._dl_tool_sigs.clear()
@@ -11313,6 +11318,14 @@ class BingoTerminal:
                 }.get(getattr(self.config, "lang", "en"), "⚠ Unsupported confirmation wording downgraded.")
                 self.console.print(f"\n[{THEME['warn']}]{_claim_fix_msg}[/]")
                 followup_response = _sanitized_followup
+
+            followup_response = self._repair_assistant_target_scope_response(
+                followup_response,
+                model,
+                "",
+            )
+            if not followup_response:
+                break
 
             self.history.append(Message(role="assistant", content=followup_response))
             self._append_to_session_log("assistant", followup_response)
@@ -14611,6 +14624,9 @@ class BingoTerminal:
         ledger_skip_total: int = 0,
         ledger_skip_streak: int = 0,
         low_value_reentry_count: int = 0,
+        target_drift_count: int = 0,
+        target_drift_total: int = 0,
+        target_drift_streak: int = 0,
     ) -> str:
         """Return a stop reason when the agent loop should report instead of pivoting again."""
         return _executor_state.doom_loop_cutoff_reason(
@@ -14623,6 +14639,9 @@ class BingoTerminal:
             ledger_skip_total=ledger_skip_total,
             ledger_skip_streak=ledger_skip_streak,
             low_value_reentry_count=low_value_reentry_count,
+            target_drift_count=target_drift_count,
+            target_drift_total=target_drift_total,
+            target_drift_streak=target_drift_streak,
         )
 
     @staticmethod

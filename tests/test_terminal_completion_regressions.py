@@ -18,6 +18,8 @@ from bingo.lang.strings import get_slash_commands, get_strings
 from bingo.tools.findings_exporter import FindingsExporter
 from bingo.tools.playwright_engine import PlaywrightEngine
 from bingo.core.execution_anchor import ExecutionAnchorEngine, _has_exec_evidence
+from bingo.core import executor_state
+from bingo.core.target_state import TargetState, canonicalize_tool_args, canonicalize_text_urls
 from bingo.core.zero_hal_v5 import ZeroHalEngine
 from bingo.models.system_prompt import (
     get_pentest_system_prompt,
@@ -36,6 +38,7 @@ from bingo.tools_ext.pentest_tools import (
     _boolean_probe_is_blocked,
     _boolean_probe_pair_is_eligible,
     _calibrate_boolean_oracle,
+    _canonicalize_script_target_urls,
     _check_script_target_drift,
     _classify_dbms_with_oracle,
     _curl_base,
@@ -361,6 +364,176 @@ def test_target_scope_blocks_lookalike_and_unrelated_domains() -> None:
         set_target_domain("")
 
 
+def test_target_state_canonicalizes_lookalike_absolute_url_without_leaking_source_host() -> None:
+    state = TargetState.from_target("https://moneyknock.kr")
+    assert state is not None
+
+    rewritten, notice = canonicalize_text_urls(
+        "requests.get('https://moneyknock.jp/api/otp/make_new_otp.php?x=1')",
+        state,
+        allowed_host=lambda host: host == "moneyknock.kr",
+    )
+
+    assert "https://moneyknock.kr/api/otp/make_new_otp.php?x=1" in rewritten
+    assert "moneyknock.jp" not in rewritten
+    assert "TARGET_CANONICALIZED" in notice
+    assert "moneyknock.jp" not in notice
+
+
+def test_target_state_preserves_authoritative_scheme_and_port() -> None:
+    state = TargetState.from_target("http://moneyknock.kr:8080")
+    assert state is not None
+
+    result = state.canonicalize_url("https://moneyknock.jp/api/check?x=1")
+
+    assert result.value == "http://moneyknock.kr:8080/api/check?x=1"
+    assert result.changed is True
+    assert "moneyknock.jp" not in result.note
+
+
+def test_target_state_canonicalizes_bare_lookalike_host_token() -> None:
+    state = TargetState.from_target("https://moneyknock.kr")
+    assert state is not None
+
+    rewritten, notice = canonicalize_text_urls(
+        "BASE = 'moneyknock.jp'\nurl = 'https://' + BASE + '/login'",
+        state,
+        allowed_host=lambda host: host == "moneyknock.kr",
+    )
+
+    assert "BASE = 'moneyknock.kr'" in rewritten
+    assert "moneyknock.jp" not in rewritten
+    assert "TARGET_CANONICALIZED" in notice
+    assert "moneyknock.jp" not in notice
+
+
+def test_target_state_rebuilds_malformed_file_style_url_under_target() -> None:
+    state = TargetState.from_target("https://activitynews.kr")
+    assert state is not None
+
+    rewritten, notice = canonicalize_text_urls(
+        "bad_url = 'https://activitynewsDetail.asp?seq=78'",
+        state,
+        allowed_host=lambda host: host == "activitynews.kr",
+    )
+
+    assert "https://activitynews.kr/activitynewsDetail.asp?seq=78" in rewritten
+    assert "https://activitynewsDetail.asp" not in rewritten
+    assert "TARGET_CANONICALIZED" in notice
+
+
+def test_target_state_canonicalizes_tool_url_headers_and_host_header() -> None:
+    state = TargetState.from_target("https://moneyknock.kr")
+    assert state is not None
+
+    rewritten, notice = canonicalize_tool_args(
+        {
+            "url": "https://moneyknock.jp/admin/login.php?x=1",
+            "headers": {
+                "Referer": "https://moneyknock.jp/",
+                "Origin": "https://moneyknock.jp",
+                "Host": "moneyknock.jp",
+            },
+        },
+        state,
+        allowed_host=lambda host: host == "moneyknock.kr",
+    )
+
+    assert rewritten["url"] == "https://moneyknock.kr/admin/login.php?x=1"
+    assert rewritten["headers"]["Referer"] == "https://moneyknock.kr/"
+    assert rewritten["headers"]["Origin"] == "https://moneyknock.kr"
+    assert rewritten["headers"]["Host"] == "moneyknock.kr"
+    assert "TARGET_CANONICALIZED" in notice
+    assert "moneyknock.jp" not in notice
+
+
+def test_script_target_scope_canonicalizes_lookalike_without_attack_payload() -> None:
+    set_target_domain("https://moneyknock.kr/")
+    try:
+        rewritten, notice = _canonicalize_script_target_urls(
+            "import requests\n"
+            "BASE = 'moneyknock.jp'\n"
+            "requests.get('https://moneyknock.jp/api/otp/make_new_otp.php?x=1', "
+            "headers={'Host': BASE})\n"
+        )
+
+        assert _check_script_target_drift(rewritten, "python") is None
+        assert "TARGET_CANONICALIZED" in notice
+        assert "moneyknock.kr" in rewritten
+        assert "moneyknock.jp" not in rewritten
+        assert "moneyknock.jp" not in notice
+    finally:
+        set_target_domain("")
+
+
+def test_script_target_canonicalization_preserves_set_target_origin_port() -> None:
+    set_target_domain("http://moneyknock.kr:8080/")
+    try:
+        rewritten, notice = _canonicalize_script_target_urls(
+            "curl -sk 'https://moneyknock.jp/api/check?x=1'"
+        )
+
+        assert "http://moneyknock.kr:8080/api/check?x=1" in rewritten
+        assert "moneyknock.jp" not in rewritten
+        assert "TARGET_CANONICALIZED" in notice
+    finally:
+        set_target_domain("")
+
+
+def test_malformed_file_style_script_url_is_canonicalized_before_drift_guard() -> None:
+    set_target_domain("https://www.example.kr/")
+    try:
+        rewritten, notice = _canonicalize_script_target_urls(
+            "curl -sk 'https://activitynewsDetail.asp?seq=78'"
+        )
+
+        assert "https://www.example.kr/activitynewsDetail.asp?seq=78" in rewritten
+        assert _check_script_target_drift(rewritten, "bash") is None
+        assert "TARGET_CANONICALIZED" in notice
+    finally:
+        set_target_domain("")
+
+
+def test_irrelevant_setup_line_is_normalized_not_blocked() -> None:
+    result = run_bash("pip install transformers -q\necho target-action-ok", timeout=10)
+
+    assert result["success"] is True
+    assert "SCRIPT_SETUP_NORMALIZED" in result["output"]
+    assert "target-action-ok" in result["output"]
+    assert "IRRELEVANT_CODE_BLOCKED" not in result["output"]
+
+
+def test_assistant_target_drift_response_is_rewritten_before_history() -> None:
+    set_target_domain("https://moneyknock.kr/")
+    terminal = _code_test_terminal()
+    terminal._agent_state = {"target": "https://moneyknock.kr/"}
+    terminal._current_target = "https://moneyknock.kr/"
+    terminal._get_system_message = lambda _skill: Message(role="system", content="")
+    terminal._apply_token_governor = lambda history: history
+    terminal._build_token_governor_ledger = lambda: None
+    terminal._token_governor_enabled = lambda: False
+    terminal._append_to_session_log = lambda *_args, **_kwargs: None
+    terminal._stream_response = lambda _stream: (
+        "TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://moneyknock.kr/\"}}"
+    )
+    model = SimpleNamespace(chat_stream=lambda _messages: iter(()))
+    bad = (
+        "目标确认为 `moneyknock.jp`。\n"
+        "TOOL_CALL:{\"name\":\"http_get\",\"args\":{\"url\":\"https://moneyknock.jp/\"}}"
+    )
+
+    try:
+        fixed = terminal._repair_assistant_target_scope_response(bad, model, "")
+
+        assert "moneyknock.kr" in fixed
+        assert "moneyknock.jp" not in fixed
+        assert "TARGET_CANONICALIZED" in fixed
+        assert not any(m.role == "assistant" and m.content == bad for m in terminal.history)
+        assert not any("moneyknock.jp" in m.content for m in terminal.history)
+    finally:
+        set_target_domain("")
+
+
 def test_terminal_target_scope_allows_scheme_and_subdomain_switch() -> None:
     assert _same_target_scope(
         "http://www.example.com/start",
@@ -449,6 +622,106 @@ def test_tool_call_blocks_direct_ip_url_without_host_header() -> None:
         assert "DOMAIN_BOUND_IP_BLOCKED" in result["output"]
     finally:
         set_target_domain("")
+
+
+def test_execute_tool_canonicalizes_url_args_before_dispatch() -> None:
+    def _dummy_target_tool(url: str, headers: dict | None = None) -> dict:
+        headers = headers or {}
+        return {
+            "success": True,
+            "output": (
+                f"url={url}\n"
+                f"referer={headers.get('Referer')}\n"
+                f"origin={headers.get('Origin')}\n"
+                f"host={headers.get('Host')}"
+            ),
+        }
+
+    previous = TOOL_REGISTRY.get("dummy_target_tool")
+    TOOL_REGISTRY["dummy_target_tool"] = _dummy_target_tool
+    set_target_domain("https://moneyknock.kr/")
+    try:
+        result = execute_tool(
+            "dummy_target_tool",
+            {
+                "url": "https://moneyknock.jp/admin/login.php?x=1",
+                "headers": {
+                    "Referer": "https://moneyknock.jp/",
+                    "Origin": "https://moneyknock.jp",
+                    "Host": "moneyknock.jp",
+                },
+            },
+        )
+
+        assert result["success"] is True
+        assert "TARGET_CANONICALIZED" in result["output"]
+        assert "url=https://moneyknock.kr/admin/login.php?x=1" in result["output"]
+        assert "referer=https://moneyknock.kr/" in result["output"]
+        assert "origin=https://moneyknock.kr" in result["output"]
+        assert "host=moneyknock.kr" in result["output"]
+        assert "moneyknock.jp" not in result["output"]
+    finally:
+        set_target_domain("")
+        if previous is None:
+            TOOL_REGISTRY.pop("dummy_target_tool", None)
+        else:
+            TOOL_REGISTRY["dummy_target_tool"] = previous
+
+
+def test_http_get_repetition_uses_executor_cache_state() -> None:
+    from bingo.tools_ext import pentest_tools
+
+    calls = {"count": 0}
+
+    def _fake_http_get(url: str, **_kwargs) -> dict:
+        calls["count"] += 1
+        return {"success": True, "output": f"fresh:{calls['count']}:{url}", "exit_code": 0}
+
+    previous = TOOL_REGISTRY.get("http_get")
+    old_cache = dict(pentest_tools._TOOL_DEDUP_CACHE)
+    old_counter = dict(pentest_tools._HTTP_GET_COUNTER)
+    TOOL_REGISTRY["http_get"] = _fake_http_get
+    pentest_tools._TOOL_DEDUP_CACHE.clear()
+    pentest_tools._HTTP_GET_COUNTER.clear()
+    try:
+        first = execute_tool("http_get", {"url": "https://example.test/a"})
+        second = execute_tool("http_get", {"url": "https://example.test/a"})
+
+        assert calls["count"] == 1
+        assert "fresh:1:https://example.test/a" in first["output"]
+        assert "EXECUTOR_CACHE_HIT" in second["output"]
+        assert "HTTP_GET_REPEAT" not in second["output"]
+    finally:
+        pentest_tools._TOOL_DEDUP_CACHE.clear()
+        pentest_tools._TOOL_DEDUP_CACHE.update(old_cache)
+        pentest_tools._HTTP_GET_COUNTER.clear()
+        pentest_tools._HTTP_GET_COUNTER.update(old_counter)
+        if previous is None:
+            TOOL_REGISTRY.pop("http_get", None)
+        else:
+            TOOL_REGISTRY["http_get"] = previous
+
+
+def test_sqli_boolean_repetition_becomes_executor_state_not_block() -> None:
+    from bingo.tools_ext import pentest_tools
+
+    old_counter = dict(pentest_tools._SQLI_BOOL_CONFIRMED)
+    pentest_tools._SQLI_BOOL_CONFIRMED.clear()
+    pentest_tools._SQLI_BOOL_CONFIRMED[("https://example.test/search?id=1", "id")] = 3
+    try:
+        result = execute_tool(
+            "sqli_boolean",
+            {"url": "https://example.test/search?id=1", "param": "id"},
+        )
+
+        assert result["success"] is True
+        assert result["exit_code"] == 0
+        assert result["state_transition"] == "boolean_oracle_already_modeled"
+        assert "SQLI_BOOLEAN_STATE" in result["output"]
+        assert "SQLI_BOOL_OVERUSE" not in result["output"]
+    finally:
+        pentest_tools._SQLI_BOOL_CONFIRMED.clear()
+        pentest_tools._SQLI_BOOL_CONFIRMED.update(old_counter)
 
 
 def test_real_ip_notice_keeps_domain_as_authoritative() -> None:
@@ -1584,6 +1857,83 @@ def test_doom_loop_cutoff_stops_cumulative_ledger_skips() -> None:
     assert "cumulative action ledger skips" in reason
 
 
+def test_executor_state_counts_low_value_late_loop_reentry() -> None:
+    output = (
+        "│  [ACTION_LEDGER] sig=07a05fea family=defd973f2b attempts=1 "
+        "tool=clickjacking_autotest vector=script target=TARGET path=/main.do\n"
+        "│  [ACTION_LEDGER] status=no_progress attempts=1 timeouts=0\n"
+        "│  [ACTION_LEDGER] sig=7af47128 family=c036115079 attempts=1 "
+        "tool=run_python vector=tomcat_admin target=TARGET path=/admin/login.do\n"
+        "│  [ACTION_LEDGER] status=done attempts=1 timeouts=0\n"
+    )
+
+    assert executor_state.low_value_reentry_count(output) == 2
+
+
+def test_doom_loop_cutoff_stops_late_low_value_reentry() -> None:
+    reason = BingoTerminal._doom_loop_cutoff_reason(
+        no_progress_count=0,
+        escape_attempts=0,
+        loop_count=24,
+        confirmed_count=0,
+        low_value_reentry_count=2,
+    )
+
+    assert "late low-value" in reason
+
+
+def test_sanitized_late_low_value_log_fixture_triggers_cutoff() -> None:
+    fixture = (
+        Path(__file__).parent
+        / "fixtures"
+        / "loop_logs"
+        / "late_low_value_reentry.log"
+    )
+    output = fixture.read_text(encoding="utf-8")
+    reason = BingoTerminal._doom_loop_cutoff_reason(
+        no_progress_count=0,
+        escape_attempts=0,
+        loop_count=24,
+        confirmed_count=0,
+        low_value_reentry_count=executor_state.low_value_reentry_count(output),
+    )
+
+    assert "late low-value" in reason
+
+
+def test_target_scope_lock_notice_extracts_forbidden_drift_domain() -> None:
+    output = (
+        "[TARGET_DRIFT_BLOCKED] ⛔ TOOL_CALL target drift blocked! Current target: moneyknock.kr\n"
+        "  Unauthorized external URL(s): moneyknock.jp\n"
+        "  → TARGET_SCOPE_LOCK: AUTHORITATIVE_CURRENT_TARGET=moneyknock.kr\n"
+    )
+
+    notice = executor_state.target_scope_lock_notice("moneyknock.kr", output)
+
+    assert "AUTHORITATIVE_CURRENT_TARGET=moneyknock.kr" in notice
+    assert "FORBIDDEN_DRIFT_DOMAIN=moneyknock.jp" in notice
+    assert "Do not claim the forbidden domain is confirmed" in notice
+
+
+def test_doom_loop_cutoff_stops_repeated_target_drift() -> None:
+    reason = BingoTerminal._doom_loop_cutoff_reason(
+        no_progress_count=2,
+        escape_attempts=0,
+        loop_count=10,
+        confirmed_count=0,
+        target_drift_count=1,
+        target_drift_streak=2,
+    )
+
+    assert "repeated target drift" in reason
+
+
+def test_response_pattern_detection_is_executor_state_owned() -> None:
+    sigs = ["a", "b", "a", "a", "c", "a"]
+
+    assert executor_state.repeated_response_pattern(sigs)
+
+
 def test_action_ledger_signature_groups_rewritten_ajp_probe() -> None:
     first, first_summary = BingoTerminal._action_ledger_signature(
         "run_python",
@@ -1640,7 +1990,7 @@ def test_action_ledger_blocks_after_two_timeouts() -> None:
     )
 
     assert entry["status"] == "blocked_timeout"
-    assert "blocked_timeout" in terminal._action_ledger_skip_reason(sig, summary)
+    assert "timeout-exhausted" in terminal._action_ledger_skip_reason(sig, summary)
 
 
 def test_action_ledger_family_blocks_rewritten_timeout_probe() -> None:
@@ -1680,7 +2030,7 @@ def test_action_ledger_family_blocks_rewritten_timeout_probe() -> None:
     )
 
     reason = terminal._action_ledger_skip_reason(third, third_summary)
-    assert "blocked_timeout" in reason
+    assert "timeout-exhausted" in reason
     assert "family" in terminal._action_ledger_context()
 
 

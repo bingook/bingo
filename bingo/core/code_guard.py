@@ -3,7 +3,8 @@ bingo/core/code_guard.py — 실행 전 AST 정적 분석 모듈 (v4.7.0)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 【설계 원칙】
   LLM 이 생성한 Python 코드를 **실행 전** 에 AST(Abstract Syntax Tree)로
-  파싱하여 무한루프 패턴을 탐지 → 실행을 선제적으로 차단.
+  파싱하여 무한루프 패턴을 탐지한다. 호출자는 이 결과를 실행 차단이
+  아니라 executor-owned runtime budget 주입 신호로 사용한다.
   Regex 방식보다 정확하며 false positive / false negative 모두 최소화.
 
 【탐지 패턴】
@@ -18,7 +19,7 @@ bingo/core/code_guard.py — 실행 전 AST 정적 분석 모듈 (v4.7.0)
 
 【반환】
   `check(code)` → `None` (안전) | `str` (차단 이유)
-  str 포맷:  "INFINITE_LOOP_RISK: ..."
+  str 포맷:  "INFINITE_LOOP_RISK: ..." (runtime budget 주입 사유)
 """
 
 from __future__ import annotations
@@ -263,7 +264,7 @@ def check(code: str) -> str | None:
         코드가 안전함 (무한루프 없음).
     str
         탐지된 무한루프 이유 — "INFINITE_LOOP_RISK: ..." 형식.
-        이 값을 '__BLOCKED__:' 접두사와 함께 _precheck_python_code 에서 반환.
+        호출자는 이 값을 runtime budget 주입 사유로 사용한다.
     """
     try:
         tree = ast.parse(code)

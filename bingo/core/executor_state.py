@@ -45,7 +45,7 @@ def strip_action_ledger_skip_noise(text: str) -> str:
         line
         for line in (text or "").splitlines()
         if "[ACTION_LEDGER_SKIP]" not in line
-        and "already done/blocked in the executor ledger" not in line
+        and "already terminal/exhausted in the executor ledger" not in line
         and not line.strip().startswith(("signature=", "summary="))
     )
 
@@ -74,6 +74,57 @@ def low_value_reentry_count(text: str) -> int:
 def no_progress_penalty(skip_count: int) -> int:
     """Aggressively age no-progress loops when the executor already skipped work."""
     return min(3, max(1, int(skip_count or 0)))
+
+
+def target_drift_block_count(text: str) -> int:
+    """Count target-scope guard blocks in one execution result batch."""
+    haystack = text or ""
+    return haystack.count("[TARGET_DRIFT_BLOCKED]") + haystack.count("TARGET_DOMAIN_MISMATCH")
+
+
+def target_drift_domains(text: str) -> list[str]:
+    """Extract blocked off-scope domains from target drift guard output."""
+    domains: set[str] = set()
+    for match in re.finditer(
+        r"(?:Unauthorized external URL\(s\)|未授权外部域名URL|승인되지 않은 외부 도메인 URL|"
+        r"Attack payload detected on unauthorized domain\(s\)|"
+        r"Unauthorized external-domain .*? detected|"
+        r"检测到对未授权外部域名的(?:攻击尝试|HTTP请求)|"
+        r"승인되지 않은 외부 도메인에 (?:공격 시도|HTTP 요청) 감지)"
+        r"\s*:\s*([^\n]+)",
+        text or "",
+        re.IGNORECASE,
+    ):
+        for value in re.split(r"[,，]\s*", match.group(1)):
+            value = value.strip().strip("`'\" ")
+            if value:
+                domains.add(value)
+    for match in re.finditer(
+        r"https?://([a-zA-Z0-9._-]+(?::\d+)?)",
+        text or "",
+        re.IGNORECASE,
+    ):
+        domains.add(match.group(1).lower())
+    return sorted(domains)
+
+
+def target_scope_lock_notice(current_target: str, result_text: str) -> str:
+    """Build a hard correction notice after any target drift block."""
+    if target_drift_block_count(result_text) <= 0:
+        return ""
+    current_target = (current_target or "").strip() or "CURRENT_TARGET"
+    blocked = [d for d in target_drift_domains(result_text) if current_target not in d]
+    blocked_text = ", ".join(blocked[:6]) if blocked else "blocked external domain(s)"
+    return (
+        "\n[TARGET_SCOPE_LOCK]\n"
+        f"AUTHORITATIVE_CURRENT_TARGET={current_target}\n"
+        f"FORBIDDEN_DRIFT_DOMAIN={blocked_text}\n"
+        "The executor blocked target drift. Do not claim the forbidden domain is confirmed. "
+        "Do not use it in any next TOOL_CALL, script, Referer, Origin, Cookie scope, or BASE variable. "
+        "Rewrite the next action against AUTHORITATIVE_CURRENT_TARGET only. "
+        "A related service domain is allowed only after explicit TARGET_SCOPE_EXPANDED evidence from the current target response.\n"
+        "[/TARGET_SCOPE_LOCK]\n"
+    )
 
 
 def has_meaningful_loop_progress(text: str) -> bool:
@@ -197,8 +248,16 @@ def doom_loop_cutoff_reason(
     ledger_skip_total: int = 0,
     ledger_skip_streak: int = 0,
     low_value_reentry_count: int = 0,
+    target_drift_count: int = 0,
+    target_drift_total: int = 0,
+    target_drift_streak: int = 0,
 ) -> str:
     """Return a stop reason when the agent loop should report instead of pivoting again."""
+    if int(target_drift_count or 0) > 0:
+        if int(target_drift_streak or 0) >= 2:
+            return "repeated target drift after scope lock"
+        if int(target_drift_total or 0) >= 4:
+            return "excessive target drift blocks"
     if int(confirmed_count or 0) == 0:
         if int(ledger_skip_count or 0) >= 2 and int(loop_count or 0) >= 20:
             return "action ledger exhausted pending vectors"
@@ -400,7 +459,7 @@ def action_ledger_entry_skip_reason(entry: dict, summary: str = "") -> str:
     if status == "done":
         return f"already done: {entry.get('summary') or summary}"
     if status == "blocked_timeout":
-        return f"blocked_timeout after {timeouts} timeout(s): {entry.get('summary') or summary}"
+        return f"timeout-exhausted after {timeouts} timeout(s): {entry.get('summary') or summary}"
     if status == "negative" and attempts >= 2:
         return f"negative/no-progress already tested {attempts} time(s): {entry.get('summary') or summary}"
     return ""
@@ -419,7 +478,7 @@ def action_ledger_context(ledger: dict | None, *, limit: int = 8) -> str:
     )[:limit]
     lines = [
         "\n[ACTION_LEDGER]",
-        "Executor-owned state. Do not re-run status=done/blocked_timeout/negative actions; choose a pending distinct vector.",
+        "Executor-owned state. Reuse status=done/blocked_timeout/negative action results and choose a pending distinct vector.",
     ]
     for sig, entry in items:
         lines.append(

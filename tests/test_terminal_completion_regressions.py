@@ -1876,6 +1876,34 @@ def test_v7_action_contract_prefers_executor_focus_over_generic_advice() -> None
     assert "ADAPTIVE_OFFENSE_PIVOT" not in contract
 
 
+def test_terminal_v7_status_call_delegates_to_runtime_status_contract() -> None:
+    status = RuntimeStatus(
+        target="https://example.kr",
+        phase=MissionPhase.VALIDATE,
+        reason="surface coverage exists but no confirmed evidence yet",
+        report_now=False,
+        pivot_now=True,
+        next_focus=("auth:session_boundary", "api:error_paths", "artifact:manifest_fetch"),
+        loop_count=7,
+        plateau_turns=1,
+        observation_count=1,
+        candidate_count=1,
+        confirmed_count=0,
+    )
+
+    contract = BingoTerminal._v7_status_call(
+        status,
+        "action_contract",
+        adaptive_pivot_context="[ADAPTIVE_OFFENSE_PIVOT]\nnext=cross_vector",
+        default="fallback",
+    )
+
+    assert "Follow V7_MISSION next_focus" in contract
+    assert "auth:session_boundary / api:error_paths / artifact:manifest_fetch" in contract
+    assert BingoTerminal._v7_status_call(None, "action_contract", default="fallback") == "fallback"
+    assert BingoTerminal._v7_status_call(status, "missing_method", default="fallback") == "fallback"
+
+
 def test_v7_record_action_prefers_agent_target_and_sets_default_goal() -> None:
     calls: dict[str, object] = {}
 

@@ -12424,6 +12424,20 @@ class BingoTerminal:
         )
 
     @staticmethod
+    def _v7_status_call(status: object, method_name: str, *args, default=None, **kwargs):
+        if status is None or not method_name:
+            return default
+        member = getattr(status, method_name, None)
+        if callable(member):
+            try:
+                return member(*args, **kwargs)
+            except Exception:
+                return default
+        if member is None:
+            return default
+        return member
+
+    @staticmethod
     def _sanitize_ground_truth_claims(
         text: str,
         confirmed_count: int = 0,

@@ -17,6 +17,61 @@ _STRINGS = {
         "zh": "语言已保存",
         "en": "Language saved",
     },
+    "chat_mission_started": {
+        "ko": "보안 검증 미션을 시작했습니다.",
+        "zh": "安全验证任务已开始。",
+        "en": "Security validation mission started.",
+    },
+    "chat_authorization_required": {
+        "ko": "대상 {target}에 대한 테스트 권한과 범위를 확인해 주세요.",
+        "zh": "请确认对目标 {target} 的测试授权和范围。",
+        "en": "Confirm testing authorization and scope for {target}.",
+    },
+    "chat_authorization_accepted": {
+        "ko": "허가 범위를 확인했습니다. 해당 범위 안에서 검증을 진행합니다.",
+        "zh": "授权范围已确认，将在该范围内执行验证。",
+        "en": "Authorization scope confirmed. Validation will stay within it.",
+    },
+    "chat_action_started": {
+        "ko": "{activity} 확인 중",
+        "zh": "正在检查{activity}",
+        "en": "Checking {activity}",
+    },
+    "chat_action_completed": {
+        "ko": "{activity} 확인 완료",
+        "zh": "{activity}检查完成",
+        "en": "Finished checking {activity}",
+    },
+    "chat_approval_required": {
+        "ko": "상태에 영향을 줄 수 있는 검증입니다. 실행 승인이 필요합니다.",
+        "zh": "此验证可能影响状态，需要执行批准。",
+        "en": "This validation may affect state and requires approval.",
+    },
+    "chat_scope_rejected": {
+        "ko": "요청한 작업이 확인된 대상 범위를 벗어났습니다.",
+        "zh": "请求的操作超出已确认的目标范围。",
+        "en": "The requested action is outside the confirmed target scope.",
+    },
+    "chat_report_completed": {
+        "ko": "검증 보고서를 저장했습니다: {path}",
+        "zh": "验证报告已保存：{path}",
+        "en": "Validation report saved: {path}",
+    },
+    "chat_runtime_refused": {
+        "ko": "모델이 이 요청을 처리하지 못했습니다. 허가 범위와 검증 목표를 확인해 주세요.",
+        "zh": "模型无法处理此请求。请检查授权范围和验证目标。",
+        "en": "The model could not process this request. Check the authorization scope and validation goal.",
+    },
+    "chat_runtime_failed": {
+        "ko": "검증 실행 중 오류가 발생했습니다.",
+        "zh": "验证执行期间发生错误。",
+        "en": "An error occurred during validation.",
+    },
+    "cli_chat_only": {
+        "ko": "Bingo는 채팅 모드로 시작합니다. 허가된 검증 목표를 자연어로 입력하세요.",
+        "zh": "Bingo 现在以聊天模式启动。请用自然语言描述已授权的验证目标。",
+        "en": "Bingo now starts in chat mode. Describe the authorized validation goal in natural language.",
+    },
     # ── 모델 설정 ────────────────────────────────────────────────
     "select_model": {
         "ko": "AI 모델을 선택하세요",
@@ -86,10 +141,6 @@ _STRINGS = {
 /retry                   마지막 요청/실패 단계 재시도
 /load <세션파일경로>      이전 세션 불러오기 + AI 자동 재개
 /report [save|clear]     현재 작업 리포트 생성/저장
-/login <url> <id> <pw>   인증 세션 저장
-/cred <id> <pw> [쿠키]   자격증명 수동 저장
-/session [clear]         현재 인증 세션 확인/초기화
-/proxy [list|add|off]    프록시 상태 관리
 /model                   AI 모델 추가/변경
 /history                 대화 기록 보기
 /export                  대화를 .md 파일로 저장
@@ -104,10 +155,6 @@ _STRINGS = {
 /retry                   重试上一次请求/失败步骤
 /load <会话文件路径>      加载历史会话 + AI自动续接
 /report [save|clear]     生成/保存当前任务报告
-/login <url> <id> <pw>   保存认证会话
-/cred <id> <pw> [Cookie] 手动保存凭据
-/session [clear]         查看/清除当前认证会话
-/proxy [list|add|off]    管理代理状态
 /model                   添加/切换 AI 模型
 /history                 查看对话历史
 /export                  导出对话为 .md 文件
@@ -122,10 +169,6 @@ _STRINGS = {
 /retry                   Retry the last request or failed step
 /load <session-file>     Load previous session + auto-resume AI
 /report [save|clear]     Generate/save the current task report
-/login <url> <id> <pw>   Save authenticated session
-/cred <id> <pw> [cookie] Manually store credentials
-/session [clear]         View/reset auth session
-/proxy [list|add|off]    Manage proxy state
 /model                   Add or switch AI model
 /history                 View chat history
 /export                  Export chat as .md file
@@ -1083,10 +1126,6 @@ _CHAT_MODE_SLASH_COMMANDS = (
     "/retry",
     "/load",
     "/report",
-    "/login",
-    "/cred",
-    "/session",
-    "/proxy",
     "/model",
     "/history",
     "/export",

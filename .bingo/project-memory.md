@@ -5,6 +5,11 @@
 
 ## Persistent Notes
 
+- User's real requirement is not "improve existing Bingo" but "rebuild default Bingo into a chat-first agent while keeping only the broad UI shell." Internal runtime fixes alone do not satisfy the request.
+- Failure criteria explicitly called out by the user: if legacy Bingo surfaces are still visible, the redesign is not done. Unacceptable user-facing surfaces include `/waf`, `/tools`, `/skill`, `/recon`, `/agent`, `OPS MATRIX`, `tools+skills`, `operator stream`, `[bingo action]`, and raw internal tool names such as `http_get`, `waf_detect`, and `web_tech_detect`.
+- Do not tell the user to update, test, or rerun the same target until both the runtime structure and the visible UI/UX surface are redesigned enough that old Bingo behavior is no longer apparent.
+- Current local state after partial fixes: stream transport/target canonicalization work exists and the local test suite passed, but the user correctly rejected it as incomplete because visible legacy Bingo workflow still remains. Treat the redesign as unfinished.
+- When confirming understanding with the user, lock the acceptance criteria in code-facing terms immediately. If those visible legacy surfaces remain, report the work as incomplete instead of calling it "v7 redesign" or "ready to test".
 - User prefers direct Korean updates, concise factual engineering status, and concrete commit/push commands.
 - Preserve unrelated user changes unless explicitly scoped. Recent unrelated/local state often includes `AGENTS.md` and `.bingo/`.
 - Platform guard policy is strict: do not weaken Windows/WSL blocking logic or related dependency markers.
@@ -69,9 +74,95 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-22T05:13:40+08:00
+- Last synced: 2026-07-22T07:15:38+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
+
+<!-- working-tree:start -->
+## Working tree snapshot (uncommitted)
+- Captured: 2026-07-22T07:15:38+08:00
+
+### Status
+```text
+M .bingo/project-memory.md
+ M README.md
+ M bingo/cli.py
+ M bingo/core/authorization.py
+ M bingo/core/v7/__init__.py
+ M bingo/core/v7/executor_bridge.py
+ M bingo/core/v7/runtime.py
+ M bingo/lang/strings.py
+ M bingo/models/base.py
+ M bingo/ui/terminal.py
+ M docs/BINGO_V7_ARCHITECTURE.md
+ M pyproject.toml
+ M tests/test_terminal_completion_regressions.py
+ M tests/test_v7_architecture.py
+?? bingo/application/
+?? bingo/core/engagement.py
+?? bingo/core/v7/report_service.py
+?? bingo/runtime/
+?? bingo/ui/commands.py
+?? bingo/ui/presenter.py
+?? bingo/ui/view_models.py
+?? tests/test_chat_application.py
+?? tests/test_chat_presentation.py
+?? tests/test_claude_adapter.py
+?? tests/test_engagement_authority.py
+?? tests/test_report_service.py
+?? tests/test_runtime_contracts.py
+```
+
+### Diff Stat
+```text
+README.md                                     | 2253 +------------------------
+ bingo/cli.py                                  |  102 +-
+ bingo/core/authorization.py                   |    8 +-
+ bingo/core/v7/__init__.py                     |    3 +
+ bingo/core/v7/executor_bridge.py              |   47 +-
+ bingo/core/v7/runtime.py                      |   76 +-
+ bingo/lang/strings.py                         |   71 +-
+ bingo/models/base.py                          |  138 +-
+ bingo/ui/terminal.py                          |  430 +----
+ docs/BINGO_V7_ARCHITECTURE.md                 |  261 ++-
+ pyproject.toml                                |    1 +
+ tests/test_terminal_completion_regressions.py |   33 +-
+ tests/test_v7_architecture.py                 |   62 +
+ 13 files changed, 549 insertions(+), 2936 deletions(-)
+```
+
+### Added Highlights
+- `Bingo is a multilingual, chat-first agent for authorized security validation.`
+- `- **Chat first** — the default product is a conversation, not a technique-command console.`
+- `- **Multi-provider** — Claude, OpenAI-compatible providers, GLM, Qwen, Ollama, and custom endpoints remain supported behind one typed runtime contract.`
+- `- **Executor-owned authority** — models propose intent; Bingo owns the canonical target, scope, action identity, approval, execution, and mission phase.`
+- `- **Evidence led** — model prose is never a finding. Confirmed findings require executor-observed evidence and stable finding IDs.`
+- `- **Long-horizon but bounded** — resumable missions use action, concurrency, timeout, output, and plateau budgets.`
+- `- **Non-destructive** — destructive actions, denial of service, mass targeting, persistence, stealth/evasion, and autonomous scope expansion are outside the execution boundary.`
+- `Python 3.12 or later is required. Native Windows is not supported; use Linux, macOS, or WSL2.`
+- `From source:`
+- `cd bingo`
+- `bash install.sh`
+- `bingo`
+- `1. Select English, 한국어, or 中文.`
+- `2. Configure a model provider.`
+- `3. Describe the authorized validation goal in natural language.`
+- `4. Confirm the exact target scope before active validation begins.`
+- `Example:`
+- `'''text`
+- `Assess https://example.test for exposed application metadata.`
+- `I confirm I am authorized to test this exact host using bounded read-only requests.`
+- `The command surface contains session controls only:`
+- `| Command | Purpose |`
+- `|---|---|`
+- `| '/help' | Show help |`
+- `| '/hint <message>' | Add a hint during an active turn |`
+- `| '/retry' | Retry the previous request or failed step |`
+- `| '/load <session-file>' | Load and sanitize an existing session |`
+- `| '/report' | Generate a report from current evidence |`
+- `| '/model' | Add or switch model provider |`
+- `| '/export' | Export the conversation |`
+<!-- working-tree:end -->
 
 # Workspace Memory
 

@@ -1000,86 +1000,60 @@ class BingoTerminal:
     # ── 배너 / 상태 표시 ──────────────────────────────────────────
     def _print_banner(self) -> None:
         from bingo import __version__ as _bingo_ver
-        model_cfg = self.config.get_active_model_config()
-        _model_name = model_cfg.display_name() if model_cfg else "no model"
-        lang_label = SUPPORTED_LANGS.get(self.config.lang, self.config.lang)
-        _hs_dir = Path(__file__).parent.parent / "skills" / "hack-skills"
-        _hs_count = sum(1 for d in _hs_dir.iterdir() if d.is_dir() and (d / "SKILL.md").exists()) if _hs_dir.exists() else 0
-        try:
-            from ..skills.engine import ALL_SKILLS
-            _db_count = len(ALL_SKILLS)
-        except Exception:
-            _db_count = 0
-        _total = _hs_count + 6 + 5 + _db_count
-        # Rich owns all border/width calculation; no hand-drawn frames here.
-        from rich.align import Align as _StAlign
         from rich import box as _StBox
+        from rich.align import Align as _StAlign
         from rich.panel import Panel as _StPanel
-        from rich.text import Text as _StText
         from rich.table import Table as _StTable
+        from rich.text import Text as _StText
 
-        _logo = _StText(justify="center")
-        _logo_styles = (THEME["primary"], "#00e676", THEME["secondary"], "#00e676", THEME["primary"], THEME["primary"])
-        for _line, _style in zip(BANNER_LOGO, _logo_styles):
-            _logo.append(_line + "\n", style=f"bold {_style}")
+        model_cfg = self.config.get_active_model_config()
+        model_name = model_cfg.display_name() if model_cfg else "no model"
+        lang_label = SUPPORTED_LANGS.get(self.config.lang, self.config.lang)
 
-        _tagline = _StText(justify="center")
-        _tagline.append("red team operations console", style=THEME["dim"])
-        _tagline.append("  //  ", style=THEME["border"])
-        _tagline.append(f"v{_bingo_ver}", style=f"bold {THEME['secondary']}")
-        _tagline.append("  //  ", style=THEME["border"])
-        _tagline.append("multi-model arsenal", style=THEME["accent"])
-        _tagline.append("  //  ", style=THEME["border"])
-        _tagline.append("evidence-led", style=THEME["success"])
+        logo = _StText(justify="center")
+        logo_styles = (
+            THEME["primary"],
+            "#00e676",
+            THEME["secondary"],
+            "#00e676",
+            THEME["primary"],
+            THEME["primary"],
+        )
+        for line, style in zip(BANNER_LOGO, logo_styles):
+            logo.append(line + "\n", style=f"bold {style}")
 
-        _header = _StTable.grid(expand=True)
-        _header.add_column(justify="center")
-        _header.add_row(_StAlign.center(_logo))
-        _header.add_row(_StAlign.center(_tagline))
+        tagline = _StText(justify="center")
+        tagline.append("chat-first security validation", style=THEME["dim"])
+        tagline.append("  //  ", style=THEME["border"])
+        tagline.append(f"v{_bingo_ver}", style=f"bold {THEME['secondary']}")
+        tagline.append("  //  ", style=THEME["border"])
+        tagline.append("evidence-led", style=THEME["success"])
+
+        header = _StTable.grid(expand=True)
+        header.add_column(justify="center")
+        header.add_row(_StAlign.center(logo))
+        header.add_row(_StAlign.center(tagline))
         self.console.print(_StPanel(
-            _header,
+            header,
             title=f"[bold {THEME['primary']}] BINGO [/]",
+            subtitle=(
+                f"[{THEME['secondary']}]{model_name}[/]  "
+                f"[{THEME['dim']}]//[/]  [{THEME['accent']}]{lang_label}[/]"
+            ),
             border_style=THEME["primary"],
             box=_StBox.HEAVY_EDGE,
             padding=(1, 2),
         ))
-
-        _grid = _StTable(
-            box=_StBox.SIMPLE_HEAVY,
-            expand=True,
-            show_header=True,
-            header_style=THEME["dim"],
-            border_style=THEME["border"],
-            pad_edge=False,
-        )
-        _grid.add_column("MODEL", style=THEME["secondary"], ratio=2, no_wrap=True)
-        _grid.add_column("LOCALE", style=THEME["accent"], ratio=1, no_wrap=True)
-        _grid.add_column("SKILLS", style=THEME["success"], ratio=1, no_wrap=True)
-        _grid.add_column("OUTPUT", style=THEME["primary"], ratio=1, no_wrap=True)
-        _grid.add_row(_model_name, lang_label, f"{_total} ready", "MD · HTML")
-
-        self.console.print(_StPanel(
-            _grid,
-            title=f"[{THEME['secondary']}] OPS MATRIX [/]",
-            subtitle=(
-                f"[{THEME['dim']}]planner[/] [{THEME['primary']}]model[/]  "
-                f"[{THEME['dim']}]execution[/] [{THEME['secondary']}]tools+skills[/]  "
-                f"[{THEME['dim']}]proof[/] [{THEME['accent']}]evidence ledger[/]"
-            ),
-            border_style=THEME["border"],
-            box=_StBox.SQUARE,
-            padding=(0, 1),
-        ))
         self.console.print()
-        # 네트워크 환경 표시
+
         import time as _t
         for _ in range(20):
             if self._net_env:
                 break
             _t.sleep(0.1)
-        _net_line = self._get_net_env_line()
-        if _net_line:
-            self.console.print(f"  {_net_line}\n")
+        net_line = self._get_net_env_line()
+        if net_line:
+            self.console.print(f"  {net_line}\n")
 
     def _print_status_bar(self) -> None:
         model_cfg = self.config.get_active_model_config()
@@ -4312,13 +4286,7 @@ class BingoTerminal:
                 intent = lines[0][:50] if lines else "script"
 
             if lines and re.match(r'^TOOL_CALL\s*:', lines[0], re.I):
-                intent = {"ko": "bingo 액션", "zh": "bingo 动作", "en": "bingo action"}.get(_lang, "bingo action")
-                lines = [
-                    {"ko": "내장 실행 요청", "zh": "内置执行请求", "en": "internal execution request"}.get(
-                        _lang, "internal execution request"
-                    ),
-                    "",
-                ]
+                return ""
 
             icon = "🐍" if lang == "python" else "⚡"
             _wait_label = _s.get("exec_waiting", "Waiting to execute")
@@ -4354,181 +4322,11 @@ class BingoTerminal:
 
     @staticmethod
     def _compact_tool_call_payloads(text: str, max_calls: int = 10) -> str:
-        """Compact bulky TOOL_CALL JSON for display/log/history only.
+        """Remove internal execution directives from display, logs, and history."""
+        from ..runtime.legacy_tool_decoder import decode_legacy_tool_calls
 
-        Execution still receives the original response.  This prevents long
-        run_bash/run_python payloads and deferred tool floods from becoming
-        permanent session-log or model-context bloat.
-        """
-        import json as _json_tc
-        import re as _re_tc
-
-        def _compact_exposed_actions(value: str) -> str:
-            """Collapse echoed [bingo action] code/script payloads in visible text."""
-            lines = value.splitlines()
-            out: list[str] = []
-            i = 0
-            action_start = _re_tc.compile(
-                r"^\[bingo action\]\s*([a-zA-Z0-9_]+)\((code|script)="
-            )
-            section_start = _re_tc.compile(
-                r"^(?:\[bingo action\]|── bingo|Agent loop|Agent 循环|Agent 루프|"
-                r"⚙|┌─|└─|📊|⚠|🔄|===|\s*💰)"
-            )
-            while i < len(lines):
-                line = lines[i]
-                stripped = line.strip()
-                match = action_start.match(stripped)
-                if not match:
-                    out.append(line)
-                    i += 1
-                    continue
-
-                name, key = match.group(1), match.group(2)
-                if "<" in stripped[stripped.find(f"{key}="):]:
-                    out.append(line)
-                    i += 1
-                    continue
-
-                omitted_lines = 0
-                i += 1
-                while i < len(lines):
-                    nxt = lines[i].strip()
-                    if nxt == ")":
-                        i += 1
-                        break
-                    if nxt and section_start.match(nxt):
-                        break
-                    omitted_lines += 1
-                    i += 1
-                omitted_lines = max(omitted_lines, 1)
-                out.append(f"[bingo action] {name}({key}=<{omitted_lines} lines omitted>)")
-            return "\n".join(out)
-
-        if "TOOL_CALL" not in text:
-            return _compact_exposed_actions(text)
-
-        def _compact_leaked_summaries(value: str) -> str:
-            """Hide previously compacted tool summaries if a model echoes them."""
-            lines = value.splitlines()
-            out: list[str] = []
-            skip_multiline_payload = False
-            omitted_payload_lines = 0
-            import re as _re_leak
-            _legacy_marker = "TOOL_CALL" + "_SUMMARY:"
-
-            def _flush_omitted() -> None:
-                nonlocal omitted_payload_lines
-                if omitted_payload_lines:
-                    out.append(f"[bingo action] omitted {omitted_payload_lines} echoed code line(s)")
-                    omitted_payload_lines = 0
-
-            for line in lines:
-                stripped = line.strip()
-                if stripped.startswith(_legacy_marker):
-                    _flush_omitted()
-                    skip_multiline_payload = False
-                    name_m = _re_leak.search(
-                        _re_leak.escape(_legacy_marker) + r"\s*([a-zA-Z0-9_]+)",
-                        stripped,
-                    )
-                    name = name_m.group(1) if name_m else "tool"
-                    if _re_leak.search(r"\b(?:code|script)\s*=", stripped):
-                        size_m = _re_leak.search(r"<\d+\s+chars/\d+L>", stripped)
-                        summary = size_m.group(0) if size_m else "<code omitted>"
-                        out.append(f"[bingo action] {name}(code={summary})")
-                        if "<" not in stripped[stripped.find("code="):]:
-                            skip_multiline_payload = True
-                        continue
-                    out.append(stripped.replace(_legacy_marker, "[bingo action]", 1))
-                    continue
-
-                if skip_multiline_payload:
-                    if not stripped:
-                        skip_multiline_payload = False
-                        _flush_omitted()
-                        out.append(line)
-                        continue
-                    if stripped.startswith(_legacy_marker):
-                        skip_multiline_payload = False
-                    else:
-                        omitted_payload_lines += 1
-                        continue
-
-                out.append(line)
-            _flush_omitted()
-            return "\n".join(out)
-
-        spans: list[tuple[int, int, str]] = []
-        for match in _re_tc.finditer(r"TOOL_CALL\s*:\s*", text):
-            pos = match.end()
-            if pos >= len(text) or text[pos] != "{":
-                continue
-            depth = 0
-            in_str = False
-            esc = False
-            j = pos
-            while j < len(text):
-                ch = text[j]
-                if esc:
-                    esc = False
-                elif ch == "\\" and in_str:
-                    esc = True
-                elif ch == '"':
-                    in_str = not in_str
-                elif not in_str:
-                    if ch == "{":
-                        depth += 1
-                    elif ch == "}":
-                        depth -= 1
-                        if depth == 0:
-                            spans.append((match.start(), j + 1, text[pos:j + 1]))
-                            break
-                j += 1
-
-        if not spans:
-            return _compact_exposed_actions(_compact_leaked_summaries(text))
-
-        parts: list[str] = []
-        cursor = 0
-        omitted = 0
-        for idx, (start, end, raw_json) in enumerate(spans):
-            parts.append(text[cursor:start])
-            if idx >= max_calls:
-                omitted += 1
-                cursor = end
-                continue
-            try:
-                parsed = _json_tc.loads(raw_json)
-                name = str(parsed.get("name", "?"))
-                args = parsed.get("args", {})
-                if not isinstance(args, dict):
-                    args = {}
-            except Exception:
-                name_m = _re_tc.search(r'"name"\s*:\s*"([^"]+)"', raw_json)
-                name = name_m.group(1) if name_m else "?"
-                args = {}
-
-            arg_bits: list[str] = []
-            for key, value in list(args.items())[:8]:
-                if key in {"script", "code"}:
-                    value_s = str(value)
-                    lines = value_s.count("\n") + (1 if value_s else 0)
-                    arg_bits.append(f"{key}=<{len(value_s)} chars/{lines}L>")
-                    continue
-                value_s = str(value).replace("\n", "\\n")
-                if len(value_s) > 96:
-                    value_s = value_s[:93] + "..."
-                arg_bits.append(f"{key}={value_s}")
-            arg_text = ", ".join(arg_bits)
-            parts.append(f"[bingo action] {name}({arg_text})")
-            cursor = end
-
-        parts.append(text[cursor:])
-        compacted = "".join(parts)
-        if omitted:
-            compacted += f"\n[bingo action] {omitted} additional deferred call(s) omitted from log/context."
-        return _compact_exposed_actions(_compact_leaked_summaries(compacted))
+        del max_calls
+        return decode_legacy_tool_calls(text).visible_text
 
     def _compact_latest_assistant_tool_history(self, original_response: str) -> None:
         """Replace the latest assistant history item with compact TOOL_CALL text."""
@@ -4551,11 +4349,8 @@ class BingoTerminal:
         _stream_diagnostics: list[str] = []
         _target_notice = ""
 
-        # ── compact operator response header ────────────────────────
-        _now_str = datetime.now().strftime("%H:%M:%S")
         self.console.print(
             f"\n[{THEME['dim']}]──[/] [{THEME['secondary']}]bingo[/]"
-            f" [{THEME['dim']}]// {_now_str} //[/] [{THEME['primary']}]operator stream[/]"
         )
 
         # 스트리밍 중: 코드 블록 접힌 상태로 실시간 표시
@@ -4844,128 +4639,25 @@ class BingoTerminal:
         arg = parts[1].strip() if len(parts) > 1 else ""
 
         dispatch = {
-            "/help":    self._cmd_help,
-            "/clear":   self._cmd_clear,
-            "/model":   self._cmd_model,
-            "/config":  self._cmd_config,
+            "/help": lambda: self._cmd_help(),
+            "/hint": lambda: self._cmd_hint(arg),
+            "/retry": self._cmd_retry,
+            "/load": lambda: self._cmd_load(arg),
+            "/report": lambda: self._cmd_proof_report(arg),
+            "/model": self._cmd_model,
             "/history": self._cmd_history,
-            "/export":  self._cmd_export,
-            "/lang":    self._cmd_lang,
-            "/quit":    self._cmd_quit,
-            "/exit":    self._cmd_quit,
-            "/session":   self._cmd_session,
-            "/whitebox":  lambda: self._cmd_whitebox(arg),
-            "/agent":     lambda: self._cmd_agent(arg),
-            "/report":    lambda: self._cmd_proof_report(arg),
-            "/load":      lambda: self._cmd_load(arg),
+            "/export": self._cmd_export,
+            "/config": self._cmd_config,
+            "/lang": self._cmd_lang,
+            "/clear": self._cmd_clear,
+            "/quit": self._cmd_quit,
+            "/exit": self._cmd_quit,
         }
-        fn = dispatch.get(name)
-        if fn:
-            fn()
-        elif name == "/skill":
-            if arg.startswith("install "):
-                self._cmd_skill_install(arg[8:].strip())
-            elif arg.startswith("load "):
-                # '/skill load <name>' — hack-skills는 이미 내장, 별도 설치 불필요
-                skill_name = arg[5:].strip()
-                content = self._load_skill_content([skill_name])
-                if content:
-                    self.console.print(
-                        f"[{THEME['success']}]⚡ {self.s.get('skill_already_builtin', 'Skill already built-in').format(name=skill_name)}[/]"
-                    )
-                else:
-                    self.console.print(
-                        f"[{THEME['warn']}]{self.s.get('skill_not_found_tip', 'Skill not found').format(name=skill_name)}[/]"
-                    )
-            else:
-                self._cmd_skill(arg)
-        elif name == "/tools":
-            self._cmd_tools(arg)
-        elif name == "/install":
-            # /install exe-deps  — Playwright-style auto-installer
-            _arg = arg.lower().strip()
-            if _arg in ("exe-deps", "exe", "pe-deps", "exe-analyzer",
-                        "exe deps", "exe dependencies", "pe deps"):
-                self._cmd_install_exe_deps()
-            else:
-                self._warn(
-                    "Usage: /install exe-deps\n"
-                    "       Installs EXE Phase 0 analysis libraries (pefile, lief, yara, ssdeep, requests)"
-                )
-        elif name == "/mscan":
-            if arg:
-                self._cmd_mscan(arg)
-            else:
-                self._warn(self.s.get('mscan_usage', 'Usage: /mscan <url>  e.g. /mscan https://target.com'))
-        elif name == "/waf":
-            # /waf 명령은 제거됨 → AI에게 직접 탐지 코드 작성 위임
-            target = arg or "https://target.com"
-            self._send_message(self.s.get('waf_detect_msg', 'Detect WAF and security devices on {target}. Use Python httpx to directly analyze headers and response patterns to identify them.').format(target=target))
-        elif name == "/login":
-            self._cmd_login(arg)
-        elif name == "/cred":
-            self._cmd_cred(arg)
-        elif name == "/session":
-            if arg.strip().lower() == "clear":
-                self._auth_session = {
-                    "login_url": "", "username": "", "password": "",
-                    "cookies": {}, "evidence": "", "active": False,
-                }
-                self._success(self.s.get('session_cleared', 'Session cleared.'))
-            else:
-                self._cmd_session()
-        elif name == "/crack":
-            self._cmd_crack(arg)
-        elif name == "/hint":
-            self._cmd_hint(arg)
-        elif name == "/retry":
-            self._cmd_retry()
-        elif name == "/stop":
-            self._agent_stop_flag.set()
-            self._stop_crack_flag.set()
-            self.console.print(f"[{THEME['warn']}]{self.s['hash_stop_signal']}[/]")
-        elif name == "/undo":
-            steps = int(arg) if arg.isdigit() else 1
-            self._cmd_undo(steps)
-        elif name == "/snapshots":
-            self._cmd_snapshots()
-        elif name == "/cost":
-            self._cmd_cost()
-        elif name == "/proxy":
-            self._cmd_proxy(arg)
-        elif name == "/ctf":
-            self._cmd_ctf(arg)
-        elif name == "/webshell":
-            _ws_target = arg.strip() or self._agent_state.get("target", "")
-            if not _ws_target:
-                self._warn(self.s.get('webshell_usage', 'Usage: /webshell <url>  e.g. /webshell https://target.com'))
-            else:
-                self._send_message(self.s.get('webshell_msg', 'Target: {target}\nAttempt webshell upload. Include Gnuboard5 vulnerabilities and GIF polyglot webshell techniques. Perform the full process from finding uploadable paths to confirming execution.').format(target=_ws_target))
-        # ── v3.4.0 신규 명령어 ────────────────────────────────────────
-        elif name == "/role":
-            self._cmd_role(arg)
-        elif name == "/vulns":
-            self._cmd_vulns(arg)
-        elif name == "/board":
-            self._cmd_board(arg)
-        elif name in ("/tools-ext", "/tools_ext"):
-            self._cmd_tools_ext(arg)
-        elif name == "/kb":
-            self._cmd_kb(arg)
-        elif name == "/cve":
-                self._warn(self.s.get('cve_removed', '⚠️  /cve command has been removed. CVE DB was deleted.'))
-        elif name == "/batch":
-            self._cmd_batch(arg)
-        elif name == "/chain":
-            self._cmd_chain(arg)
-        elif name == "/hitl":
-            self._cmd_hitl(arg)
-        elif name == "/orch":
-            self._cmd_orch(arg)
-        elif name == "/recon":
-            self._cmd_recon(arg)
-        else:
+        handler = dispatch.get(name)
+        if handler is None:
             self._warn(self.s["cmd_unknown"].format(name=name))
+            return
+        handler()
 
     # ── /whitebox ─────────────────────────────────────────────────────
     def _cmd_whitebox(self, arg: str) -> None:
@@ -12624,10 +12316,6 @@ class BingoTerminal:
         if _intent_re.search(r"<tool_call\b", text, _intent_re.I):
             return True
         if _intent_re.search(r"```(?:bash|sh|zsh|python)\b", text, _intent_re.I):
-            return True
-        if "[bingo action]" in text:
-            return True
-        if ("TOOL_CALL" + "_SUMMARY") in text:
             return True
         return False
 

@@ -45,6 +45,7 @@ from .reporting import (
     sanitize_next_step_summary,
     validate_report_finding_ids,
 )
+from .report_service import ReportLifecycleResult, ReportService
 from .runtime import MissionRuntimeCoordinator, RuntimeSessionState, RuntimeStatus
 from .state_machine import MissionStateMachine
 
@@ -72,6 +73,8 @@ __all__ = [
     "NextStepPlan",
     "PlannerIntent",
     "ReportArtifactPlan",
+    "ReportLifecycleResult",
+    "ReportService",
     "ReportGroundTruthSnapshot",
     "ReportSessionSnapshot",
     "build_artifact_convergence_plan",

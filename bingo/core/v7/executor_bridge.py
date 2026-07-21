@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from urllib.parse import urlparse
+
+from ..engagement import (
+    ActionAuthority,
+    ActionClass,
+    ActionDecision,
+    ActionRequest,
+    Engagement,
+)
 from ..target_state import TargetState
 from .contracts import ActionEnvelope, MissionScope, PlannerIntent
 
@@ -18,7 +27,11 @@ class ExecutorActionBuilder:
 
     def build(self, intent: PlannerIntent) -> ActionEnvelope:
         method = (intent.method or "GET").upper()
-        url = self._target_state.build_url(intent.path)
+        path = intent.path or "/"
+        parsed = urlparse(path)
+        if parsed.scheme or parsed.netloc:
+            raise ValueError("planner intent path must be relative to the mission target")
+        url = self._target_state.build_url(path)
         return ActionEnvelope(
             tool=intent.tool,
             url=url,
@@ -27,4 +40,36 @@ class ExecutorActionBuilder:
             headers=dict(intent.headers),
             evidence_goal=intent.evidence_goal,
             summary=intent.summary,
+        )
+
+    def prepare(
+        self,
+        intent: PlannerIntent,
+        engagement: Engagement,
+        *,
+        now: float,
+        authority: ActionAuthority | None = None,
+        approved_identity: str = "",
+        action_class: ActionClass = ActionClass.BOUNDED_NETWORK_READ,
+    ) -> ActionDecision:
+        """Bind planner intent, then evaluate it before any dispatch."""
+
+        envelope = self.build(intent)
+        request = ActionRequest(
+            capability=envelope.tool,
+            url=envelope.url,
+            method=envelope.method,
+            arguments={
+                "params": dict(envelope.params),
+                "headers": dict(envelope.headers),
+            },
+            action_class=action_class,
+            evidence_goal=envelope.evidence_goal,
+            summary=envelope.summary,
+        )
+        return (authority or ActionAuthority()).evaluate(
+            request,
+            engagement,
+            now=now,
+            approved_identity=approved_identity,
         )

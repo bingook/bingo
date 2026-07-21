@@ -172,7 +172,7 @@ def test_tool_call_codeblock_rendering_hides_raw_directive() -> None:
 
     assert "TOOL_CALL" not in collapsed
     assert "_ssl_retry_with_legacy" not in collapsed
-    assert "bingo action" in collapsed
+    assert "bingo action" not in collapsed
 
 
 def test_plain_tool_call_payloads_are_compacted_for_logs_and_history() -> None:
@@ -185,12 +185,12 @@ def test_plain_tool_call_payloads_are_compacted_for_logs_and_history() -> None:
 
     compacted = BingoTerminal._compact_tool_call_payloads(text, max_calls=1)
 
-    assert "[bingo action] run_bash" in compacted
-    legacy_marker = "TOOL_CALL" + "_SUMMARY"
-    assert legacy_marker not in compacted
-    assert "script=<" in compacted
+    assert "Run probes" in compacted
+    assert "bingo action" not in compacted
+    assert "TOOL_CALL" not in compacted
+    assert "run_bash" not in compacted
+    assert "http_get" not in compacted
     assert "curl -sk https://example.test/a" not in compacted
-    assert "additional deferred call" in compacted
 
 
 def test_latest_assistant_tool_history_is_compacted_without_blocking_execution() -> None:
@@ -204,10 +204,7 @@ def test_latest_assistant_tool_history_is_compacted_without_blocking_execution()
 
     terminal._compact_latest_assistant_tool_history(response)
 
-    assert "[bingo action] run_python" in terminal.history[-1].content
-    legacy_marker = "TOOL_CALL" + "_SUMMARY"
-    assert legacy_marker not in terminal.history[-1].content
-    assert "print(1)" not in terminal.history[-1].content
+    assert terminal.history[-1].content == ""
 
 
 def test_echoed_tool_call_summary_payload_is_compacted_again() -> None:
@@ -225,10 +222,9 @@ def test_echoed_tool_call_summary_payload_is_compacted_again() -> None:
     compacted = BingoTerminal._compact_tool_call_payloads(echoed)
 
     assert legacy_marker not in compacted
-    assert "[bingo action] run_python(code=<code omitted>)" in compacted
+    assert "run_python" not in compacted
     assert "BASE='https://example.test'" not in compacted
-    assert "next text" in compacted
-    assert "[bingo action] http_get" in compacted
+    assert "http_get" not in compacted
 
 
 def test_echoed_bingo_action_code_is_compacted_without_tool_call_marker() -> None:
@@ -244,7 +240,8 @@ def test_echoed_bingo_action_code_is_compacted_without_tool_call_marker() -> Non
 
     compacted = BingoTerminal._compact_tool_call_payloads(echoed)
 
-    assert "[bingo action] run_python(code=<3 lines omitted>)" in compacted
+    assert "bingo action" not in compacted
+    assert "run_python" not in compacted
     assert "import requests" not in compacted
     assert "print(r.status_code)" not in compacted
     assert "next step" in compacted
@@ -3674,10 +3671,6 @@ def test_scan_slash_command_removed_from_chat_ui() -> None:
         "/retry",
         "/load",
         "/report",
-        "/login",
-        "/cred",
-        "/session",
-        "/proxy",
         "/model",
         "/history",
         "/export",
@@ -3688,6 +3681,10 @@ def test_scan_slash_command_removed_from_chat_ui() -> None:
     }
     hidden_legacy = {
         "/scan",
+        "/login",
+        "/cred",
+        "/session",
+        "/proxy",
         "/tools",
         "/tools-ext",
         "/skill",

@@ -3,6 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+from bingo.core.engagement import (
+    ActionDecisionKind,
+    Engagement,
+    EngagementAuthorization,
+    ScopeDefinition,
+)
 from bingo.core.session_bridge import AssessmentSessionBridge
 from bingo.core.v7 import (
     AssessmentDirector,
@@ -41,6 +47,62 @@ from bingo.core.v7 import (
     sanitize_next_step_summary,
     validate_report_finding_ids,
 )
+
+
+def test_executor_action_builder_rejects_absolute_planner_host() -> None:
+    builder = ExecutorActionBuilder(
+        MissionScope(target="https://example.test", goal="map target")
+    )
+
+    try:
+        builder.build(
+            PlannerIntent(
+                summary="off-scope request",
+                path="https://attacker.invalid/admin",
+            )
+        )
+    except ValueError as exc:
+        assert "relative" in str(exc)
+    else:
+        raise AssertionError("absolute planner host was accepted")
+
+
+def test_runtime_prepares_authorized_action_before_recording_coverage() -> None:
+    runtime = MissionRuntimeCoordinator()
+    engagement = Engagement(
+        scope=ScopeDefinition(target="https://example.test"),
+        authorization=EngagementAuthorization(
+            asserted=True,
+            asserted_by="operator",
+            asserted_at=1.0,
+        ),
+        goal="map metadata",
+    )
+    intent = PlannerIntent(summary="map root", path="/")
+
+    decision = runtime.prepare_action(intent, engagement, now=2.0)
+
+    assert decision.kind is ActionDecisionKind.ALLOW
+    built = runtime._builder.build(intent)
+    assert runtime.coverage.action_counts.get(built.identity_key(), 0) == 0
+    runtime.record_execution(decision.envelope)
+    assert runtime.coverage.action_counts[built.identity_key()] == 1
+    assert runtime.scope.allowed_hosts == ("example.test",)
+
+
+def test_runtime_denied_action_does_not_count_as_coverage() -> None:
+    runtime = MissionRuntimeCoordinator()
+    engagement = Engagement(
+        scope=ScopeDefinition(target="https://example.test"),
+        authorization=EngagementAuthorization(),
+    )
+    intent = PlannerIntent(summary="map root", path="/")
+
+    decision = runtime.prepare_action(intent, engagement, now=2.0)
+
+    assert decision.kind is ActionDecisionKind.DENY
+    built = runtime._builder.build(intent)
+    assert runtime.coverage.action_counts.get(built.identity_key(), 0) == 0
 
 
 def test_executor_action_builder_binds_relative_path_to_canonical_target() -> None:

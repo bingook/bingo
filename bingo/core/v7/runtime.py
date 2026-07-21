@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qsl, urlparse
 
 from .contracts import (
+    ActionEnvelope,
     DecisionAdvice,
     EvidenceItem,
     EvidenceTier,
@@ -287,7 +288,14 @@ class MissionRuntimeCoordinator:
             self._loop_target_drift_total = 0
             self._loop_target_drift_streak = 0
 
-    def reset(self, target: str, goal: str = "") -> None:
+    def reset(
+        self,
+        target: str,
+        goal: str = "",
+        *,
+        allowed_hosts: tuple[str, ...] = (),
+        constraints: tuple[str, ...] = (),
+    ) -> None:
         clean = (target or "").strip()
         if not clean:
             self.scope = None
@@ -297,7 +305,12 @@ class MissionRuntimeCoordinator:
             self._builder = None
             self._reset_loop_tracker()
             return
-        self.scope = MissionScope(target=clean, goal=goal or "chat security assessment")
+        self.scope = MissionScope(
+            target=clean,
+            goal=goal or "chat security assessment",
+            allowed_hosts=allowed_hosts,
+            constraints=constraints,
+        )
         self.mission = MissionStateMachine(self.scope)
         self.mission.apply(MissionEvent.START, goal)
         self.coverage = CoverageLedger()
@@ -344,6 +357,65 @@ class MissionRuntimeCoordinator:
             f"next_focus={focus}\n"
             "[/V7_MISSION]\n"
         )
+
+    def prepare_action(
+        self,
+        intent: PlannerIntent,
+        engagement,
+        *,
+        now: float,
+        approved_identity: str = "",
+        action_class=None,
+    ):
+        """Return an authority decision before dispatching a planner intent."""
+
+        from ..engagement import ActionClass
+
+        self.ensure_target(engagement.scope.target, goal=engagement.goal)
+        if self.scope is not None and self.mission is not None:
+            self.scope = MissionScope(
+                target=self.scope.target,
+                goal=self.scope.goal,
+                mode=self.scope.mode,
+                allowed_hosts=engagement.scope.normalized_hosts(),
+                constraints=(
+                    f"schemes={','.join(engagement.scope.allowed_schemes)}",
+                    f"methods={','.join(engagement.scope.allowed_methods)}",
+                    f"max_actions={engagement.scope.max_actions}",
+                ),
+            )
+            self.mission.scope = self.scope
+            self._builder = ExecutorActionBuilder(self.scope)
+        if self._builder is None:
+            raise ValueError("mission runtime has no active target")
+        selected_class = action_class or ActionClass.BOUNDED_NETWORK_READ
+        return self._builder.prepare(
+            intent,
+            engagement,
+            now=now,
+            approved_identity=approved_identity,
+            action_class=selected_class,
+        )
+
+    def record_execution(self, envelope) -> None:
+        """Record coverage only after authority produced an execution envelope."""
+
+        if self.mission is None:
+            return
+        action = ActionEnvelope(
+            tool=envelope.action.capability,
+            url=envelope.normalized_url,
+            method=envelope.action.method,
+            params={
+                str(key): str(value)
+                for key, value in dict(envelope.action.arguments.get("params", {})).items()
+            },
+            evidence_goal=envelope.action.evidence_goal,
+            summary=envelope.action.summary,
+        )
+        self.coverage.record_action(action)
+        path = urlparse(action.url).path or "/"
+        self.coverage.mark("route", path)
 
     def record_action(self, tool_name: str, args: dict, *, target: str = "", goal: str = "") -> None:
         self.ensure_target(target or (self.scope.target if self.scope else ""), goal=goal)

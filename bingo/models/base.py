@@ -4,9 +4,6 @@ from typing import Iterator
 import json
 import httpx
 
-# ── Prompt Cache Optimizer ────────────────────────────────────────────────────
-from .prompt_cache import PromptCacheManager, get_stats as _pc_get_stats
-
 # ── Intelligence Amplifier (v4.0.0) ─────────────────────────────────────────
 # 어떤 모델이든 월드컵 최고급 성능으로: CoT + 자기수정 + RAG + 작업분해
 def _try_get_amplifier():
@@ -610,100 +607,49 @@ class BaseModel:
 
 
 class ClaudeModel(BaseModel):
-    """Anthropic Messages API (비 OpenAI 호환 엔드포인트)"""
+    """Anthropic SDK model with a legacy text-stream compatibility facade."""
 
     def chat_stream(self, messages: list[Message]) -> Iterator[StreamChunk]:
-        # ── Anthropic Prompt Caching ─────────────────────────────────────────
-        # Anthropic supports explicit cache breakpoints via cache_control.
-        # We use PromptCacheManager to wrap the system prompt in a cacheable
-        # content block (BP1). The API returns x-cache / usage.cache_* fields.
-        # Cache write: first call for a given prefix. Cache read: subsequent calls.
-        # Cache TTL: 5 minutes (ephemeral), refreshed on each cache read.
-        # Cost: cache write = 1.25× normal; cache read = 0.1× normal → ~74% savings.
-        pcm = PromptCacheManager(provider="claude")
-        system_text = self.config.get_system_prompt()
+        from ..runtime.claude_adapter import ClaudeAdapter
+        from ..runtime.contracts import (
+            ConversationTurn,
+            ModelRequest,
+            RuntimeEventKind,
+        )
 
-        # Build system as content list with BP1 cache breakpoint
-        system_content = [
-            {
-                "type": "text",
-                "text": system_text,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ]
-
-        # Wrap conversation messages; mark the last message as BP3 breakpoint
-        conv_msgs: list[dict] = []
-        raw_msgs = [{"role": m.role, "content": m.content} for m in messages]
-        for i, msg in enumerate(raw_msgs):
-            is_last = (i == len(raw_msgs) - 1)
-            if is_last and len(raw_msgs) > 1:
-                # BP3: cache the conversation up to the second-to-last turn
-                prev = raw_msgs[i - 1]
-                # Mark the turn before the latest user message as BP3
-                if conv_msgs:
-                    last_conv = conv_msgs[-1]
-                    if isinstance(last_conv["content"], str):
-                        conv_msgs[-1] = {
-                            "role": last_conv["role"],
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": last_conv["content"],
-                                    "cache_control": {"type": "ephemeral"},
-                                }
-                            ],
-                        }
-            conv_msgs.append({"role": msg["role"], "content": msg["content"]})
-
-        headers = {
-            "x-api-key": self.config.api_key,
-            "anthropic-version": "2023-06-01",
-            "anthropic-beta": "prompt-caching-2024-07-31",  # Enable prompt caching beta
-            "content-type": "application/json",
-        }
-        payload = {
-            "model": self.config.model,
-            "max_tokens": self.config.max_tokens,
-            "system": system_content,
-            "messages": conv_msgs,
-            "stream": True,
-        }
-        url = f"{self.config.base_url}/messages"
-
+        request = ModelRequest(
+            provider="claude",
+            model=self.config.model,
+            system=self.config.get_system_prompt(),
+            conversation=tuple(
+                ConversationTurn.text(message.role, message.content)
+                for message in messages
+            ),
+            options={"max_tokens": self.config.max_tokens},
+        )
         try:
-            with httpx.Client(timeout=120) as client:
-                with client.stream("POST", url, json=payload, headers=headers) as resp:
-                    if resp.status_code != 200:
-                        body = resp.read().decode("utf-8", "replace")
-                        yield StreamChunk(text="", done=True,
-                                          error=f"HTTP {resp.status_code}: {body[:300]}")
-                        return
+            adapter = ClaudeAdapter(self.config)
+        except Exception as exc:
+            yield StreamChunk(text="", done=True, error=str(exc))
+            return
 
-                    for line in resp.iter_lines():
-                        if not line or line.startswith("event:"):
-                            continue
-                        if line.startswith("data: "):
-                            line = line[6:]
-                        try:
-                            obj = json.loads(line)
-                            if obj.get("type") == "content_block_delta":
-                                yield StreamChunk(
-                                    text=obj["delta"].get("text", ""), done=False
-                                )
-                            elif obj.get("type") == "message_stop":
-                                yield StreamChunk(text="", done=True)
-                            elif obj.get("type") == "message_start":
-                                # ── Track cache usage from Anthropic response ─
-                                usage = obj.get("message", {}).get("usage", {})
-                                cache_read = usage.get("cache_read_input_tokens", 0)
-                                cache_write = usage.get("cache_creation_input_tokens", 0)
-                                if cache_read > 0:
-                                    _pc_get_stats().record_hit(cache_read)
-                                elif cache_write > 0:
-                                    _pc_get_stats().record_miss()
-                        except (json.JSONDecodeError, KeyError):
-                            continue
-
-        except Exception as e:
-            yield StreamChunk(text="", done=True, error=str(e))
+        completed = False
+        for event in adapter.stream(request):
+            if event.kind is RuntimeEventKind.TEXT_DELTA:
+                yield StreamChunk(text=event.text, done=False)
+            elif event.kind is RuntimeEventKind.ERROR:
+                yield StreamChunk(text="", done=True, error=event.error or "Claude API error")
+                return
+            elif event.kind is RuntimeEventKind.REFUSED:
+                details = event.diagnostics.get("stop_explanation") or "Request refused"
+                yield StreamChunk(text="", done=True, error=str(details), finish_reason="refusal")
+                return
+            elif event.kind is RuntimeEventKind.PAUSED:
+                yield StreamChunk(text="", done=True, finish_reason="pause_turn")
+                return
+            elif event.kind is RuntimeEventKind.RESPONSE_COMPLETED:
+                reason = event.completion.stop_reason.value if event.completion else None
+                yield StreamChunk(text="", done=True, finish_reason=reason)
+                completed = True
+        if not completed:
+            yield StreamChunk(text="", done=True, error="Claude stream ended without completion")

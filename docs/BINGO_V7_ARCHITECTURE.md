@@ -1,206 +1,135 @@
 # Bingo v7 Architecture
 
-## Goal
+## Product goal
 
-Rebuild Bingo into a strong chat-first security assessment agent without
-carrying forward the legacy "LLM writes everything and the runtime tries to
-patch it afterward" design.
+Bingo is a multilingual, chat-first agent for authorized security validation. It accepts a natural-language goal, confirms a bounded engagement, plans and executes through typed contracts, correlates runtime evidence, and completes with verified artifacts.
 
-The shell stays:
+Campaign-grade means long-horizon planning, resumable state, broad validation coverage, evidence correlation, and disciplined reporting. It does not mean destructive actions, denial of service, mass targeting, persistence, stealth/evasion, or autonomous scope expansion.
 
-- terminal UI
-- model configuration
-- chat workflow
-- report output
+## Ownership rules
 
-The core changes completely:
+1. The model proposes intent, never authority.
+2. Engagement state owns authorization and scope.
+3. The executor owns target identity and action construction.
+4. `ActionAuthority` decides allow, confirm, or deny before dispatch.
+5. The state machine owns mission phases.
+6. Authorized execution updates coverage; model proposals and policy denials do not.
+7. `FindingsExporter` owns finding truth; `EvidenceGraph` is its typed projection.
+8. Reports are derived from immutable state and active finding IDs.
+9. Required artifacts must exist before `REPORT_EMITTED` moves the mission to `DONE`.
 
-- executor owns target identity
-- executor owns action construction
-- session bridge owns terminal-facing runtime/action state
-- state machine owns phase transitions
-- evidence graph owns finding promotion
-- coverage ledger owns "what is left to test"
+## Trust boundaries
 
-This is campaign-grade operator discipline, not a pile of ad hoc modules.
+Untrusted inputs:
 
-## Design Principles
+- user-provided target content;
+- model/provider output;
+- provider tool arguments;
+- remote responses;
+- legacy session files and textual execution directives.
 
-1. The model proposes intent, never raw authority.
-2. Target identity is canonical and executor-owned.
-3. Findings are promoted from observed runtime evidence, not model prose.
-4. Coverage is explicit; repeated work is a state bug, not a prompt problem.
-5. Reports are derived from state, not generated from free-form summaries.
-6. Long sessions must degrade into report-first behavior, not endless loops.
+Trusted authority:
 
-## Keep, Freeze, Replace
+- explicit user authorization assertion;
+- normalized engagement scope;
+- typed action policy and exact-action approval;
+- executor-owned canonical target and arguments;
+- evidence verdict and report validation code.
 
-Keep:
+A prompt sentence such as “fully authorized” never grants execution authority.
 
-- `bingo/ui/terminal.py`
-- model/provider configuration
-- current `TargetState`
-- current executor/evidence lessons (`executor_state`, `findings_exporter`)
+## Runtime flow
 
-Freeze:
+```text
+BingoTerminal (I/O only)
+  -> ChatApplication
+  -> ProviderAdapter
+  -> RuntimeEvent stream
+  -> PlannerIntent
+  -> ExecutorActionBuilder
+  -> ActionRequest
+  -> ActionAuthority
+  -> ExecutionEnvelope
+  -> capability adapter
+  -> execution result
+  -> FindingsExporter
+  -> EvidenceGraph + CoverageLedger
+  -> AssessmentDirector
+  -> ReportService
+```
 
-- legacy mega-prompts that try to encode the whole attack methodology
-- legacy auto-pivot logic that lets the model invent new hosts/workflows
-- broad regex-only finding paths
-- tool wrappers that mix discovery, execution, classification, and reporting
+Only an `ExecutionEnvelope` may cross into an executor adapter.
 
-Replace:
+## Provider-neutral runtime
 
-- free-form orchestrator loop with typed mission state
-- free-form tool call identity with action envelopes
-- implicit progress heuristics with coverage/evidence state
-- post hoc correction layers with pre-dispatch authority control
-- terminal-owned mission prompt/guidance rendering with runtime-owned rendering
+`bingo/runtime/` defines provider-neutral conversation content, tool requests, completions, stop reasons, usage, runtime events, and capability flags.
 
-## New Core
+- Claude uses the official Anthropic SDK inside `ClaudeAdapter` and normalizes native tool blocks, refusals, pause state, usage, and lossless replay content.
+- OpenAI-compatible providers, DeepSeek, GLM, Qwen, Ollama, and custom endpoints normalize into the same contracts.
+- Provider adapters decode only. They do not execute tools.
+- Legacy textual directives are accepted through `legacy_tool_decoder.py` only for compatibility. They are stripped from display, history, and export.
 
-`bingo/core/v7/` is the new foundation.
+## Engagement and action policy
 
-### 1. Mission State Machine
+Authorization starts false. An engagement contains:
 
-Phases:
+- assertion identity, time, reference, and optional expiry;
+- canonical target and explicit allowed hosts;
+- schemes, ports, methods, paths, credentials, and exclusions;
+- action and concurrency budgets.
 
-- `intake`
-- `recon`
-- `enumerate`
-- `validate`
-- `report`
-- `done`
-- `halted`
+Action classes distinguish local/passive reads, bounded network reads, authenticated reads, reversible state changes, high-impact changes, and prohibited operations. Approvals are bound to the canonical action identity. Modified arguments require a new decision.
 
-The model does not choose phases. It can suggest an action, but only the state
-machine moves the mission.
+## Mission core
 
-### 2. Planner Intent
+`bingo/core/v7/` contains:
 
-The planner is constrained to a small contract:
+- `MissionStateMachine`: intake, recon, enumerate, validate, report, done, halted;
+- `ExecutorActionBuilder`: relative planner intent to canonical target-bound action;
+- `CoverageLedger`: routes, surfaces, and canonical action identities;
+- `EvidenceGraph`: observation, candidate, and confirmed evidence projection;
+- `AssessmentDirector`: deterministic coverage, pivot, plateau, and report advice;
+- `ReportService`: artifact verification and terminal mission transition.
 
-- summary
-- relative path
-- method
-- params
-- headers
-- evidence goal
+Long-horizon operation is bounded by action, host, concurrency, timeout, output, plateau, and provider-continuation budgets. Budget exhaustion produces a report or typed halt, not an infinite loop.
 
-No planner-owned absolute host. No planner-owned proxy identity. No planner-owned
-report conclusion.
+## Presentation boundary
 
-### 3. Executor Action Envelope
+Runtime services emit semantic activity events. `ActivityPresenter` maps these events to localized view models. Raw provider block names, capability identifiers, action-ledger details, and tool arguments remain diagnostics and never become ordinary chat text.
 
-The executor converts planner intent into a fully bound action envelope:
+Autocomplete, help, and dispatch must use one `CommandRegistry`. The public command surface is limited to session and conversation controls. Security techniques remain internal capabilities selected through natural language.
 
-- canonical URL
-- canonical method
-- canonical headers
-- stable identity key for dedup/repeat checks
+## Evidence and report truth
 
-This is where target drift dies.
+Execution results carry engagement, action, scope, and evidence provenance. `FindingsExporter` applies the established false-positive and promotion rules. Evidence graph state cannot promote beyond the exporter verdict.
 
-### 4. Coverage Ledger
+Report generation follows:
 
-Coverage is tracked by explicit points:
+1. immutable findings/evidence/coverage/session snapshot;
+2. deterministic report basis;
+3. optional provider prose improvement;
+4. finding-ID and credential validation;
+5. Markdown, HTML, findings data, and index artifact writes;
+6. artifact existence verification;
+7. `REPORT_EMITTED` and transition to `DONE`.
 
-- routes
-- auth surfaces
-- API surfaces
-- artifact surfaces
-- action identities
+Failure leaves the mission in `REPORT` and supports report retry without repeating assessment actions.
 
-The question is no longer "what does the model feel like testing next?"
+## Compatibility strategy
 
-The question becomes:
+Keep existing provider configuration, target canonicalization, action identity lessons, evidence false-positive logic, executor implementations, session import, findings data, and report readers. Migrate capability families behind typed adapters incrementally.
 
-- what surfaces exist
-- what surfaces are still unvisited
-- what action classes are already exhausted
+Do not preserve technique-oriented UI commands or raw protocol rendering as compatibility. Capability compatibility and UI compatibility are separate.
 
-### 5. Evidence Graph
+## Verification
 
-Evidence tiers:
+All tests use synthetic targets, fake provider clients, fake transports, or loopback-only servers. Required checks cover:
 
-- observation
-- candidate
-- confirmed
-
-Merging rules:
-
-- repeated observations merge
-- stronger evidence replaces weaker evidence
-- confirmed evidence can trigger report-first plateau logic
-
-This graph becomes the single source of truth for reports, summaries, and next
-steps.
-
-### 6. Assessment Director
-
-The director is a small deterministic kernel:
-
-- if coverage is missing, do recon/enumeration
-- if confirmed evidence exists, validate impact only
-- if confirmed evidence plateaus, report now
-- if no evidence exists, choose distinct high-value validations
-
-This is the replacement for prompt-only orchestration.
-
-### 7. Reporting Snapshot
-
-`bingo/core/v7/reporting.py` owns evidence-count snapshots and deterministic
-next-step fallback guidance.
-
-It now also owns report-session provenance notes and the final report-generation
-prompt contract, report artifact path planning, and converged artifact index
-content, plus the standalone HTML report builder, so the terminal shell no longer
-hand-builds those strings.
-
-That keeps "confirmed vs candidate vs blocked" semantics in core state instead
-of scattering them across terminal-only helper methods.
-
-## Migration Plan
-
-Phase 1:
-
-- land `v7` contracts, state machine, coverage ledger, evidence graph
-- no UI binding yet
-
-Phase 2:
-
-- add adapter inside terminal loop
-- build mission snapshots from current runtime
-- let `v7` director advise phase/focus
-- keep action-ledger state executor-owned instead of terminal-owned dict mutation
-- keep runtime session state (`goal`, `last_status`, prompt block) in core instead of terminal locals
-- route both through `bingo/core/session_bridge.py` so terminal keeps one bridge, not parallel state objects
-
-Phase 3:
-
-- align action-ledger identity with `ActionEnvelope`
-- move report generation to `EvidenceGraph` snapshots
-
-Phase 4:
-
-- deprecate or quarantine legacy modules that duplicate the same responsibility
-- shrink old prompt layers
-
-## Deletion Candidates
-
-Not deleting yet, but these are likely quarantine targets if `v7` takes over:
-
-- legacy APT auto-mode prompt inflation
-- overlapping tool wrappers that duplicate recon/finding/report logic
-- legacy free-form orchestrator decision JSON path
-- regex-only finding codepaths that bypass structured evidence promotion
-
-## Success Criteria
-
-The redesign is successful only if these are true:
-
-1. The model cannot silently change the target host.
-2. The same target run does not oscillate between unrelated vectors without state justification.
-3. Confirmed evidence never disappears into a zero-finding report.
-4. Repeated work is visible in coverage state before execution, not after 20 loops.
-5. Terminal UX can stay chat-first while core behavior becomes deterministic.
+- provider event normalization and Claude refusal/tool handling;
+- authorization, exact-host scope, budgets, and approvals;
+- pre-dispatch v7 authority and canonical action identity;
+- multilingual presentation without internal names;
+- false-positive and report-truth invariants;
+- PTY cancellation and stream failures;
+- report artifact lifecycle;
+- static absence of forbidden legacy product surfaces.

@@ -67,28 +67,59 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-21T14:55:46+08:00
+- Last synced: 2026-07-21T15:01:04+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-21T14:55:46+08:00
+- Captured: 2026-07-21T15:01:04+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
+ M PKG-INFO
  M bingo/__init__.py
- M bingo/ui/terminal.py
- M tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-bingo/__init__.py                             |  2 +-
- bingo/ui/terminal.py                          | 92 ++++++++++++++++++++++++---
- tests/test_terminal_completion_regressions.py | 62 ++++++++++++++++++
- 3 files changed, 147 insertions(+), 9 deletions(-)
+PKG-INFO          | 2 +-
+ bingo/__init__.py | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+```
+
+### Added Highlights
+- `Version: 6.2.244`
+- `__version__ = "6.2.244"`
+<!-- working-tree:end -->
+
+# Workspace Memory
+
+> Automatically records committed code changes. Newest entries appear first.
+
+<!-- commit:f846dd4fa6a7491eadd9396d77a1350a8e1efdda -->
+## Code change: fix: stop scan loops earlier after action ledger skips
+- Commit: `f846dd4fa6a7`
+- Recorded: 2026-07-21T14:59:18+08:00
+- Committed: 2026-07-21T14:59:17+08:00
+
+### Files
+```text
+M	.bingo/project-memory.md
+M	bingo/__init__.py
+M	bingo/ui/terminal.py
+M	tests/test_terminal_completion_regressions.py
+```
+
+### Diff Stat
+```text
+f846dd4fa fix: stop scan loops earlier after action ledger skips
+ .bingo/project-memory.md                      | 134 +++++++++++++-------------
+ bingo/__init__.py                             |   2 +-
+ bingo/ui/terminal.py                          |  92 ++++++++++++++++--
+ tests/test_terminal_completion_regressions.py |  62 ++++++++++++
+ 4 files changed, 213 insertions(+), 77 deletions(-)
 ```
 
 ### Added Highlights
@@ -122,67 +153,4 @@ bingo/__init__.py                             |  2 +-
 - `ledger_skip_streak=getattr(self, "_dl_ledger_skip_streak", 0),`
 - `self._dl_ledger_skip_total = 0`
 - `self._dl_ledger_skip_streak = 0`
-<!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:babdc3f1449ae9e946d9c8494f07d385486ebee0 -->
-## Code change: fix: make action ledger visible and block repeated probe families
-- Commit: `babdc3f1449a`
-- Recorded: 2026-07-21T12:56:20+08:00
-- Committed: 2026-07-21T12:56:20+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-M	PKG-INFO
-M	bingo/__init__.py
-M	bingo/ui/terminal.py
-M	tests/test_terminal_completion_regressions.py
-```
-
-### Diff Stat
-```text
-babdc3f14 fix: make action ledger visible and block repeated probe families
- .bingo/project-memory.md                      | 132 ++++++++++-----------
- PKG-INFO                                      |   2 +-
- bingo/__init__.py                             |   2 +-
- bingo/ui/terminal.py                          | 159 ++++++++++++++++++++++++--
- tests/test_terminal_completion_regressions.py |  70 ++++++++++++
- 5 files changed, 286 insertions(+), 79 deletions(-)
-```
-
-### Added Highlights
-- `Version: 6.2.242`
-- `__version__ = "6.2.242"`
-- `self.console.print(f"[{THEME['warn']}]⚠ [ACTION_LEDGER_SKIP] {_skip_action_reason}[/]")`
-- `_flush_ui()`
-- `_action_entry = self._action_ledger_start(_action_sig, _action_summary)`
-- `self._action_ledger_finish(`
-- `_action_sig,`
-- `_action_summary,`
-- `output="pentest_tools not available",`
-- `success=False,`
-- `exit_code=-1,`
-- `)`
-- `if _action_entry:`
-- `_family_key = str(_action_entry.get("family", ""))[-10:] or "-"`
-- `self.console.print(`
-- `f"[{THEME['dim']}]│  [ACTION_LEDGER] sig={_action_sig[-8:]} "`
-- `f"family={_family_key} attempts={_action_entry.get('attempts', 0)} "`
-- `f"{_action_summary[:140]}[/]"`
-- `)`
-- `_action_done = self._action_ledger_finish(`
-- `if _action_done and not (`
-- `getattr(self, "_hint_input_active", None)`
-- `and self._hint_input_active.is_set()`
-- `):`
-- `self.console.print(`
-- `f"[{THEME['dim']}]│  [ACTION_LEDGER] status={_action_done.get('status')} "`
-- `f"attempts={_action_done.get('attempts', 0)} "`
-- `f"timeouts={_action_done.get('timeouts', 0)}[/]"`
-- `)`
-- `("unauth_mypage", r"(?:/balance/mypage/|cust_limit|app_status|custinfo|receipt_account|certification)"),`
 <!-- bingo-project-memory:auto:end -->

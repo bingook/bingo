@@ -67,90 +67,97 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-21T15:01:04+08:00
+- Last synced: 2026-07-21T19:29:36+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-21T15:01:04+08:00
+- Captured: 2026-07-21T19:29:36+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
  M PKG-INFO
+ M README.md
  M bingo/__init__.py
+ M bingo/ui/terminal.py
+ M tests/test_terminal_completion_regressions.py
+?? bingo/core/executor_state.py
+?? docs/
+?? tests/fixtures/
 ```
 
 ### Diff Stat
 ```text
-PKG-INFO          | 2 +-
- bingo/__init__.py | 2 +-
- 2 files changed, 2 insertions(+), 2 deletions(-)
+PKG-INFO                                      |   6 +-
+ README.md                                     |   6 +-
+ bingo/__init__.py                             |   2 +-
+ bingo/ui/terminal.py                          | 450 +++-----------------------
+ tests/test_terminal_completion_regressions.py |  51 +++
+ 5 files changed, 104 insertions(+), 411 deletions(-)
 ```
 
 ### Added Highlights
-- `Version: 6.2.244`
-- `__version__ = "6.2.244"`
+- `Version: 6.2.245`
+- `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `Engineering notes: see [docs/ENGINEERING.md](docs/ENGINEERING.md) for the executor/state-machine model, loop cutoff policy, and regression log criteria.`
+- `[![Version](https://img.shields.io/badge/version-6.2.245-brightgreen)](https://github.com/bingook/bingo/releases)`
+- `__version__ = "6.2.245"`
+- `from ..core import executor_state as _executor_state`
+- `_dl_sig = _executor_state.response_pattern_signature(current_response or "")`
+- `_dl_doom_detected = _executor_state.repeated_response_pattern(self._dl_tool_sigs)`
+- `_dl_ledger_skip_count = _executor_state.ledger_skip_count(raw_results)`
+- `_dl_low_value_reentry_count = _executor_state.low_value_reentry_count(raw_results)`
+- `_dl_skip_penalty = _executor_state.no_progress_penalty(_dl_ledger_skip_count)`
+- `_dl_late_low_value_pressure = (`
+- `_dl_confirmed_count == 0`
+- `and _dl_low_value_reentry_count >= 2`
+- `and self._exec_loop_count >= 24`
+- `)`
+- `if (`
+- `_dl_doom_detected`
+- `or self._dl_no_progress >= _dl_escape_threshold`
+- `or _dl_ledger_pressure`
+- `or _dl_late_low_value_pressure`
+- `):`
+- `low_value_reentry_count=_dl_low_value_reentry_count,`
+- `return _executor_state.has_meaningful_loop_progress(text)`
+- `low_value_reentry_count: int = 0,`
+- `return _executor_state.doom_loop_cutoff_reason(`
+- `no_progress_count=no_progress_count,`
+- `escape_attempts=escape_attempts,`
 <!-- working-tree:end -->
 
 # Workspace Memory
 
 > Automatically records committed code changes. Newest entries appear first.
 
-<!-- commit:f846dd4fa6a7491eadd9396d77a1350a8e1efdda -->
-## Code change: fix: stop scan loops earlier after action ledger skips
-- Commit: `f846dd4fa6a7`
-- Recorded: 2026-07-21T14:59:18+08:00
-- Committed: 2026-07-21T14:59:17+08:00
+<!-- commit:05f0e945726578a0d5c67ca85f5d752c5aed8be6 -->
+## Code change: chore: bump version to 6.2.244
+- Commit: `05f0e9457265`
+- Recorded: 2026-07-21T15:04:08+08:00
+- Committed: 2026-07-21T15:04:08+08:00
 
 ### Files
 ```text
 M	.bingo/project-memory.md
+M	PKG-INFO
 M	bingo/__init__.py
-M	bingo/ui/terminal.py
-M	tests/test_terminal_completion_regressions.py
 ```
 
 ### Diff Stat
 ```text
-f846dd4fa fix: stop scan loops earlier after action ledger skips
- .bingo/project-memory.md                      | 134 +++++++++++++-------------
- bingo/__init__.py                             |   2 +-
- bingo/ui/terminal.py                          |  92 ++++++++++++++++--
- tests/test_terminal_completion_regressions.py |  62 ++++++++++++
- 4 files changed, 213 insertions(+), 77 deletions(-)
+05f0e9457 chore: bump version to 6.2.244
+ .bingo/project-memory.md | 110 +++++++++++++++++------------------------------
+ PKG-INFO                 |   2 +-
+ bingo/__init__.py        |   2 +-
+ 3 files changed, 41 insertions(+), 73 deletions(-)
 ```
 
 ### Added Highlights
-- `__version__ = "6.2.243"`
-- `self._dl_ledger_skip_total: int = 0`
-- `self._dl_ledger_skip_streak: int = 0`
-- `_dl_counts = BingoTerminal._finding_evidence_counts(`
-- `getattr(self, "_findings_exporter", None)`
-- `)`
-- `_dl_confirmed_count = int(_dl_counts.get("confirmed", 0) or 0)`
-- `_dl_ledger_skip_count = raw_results.count("[ACTION_LEDGER_SKIP]")`
-- `if _dl_ledger_skip_count > 0:`
-- `self._dl_ledger_skip_total += _dl_ledger_skip_count`
-- `self._dl_ledger_skip_streak += 1`
-- `else:`
-- `self._dl_ledger_skip_streak = 0`
-- `_dl_skip_penalty = min(3, max(1, _dl_ledger_skip_count))`
-- `self._dl_no_progress += _dl_skip_penalty`
-- `_dl_ledger_pressure = (`
-- `_dl_confirmed_count == 0`
-- `and (`
-- `(_dl_ledger_skip_count >= 2 and self._exec_loop_count >= 20)`
-- `or (self._dl_ledger_skip_total >= 6 and self._exec_loop_count >= 24)`
-- `or (self._dl_ledger_skip_streak >= 2 and self._exec_loop_count >= 20)`
-- `)`
-- `)`
-- `if _dl_doom_detected or self._dl_no_progress >= _dl_escape_threshold or _dl_ledger_pressure:`
-- `confirmed_count=_dl_confirmed_count,`
-- `ledger_skip_count=_dl_ledger_skip_count,`
-- `ledger_skip_total=getattr(self, "_dl_ledger_skip_total", 0),`
-- `ledger_skip_streak=getattr(self, "_dl_ledger_skip_streak", 0),`
-- `self._dl_ledger_skip_total = 0`
-- `self._dl_ledger_skip_streak = 0`
+- `Version: 6.2.244`
+- `__version__ = "6.2.244"`
 <!-- bingo-project-memory:auto:end -->

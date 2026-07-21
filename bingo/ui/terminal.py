@@ -42,6 +42,7 @@ from ..models.base import Message, StreamChunk
 from ..lang.strings import get_strings, get_slash_commands, SUPPORTED_LANGS
 from ..i18n import t
 from ..proxy import ProxyManager
+from ..core import executor_state as _executor_state
 
 
 def _positive_int_env(
@@ -10240,22 +10241,17 @@ class BingoTerminal:
             # ── v6.2.151 Doom Loop 감지기 (Type A) ───────────────────────────
             # 연속 동일 응답 패턴 감지 → 전략 전환 힌트 자동 주입
             # 조건: 최근 6개 시그니처 중 4개 이상 동일 → doom loop 탈출 힌트 주입
-            import hashlib as _dl_md5
-            _dl_sig = _dl_md5.md5(
-                (current_response or "")[:200].encode()
-            ).hexdigest()[:12]
+            _dl_sig = _executor_state.response_pattern_signature(current_response or "")
             self._dl_tool_sigs.append(_dl_sig)
             if len(self._dl_tool_sigs) > 12:
                 self._dl_tool_sigs = self._dl_tool_sigs[-12:]
-            _dl_window = self._dl_tool_sigs[-6:] if len(self._dl_tool_sigs) >= 6 else []
-            _dl_doom_detected = len(_dl_window) >= 6 and (
-                max(_dl_window.count(s) for s in set(_dl_window)) >= 4
-            )
+            _dl_doom_detected = _executor_state.repeated_response_pattern(self._dl_tool_sigs)
             _dl_counts = BingoTerminal._finding_evidence_counts(
                 getattr(self, "_findings_exporter", None)
             )
             _dl_confirmed_count = int(_dl_counts.get("confirmed", 0) or 0)
-            _dl_ledger_skip_count = raw_results.count("[ACTION_LEDGER_SKIP]")
+            _dl_ledger_skip_count = _executor_state.ledger_skip_count(raw_results)
+            _dl_low_value_reentry_count = _executor_state.low_value_reentry_count(raw_results)
             if _dl_ledger_skip_count > 0:
                 self._dl_ledger_skip_total += _dl_ledger_skip_count
                 self._dl_ledger_skip_streak += 1
@@ -10272,7 +10268,7 @@ class BingoTerminal:
                 elif _dl_progress_sig:
                     self._dl_progress_sigs.add(_dl_progress_sig)
             if not _dl_has_progress:
-                _dl_skip_penalty = min(3, max(1, _dl_ledger_skip_count))
+                _dl_skip_penalty = _executor_state.no_progress_penalty(_dl_ledger_skip_count)
                 self._dl_no_progress += _dl_skip_penalty
             else:
                 self._dl_escape_attempts = 0
@@ -10292,7 +10288,17 @@ class BingoTerminal:
                     or (self._dl_ledger_skip_streak >= 2 and self._exec_loop_count >= 20)
                 )
             )
-            if _dl_doom_detected or self._dl_no_progress >= _dl_escape_threshold or _dl_ledger_pressure:
+            _dl_late_low_value_pressure = (
+                _dl_confirmed_count == 0
+                and _dl_low_value_reentry_count >= 2
+                and self._exec_loop_count >= 24
+            )
+            if (
+                _dl_doom_detected
+                or self._dl_no_progress >= _dl_escape_threshold
+                or _dl_ledger_pressure
+                or _dl_late_low_value_pressure
+            ):
                 from ..i18n import t as _t_dl, get_lang as _gl_dl
                 _dl_escape_map = {
                     "ko": (
@@ -10334,6 +10340,7 @@ class BingoTerminal:
                     ledger_skip_count=_dl_ledger_skip_count,
                     ledger_skip_total=getattr(self, "_dl_ledger_skip_total", 0),
                     ledger_skip_streak=getattr(self, "_dl_ledger_skip_streak", 0),
+                    low_value_reentry_count=_dl_low_value_reentry_count,
                 )
                 self._dl_escape_attempts += 1
                 if _dl_stop_reason:
@@ -14590,125 +14597,7 @@ class BingoTerminal:
     @staticmethod
     def _has_meaningful_loop_progress(text: str) -> bool:
         """Return True only for execution evidence that advances the mission."""
-        import re as _re_progress
-        from urllib.parse import urlparse as _urlparse_progress
-
-        if not text:
-            return False
-
-        # Executor skip notices are control-plane feedback, not new target
-        # evidence.  Keep any real tool output in the same turn, but remove the
-        # ledger notice itself before applying progress heuristics.
-        if "[ACTION_LEDGER_SKIP]" in text:
-            text = "\n".join(
-                line
-                for line in text.splitlines()
-                if "[ACTION_LEDGER_SKIP]" not in line
-                and "already done/blocked in the executor ledger" not in line
-                and not line.strip().startswith(("signature=", "summary="))
-            )
-            if not text.strip():
-                return False
-
-        strong_patterns = (
-            r"\bBINGO_SIGNAL\s*:",
-            r"\bBINGO-\d{4,}\b(?=[^\n]{0,180}\b(?:tier|confidence|conf)\s*[:=]\s*confirmed\b)",
-            r"\bBINGO-\d{4,}\b(?=[^\n]{0,180}\bconfirmed\s*[:=]\s*(?:true|yes|1)\b)",
-            r"\b(?:CONFIRMED|VERIFIED)\b(?!\s*[:=]\s*(?:false|no|0)\b)",
-            r"\bconfirmed\s*[:=]\s*(?:true|yes|1)\b",
-            r"\bLEAK\s+True\b",
-            r"(?:stack|trace|exception).{0,60}(?:leak|exposed|disclosed|confirmed)",
-            r"(?:堆栈|异常).{0,30}(?:泄露|确认|已确认)",
-            r"(?:스택|예외).{0,30}(?:노출|누출|확인)",
-            r"javax\.el\.ELException|org\.apache\.jasper\.JasperException",
-            r"(?:credential|password|passwd|username)\s*(?:found|extracted|[:=])",
-            r"(?:자격증명|비밀번호|계정)\s*(?:발견|추출|[:=])",
-            r"(?:凭据|密码|用户名)\s*(?:发现|提取|[:：=])",
-            r"(?:database|table|column)\s+(?:name\s+)?(?:extracted|enumerated)",
-            r"(?:DB|테이블|컬럼)\s*(?:추출|열거|확인)",
-            r"(?:数据库|表名|列名)\s*(?:提取|枚举|确认)",
-            r"(?:shell|RCE)\s*(?:obtained|confirmed|verified)",
-            r"(?:셸|RCE)\s*(?:획득|확인)",
-            r"(?:Shell|RCE)\s*(?:获取|确认)",
-        )
-        if any(_re_progress.search(p, text, _re_progress.IGNORECASE) for p in strong_patterns):
-            return True
-
-        noise_host_markers = (
-            "google.", "google-", "googletagmanager", "googleadservices",
-            "doubleclick", "googlesyndication", "gstatic", "facebook.",
-            "analytics", "hotjar", "clarity.ms", "adservice", "tracking",
-            "tagmanager", "pixel",
-        )
-        noise_path_markers = (
-            "/collect", "/gtm.js", "/analytics", "/pixel", "/beacon",
-            "/tag/", "/ads/", "/adservice", "/favicon", "/robots.txt",
-            "/sitemap.xml",
-        )
-        static_exts = (
-            ".js", ".css", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",
-            ".woff", ".woff2", ".ttf", ".map", ".webp", ".mp4", ".mp3",
-        )
-        noise_params = {
-            "random", "cv", "fst", "fmt", "bg", "rcb", "frm", "auid", "dt",
-            "en", "dl", "dr", "sr", "vp", "cid", "tid", "gtm", "_ga", "_gl",
-            "utm_source", "utm_medium", "utm_campaign",
-        }
-        high_value_path_markers = (
-            "api", "auth", "jwt", "token", "login", "logout", "admin",
-            "user", "member", "account", "mypage", "profile", "order",
-            "payment", "checkout", "loan", "apply", "upload", "file",
-            "storage", "download", "report", "search", "product", "cart",
-            "graphql", "oauth", "password", "reset", "verify", "session",
-            "callback",
-        )
-        high_value_params = (
-            "id", "idx", "uid", "user", "userid", "user_id", "member",
-            "member_id", "no", "seq", "token", "jwt", "redirect", "return",
-            "next", "url", "uri", "file", "path", "q", "query", "search",
-            "page", "order", "order_id", "product", "product_id", "callback",
-            "loreqtno",
-        )
-
-        def _actionable_endpoint(endpoint: str, param: str = "") -> bool:
-            endpoint = endpoint.strip().strip("'\"`),]")
-            param_l = (param or "").strip().lower()
-            try:
-                parsed = _urlparse_progress(endpoint)
-            except Exception:
-                parsed = None
-            host = (parsed.netloc if parsed else "").lower()
-            path = (parsed.path if parsed and parsed.path else endpoint).lower()
-            if host and any(marker in host for marker in noise_host_markers):
-                return False
-            if any(marker in path for marker in noise_path_markers):
-                return False
-            if path.endswith(static_exts):
-                return False
-            if param_l in noise_params:
-                return False
-            if any(marker in path for marker in high_value_path_markers):
-                return True
-            return any(param_l == hv or param_l.endswith(hv) for hv in high_value_params)
-
-        endpoint_param_re = _re_progress.compile(
-            r"(?m)(https?://[^\s\"'<>]+|/[A-Za-z0-9_./?=&%:-]+)\s*->\s*([A-Za-z_][A-Za-z0-9_-]*)"
-        )
-        for match in endpoint_param_re.finditer(text):
-            if _actionable_endpoint(match.group(1), match.group(2)):
-                return True
-
-        explicit_endpoint_re = _re_progress.compile(
-            r"(?:new\s+high[- ]value\s+endpoint|"
-            r"高价值端点|"
-            r"고가치\s*엔드포인트)\s*[:：]?\s*(https?://[^\s\"'<>]+|/[A-Za-z0-9_./?=&%:-]+)",
-            _re_progress.IGNORECASE,
-        )
-        for match in explicit_endpoint_re.finditer(text):
-            if _actionable_endpoint(match.group(1)):
-                return True
-
-        return False
+        return _executor_state.has_meaningful_loop_progress(text)
 
     @staticmethod
     def _doom_loop_cutoff_reason(
@@ -14721,23 +14610,20 @@ class BingoTerminal:
         ledger_skip_count: int = 0,
         ledger_skip_total: int = 0,
         ledger_skip_streak: int = 0,
+        low_value_reentry_count: int = 0,
     ) -> str:
         """Return a stop reason when the agent loop should report instead of pivoting again."""
-        if int(confirmed_count or 0) == 0:
-            if int(ledger_skip_count or 0) >= 2 and int(loop_count or 0) >= 20:
-                return "action ledger exhausted pending vectors"
-            if int(ledger_skip_streak or 0) >= 2 and int(loop_count or 0) >= 20:
-                return "repeated action ledger skip turns"
-            if int(ledger_skip_total or 0) >= 6 and int(loop_count or 0) >= 24:
-                return "cumulative action ledger skips without confirmed findings"
-        if not doom_detected and int(no_progress_count or 0) < 6:
-            return ""
-        next_escape_attempt = int(escape_attempts or 0) + 1
-        if int(confirmed_count or 0) == 0 and int(loop_count or 0) >= 30:
-            return "zero confirmed findings after excessive loops"
-        if next_escape_attempt >= 2:
-            return "repeated no-progress escape attempts"
-        return ""
+        return _executor_state.doom_loop_cutoff_reason(
+            no_progress_count=no_progress_count,
+            escape_attempts=escape_attempts,
+            loop_count=loop_count,
+            doom_detected=doom_detected,
+            confirmed_count=confirmed_count,
+            ledger_skip_count=ledger_skip_count,
+            ledger_skip_total=ledger_skip_total,
+            ledger_skip_streak=ledger_skip_streak,
+            low_value_reentry_count=low_value_reentry_count,
+        )
 
     @staticmethod
     def _action_ledger_signature(tool_name: str, args: dict) -> tuple[str, str]:
@@ -14746,131 +14632,7 @@ class BingoTerminal:
         The signature intentionally ignores script formatting so the executor can
         recognize the same probe even when the model rewrites the code.
         """
-        import hashlib as _hash_action
-        import json as _json_action
-        import re as _re_action
-        from urllib.parse import urlparse as _urlparse_action
-
-        name = str(tool_name or "").strip().lower() or "tool"
-        if not isinstance(args, dict):
-            args = {}
-        text = _json_action.dumps(args, ensure_ascii=False, sort_keys=True, default=str)
-        script = str(args.get("code") or args.get("script") or "")
-        combined = f"{text}\n{script}"
-        lowered = combined.lower()
-
-        vector_rules = (
-            ("ajp_ghostcat", r"\b(?:ajp|ghostcat|cping|8009)\b"),
-            ("tomcat_admin", r"(?:tomcat|manager/html|host-manager|:8080|:8000|:8443)"),
-            ("unauth_mypage", r"(?:/balance/mypage/|cust_limit|app_status|custinfo|receipt_account|certification)"),
-            ("param_menuno", r"\bmenuno\b"),
-            ("idor", r"\b(?:idor|seq|idx|object|unauth|未授权|미인증)\b"),
-            ("login_form", r"(?:custlogin|/login|passwd|nm_cust|ssn)"),
-            ("stack_leak", r"(?:stack|trace|exception|elException|jasperException|invalid_bingo|堆栈|异常|스택|예외)"),
-            ("xss", r"\b(?:xss|alert\(|browser_confirmed|bingo0xss|bing0xss)\b"),
-            ("sqli", r"\b(?:sqli|sql\s*inject|boolean|time.?based|sleep\(|waitfor)\b"),
-            ("lfi", r"\b(?:lfi|path traversal|/etc/passwd|WEB-INF/web\.xml)\b"),
-        )
-        vector = "script"
-        for label, pattern in vector_rules:
-            if _re_action.search(pattern, combined, _re_action.IGNORECASE):
-                vector = label
-                break
-        if name == "http_get" and vector == "script":
-            vector = "http_get"
-
-        url_values: list[str] = []
-        for key in ("url", "base_url", "target", "endpoint"):
-            if args.get(key):
-                url_values.append(str(args.get(key)))
-        url_values.extend(_re_action.findall(r"https?://[^\s\"'<>),]+", combined))
-
-        hosts: set[str] = set()
-        ports: set[str] = set()
-        paths: set[str] = set()
-        for raw_url in url_values:
-            raw_url = raw_url.strip().strip("'\"`),]")
-            try:
-                parsed = _urlparse_action(raw_url)
-            except Exception:
-                continue
-            if parsed.netloc:
-                hosts.add(parsed.netloc.lower())
-            if parsed.port:
-                ports.add(str(parsed.port))
-            if parsed.path and parsed.path != "/":
-                paths.add(parsed.path.lower())
-
-        for host, port in _re_action.findall(
-            r"\b((?:\d{1,3}\.){3}\d{1,3}|[a-z0-9.-]+\.[a-z]{2,})\s*:\s*(\d{2,5})\b",
-            lowered,
-            _re_action.IGNORECASE,
-        ):
-            hosts.add(f"{host.lower()}:{port}")
-            ports.add(port)
-        for host, port in _re_action.findall(
-            r"['\"]((?:\d{1,3}\.){3}\d{1,3}|[a-z0-9.-]+\.[a-z]{2,})['\"]\s*,\s*(\d{2,5})",
-            combined,
-            _re_action.IGNORECASE,
-        ):
-            hosts.add(f"{host.lower()}:{port}")
-            ports.add(port)
-        host_var = _re_action.search(
-            r"\bHOST\s*=\s*['\"]((?:\d{1,3}\.){3}\d{1,3}|[a-z0-9.-]+\.[a-z]{2,})['\"]",
-            combined,
-            _re_action.IGNORECASE,
-        )
-        port_var = _re_action.search(r"\bPORT\s*=\s*(\d{2,5})\b", combined, _re_action.IGNORECASE)
-        if host_var and port_var:
-            hosts.add(f"{host_var.group(1).lower()}:{port_var.group(1)}")
-            ports.add(port_var.group(1))
-
-        for rel in _re_action.findall(
-            r"(?i)(/[^\s\"'<>),]*(?:\.do|manager/html|host-manager|WEB-INF/web\.xml)[^\s\"'<>),]*)",
-            combined,
-        ):
-            paths.add(rel.lower().split("#", 1)[0])
-
-        params: set[str] = set()
-        for key in ("param", "parameter"):
-            if args.get(key):
-                params.add(str(args.get(key)).lower())
-        for param in _re_action.findall(
-            r"\b(menuNo|returntype|seq|idx|id|no|uid|user_id|nm_cust|passwd|ssn|ph|token|redirect|file|path)\b",
-            combined,
-            _re_action.IGNORECASE,
-        ):
-            params.add(param.lower())
-
-        if vector == "script" and not (hosts or paths or params):
-            fallback = _hash_action.sha256(combined[:4096].encode("utf-8", errors="ignore")).hexdigest()[:12]
-            parts = [name, vector, fallback]
-        else:
-            # For infrastructure vectors, host/port/vector matters more than
-            # rewritten proof code. For application vectors, path/parameter
-            # keeps separate business functions distinct.
-            if vector in {"ajp_ghostcat", "tomcat_admin", "stack_leak", "unauth_mypage"}:
-                selected_paths = sorted(paths)[:2]
-            else:
-                selected_paths = sorted(paths)[:5]
-            parts = [
-                name,
-                vector,
-                ",".join(sorted(hosts)[:4]),
-                ",".join(sorted(ports)[:4]),
-                ",".join(selected_paths),
-                ",".join(sorted(params)[:6]),
-            ]
-        canonical = "|".join(parts)
-        sig = _hash_action.sha256(canonical.encode("utf-8", errors="ignore")).hexdigest()[:16]
-        summary_bits = [f"tool={name}", f"vector={vector}"]
-        if hosts:
-            summary_bits.append(f"target={','.join(sorted(hosts)[:2])}")
-        if paths:
-            summary_bits.append(f"path={','.join(sorted(paths)[:3])}")
-        if params:
-            summary_bits.append(f"param={','.join(sorted(params)[:4])}")
-        return sig, " ".join(summary_bits)
+        return _executor_state.action_ledger_signature(tool_name, args)
 
     @staticmethod
     def _action_ledger_result_status(
@@ -14880,27 +14642,12 @@ class BingoTerminal:
         exit_code: int = -1,
         has_progress: bool | None = None,
     ) -> str:
-        import re as _re_action_status
-
-        text = output or ""
-        if _re_action_status.search(
-            r"(?:ReadTimeout|ConnectTimeout|TimeoutError|timed out|TIMEOUT|Request timeout|STATUS:000)",
-            text,
-            _re_action_status.IGNORECASE,
-        ):
-            return "timeout"
-        if _re_action_status.search(
-            r"(?:PYTHON_PRECHECK_SYNTAX_ERROR|SyntaxError|Traceback|JSON parse failed)",
-            text,
-            _re_action_status.IGNORECASE,
-        ):
-            return "error"
-        progress = BingoTerminal._has_meaningful_loop_progress(text) if has_progress is None else has_progress
-        if progress:
-            return "done"
-        if success and exit_code == 0:
-            return "no_progress"
-        return "error"
+        return _executor_state.action_ledger_result_status(
+            output,
+            success=success,
+            exit_code=exit_code,
+            has_progress=has_progress,
+        )
 
     def _action_ledger_store(self) -> dict:
         ledger = getattr(self, "_action_ledger", None)
@@ -14911,39 +14658,10 @@ class BingoTerminal:
 
     @staticmethod
     def _action_ledger_family_key(summary: str) -> str:
-        import hashlib as _hash_family
-
-        parts: dict[str, str] = {}
-        for token in (summary or "").split():
-            if "=" not in token:
-                continue
-            key, value = token.split("=", 1)
-            parts[key] = value
-        vector = parts.get("vector", "unknown")
-        target = parts.get("target", "")
-        path = parts.get("path", "")
-        param = parts.get("param", "")
-        if not target and not path and not param:
-            return ""
-        if vector in {"ajp_ghostcat", "tomcat_admin", "stack_leak", "unauth_mypage"}:
-            canonical = f"{vector}|{target}"
-        elif vector in {"sqli", "xss", "idor", "param_menuno", "login_form", "lfi"}:
-            canonical = f"{vector}|{target}|{path.split(',', 1)[0]}|{param}"
-        else:
-            canonical = f"{vector}|{target}|{path.split(',', 1)[0]}|{param.split(',', 1)[0]}"
-        return "family:" + _hash_family.sha256(canonical.encode("utf-8", errors="ignore")).hexdigest()[:16]
+        return _executor_state.action_ledger_family_key(summary)
 
     def _action_ledger_entry_skip_reason(self, entry: dict, summary: str = "") -> str:
-        status = str(entry.get("status") or "")
-        attempts = int(entry.get("attempts") or 0)
-        timeouts = int(entry.get("timeouts") or 0)
-        if status == "done":
-            return f"already done: {entry.get('summary') or summary}"
-        if status == "blocked_timeout":
-            return f"blocked_timeout after {timeouts} timeout(s): {entry.get('summary') or summary}"
-        if status == "negative" and attempts >= 2:
-            return f"negative/no-progress already tested {attempts} time(s): {entry.get('summary') or summary}"
-        return ""
+        return _executor_state.action_ledger_entry_skip_reason(entry, summary)
 
     def _action_ledger_skip_reason(self, signature: str, summary: str = "") -> str:
         if not signature:
@@ -15078,93 +14796,15 @@ class BingoTerminal:
         return entry
 
     def _action_ledger_context(self, limit: int = 8) -> str:
-        ledger = getattr(self, "_action_ledger", None)
-        if not isinstance(ledger, dict) or not ledger:
-            return ""
-        priority = {"blocked_timeout": 0, "done": 1, "negative": 2, "timeout": 3}
-        items = sorted(
-            ledger.items(),
-            key=lambda item: (
-                priority.get(str(item[1].get("status")), 9),
-                -int(item[1].get("last_loop") or 0),
-            ),
-        )[:limit]
-        lines = [
-            "\n[ACTION_LEDGER]",
-            "Executor-owned state. Do not re-run status=done/blocked_timeout/negative actions; choose a pending distinct vector.",
-        ]
-        for sig, entry in items:
-            lines.append(
-                "- "
-                f"sig={sig} kind={entry.get('kind', 'action')} status={entry.get('status')} attempts={entry.get('attempts', 0)} "
-                f"timeouts={entry.get('timeouts', 0)} {entry.get('summary', '')}"
-            )
-        lines.append("[/ACTION_LEDGER]\n")
-        return "\n".join(lines)
+        return _executor_state.action_ledger_context(
+            getattr(self, "_action_ledger", None),
+            limit=limit,
+        )
 
     @staticmethod
     def _meaningful_loop_progress_signature(text: str) -> str:
         """Stable signature for novel progress de-duplication."""
-        import hashlib as _hash_progress
-        import re as _re_progress_sig
-
-        if not text:
-            return ""
-        signal_re = _re_progress_sig.compile(
-            r"(?:"
-            r"CONFIRMED|VERIFIED|credential|password|passwd|username|"
-            r"database|table|column|endpoint|TRACE|clickjacking|csrf|"
-            r"x-frame-options|frame-ancestors|content-security-policy|"
-            r"RCE|shell|BINGO_SIGNAL|BINGO-\d{4,}|VULNERABLE|HIGH|CRITICAL|"
-            r"LEAK\s+True|ELException|JasperException|stack|trace|exception|"
-            r"堆栈|异常|스택|예외"
-            r")",
-            _re_progress_sig.IGNORECASE,
-        )
-        lines: list[str] = []
-        for line in text.splitlines():
-            stripped = line.strip()
-            if not stripped or not signal_re.search(stripped):
-                continue
-            if _re_progress_sig.search(
-                r"^(?:#|import |from |def |for |if |elif |else:|try:|except |with |return |print\(|"
-                r"[A-Za-z_][A-Za-z0-9_]*\s*=|r[\"']|f[\"'])",
-                stripped,
-            ):
-                continue
-            if _re_progress_sig.search(r"\b(?:re\.search|re\.findall|for\s+\w+\s+in|body\.splitlines)\b", stripped):
-                continue
-            stripped = _re_progress_sig.sub(
-                r"BINGO(?:_[A-Z0-9]+){1,}|TRACE_[A-Z0-9_]+|[a-f0-9]{16,}",
-                "<id>",
-                stripped,
-                flags=_re_progress_sig.IGNORECASE,
-            )
-            stripped = _re_progress_sig.sub(
-                r"(for input string:)\s*(?:&quot;[^&]{0,160}&quot;|\"[^\"]{0,160}\"|'[^']{0,160}'|[^\s<]{1,160})",
-                r"\1 <value>",
-                stripped,
-                flags=_re_progress_sig.IGNORECASE,
-            )
-            stripped = _re_progress_sig.sub(
-                r"(NumberFormatException:)\s*.*",
-                r"\1 <value>",
-                stripped,
-                flags=_re_progress_sig.IGNORECASE,
-            )
-            stripped = _re_progress_sig.sub(
-                r"\b\d{3}/\d{3,8}B\b",
-                "<status>/<size>",
-                stripped,
-                flags=_re_progress_sig.IGNORECASE,
-            )
-            stripped = _re_progress_sig.sub(r"\b\d{5,}\b", "<n>", stripped)
-            lines.append(stripped.lower()[:240])
-            if len(lines) >= 24:
-                break
-        if not lines:
-            return ""
-        return _hash_progress.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
+        return _executor_state.meaningful_loop_progress_signature(text)
 
     @staticmethod
     def _hashes_from_error_context(text: str, hashes: list[str]) -> set[str]:

@@ -34,7 +34,6 @@ import base64
 import html as _html_mod
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, parse_qs, urlencode, urljoin, quote
 
@@ -66,7 +65,7 @@ _DEFAULT_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                "AppleWebKit/537.36 (KHTML, like Gecko) "
                "Chrome/125.0 Safari/537.36")
 
-def _sess(headers: Optional[Dict] = None) -> Any:
+def _sess(headers: Optional[Dict] = None) -> "requests.Session":
     s = _requests.Session()
     s.verify = False
     s.headers.update({"User-Agent": _DEFAULT_UA})
@@ -1498,41 +1497,12 @@ def header_injection_scan(
     
     sess = _sess(session_headers)
     findings = []
-    candidates = []
     
     print(_banner(_t("header_inject_banner", "📨 Header Injection Scan ({count} header types) — {url}").format(count=len(HEADER_INJECTION_TARGETS), url=url)))
     
     # Baseline
     base_r = _req(sess, "GET", url)
     baseline_size = len(base_r.content) if base_r else 0
-    baseline_text = base_r.text if base_r else ""
-    parsed = urlparse(url)
-    homepage = f"{parsed.scheme}://{parsed.netloc}/" if parsed.scheme and parsed.netloc else url
-    home_r = _req(sess, "GET", homepage)
-    home_text = home_r.text if home_r else baseline_text
-
-    def _similar(a: str, b: str) -> float:
-        a_norm = re.sub(r"\s+", " ", (a or "")[:20000]).strip()
-        b_norm = re.sub(r"\s+", " ", (b or "")[:20000]).strip()
-        if not a_norm and not b_norm:
-            return 1.0
-        return SequenceMatcher(None, a_norm, b_norm).ratio()
-
-    def _url_override_verified(header_name: str, payload: str, response) -> bool:
-        if header_name not in {"X-Original-URL", "X-Rewrite-URL"}:
-            return False
-        target_url = urljoin(homepage, payload.lstrip("/"))
-        direct = _req(sess, "GET", target_url)
-        if direct is None or response is None:
-            return False
-        direct_blocked = direct.status_code in (401, 403, 404, 405)
-        response_ok = 200 <= response.status_code < 300
-        body = response.text or ""
-        path_marker = payload.strip("/").split("/", 1)[0].lower()
-        marker_present = bool(path_marker and path_marker in body.lower())
-        not_homepage = _similar(body, home_text) < 0.92
-        not_baseline = _similar(body, baseline_text) < 0.92
-        return direct_blocked and response_ok and marker_present and not_homepage and not_baseline
     
     for hdr_name, desc, payloads in HEADER_INJECTION_TARGETS:
         for payload in payloads[:3]:  # 헤더당 상위 3개만
@@ -1548,46 +1518,33 @@ def header_injection_scan(
             # 리플렉션 확인
             if _MARKER in body and _MARKER in payload:
                 print(f"  🔴 Header Reflected [{hdr_name}]: {payload[:50]}")
-                findings.append({"header": hdr_name, "payload": payload, "type": "reflection", "desc": desc, "evidence_tier": "confirmed"})
+                findings.append({"header": hdr_name, "payload": payload, "type": "reflection", "desc": desc})
             # SSRF 시그니처 확인
             elif any(s in body for s in ["ami-id", "computeMetadata", "root:x:0:", "SSH-2.0"]):
                 print(f"  🔴 Header SSRF [{hdr_name}]: {payload[:50]}")
-                findings.append({"header": hdr_name, "payload": payload, "type": "ssrf", "desc": desc, "evidence_tier": "confirmed"})
+                findings.append({"header": hdr_name, "payload": payload, "type": "ssrf", "desc": desc})
             # Shellshock
-            elif "uid=" in body and "User-Agent" in hdr_name and "uid=" not in baseline_text:
-                print(f"  🟡 Shellshock candidate via {hdr_name} (no canary proof)")
-                candidates.append({"header": hdr_name, "payload": payload, "type": "shellshock", "desc": desc, "evidence_tier": "candidate"})
+            elif "uid=" in body and "User-Agent" in hdr_name:
+                print(f"  🔴 Shellshock via {hdr_name}!")
+                findings.append({"header": hdr_name, "payload": payload, "type": "shellshock", "desc": desc})
             # SQLi via header
             elif any(e in body.lower() for e in ["you have an error in your sql", "syntax error", "mysql_fetch", "pg_query"]):
                 print(f"  🔴 SQLi via header [{hdr_name}]: {payload[:50]}")
-                findings.append({"header": hdr_name, "payload": payload, "type": "sqli", "desc": desc, "evidence_tier": "confirmed"})
-            elif _url_override_verified(hdr_name, payload, r):
-                print(f"  🔴 URL override verified [{hdr_name}]: {payload[:50]}")
-                findings.append({"header": hdr_name, "payload": payload, "type": "url_override", "desc": desc, "evidence_tier": "confirmed"})
+                findings.append({"header": hdr_name, "payload": payload, "type": "sqli", "desc": desc})
             # Size anomaly
             elif sz_diff > 2000 and r.status_code not in (403, 429):
                 print(f"  🟡 Header anomaly [{hdr_name}]: size_diff={sz_diff}")
-                candidates.append({
-                    "header": hdr_name,
-                    "payload": payload,
-                    "type": "size_anomaly",
-                    "desc": desc,
-                    "size_diff": sz_diff,
-                    "evidence_tier": "candidate",
-                })
     
     return {
         "success": bool(findings),
         "vuln_type": "HeaderInjection",
         "url": url,
         "findings": findings,
-        "candidates": candidates,
         "output": (
             f"[HEADER_INJECT] {url}\n"
             + (f"  ✅ {len(findings)} header injection finding(s)\n"
                + "\n".join(f"  [{f['header']}] {f['type']}: {f['payload'][:60]}" for f in findings)
                if findings else "  ❌ No header injection found")
-            + (("\nCandidates:\n" + "\n".join(f"  [{f['header']}] {f['type']}: {f['payload'][:60]}" for f in candidates[:10])) if candidates else "")
         ),
     }
 

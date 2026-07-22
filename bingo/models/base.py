@@ -4,6 +4,9 @@ from typing import Iterator
 import json
 import httpx
 
+# ── Prompt Cache Optimizer ────────────────────────────────────────────────────
+from .prompt_cache import PromptCacheManager, get_stats as _pc_get_stats
+
 # ── Intelligence Amplifier (v4.0.0) ─────────────────────────────────────────
 # 어떤 모델이든 월드컵 최고급 성능으로: CoT + 자기수정 + RAG + 작업분해
 def _try_get_amplifier():
@@ -26,16 +29,6 @@ class StreamChunk:
     text: str
     done: bool = False
     error: str | None = None
-    finish_reason: str | None = None
-    diagnostics: str | None = None
-
-
-@dataclass
-class _NormalizedStreamEvent:
-    text: str = ""
-    finish_reason: str | None = None
-    error: str | None = None
-    shape: str = "unknown"
 
 
 # ── DeepSeek V4 Pro 기본 시스템 프롬프트 ──────────────────────────
@@ -78,11 +71,7 @@ class ModelConfig:
         # tgtylab + reverselab + example_flood 레이어 포함한 통합 프롬프트 사용
         try:
             from .system_prompt import get_pentest_system_prompt
-            model_hint = " ".join(
-                str(value or "")
-                for value in (self.provider, self.model, self.alias, self.base_url)
-            )
-            return get_pentest_system_prompt(model_hint)
+            return get_pentest_system_prompt(self.provider)
         except Exception:
             pass
         # fallback
@@ -98,157 +87,6 @@ class BaseModel:
         self.config = config
         # v4.0.0: Amplifier 활성화 여부 플래그 (오케스트레이터는 별도 제어)
         self._amplifier_enabled: bool = True
-
-    @staticmethod
-    def _compact_event_shape(obj: object) -> str:
-        """Return a short schema fingerprint for stream diagnostics."""
-        if not isinstance(obj, dict):
-            return type(obj).__name__
-        keys = ",".join(sorted(str(k) for k in obj.keys())[:8])
-        if isinstance(obj.get("choices"), list) and obj["choices"]:
-            choice = obj["choices"][0]
-            if isinstance(choice, dict):
-                choice_keys = ",".join(sorted(str(k) for k in choice.keys())[:8])
-                delta = choice.get("delta")
-                if isinstance(delta, dict):
-                    delta_keys = ",".join(sorted(str(k) for k in delta.keys())[:8])
-                    return f"choices[{choice_keys}].delta[{delta_keys}]"
-                message = choice.get("message")
-                if isinstance(message, dict):
-                    msg_keys = ",".join(sorted(str(k) for k in message.keys())[:8])
-                    return f"choices[{choice_keys}].message[{msg_keys}]"
-                return f"choices[{choice_keys}]"
-        return keys or "empty-object"
-
-    @staticmethod
-    def _extract_text_value(value: object) -> str:
-        """Normalize common provider text containers into plain text."""
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return value
-        if isinstance(value, list):
-            return "".join(BaseModel._extract_text_value(item) for item in value)
-        if isinstance(value, dict):
-            for key in (
-                "text",
-                "content",
-                "output_text",
-                "reasoning_content",
-                "summary_text",
-            ):
-                if key in value:
-                    extracted = BaseModel._extract_text_value(value.get(key))
-                    if extracted:
-                        return extracted
-            delta = value.get("delta")
-            if isinstance(delta, (dict, list, str)):
-                extracted = BaseModel._extract_text_value(delta)
-                if extracted:
-                    return extracted
-        return ""
-
-    @staticmethod
-    def _normalize_openai_compatible_event(obj: object) -> _NormalizedStreamEvent:
-        """Parse OpenAI-compatible stream variants without dropping evidence.
-
-        Providers that advertise OpenAI compatibility often diverge in small
-        ways: structured content arrays, message-shaped terminal chunks,
-        reasoning_content fields, top-level errors, or non-SSE JSON bodies.
-        The transport layer owns those variations so the UI does not mistake an
-        unparsed HTTP 200 body for a valid empty assistant answer.
-        """
-        shape = BaseModel._compact_event_shape(obj)
-        if not isinstance(obj, dict):
-            return _NormalizedStreamEvent(shape=shape)
-
-        error_obj = obj.get("error")
-        if error_obj:
-            if isinstance(error_obj, dict):
-                message = (
-                    error_obj.get("message")
-                    or error_obj.get("detail")
-                    or json.dumps(error_obj, ensure_ascii=False)[:300]
-                )
-            else:
-                message = str(error_obj)
-            return _NormalizedStreamEvent(error=str(message), shape=shape)
-
-        choices = obj.get("choices")
-        if isinstance(choices, list) and choices:
-            choice = choices[0]
-            if not isinstance(choice, dict):
-                return _NormalizedStreamEvent(shape=shape)
-
-            finish = choice.get("finish_reason")
-            text = ""
-            delta = choice.get("delta")
-            if isinstance(delta, dict):
-                for key in ("content", "text", "output_text", "reasoning_content"):
-                    text = BaseModel._extract_text_value(delta.get(key))
-                    if text:
-                        break
-            elif delta is not None:
-                text = BaseModel._extract_text_value(delta)
-
-            if not text:
-                message = choice.get("message")
-                if isinstance(message, dict):
-                    for key in ("content", "text", "output_text", "reasoning_content"):
-                        text = BaseModel._extract_text_value(message.get(key))
-                        if text:
-                            break
-                elif message is not None:
-                    text = BaseModel._extract_text_value(message)
-
-            if not text:
-                text = BaseModel._extract_text_value(choice.get("text"))
-
-            return _NormalizedStreamEvent(
-                text=text,
-                finish_reason=str(finish) if finish is not None else None,
-                shape=shape,
-            )
-
-        # OpenAI Responses-style and other top-level JSON variants.
-        event_type = str(obj.get("type") or "")
-        if event_type in {"response.output_text.delta", "response.text.delta"}:
-            return _NormalizedStreamEvent(
-                text=BaseModel._extract_text_value(obj.get("delta")),
-                shape=shape,
-            )
-        if event_type in {"message_stop", "response.completed", "response.done"}:
-            return _NormalizedStreamEvent(finish_reason="stop", shape=shape)
-
-        for key in ("content", "text", "output_text", "reasoning_content"):
-            text = BaseModel._extract_text_value(obj.get(key))
-            if text:
-                return _NormalizedStreamEvent(text=text, shape=shape)
-
-        return _NormalizedStreamEvent(shape=shape)
-
-    @staticmethod
-    def _stream_diagnostics(
-        *,
-        status_code: int,
-        parsed_events: int,
-        text_events: int,
-        ignored_events: int,
-        finish_reason: str | None,
-        shapes: list[str],
-        reason: str,
-    ) -> str:
-        unique_shapes: list[str] = []
-        for shape in shapes:
-            if shape and shape not in unique_shapes:
-                unique_shapes.append(shape)
-        shape_text = "; ".join(unique_shapes[:5]) or "none"
-        finish = finish_reason or "none"
-        return (
-            f"MODEL_STREAM_PROTOCOL reason={reason}; http={status_code}; "
-            f"parsed={parsed_events}; text_events={text_events}; "
-            f"ignored={ignored_events}; finish={finish}; shapes={shape_text}"
-        )
 
     @staticmethod
     def _grok_403_bypass_rewrite(messages: list[Message]) -> list[Message]:
@@ -443,86 +281,20 @@ class BaseModel:
                                               error=f"HTTP {resp.status_code}: {body[:200]}")
                             return
 
-                        parsed_events = 0
-                        text_events = 0
-                        ignored_events = 0
-                        finish_reason: str | None = None
-                        shapes: list[str] = []
-
-                        for raw_line in resp.iter_lines():
-                            line = (
-                                raw_line.decode("utf-8", "replace")
-                                if isinstance(raw_line, bytes)
-                                else raw_line
-                            )
-                            if not line:
-                                continue
-                            if line.startswith("event:"):
-                                continue
-                            if line == "data: [DONE]":
-                                finish_reason = finish_reason or "done"
+                        for line in resp.iter_lines():
+                            if not line or line == "data: [DONE]":
                                 continue
                             if line.startswith("data: "):
                                 line = line[6:]
                             try:
                                 obj = json.loads(line)
-                            except json.JSONDecodeError:
-                                ignored_events += 1
-                                if len(shapes) < 5:
-                                    shapes.append("json-decode-error")
+                                delta = obj["choices"][0].get("delta", {})
+                                text = delta.get("content") or ""
+                                finish = obj["choices"][0].get("finish_reason")
+                                yield StreamChunk(text=text, done=finish is not None)
+                            except (json.JSONDecodeError, KeyError, IndexError):
                                 continue
-
-                            parsed_events += 1
-                            event = BaseModel._normalize_openai_compatible_event(obj)
-                            if event.shape:
-                                shapes.append(event.shape)
-                            if event.error:
-                                diag = BaseModel._stream_diagnostics(
-                                    status_code=resp.status_code,
-                                    parsed_events=parsed_events,
-                                    text_events=text_events,
-                                    ignored_events=ignored_events,
-                                    finish_reason=finish_reason,
-                                    shapes=shapes,
-                                    reason="provider-error",
-                                )
-                                yield StreamChunk(
-                                    text="",
-                                    done=True,
-                                    error=event.error,
-                                    diagnostics=diag,
-                                )
-                                return
-                            if event.finish_reason:
-                                finish_reason = event.finish_reason
-                            if event.text:
-                                text_events += 1
-                                yield StreamChunk(
-                                    text=event.text,
-                                    done=False,
-                                    finish_reason=finish_reason,
-                                )
-
-                        if text_events > 0:
-                            yield StreamChunk(
-                                text="",
-                                done=True,
-                                finish_reason=finish_reason or "stream_end",
-                            )
-                            success = True
-                            return
-
-                        reason = "no-json-events" if parsed_events == 0 else "no-usable-text"
-                        diag = BaseModel._stream_diagnostics(
-                            status_code=resp.status_code,
-                            parsed_events=parsed_events,
-                            text_events=text_events,
-                            ignored_events=ignored_events,
-                            finish_reason=finish_reason,
-                            shapes=shapes,
-                            reason=reason,
-                        )
-                        yield StreamChunk(text="", done=True, error=diag, diagnostics=diag)
+                        success = True
                         return
 
             except (httpx.RemoteProtocolError, httpx.ReadError) as e:
@@ -607,49 +379,100 @@ class BaseModel:
 
 
 class ClaudeModel(BaseModel):
-    """Anthropic SDK model with a legacy text-stream compatibility facade."""
+    """Anthropic Messages API (비 OpenAI 호환 엔드포인트)"""
 
     def chat_stream(self, messages: list[Message]) -> Iterator[StreamChunk]:
-        from ..runtime.claude_adapter import ClaudeAdapter
-        from ..runtime.contracts import (
-            ConversationTurn,
-            ModelRequest,
-            RuntimeEventKind,
-        )
+        # ── Anthropic Prompt Caching ─────────────────────────────────────────
+        # Anthropic supports explicit cache breakpoints via cache_control.
+        # We use PromptCacheManager to wrap the system prompt in a cacheable
+        # content block (BP1). The API returns x-cache / usage.cache_* fields.
+        # Cache write: first call for a given prefix. Cache read: subsequent calls.
+        # Cache TTL: 5 minutes (ephemeral), refreshed on each cache read.
+        # Cost: cache write = 1.25× normal; cache read = 0.1× normal → ~74% savings.
+        pcm = PromptCacheManager(provider="claude")
+        system_text = self.config.get_system_prompt()
 
-        request = ModelRequest(
-            provider="claude",
-            model=self.config.model,
-            system=self.config.get_system_prompt(),
-            conversation=tuple(
-                ConversationTurn.text(message.role, message.content)
-                for message in messages
-            ),
-            options={"max_tokens": self.config.max_tokens},
-        )
+        # Build system as content list with BP1 cache breakpoint
+        system_content = [
+            {
+                "type": "text",
+                "text": system_text,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
+
+        # Wrap conversation messages; mark the last message as BP3 breakpoint
+        conv_msgs: list[dict] = []
+        raw_msgs = [{"role": m.role, "content": m.content} for m in messages]
+        for i, msg in enumerate(raw_msgs):
+            is_last = (i == len(raw_msgs) - 1)
+            if is_last and len(raw_msgs) > 1:
+                # BP3: cache the conversation up to the second-to-last turn
+                prev = raw_msgs[i - 1]
+                # Mark the turn before the latest user message as BP3
+                if conv_msgs:
+                    last_conv = conv_msgs[-1]
+                    if isinstance(last_conv["content"], str):
+                        conv_msgs[-1] = {
+                            "role": last_conv["role"],
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": last_conv["content"],
+                                    "cache_control": {"type": "ephemeral"},
+                                }
+                            ],
+                        }
+            conv_msgs.append({"role": msg["role"], "content": msg["content"]})
+
+        headers = {
+            "x-api-key": self.config.api_key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",  # Enable prompt caching beta
+            "content-type": "application/json",
+        }
+        payload = {
+            "model": self.config.model,
+            "max_tokens": self.config.max_tokens,
+            "system": system_content,
+            "messages": conv_msgs,
+            "stream": True,
+        }
+        url = f"{self.config.base_url}/messages"
+
         try:
-            adapter = ClaudeAdapter(self.config)
-        except Exception as exc:
-            yield StreamChunk(text="", done=True, error=str(exc))
-            return
+            with httpx.Client(timeout=120) as client:
+                with client.stream("POST", url, json=payload, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        body = resp.read().decode("utf-8", "replace")
+                        yield StreamChunk(text="", done=True,
+                                          error=f"HTTP {resp.status_code}: {body[:300]}")
+                        return
 
-        completed = False
-        for event in adapter.stream(request):
-            if event.kind is RuntimeEventKind.TEXT_DELTA:
-                yield StreamChunk(text=event.text, done=False)
-            elif event.kind is RuntimeEventKind.ERROR:
-                yield StreamChunk(text="", done=True, error=event.error or "Claude API error")
-                return
-            elif event.kind is RuntimeEventKind.REFUSED:
-                details = event.diagnostics.get("stop_explanation") or "Request refused"
-                yield StreamChunk(text="", done=True, error=str(details), finish_reason="refusal")
-                return
-            elif event.kind is RuntimeEventKind.PAUSED:
-                yield StreamChunk(text="", done=True, finish_reason="pause_turn")
-                return
-            elif event.kind is RuntimeEventKind.RESPONSE_COMPLETED:
-                reason = event.completion.stop_reason.value if event.completion else None
-                yield StreamChunk(text="", done=True, finish_reason=reason)
-                completed = True
-        if not completed:
-            yield StreamChunk(text="", done=True, error="Claude stream ended without completion")
+                    for line in resp.iter_lines():
+                        if not line or line.startswith("event:"):
+                            continue
+                        if line.startswith("data: "):
+                            line = line[6:]
+                        try:
+                            obj = json.loads(line)
+                            if obj.get("type") == "content_block_delta":
+                                yield StreamChunk(
+                                    text=obj["delta"].get("text", ""), done=False
+                                )
+                            elif obj.get("type") == "message_stop":
+                                yield StreamChunk(text="", done=True)
+                            elif obj.get("type") == "message_start":
+                                # ── Track cache usage from Anthropic response ─
+                                usage = obj.get("message", {}).get("usage", {})
+                                cache_read = usage.get("cache_read_input_tokens", 0)
+                                cache_write = usage.get("cache_creation_input_tokens", 0)
+                                if cache_read > 0:
+                                    _pc_get_stats().record_hit(cache_read)
+                                elif cache_write > 0:
+                                    _pc_get_stats().record_miss()
+                        except (json.JSONDecodeError, KeyError):
+                            continue
+
+        except Exception as e:
+            yield StreamChunk(text="", done=True, error=str(e))

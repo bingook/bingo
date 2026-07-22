@@ -375,11 +375,7 @@ def info_disclosure_scan(
 
     _KEY_PATTERNS = [
         (r"AKIA[0-9A-Z]{16}", "AWS Access Key"),
-        (
-            r"(?:aws[_\-\s]*(?:secret|secret[_\-\s]*access[_\-\s]*key)|secret[_\-\s]*access[_\-\s]*key)"
-            r"\s*[=:]\s*['\"]?([0-9A-Za-z/+=]{40})",
-            "AWS Secret Access Key",
-        ),
+        (r"[0-9a-zA-Z/+]{40}", "Possible AWS Secret"),
         (r"AIza[0-9A-Za-z\-_]{35}", "Google API Key"),
         (r"ghp_[A-Za-z0-9]{36}", "GitHub Token"),
         (r"github_pat_[A-Za-z0-9_]{82}", "GitHub PAT"),
@@ -387,11 +383,7 @@ def info_disclosure_scan(
         (r"sk-[a-zA-Z0-9]{48}", "OpenAI API Key"),
         (r"xox[baprs]-[0-9A-Za-z\-]+", "Slack Token"),
         (r"SG\.[a-zA-Z0-9]{22}\.[a-zA-Z0-9\-_]{43}", "SendGrid Key"),
-        (
-            r"(?:md5|hash|token|secret|api[_-]?key|session(?:[_-]?id)?)"
-            r"\s*[=:]\s*['\"]?([0-9a-f]{32})",
-            "Contextual MD5/Token (32 hex chars)",
-        ),
+        (r"[0-9a-f]{32}", "MD5 Hash/Token (32 hex chars)"),
         (r"password\s*[=:]\s*['\"]?[A-Za-z0-9_!@#$%^&*]{6,}", "Password Exposure"),
         (r"api[_-]?key\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{10,}", "API Key Exposure"),
         (r"secret[_-]?key\s*[=:]\s*['\"]?[A-Za-z0-9_\-]{10,}", "Secret Key Exposure"),

@@ -525,16 +525,16 @@ Respond ONLY in JSON."""
             # 8. 실제 명령 실행
             _exec_result = ""
             if command and not self._stop_evt.is_set():
-                # ── Executor-owned target binding ───────────────────────────
-                # The model proposes an action, but the orchestrator owns the
-                # action envelope.  If the proposed command is path/action-only,
-                # dispatch it inside an explicit target-bound envelope.
+                # ── 타겟 URL 하드 주입 guardrail ──────────────────────────────
+                # LLM이 command에 타겟 URL을 빠뜨린 경우 강제로 삽입.
+                # AI 에이전트는 이전 대화 컨텍스트를 신뢰할 수 없으므로
+                # 매 명령에 타겟이 명시되어야 한다.
                 if self._target not in command:
-                    _target_envelope = _s.get(
+                    _target_prefix = _s.get(
                         "orch_target_prefix",
                         "🎯 [TARGET: {target}]\n",
                     ).format(target=self._target)
-                    command = _target_envelope + command
+                    command = _target_prefix + command
                 _cmd_disp = f"{command[:120]}..." if len(command) > 120 else command
                 _print(f"[cyan]{_s.get('orch_ui_executing', '▶ Executing: {cmd}').format(cmd=_cmd_disp)}[/cyan]")
                 try:

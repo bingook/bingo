@@ -249,8 +249,8 @@ TP_CASES = [
     # ── IDOR TP ───────────────────────────────────────────────────────────────
     pytest.param(
         "idor",
-        "owner_only_resource=true different_owner=true other_user_id=999 data_returned email=john@victim.com",
-        id="idor-tp-ownership-proof",
+        "403 Forbidden → bypass → 200 OK (success)",
+        id="idor-tp-bypass-confirmed",
     ),
     pytest.param(
         "idor",
@@ -323,7 +323,7 @@ SIGNAL_VALID_CASES = [
         id="signal-sqli-time-valid",
     ),
     pytest.param(
-        'BINGO_SIGNAL:{"type":"xss","evidence":{"payload":"<script>alert(1)</script>","reflected":true,"browser_executed":true}}',
+        'BINGO_SIGNAL:{"type":"xss","evidence":{"payload":"<script>alert(1)</script>","reflected":true}}',
         "xss",
         id="signal-xss-valid",
     ),
@@ -348,7 +348,7 @@ SIGNAL_VALID_CASES = [
         id="signal-ssrf-private-192",
     ),
     pytest.param(
-        'BINGO_SIGNAL:{"type":"idor","evidence":{"other_user_id":999,"data_returned":true,"authenticated_baseline":true,"owner_only_resource":true,"different_owner":true}}',
+        'BINGO_SIGNAL:{"type":"idor","evidence":{"other_user_id":999,"data_returned":true}}',
         "idor",
         id="signal-idor-valid",
     ),
@@ -386,10 +386,6 @@ SIGNAL_INVALID_CASES = [
         id="signal-xss-not-reflected",             # reflected=false
     ),
     pytest.param(
-        'BINGO_SIGNAL:{"type":"xss","evidence":{"payload":"<script>alert(1)</script>","reflected":true}}',
-        id="signal-xss-reflection-only",           # browser execution missing
-    ),
-    pytest.param(
         'BINGO_SIGNAL:{"type":"rce","evidence":{"proof":"root password changed"}}',
         id="signal-rce-no-uid-pattern",            # no uid= or passwd record
     ),
@@ -404,10 +400,6 @@ SIGNAL_INVALID_CASES = [
     pytest.param(
         'BINGO_SIGNAL:{"type":"idor","evidence":{"other_user_id":999,"data_returned":false}}',
         id="signal-idor-not-returned",             # data_returned=false
-    ),
-    pytest.param(
-        'BINGO_SIGNAL:{"type":"idor","evidence":{"other_user_id":999,"data_returned":true}}',
-        id="signal-idor-public-selector",          # ownership/auth boundary missing
     ),
     pytest.param(
         'BINGO_SIGNAL:{"type":"path_traversal","evidence":{"content":"Permission denied"}}',

@@ -32,7 +32,6 @@ FINDING_RCE         = "rce"
 FINDING_AUTH_BYPASS = "auth_bypass"
 FINDING_CREDENTIAL  = "credential"
 FINDING_INFO_DISC   = "info_disclosure"
-FINDING_USER_ENUM   = "user_enumeration"
 
 SEVERITY_CRITICAL = "CRITICAL"
 SEVERITY_HIGH     = "HIGH"
@@ -83,9 +82,6 @@ REASON_TIME_PRECHECK_FAIL    = "time_based_threshold_failed"
 REASON_XSS_BROWSER           = "xss_browser_confirmed"
 REASON_STRONG_OVERRIDE       = "strong_proof_overrides_fp"
 REASON_PATTERN_MATCH         = "pattern_match_unverified"
-REASON_PUBLIC_ARTIFACT       = "public_dependency_artifact"
-REASON_STACK_TRACE_DISC      = "stack_trace_disclosure"
-REASON_ADMIN_USER_ENUM       = "admin_username_enumeration"
 
 
 @dataclass
@@ -191,35 +187,9 @@ _XSS_ACTIVE_PAYLOAD = re.compile(
 )
 _XSS_TEST_EVIDENCE = re.compile(
     r'(?:bINg0XsS\w*|BINGO[_-]?XSS|PAYLOAD[_ -]?REFLECTED|'
-    r'XSS.{0,40}(?:confirmed|executed|browser\s+verified))',
+    r'XSS.{0,40}(?:confirmed|reflected|executed|browser\s+verified))',
     re.I,
 )
-_XSS_NEGATIVE_EVIDENCE = re.compile(
-    r'NOT\s+REFLECTED|not\s+reflected|미반사|未反射|未找到\s*payload|'
-    r'payload\s+not\s+found|browser_confirmed\s*[=:]\s*false|'
-    r'browser\s+confirmed\s*[=:]\s*false|XSS_CANDIDATE|escaped|saniti[sz]ed|'
-    r'no\s+xss|not\s+vulnerable|被过滤|过滤|被拦截|拦截|不存在|'
-    r'(?:status|状态)\s*[:=]?\s*(?:403|404)\b|'
-    r'\b(?:403|404)\s*/\s*\d+B\b|Location\s*=\s*N/A',
-    re.I,
-)
-_XSS_TRIGGER_NOTICE = re.compile(
-    r'\[XSS_TRIGGER_DETECTED\]|TOOL_CALL:\{[^}\n]*"xss_autotest"',
-    re.I,
-)
-_XSS_POSITIVE_EVIDENCE = re.compile(
-    r'window\.__BINGO_XSS__\s*=\s*1|browser_confirmed\s*[=:]\s*true|'
-    r'browser\s+confirmed\s*[=:]\s*true|PAYLOAD[_ -]?REFLECTED|'
-    r'unescaped\s+reflection|dialog\s+(?:opened|observed)|'
-    r'XSS.{0,40}(?:confirmed|executed|browser\s+verified|success)',
-    re.I,
-)
-
-
-def _xss_negative_only(output: str) -> bool:
-    return bool(_XSS_NEGATIVE_EVIDENCE.search(output)) and not bool(
-        _XSS_POSITIVE_EVIDENCE.search(output)
-    )
 
 _ACTIVE_HTTP_TEST = re.compile(
     r'\b(?:curl|wget|httpx|requests\.(?:get|post|request)|'
@@ -330,10 +300,6 @@ def _potential_disposition(
     """Return keep/quarantine/reject for pattern-only evidence."""
     code = _execution_code(code_snippet, execution_context)
     if vtype == FINDING_XSS:
-        if _xss_negative_only(output):
-            return "reject", "xss_negative_verification"
-        if _XSS_TRIGGER_NOTICE.search(output) and not _XSS_POSITIVE_EVIDENCE.search(output):
-            return "reject", "xss_trigger_notice_without_evidence"
         if _XSS_TEST_EVIDENCE.search(output):
             return "keep", ""
         if _ACTIVE_HTTP_TEST.search(code) and _XSS_ACTIVE_PAYLOAD.search(code):
@@ -504,9 +470,7 @@ _ORACLE_FAILURE_WARNING = re.compile(
     r'|oracle\s*pre-?check\s*(?:fail|FAILED)'
     r'|Oracle预检失败'
     r'|TRUE/FALSE\s*(?:无法区分|indistinguishable|구분\s*불가)'
-    r'|SQLI_ORACLE_REJECTED'
     r'|SQLI_EXTRACTION_FAILURE'
-    r'|SQLI_NO_VALID_CHANNEL'
     r'|Boolean\s+oracle\s+may\s+be\s+unreliable'
     r'|WAF\s*(?:全部拦截|全部拦截|屏蔽所有|blocking\s+all)'
     r'|oracle\s*all-?same'
@@ -529,151 +493,6 @@ _FAKE_CRED_VALUE = re.compile(
     r')',
     re.I,
 )
-
-
-_PUBLIC_DEP_ARTIFACT_PATH_RE = re.compile(
-    r'(?m)(?:^|\s)(?:OPEN\s+)?'
-    r'(/(?:composer\.(?:json|lock)|vendor/composer/installed\.json))'
-    r'\s*->\s*200\b[^\n]{0,700}',
-    re.I,
-)
-_PUBLIC_DEP_ARTIFACT_CONTENT_RE = re.compile(
-    r'"require"\s*:\s*\{'
-    r'|"_readme"\s*:\s*\['
-    r'|"packages"\s*:\s*\['
-    r'|"name"\s*:\s*"[^"]+/[^"]+"'
-    r'|\bPKG\s+[a-z0-9_.-]+/[a-z0-9_.-]+@?v?\d',
-    re.I,
-)
-_STACK_TRACE_DISCLOSURE_RE = re.compile(
-    r'(?:Fatal\s+error:\s*Uncaught|Uncaught\s+(?:TypeError|Error|Exception)|'
-    r'Traceback\s+\(most\s+recent\s+call\s+last\))'
-    r'.{0,900}?'
-    r'(?:called\s+in\s+/[^\s<]+|Stack\s+trace|/[A-Za-z0-9_./-]+\.(?:php|py|jsp|asp|aspx))',
-    re.I | re.S,
-)
-_ADMIN_ENUM_CONTEXT_RE = re.compile(
-    r'ADMIN\s+ENUM|USER(?:NAME)?[_ -]?ENUM|/admin/|res_login\.php',
-    re.I,
-)
-_ADMIN_ENUM_MISSING_RE = re.compile(
-    r'not_registered|등록되지\s*않은|未注册|不存在|no\s+such\s+user|user\s+not\s+found',
-    re.I,
-)
-_ADMIN_ENUM_BAD_PASSWORD_RE = re.compile(
-    r'bad_password|비밀번호가\s*맞지|密码.{0,12}(?:错误|不正确)|'
-    r'incorrect\s+password|wrong\s+password|password\s+incorrect',
-    re.I,
-)
-
-
-def _matching_lines(output: str, pattern: re.Pattern, *, limit: int = 18) -> str:
-    """Return compact, line-preserving evidence excerpts."""
-    lines: list[str] = []
-    for line in (output or "").splitlines():
-        if pattern.search(line):
-            lines.append(line.strip()[:420])
-        if len(lines) >= limit:
-            break
-    return "\n".join(lines)[:2000]
-
-
-def _public_dependency_artifact_observation(output: str) -> dict | None:
-    """Detect public dependency manifests from real HTTP 200 response lines."""
-    if not output:
-        return None
-    paths = sorted({m.group(1) for m in _PUBLIC_DEP_ARTIFACT_PATH_RE.finditer(output)})
-    if not paths or not _PUBLIC_DEP_ARTIFACT_CONTENT_RE.search(output):
-        return None
-    evidence_re = re.compile(
-        r'(?:composer\.(?:json|lock)|vendor/composer/installed\.json|'
-        r'\bPKG\s+[a-z0-9_.-]+/[a-z0-9_.-]+@?v?\d)',
-        re.I,
-    )
-    evidence = _matching_lines(output, evidence_re) or "\n".join(paths)
-    return {
-        "vuln_type": FINDING_INFO_DISC,
-        "severity": SEVERITY_MEDIUM,
-        "confidence": CONF_CONFIRMED,
-        "confirmed": True,
-        "reason_code": REASON_PUBLIC_ARTIFACT,
-        "scope_suffix": "public_dependency_artifact",
-        "evidence": evidence,
-        "payload": ", ".join(paths),
-        "notes": f"ladder:confirmed:{REASON_PUBLIC_ARTIFACT}",
-    }
-
-
-def _stack_trace_disclosure_observation(output: str) -> dict | None:
-    """Detect server stack/error disclosure with filesystem/class context."""
-    if not output:
-        return None
-    match = _STACK_TRACE_DISCLOSURE_RE.search(output)
-    if not match:
-        return None
-    evidence = _matching_lines(
-        output,
-        re.compile(r'Fatal\s+error|Uncaught|Traceback|called\s+in\s+/', re.I),
-        limit=10,
-    ) or match.group(0)[:2000]
-    return {
-        "vuln_type": FINDING_INFO_DISC,
-        "severity": SEVERITY_LOW,
-        "confidence": CONF_CONFIRMED,
-        "confirmed": True,
-        "reason_code": REASON_STACK_TRACE_DISC,
-        "scope_suffix": "stack_trace_disclosure",
-        "evidence": evidence,
-        "payload": _extract_payload(output),
-        "notes": f"ladder:confirmed:{REASON_STACK_TRACE_DISC}",
-    }
-
-
-def _admin_username_enum_observation(output: str) -> dict | None:
-    """Detect login differential: unknown user != known user wrong password."""
-    if not output or not _ADMIN_ENUM_CONTEXT_RE.search(output):
-        return None
-    if not (_ADMIN_ENUM_MISSING_RE.search(output) and _ADMIN_ENUM_BAD_PASSWORD_RE.search(output)):
-        return None
-    evidence = _matching_lines(
-        output,
-        re.compile(
-            r'ADMIN\s+ENUM|ENUM\s+\S+\s*->|try\s+\S+/\S+\s*->|'
-            r'not_registered|bad_password|등록되지\s*않은|비밀번호가\s*맞지',
-            re.I,
-        ),
-        limit=16,
-    )
-    return {
-        "vuln_type": FINDING_USER_ENUM,
-        "severity": SEVERITY_MEDIUM,
-        "confidence": CONF_CONFIRMED,
-        "confirmed": True,
-        "reason_code": REASON_ADMIN_USER_ENUM,
-        "scope_suffix": "admin_username_enumeration",
-        "evidence": evidence[:2000],
-        "payload": "admin login response differential",
-        "notes": f"ladder:confirmed:{REASON_ADMIN_USER_ENUM}",
-    }
-
-
-def _deterministic_runtime_observations(output: str) -> list[dict]:
-    """Executor-owned evidence interpretation for non-payload findings.
-
-    These observations come from concrete HTTP response lines, not from model
-    conclusions. They must be promoted before generic SQLi/XSS regex handling,
-    otherwise useful target facts are lost as pattern-only noise.
-    """
-    observations: list[dict] = []
-    for builder in (
-        _public_dependency_artifact_observation,
-        _stack_trace_disclosure_observation,
-        _admin_username_enum_observation,
-    ):
-        item = builder(output)
-        if item:
-            observations.append(item)
-    return observations
 
 _AUTH_BYPASS_PATTERNS = [
     re.compile(r'(관리자|admin)\s*(패널|panel|dashboard|로그인|login)\s*(성공|접근|완료|OK)', re.I),
@@ -755,33 +574,6 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
     if re.search(r'window\.__BINGO_XSS__\s*=\s*1', output):
         return EvidenceVerdict(CONF_CONFIRMED, REASON_XSS_BROWSER, FINDING_XSS, "bingo xss marker")
 
-    structured_observations = _deterministic_runtime_observations(output)
-    if structured_observations:
-        first = structured_observations[0]
-        return EvidenceVerdict(
-            CONF_CONFIRMED,
-            str(first.get("reason_code") or REASON_STRONG_OVERRIDE),
-            str(first.get("vuln_type") or FINDING_INFO_DISC),
-            str(first.get("scope_suffix") or "structured observation"),
-        )
-
-    # Explicit SQLi negative markers must outrank all SQLi extraction
-    # heuristics.  A homepage/CMS fingerprint such as "FOUND: g5_" is not a
-    # database extraction, especially when the same run prints
-    # SQLI_EXTRACTION_FAILURE / SQLI_NO_VALID_CHANNEL.
-    _sqli_context = bool(re.search(
-        r'\bSQLI_|sqli|sql\s*injection|sql\s*注入|oracle|boolean|blind|'
-        r'TRUE/FALSE|BENCHMARK|SLEEP|GET_LOCK|EXTRACTVALUE|UPDATEXML',
-        blob,
-        re.I,
-    ))
-    _sqli_negative = bool(
-        _ORACLE_FAILURE_WARNING.search(output)
-        or (_sqli_context and _ORACLE_FAILURE_REPEATED.search(output))
-    )
-    if _sqli_negative:
-        return EvidenceVerdict(CONF_BLOCKED, REASON_ORACLE_PRECHECK_FAIL, FINDING_SQLI, "oracle fail")
-
     if re.search(
         r'XPATH\s+syntax\s+error[^\n]{0,80}~[A-Za-z0-9_.\-]{2,80}~'
         r'|~[A-Za-z0-9_.\-]{2,80}~[^\n]{0,40}XPATH',
@@ -804,20 +596,12 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
         ):
             return EvidenceVerdict(CONF_CONFIRMED, REASON_XPATH_EXTRACT, FINDING_SQLI, "data extract")
 
-    _db_table_extract = bool(re.search(
-        r'(?:Database\s+confirmed|DB\s+name|Current\s+database|database\(\)|'
-        r'数据库名|数据库名称)\s*[:=：]\s*[\'"]?(?!a{4,}|0{4,})[a-zA-Z][\w]{1,40}'
-        r'|(?:Found\s+tables?|TABLES_EXTRACTED|SHOW\s+TABLES)\s*[:=：]\s*\[[^\]]+\]'
-        r'|(?:table(?:_name)?|TABLE_EXISTS)\s+[\w.]+\s*:\s*EXISTS'
-        r'|\[\+\]\s*Table\s+exists(?::|\()\s*[a-zA-Z0-9_]+',
+    if re.search(
+        r'(?:database|db_name|schema)\s*[=:]\s*[\'"]?(?!a{4,}|0{4,})[a-zA-Z][\w]{1,40}'
+        r'|table(?:_name)?\s+[\w]+\s*:\s*EXISTS'
+        r'|\[?\s*(?:g5_|wp_|information_schema)[\w]*\s*\]?\s*(?:EXISTS|found|존재)',
         output, re.I
-    ))
-    _db_table_code_context = bool(re.search(
-        r'information_schema|SHOW\s+TABLES|table_schema|database\(\)|@@version|'
-        r'sqli_autoexploit|sqlmap|ghauri|UNION\s+SELECT|EXTRACTVALUE|UPDATEXML',
-        blob, re.I
-    ))
-    if _db_table_extract and _db_table_code_context:
+    ) and not _ORACLE_FAILURE_REPEATED.search(output):
         return EvidenceVerdict(CONF_CONFIRMED, REASON_DB_TABLE_EXTRACT, FINDING_SQLI, "db/table")
 
     if re.search(
@@ -886,7 +670,6 @@ def _evidence_ladder(output: str, code_snippet: str = "") -> EvidenceVerdict:
         r'|DB\s+errors\s+found:\s*None'
         r'|boolean\s+oracle.*?fail'
         r'|SQLI_EXTRACTION_FAILURE'
-        r'|SQLI_NO_VALID_CHANNEL'
         r'|Oracle预检失败'
         r'|oracle\s*pre-?check\s*FAIL'
         r'|Boolean\s+字符提取已禁用'
@@ -1037,8 +820,6 @@ def _detect_vuln_type_raw(output: str, code_snippet: str = "") -> tuple[str, str
     _skip_xss = False
     if _SERVER_ALERT_PATTERN.search(output) and not _XSS_PAYLOAD_IN_CODE.search(code_snippet):
         _skip_xss = True
-    if _xss_negative_only(output):
-        _skip_xss = True
     if not _XSS_PAYLOAD_IN_CODE.search(code_snippet) and not _XSS_PAYLOAD_IN_CODE.search(output):
         _skip_xss = True
 
@@ -1070,10 +851,7 @@ def _detect_vuln_type(output: str, code_snippet: str = "") -> tuple[str, str] | 
     if v.tier == CONF_BLOCKED:
         return None
     if v.vuln_hint and v.tier in (CONF_CONFIRMED, CONF_PROBABLE):
-        if v.vuln_hint in (FINDING_INFO_DISC, FINDING_USER_ENUM):
-            sev = SEVERITY_MEDIUM
-        else:
-            sev = SEVERITY_CRITICAL if v.tier == CONF_CONFIRMED else SEVERITY_HIGH
+        sev = SEVERITY_CRITICAL if v.tier == CONF_CONFIRMED else SEVERITY_HIGH
         if v.vuln_hint == FINDING_SQLI and v.tier == CONF_PROBABLE:
             sev = SEVERITY_HIGH
         return (v.vuln_hint, sev)
@@ -1182,14 +960,6 @@ class FindingsExporter:
         if not output or len(output.strip()) < 10:
             return None
 
-        structured = self._add_deterministic_runtime_observations(
-            output,
-            code_snippet=code_snippet,
-            extra_notes=extra_notes,
-        )
-        if structured:
-            return structured[0]
-
         verdict = _evidence_ladder(output, code_snippet=code_snippet)
         if verdict.tier == CONF_NONE:
             return None
@@ -1282,8 +1052,6 @@ class FindingsExporter:
                 severity = SEVERITY_CRITICAL if verdict.tier == CONF_CONFIRMED else SEVERITY_HIGH
             elif vtype in (FINDING_RCE, FINDING_CREDENTIAL, FINDING_LFI):
                 severity = SEVERITY_CRITICAL
-            elif vtype in (FINDING_INFO_DISC, FINDING_USER_ENUM):
-                severity = SEVERITY_MEDIUM
             else:
                 severity = SEVERITY_HIGH
         elif detected:
@@ -1377,67 +1145,6 @@ class FindingsExporter:
             vtype, confidence, confirmed, verdict.reason_code, evidence, scope_key
         )
         return finding
-
-    def _add_deterministic_runtime_observations(
-        self,
-        output: str,
-        *,
-        code_snippet: str = "",
-        extra_notes: str = "",
-    ) -> list[Finding]:
-        """Add concrete non-payload observations before regex vuln handling."""
-        observations = _deterministic_runtime_observations(output)
-        if not observations:
-            return []
-        import hashlib
-
-        added: list[Finding] = []
-        target_scope = self.target or "unknown"
-        for obs in observations:
-            vtype = str(obs.get("vuln_type") or FINDING_INFO_DISC)
-            reason = str(obs.get("reason_code") or REASON_STRONG_OVERRIDE)
-            scope_suffix = str(obs.get("scope_suffix") or reason)
-            scope_key = f"{vtype}|{target_scope}|{scope_suffix}"
-            existing = next(
-                (
-                    finding
-                    for finding in self._findings
-                    if finding.vuln_type == vtype
-                    and finding.scope_key == scope_key
-                    and finding.reason_code == reason
-                ),
-                None,
-            )
-            if existing:
-                continue
-
-            evidence = str(obs.get("evidence") or output[:2000])[:2000]
-            payload = str(obs.get("payload") or code_snippet or _extract_payload(output))[:500]
-            finding_hash = hashlib.md5(
-                (f"structured:{reason}:{scope_key}:" + evidence[:180]).encode(
-                    "utf-8", errors="ignore"
-                )
-            ).hexdigest()[:12]
-            if finding_hash in self._finding_hashes:
-                continue
-            self._finding_hashes.add(finding_hash)
-
-            finding = Finding(
-                id=self._next_finding_id(),
-                vuln_type=vtype,
-                severity=str(obs.get("severity") or SEVERITY_MEDIUM),
-                target=self.target,
-                payload=payload,
-                evidence=evidence,
-                notes=extra_notes or str(obs.get("notes") or f"ladder:confirmed:{reason}"),
-                confirmed=bool(obs.get("confirmed", True)),
-                confidence=str(obs.get("confidence") or CONF_CONFIRMED),
-                reason_code=reason,
-                scope_key=scope_key,
-            )
-            self._findings.append(finding)
-            added.append(finding)
-        return added
 
     def _quarantine_candidate(
         self,
@@ -1770,10 +1477,6 @@ class FindingsExporter:
             FINDING_INFO_DISC: (
                 "manual_control",
                 "Require sensitive response data absent from the normal baseline response.",
-            ),
-            FINDING_USER_ENUM: (
-                "manual_control",
-                "Require a stable login differential between an unknown account and a known account with a wrong password.",
             ),
         }
         unresolved = [

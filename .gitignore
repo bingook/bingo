@@ -32,12 +32,12 @@ htmlcov/
 # bingo config (contains API keys — never commit)
 *.local.json
 
-# bingo exported sessions
-bingo_chat_*.md
-
-# Bingo project memory
+# Project memory runtime state (keep the durable sanitized mirror only)
 .bingo/*
 !.bingo/project-memory.md
+
+# bingo exported sessions
+bingo_chat_*.md
 
 # bingo scan targets output (may contain sensitive PII/pentest data)
 targets/
@@ -54,7 +54,6 @@ downloads/
 *.jpg
 *.png
 !assets/
-!assets/logo.png
 !bingo-github-profile.png
 headers.txt
 interesting_files.txt

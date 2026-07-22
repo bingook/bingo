@@ -1,7 +1,6 @@
 from __future__ import annotations
 import sys
 import os
-from pathlib import Path
 
 # ── Windows GBK/CP949 → UTF-8 강제 (macOS/Linux는 이미 UTF-8이므로 무해) ──────
 # 한국어/중국어 출력이 Windows 콘솔에서 UnicodeEncodeError로 크래시되는 것을 방지
@@ -39,57 +38,24 @@ def _s(lang: str = "en") -> dict:
 
 console = Console(highlight=False)
 
-BANNER_LOGO = (
-    "██████╗ ██╗███╗   ██╗ ██████╗  ██████╗",
-    "██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗",
-    "██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║",
-    "██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║",
-    "██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝",
-    "╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝",
-)
-
-
-def _print_banner_small() -> None:
-    from rich import box
-    from rich.align import Align
-    from rich.table import Table
-    from bingo import __version__
-
-    logo = Text(justify="center")
-    styles = ("#00ff88", "#00e676", "#00d7ff", "#00e676", "#00ff88", "#00ff88")
-    for line, style in zip(BANNER_LOGO, styles):
-        logo.append(line + "\n", style=f"bold {style}")
-
-    sub = Text(justify="center")
-    sub.append("red team operations console", style="#627386")
-    sub.append("  //  ", style="#16313d")
-    sub.append(f"v{__version__}", style="bold #00d7ff")
-    sub.append("  //  ", style="#16313d")
-    sub.append("evidence-led", style="#00ff41")
-
-    layout = Table.grid(expand=True)
-    layout.add_column(justify="center")
-    layout.add_row(Align.center(logo))
-    layout.add_row(Align.center(sub))
-    console.print(Panel(
-        layout,
-        title="[bold #00ff88] BINGO [/]",
-        border_style="#00ff88",
-        box=box.HEAVY_EDGE,
-        padding=(1, 2),
-    ))
+BANNER_SMALL = r"""[#00ff41]
+  ██████╗ ██╗███╗   ██╗ ██████╗  ██████╗ 
+  ██╔══██╗██║████╗  ██║██╔════╝ ██╔═══██╗
+  ██████╔╝██║██╔██╗ ██║██║  ███╗██║   ██║
+  ██╔══██╗██║██║╚██╗██║██║   ██║██║   ██║
+  ██████╔╝██║██║ ╚████║╚██████╔╝╚██████╔╝
+  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝  ╚═════╝[/#00ff41]"""
 
 
 def _onboarding(cfg: BingoConfig) -> BingoConfig:
     """첫 실행 온보딩: 언어 선택 → 모델 설정"""
     os.system("cls" if os.name == "nt" else "clear")
-    _print_banner_small()
+    console.print(BANNER_SMALL)
     console.print()
     console.print(Panel(
-        "[#00ff88]Bingo[/] [#627386]//[/] offensive security ops console\n"
-        "[#627386]providers[/] DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom",
-        title="[#00d7ff] operator setup [/#00d7ff]",
-        border_style="#16313d",
+        "[#00d4aa]Bingo[/] — AI Terminal  |  Multi-Model  |  Hacker Style\n"
+        "[#4a4a4a]DeepSeek · Claude · GPT · GLM · Qwen · Ollama · Custom[/]",
+        border_style="#00ff41",
         padding=(0, 2),
     ))
     console.print()
@@ -169,6 +135,7 @@ def _run_scan_mode(target: str, cfg: BingoConfig, args: list[str], s: dict | Non
     """bingo scan <url> — 완전 자동 Red Team 모드 (인가 시스템 포함)"""
     from rich.live import Live
     from rich.spinner import Spinner
+    from rich.text import Text
     from .core.authorization import create_auth_context
     import os
 
@@ -177,7 +144,7 @@ def _run_scan_mode(target: str, cfg: BingoConfig, args: list[str], s: dict | Non
 
     auth_ctx = create_auth_context(target)
 
-    _print_banner_small()
+    console.print(BANNER_SMALL)
     console.print()
     console.print(Panel(
         f"[#ff4444]⚔  BINGO RED TEAM — AUTHORIZED ENGAGEMENT[/]\n"
@@ -257,10 +224,18 @@ def _run_waf_test(target: str, s: dict | None = None) -> None:
         for i, strategy in enumerate(result.bypass_priority, 1):
             console.print(f"  {i}. {strategy}")
 
-        engine = WafBypassEngine(probe)
-        console.print(f"\n[#00d4aa]AI-led WAF plan:[/]")
-        console.print("[#4a4a4a]  Auto bypass spray is disabled. Use model + waf_bypass skill to choose one bounded verifier.[/]")
-        console.print(f"[#4a4a4a]{engine.get_bypass_summary(result.waf_type)}[/]")
+        console.print(f"\n[#ffaa00]{s['cli_waf_bypass_try']}[/]")
+        engine = WafBypassEngine(probe, on_progress=lambda m: console.print(f"[#c9d1d9]{m}[/]"))
+        test_payload = "' OR 1=1--"
+        success, attempt = engine.auto_bypass(target + "?id=1", test_payload)
+        if success and attempt:
+            console.print(f"\n[#00ff41]{s['cli_waf_bypass_ok']}[/]")
+            console.print(f"[#00ff41]{s['cli_waf_tech']}: {attempt.technique}[/]")
+            console.print(f"[#00ff41]{s['cli_waf_payload']}: {attempt.payload_modified}[/]")
+        elif success:
+            console.print(f"\n[#00ff41]{s['waf_none']}[/]")
+        else:
+            console.print(f"\n[#ff4444]{s['cli_waf_bypass_fail']}[/]")
     else:
         console.print(f"[#00ff41]{s['cli_waf_none']}[/]")
 
@@ -592,7 +567,7 @@ def main() -> None:
 
     # ── 도움말 ───────────────────────────────────────────────────
     if args and args[0] in ("-h", "--help", "help"):
-        _print_banner_small()
+        console.print(BANNER_SMALL)
         console.print()
         console.print("  [#00d4aa]Usage:[/]")
         console.print(f"    [white]bingo[/]                      {sl['cli_help_chat']}")
@@ -620,7 +595,7 @@ def main() -> None:
 
     if args and args[0] == "--version":
         from . import __version__
-        console.print(f"[#00ff88]bingo[/] [#627386]//[/] v{__version__} [#627386]//[/] official build")
+        console.print(f"[#00ff41]bingo[/] v{__version__} — Official Release")
         return
 
     if args and args[0] == "--update":

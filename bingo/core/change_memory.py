@@ -6,11 +6,14 @@ next bingo session. Entries are local to the workspace and are never committed.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import os
 import re
 import shlex
 import subprocess
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +22,7 @@ from typing import Sequence
 
 DEFAULT_MEMORY_ROOT = Path.home() / ".config" / "bingo" / "memory"
 MAX_MEMORY_BYTES = 128 * 1024
-MAX_HIGHLIGHTS = 30
+MAX_CONTEXT_BYTES = 9 * 1024
 WORKTREE_START = "<!-- working-tree:start -->"
 WORKTREE_END = "<!-- working-tree:end -->"
 BINGO_MEMORY_FILE = Path(".bingo") / "project-memory.md"
@@ -27,14 +30,61 @@ BINGO_AUTO_START = "<!-- bingo-project-memory:auto:start -->"
 BINGO_AUTO_END = "<!-- bingo-project-memory:auto:end -->"
 HIGHLIGHT_SKIP_PATHS = {
     "AGENTS.md",
+    "CLAUDE.md",
+    ".claude/settings.json",
     ".bingo/instruction.md",
     ".bingo/project-memory.md",
 }
 WORKTREE_SKIP_PREFIXES = (".bingo/",)
-SECRET_LINE_RE = re.compile(
-    r'(?i)(?:api[_-]?key|secret|token|password|passwd|authorization|cookie|'
-    r'sk-[A-Za-z0-9]|ghp_[A-Za-z0-9]|AKIA[0-9A-Z]{16}|-----BEGIN .*PRIVATE KEY-----)'
+SENSITIVE_PATH_RE = re.compile(
+    r"(?i)(?:^|/)(?:\.env(?:\..*)?|.*\.local\.json|credentials?|secrets?|tokens?|loot|downloads?|idor_downloads?|sessions?)(?:/|$)"
 )
+SECRET_LINE_RE = re.compile(
+    r"(?i)(?:api[_-]?key|secret|token|password|passwd|authorization|cookie|"
+    r"bearer\s+[A-Za-z0-9._~+/=-]+|basic\s+[A-Za-z0-9+/=]+|"
+    r"sk-[A-Za-z0-9]|ghp_[A-Za-z0-9]|AKIA[0-9A-Z]{16}|-----BEGIN .*PRIVATE KEY-----)"
+)
+
+
+def _redact(value: str) -> str:
+    return SECRET_LINE_RE.sub("[REDACTED]", value)
+
+
+def _atomic_write(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+@contextlib.contextmanager
+def memory_write_lock(cwd: str | Path, timeout: float = 10.0):
+    repo = Path(cwd).resolve()
+    lock_path = repo / ".bingo" / "bingo-memory-write.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+") as handle:
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"memory lock timeout: {lock_path}")
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def workspace_hash(cwd: str | Path) -> str:
@@ -71,6 +121,8 @@ def _skip_worktree_path(path: str) -> bool:
     normalized = path.strip().strip('"')
     if " -> " in normalized:
         return any(_skip_worktree_path(part) for part in normalized.split(" -> ", 1))
+    if SENSITIVE_PATH_RE.search(normalized):
+        return True
     return any(
         normalized == prefix.rstrip("/") or normalized.startswith(prefix)
         for prefix in WORKTREE_SKIP_PREFIXES
@@ -100,32 +152,9 @@ def _worktree_diff_args(*args: str) -> list[str]:
 
 
 def _added_highlights(patch: str) -> list[str]:
-    highlights: list[str] = []
-    current_file = ""
-    for line in patch.splitlines():
-        if line.startswith("+++ b/"):
-            current_file = line[6:]
-            continue
-        if current_file in HIGHLIGHT_SKIP_PATHS or current_file.startswith(".bingo/"):
-            continue
-        if not line.startswith("+") or line.startswith("+++"):
-            continue
-        text = line[1:].strip()
-        if not text or text.startswith(("#", "//", "*")):
-            continue
-        if "<!-- commit:" in text or text in {
-            WORKTREE_START,
-            WORKTREE_END,
-            BINGO_AUTO_START,
-            BINGO_AUTO_END,
-        }:
-            continue
-        if SECRET_LINE_RE.search(text):
-            continue
-        highlights.append(text[:180])
-        if len(highlights) >= MAX_HIGHLIGHTS:
-            break
-    return highlights
+    """Source lines are intentionally never persisted in automatic memory."""
+    del patch
+    return []
 
 
 def _without_worktree_snapshot(content: str) -> str:
@@ -144,13 +173,16 @@ def render_commit_entry(cwd: str | Path, revision: str = "HEAD") -> tuple[str, s
     metadata = _git(repo, ["show", "-s", "--format=%cI%x1f%B", commit_id])
     committed_at, _, message = metadata.partition("\x1f")
     subject, _, body = message.strip().partition("\n")
-    name_status = _git(
-        repo,
-        ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit_id],
+    subject = _redact(subject)
+    body = _redact(body)
+    name_status = "\n".join(
+        line for line in _git(
+            repo,
+            ["diff-tree", "--root", "--no-commit-id", "--name-status", "-r", commit_id],
+        ).splitlines()
+        if not _skip_worktree_path(line.split("\t", 1)[-1])
     )
-    diff_stat = _git(repo, ["show", "--format=", "--stat", "--oneline", commit_id])
-    patch = _git(repo, ["show", "--format=", "--unified=0", "--no-ext-diff", commit_id])
-    highlights = _added_highlights(patch)
+    diff_stat = _redact(_git(repo, ["show", "--format=", "--stat", "--oneline", commit_id]))
 
     lines = [
         f"<!-- commit:{commit_id} -->",
@@ -165,9 +197,6 @@ def render_commit_entry(cwd: str | Path, revision: str = "HEAD") -> tuple[str, s
         lines.extend(["", "### Files", "```text", name_status, "```"])
     if diff_stat:
         lines.extend(["", "### Diff Stat", "```text", diff_stat, "```"])
-    if highlights:
-        lines.extend(["", "### Added Highlights"])
-        lines.extend(f"- `{line.replace('`', "'")}`" for line in highlights)
     lines.append("")
     return "\n".join(lines), commit_id
 
@@ -206,7 +235,7 @@ def record_commit(
     encoded = content.encode("utf-8")
     if len(encoded) > MAX_MEMORY_BYTES:
         content = encoded[:MAX_MEMORY_BYTES].decode("utf-8", errors="ignore")
-    path.write_text(content.rstrip() + "\n", encoding="utf-8")
+    _atomic_write(path, content.rstrip() + "\n")
     return path
 
 
@@ -222,12 +251,10 @@ def record_worktree_snapshot(
     existing = _without_worktree_snapshot(existing).rstrip()
     if not status:
         if path.exists():
-            path.write_text(existing + "\n", encoding="utf-8")
+            _atomic_write(path, existing + "\n")
         return path if path.exists() else None
 
-    stat = _git(repo, _worktree_diff_args("--stat"))
-    patch = _git(repo, _worktree_diff_args("--unified=0", "--no-ext-diff"))
-    highlights = _added_highlights(patch)
+    stat = _redact(_git(repo, _worktree_diff_args("--stat")))
     lines = [
         WORKTREE_START,
         "## Working tree snapshot (uncommitted)",
@@ -240,9 +267,6 @@ def record_worktree_snapshot(
     ]
     if stat:
         lines.extend(["", "### Diff Stat", "```text", stat, "```"])
-    if highlights:
-        lines.extend(["", "### Added Highlights"])
-        lines.extend(f"- `{line.replace('`', "'")}`" for line in highlights)
     lines.extend([WORKTREE_END, ""])
 
     header = ""
@@ -252,7 +276,7 @@ def record_worktree_snapshot(
             "> Automatically records committed code changes. Newest entries appear first.\n"
         )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text((header + "\n".join(lines) + existing).rstrip() + "\n", encoding="utf-8")
+    _atomic_write(path, (header + "\n".join(lines) + existing).rstrip() + "\n")
     return path
 
 
@@ -376,8 +400,22 @@ def sync_bingo_project_memory(
     encoded = content.encode("utf-8")
     if len(encoded) > MAX_MEMORY_BYTES:
         content = encoded[:MAX_MEMORY_BYTES].decode("utf-8", errors="ignore")
-    path.write_text(content.rstrip() + "\n", encoding="utf-8")
+    _atomic_write(path, content.rstrip() + "\n")
     return path
+
+
+def render_hook_context(cwd: str | Path, max_bytes: int = MAX_CONTEXT_BYTES) -> str:
+    """Return bounded sanitized continuity context for Claude lifecycle hooks."""
+    path = bingo_project_memory_path(cwd)
+    if not path.exists():
+        return "Bingo project memory has not been captured yet."
+    content = path.read_text(encoding="utf-8", errors="replace")
+    content = _redact(content)
+    encoded = content.encode("utf-8")
+    if len(encoded) > max_bytes:
+        content = encoded[:max_bytes].decode("utf-8", errors="ignore")
+        content += "\n\n[Project memory truncated; read .bingo/project-memory.md for the full sanitized record.]"
+    return content
 
 
 def _worktree_fingerprint(repo: Path) -> str:
@@ -493,9 +531,10 @@ def watch_worktree_changes(
         try:
             fingerprint = _worktree_fingerprint(repo)
             if fingerprint != last_fingerprint:
-                record_worktree_snapshot(repo, memory_root)
-                if sync_bingo_memory:
-                    sync_bingo_project_memory(repo, memory_root)
+                with memory_write_lock(repo):
+                    record_worktree_snapshot(repo, memory_root)
+                    if sync_bingo_memory:
+                        sync_bingo_project_memory(repo, memory_root)
                 last_fingerprint = fingerprint
         except Exception:
             pass
@@ -524,13 +563,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.install_hook:
         ensure_post_commit_hook(args.cwd)
     if args.snapshot:
-        path = record_worktree_snapshot(args.cwd, args.memory_root)
-        if path is None:
-            path = workspace_memory_path(args.cwd, args.memory_root)
+        with memory_write_lock(args.cwd):
+            path = record_worktree_snapshot(args.cwd, args.memory_root)
+            if path is None:
+                path = workspace_memory_path(args.cwd, args.memory_root)
+            if args.sync_bingo_memory:
+                path = sync_bingo_project_memory(args.cwd, args.memory_root)
     else:
-        path = record_commit(args.cwd, args.commit, args.memory_root)
-    if args.sync_bingo_memory:
-        path = sync_bingo_project_memory(args.cwd, args.memory_root)
+        with memory_write_lock(args.cwd):
+            path = record_commit(args.cwd, args.commit, args.memory_root)
+            if args.sync_bingo_memory:
+                path = sync_bingo_project_memory(args.cwd, args.memory_root)
     print(path)
     return 0
 

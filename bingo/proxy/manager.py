@@ -24,7 +24,6 @@ import re
 import time
 import random
 import threading
-import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,16 +58,6 @@ _URL_RE = re.compile(
     r'(/.*)?$',
     re.IGNORECASE,
 )
-_SCHEME_ALIASES = {
-    "http": "http",
-    "https": "https",
-    "socks": "socks5",
-    "socks4": "socks4",
-    "socks4a": "socks4a",
-    "socks5": "socks5",
-    "socks5h": "socks5h",
-}
-_HOST_RE = re.compile(r"^(?:\[[0-9a-f:]+\]|[a-z0-9._-]+)$", re.I)
 
 TOR_PROXY_URL  = "socks5h://127.0.0.1:9050"
 TOR_CTRL_HOST  = "127.0.0.1"
@@ -114,46 +103,22 @@ class ProxyEntry:
 
 
 def _parse_proxy_url(url: str) -> Optional[ProxyEntry]:
-    """URL 문자열 → ProxyEntry 파싱. 실패 시 None.
-
-    Accepts common proxy-list formats:
-      - scheme://host:port
-      - scheme://user:pass@host:port
-      - host:port
-      - user:pass@host:port
-      - host:port:user:pass
-      - user:pass:host:port
-      - host port user pass / host,port,user,pass / host|port|user|pass
-      - protocol,host,port,user,password
-    """
-    raw = (url or "").strip().strip("'\"")
-    if not raw or raw.startswith("#"):
+    """URL 문자열 → ProxyEntry 파싱. 실패 시 None."""
+    url = url.strip()
+    if not url or url.startswith("#"):
         return None
-    # Strip inline comments in text proxy lists.
-    raw = re.split(r"\s+#", raw, 1)[0].strip()
-    if not raw:
+    # scheme 없으면 http:// 붙여서 재시도
+    if "://" not in url:
+        url = "http://" + url
+    m = _URL_RE.match(url)
+    if not m:
         return None
-
-    parsed = _normalise_proxy_parts(raw)
-    if parsed is None:
-        return None
-    scheme, host, port, user, pw = parsed
-    if not (1 <= port <= 65535):
-        return None
-    if not host or not _HOST_RE.match(host):
-        return None
-
-    auth = ""
-    if user:
-        auth = urllib.parse.quote(user, safe="")
-        if pw:
-            auth += ":" + urllib.parse.quote(pw, safe="")
-        auth += "@"
-    host_url = host if host.startswith("[") else urllib.parse.quote(host, safe=".-_[]:")
-    normalised_url = f"{scheme}://{auth}{host_url}:{port}"
+    scheme, user, pw, host, port_s, _ = m.groups()
+    scheme = scheme.lower()
+    port = int(port_s) if port_s else (443 if scheme == "https" else 1080)
     is_tor = (host in ("127.0.0.1", "localhost") and port == 9050)
     return ProxyEntry(
-        url=normalised_url,
+        url=url,
         scheme=scheme,
         host=host,
         port=port,
@@ -161,176 +126,6 @@ def _parse_proxy_url(url: str) -> Optional[ProxyEntry]:
         password=pw or "",
         is_tor=is_tor,
     )
-
-
-def _normalise_proxy_parts(raw: str) -> Optional[tuple[str, str, int, str, str]]:
-    """Return (scheme, host, port, user, password) from loose proxy syntax."""
-    value = raw.strip()
-    scheme = "http"
-
-    # CSV/space/pipe forms first; URLs with :// stay in the URL parser.
-    if "://" not in value:
-        tokens = [t.strip() for t in re.split(r"[\s,;|]+", value) if t.strip()]
-        parsed_tokens = _parse_proxy_tokens(tokens)
-        if parsed_tokens:
-            return parsed_tokens
-
-        # user:pass@host:port without scheme.
-        if "@" in value:
-            return _parse_proxy_urlish("http://" + value)
-
-        colon = value.split(":")
-        if len(colon) >= 4:
-            scheme_token = colon[0].lower()
-            if scheme_token in _SCHEME_ALIASES and len(colon) >= 5:
-                scheme = _SCHEME_ALIASES[scheme_token]
-                colon = colon[1:]
-            # host:port:user:pass
-            if _looks_port(colon[1]):
-                host = colon[0]
-                port = int(colon[1])
-                user = colon[2]
-                pw = ":".join(colon[3:])
-                return scheme, host, port, user, pw
-            # user:pass:host:port
-            if _looks_port(colon[-1]):
-                user = colon[0]
-                pw = ":".join(colon[1:-2])
-                host = colon[-2]
-                port = int(colon[-1])
-                return scheme, host, port, user, pw
-
-        # host:port
-        if len(colon) == 2 and _looks_port(colon[1]):
-            return scheme, colon[0], int(colon[1]), "", ""
-
-        return None
-
-    return _parse_proxy_urlish(value)
-
-
-def _parse_proxy_urlish(value: str) -> Optional[tuple[str, str, int, str, str]]:
-    """Parse scheme://[user[:pass]@]host[:port], tolerating unescaped @/: in password."""
-    scheme_raw, rest = value.split("://", 1)
-    scheme = _SCHEME_ALIASES.get(scheme_raw.lower())
-    if not scheme:
-        return None
-
-    rest = rest.split("/", 1)[0].strip()
-    user = ""
-    pw = ""
-    hostport = rest
-    if "@" in rest:
-        auth, hostport = rest.rsplit("@", 1)
-        if ":" in auth:
-            user, pw = auth.split(":", 1)
-        else:
-            user = auth
-        user = urllib.parse.unquote(user)
-        pw = urllib.parse.unquote(pw)
-
-    if hostport.startswith("["):
-        end = hostport.find("]")
-        if end < 0:
-            return None
-        host = hostport[:end + 1]
-        port_s = hostport[end + 1:].lstrip(":")
-    else:
-        if ":" not in hostport:
-            host = hostport
-            port_s = ""
-        else:
-            host, port_s = hostport.rsplit(":", 1)
-
-    if not port_s:
-        port = 443 if scheme == "https" else 1080 if scheme.startswith("socks") else 8080
-    elif _looks_port(port_s):
-        port = int(port_s)
-    else:
-        return None
-    return scheme, host, port, user, pw
-
-
-def _parse_proxy_tokens(tokens: list[str]) -> Optional[tuple[str, str, int, str, str]]:
-    if not tokens:
-        return None
-    scheme = "http"
-    if tokens[0].lower() in _SCHEME_ALIASES:
-        scheme = _SCHEME_ALIASES[tokens[0].lower()]
-        tokens = tokens[1:]
-    if len(tokens) >= 2 and _looks_port(tokens[1]):
-        host = tokens[0]
-        port = int(tokens[1])
-        user = tokens[2] if len(tokens) >= 3 else ""
-        pw = tokens[3] if len(tokens) >= 4 else ""
-        return scheme, host, port, user, pw
-    if len(tokens) >= 4 and _looks_port(tokens[-1]):
-        user = tokens[0]
-        pw = tokens[1]
-        host = tokens[-2]
-        port = int(tokens[-1])
-        return scheme, host, port, user, pw
-    return None
-
-
-def _looks_port(value: str) -> bool:
-    return value.isdigit() and 1 <= int(value) <= 65535
-
-
-def _extract_proxy_candidates(value: object) -> list[str]:
-    """Extract proxy candidate strings from text/list/dict API responses."""
-    candidates: list[str] = []
-
-    def add(item: object) -> None:
-        if item is None:
-            return
-        if isinstance(item, str):
-            text = item.strip()
-            if text:
-                candidates.append(text)
-            return
-        if isinstance(item, (int, float)):
-            return
-        if isinstance(item, list):
-            for child in item:
-                add(child)
-            return
-        if isinstance(item, dict):
-            # Common API object forms: ProxyScrape/Webshare/GeoNode/custom.
-            for key in ("proxy", "url", "proxy_url", "address"):
-                if item.get(key):
-                    add(item.get(key))
-            host = (
-                item.get("ip")
-                or item.get("host")
-                or item.get("hostname")
-                or item.get("addr")
-            )
-            port = item.get("port")
-            if host and port:
-                proto = (
-                    item.get("protocol")
-                    or item.get("scheme")
-                    or item.get("type")
-                    or ""
-                )
-                protocols = item.get("protocols")
-                if not proto and isinstance(protocols, list) and protocols:
-                    proto = str(protocols[0])
-                user = item.get("username") or item.get("user") or item.get("login") or ""
-                pw = item.get("password") or item.get("pass") or item.get("pwd") or ""
-                prefix = f"{proto}://" if str(proto).lower() in _SCHEME_ALIASES else ""
-                if user:
-                    add(f"{prefix}{user}:{pw}@{host}:{port}")
-                else:
-                    add(f"{prefix}{host}:{port}")
-            for key in ("data", "results", "items", "proxies", "list"):
-                if key in item:
-                    add(item[key])
-
-    add(value)
-    # Deduplicate while preserving order.
-    return list(dict.fromkeys(candidates))
 
 
 class ProxyManager:
@@ -412,22 +207,18 @@ class ProxyManager:
         except Exception:
             return 0
 
-        # JSON 처리: 배열뿐 아니라 GeoNode/Webshare 스타일 객체(data/results)도 허용
-        if body.strip().startswith(("[", "{")):
+        # JSON 배열 처리
+        if body.strip().startswith("["):
             try:
+                import json
                 items = json.loads(body)
-                candidates = _extract_proxy_candidates(items)
-                if candidates:
-                    return self.add_many(candidates)
+                if isinstance(items, list):
+                    return self.add_many([str(x) for x in items])
             except Exception:
                 pass
 
         # 줄 구분 텍스트 처리
-        lines = [
-            ln.strip()
-            for ln in body.splitlines()
-            if ln.strip() and not ln.lstrip().startswith("#")
-        ]
+        lines = [ln.strip() for ln in body.splitlines() if ln.strip()]
         return self.add_many(lines)
 
     # ── Tor 설정 ─────────────────────────────────────────────────

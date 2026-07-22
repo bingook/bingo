@@ -74,115 +74,160 @@
 <!-- bingo-project-memory:auto:start -->
 ## Auto-captured workspace memory
 
-- Last synced: 2026-07-22T07:15:38+08:00
+- Last synced: 2026-07-22T15:44:03+08:00
 - Workspace: `/Users/jmaker/Desktop/hacker/bingo`
 - Source: `/Users/jmaker/Desktop/hacker/bingo/.bingo/bingo-memory/c6a511e7ba35526f/MEMORY.md`
 
 <!-- working-tree:start -->
 ## Working tree snapshot (uncommitted)
-- Captured: 2026-07-22T07:15:38+08:00
+- Captured: 2026-07-22T15:44:03+08:00
 
 ### Status
 ```text
 M .bingo/project-memory.md
+ M .gitignore
+ M PKG-INFO
  M README.md
+ D assets/logo.png
+ M bingo/__init__.py
+ D bingo/application/__init__.py
+ D bingo/application/chat.py
  M bingo/cli.py
  M bingo/core/authorization.py
- M bingo/core/v7/__init__.py
- M bingo/core/v7/executor_bridge.py
- M bingo/core/v7/runtime.py
+ M bingo/core/change_memory.py
+ M bingo/core/code_guard.py
+ D bingo/core/engagement.py
+ D bingo/core/executor_state.py
+ D bingo/core/session_bridge.py
+ D bingo/core/target_state.py
+ D bingo/core/v7/__init__.py
+ D bingo/core/v7/contracts.py
+ D bingo/core/v7/coverage.py
+ D bingo/core/v7/decision.py
+ D bingo/core/v7/evidence_graph.py
+ D bingo/core/v7/executor_bridge.py
+ D bingo/core/v7/loop_policy.py
+ D bingo/core/v7/report_service.py
+ D bingo/core/v7/reporting.py
+ D bingo/core/v7/runtime.py
+ D bingo/core/v7/state_machine.py
+ M bingo/hooks/pre_tool_hook.py
  M bingo/lang/strings.py
  M bingo/models/base.py
+ M bingo/models/system_prompt.py
+ M bingo/orchestrator/engine.py
+ M bingo/proxy/manager.py
+ D bingo/runtime/__init__.py
+ D bingo/runtime/claude_adapter.py
+ D bingo/runtime/contracts.py
+ D bingo/runtime/legacy_tool_decoder.py
+ D bingo/runtime/provider.py
+ D bingo/runtime/session.py
+ M bingo/tools/findings_exporter.py
+ M bingo/tools/gnuboard.py
+ M bingo/tools/recon_engine.py
+ M bingo/tools/waf_bypass.py
+ M bingo/tools_ext/autoexploit_modules.py
+ M bingo/tools_ext/builtin/advanced_scanners.py
+ M bingo/tools_ext/builtin/mission_orchestrator.py
+ M bingo/tools_ext/builtin/security_audit.py
+ M bingo/tools_ext/builtin/vuln_scanner_plus.py
+ M bingo/tools_ext/pentest_tools.py
+ D bingo/ui/commands.py
+ D bingo/ui/presenter.py
  M bingo/ui/terminal.py
- M docs/BINGO_V7_ARCHITECTURE.md
+ D bingo/ui/view_models.py
+ D docs/BINGO_V7_ARCHITECTURE.md
+ D docs/ENGINEERING.md
  M pyproject.toml
+ M scripts/git-hooks/post-commit
+ D tests/fixtures/loop_logs/late_low_value_reentry.log
+ D tests/test_advanced_scanner_false_positives.py
+ D tests/test_chat_application.py
+ D tests/test_chat_presentation.py
+ D tests/test_claude_adapter.py
+ D tests/test_engagement_authority.py
+ D tests/test_model_stream_transport.py
+ M tests/test_mvvs_false_positive.py
+ D tests/test_report_service.py
+ D tests/test_runtime_contracts.py
  M tests/test_terminal_completion_regressions.py
- M tests/test_v7_architecture.py
-?? bingo/application/
-?? bingo/core/engagement.py
-?? bingo/core/v7/report_service.py
-?? bingo/runtime/
-?? bingo/ui/commands.py
-?? bingo/ui/presenter.py
-?? bingo/ui/view_models.py
-?? tests/test_chat_application.py
-?? tests/test_chat_presentation.py
-?? tests/test_claude_adapter.py
-?? tests/test_engagement_authority.py
-?? tests/test_report_service.py
-?? tests/test_runtime_contracts.py
+ D tests/test_v7_architecture.py
+?? .claude/
+?? CLAUDE.md
 ```
 
 ### Diff Stat
 ```text
-README.md                                     | 2253 +------------------------
- bingo/cli.py                                  |  102 +-
- bingo/core/authorization.py                   |    8 +-
- bingo/core/v7/__init__.py                     |    3 +
- bingo/core/v7/executor_bridge.py              |   47 +-
- bingo/core/v7/runtime.py                      |   76 +-
- bingo/lang/strings.py                         |   71 +-
- bingo/models/base.py                          |  138 +-
- bingo/ui/terminal.py                          |  430 +----
- docs/BINGO_V7_ARCHITECTURE.md                 |  261 ++-
- pyproject.toml                                |    1 +
- tests/test_terminal_completion_regressions.py |   33 +-
- tests/test_v7_architecture.py                 |   62 +
- 13 files changed, 549 insertions(+), 2936 deletions(-)
+.gitignore                                         |    9 +-
+ PKG-INFO                                           |   12 +-
+ README.md                                          | 2249 ++++++++++++-
+ assets/logo.png                                    |  Bin 231102 -> 0 bytes
+ bingo/__init__.py                                  |    2 +-
+ bingo/application/__init__.py                      |    5 -
+ bingo/application/chat.py                          |  118 -
+ bingo/cli.py                                       |   79 +-
+ bingo/core/[REDACTED].py                        |    8 +-
+ bingo/core/change_memory.py                        |  157 +-
+ bingo/core/code_guard.py                           |    7 +-
+ bingo/core/engagement.py                           |  181 --
+ bingo/core/executor_state.py                       |  520 ---
+ bingo/core/session_bridge.py                       |  151 -
+ bingo/core/target_state.py                         |  385 ---
+ bingo/core/v7/__init__.py                          |   95 -
+ bingo/core/v7/contracts.py                         |  114 -
+ bingo/core/v7/coverage.py                          |   55 -
+ bingo/core/v7/decision.py                          |  275 --
+ bingo/core/v7/evidence_graph.py                    |   60 -
+ bingo/core/v7/executor_bridge.py                   |   75 -
+ bingo/core/v7/loop_policy.py                       |  298 --
+ bingo/core/v7/report_service.py                    |   45 -
+ bingo/core/v7/reporting.py                         | 1340 --------
+ bingo/core/v7/runtime.py                           |  637 ----
+ bingo/core/v7/state_machine.py                     |   78 -
+ bingo/hooks/pre_tool_hook.py                       |   70 +-
+ bingo/lang/strings.py                              |  281 +-
+ bingo/models/base.py                               |  387 +--
+ bingo/models/system_prompt.py                      |  250 +-
+ bingo/orchestrator/engine.py                       |   12 +-
+ bingo/proxy/manager.py                             |  245 +-
+ bingo/runtime/__init__.py                          |   35 -
+ bingo/runtime/claude_adapter.py                    |  162 -
+ bingo/runtime/contracts.py                         |  118 -
+ bingo/runtime/legacy_tool_decoder.py               |   80 -
+ bingo/runtime/provider.py                          |   18 -
+ bingo/runtime/session.py                           |   20 -
+ bingo/tools/findings_exporter.py                   |  311 +-
+ bingo/tools/gnuboard.py                            |    6 +
+ bingo/tools/recon_engine.py                        |    3 +-
+ bingo/tools/waf_bypass.py                          |  170 +-
+ bingo/tools_ext/autoexploit_modules.py             |  201 +-
+ bingo/tools_ext/builtin/advanced_scanners.py       |  585 +---
+ bingo/tools_ext/builtin/mission_orchestrator.py    |    5 +-
+ bingo/tools_ext/builtin/security_audit.py          |   12 +-
+ bingo/tools_ext/builtin/vuln_scanner_plus.py       |   57 +-
+ bingo/tools_ext/pentest_tools.py                   | 2642 +++------------
+ bingo/ui/commands.py                               |   54 -
+ bingo/ui/presenter.py                              |   20 -
+ bingo/ui/terminal.py                               | 3377 +++++++-------------
+ bingo/ui/view_models.py                            |   53 -
+ docs/BINGO_V7_ARCHITECTURE.md                      |  135 -
+ docs/ENGINEERING.md                                |  201 --
+ pyproject.toml                                     |    1 -
+ scripts/git-hooks/post-commit                      |   13 +-
+ .../fixtures/loop_logs/late_low_value_reentry.log  |   15 -
+ tests/test_advanced_scanner_false_positives.py     |  198 --
+ tests/test_chat_application.py                     |  111 -
+ tests/test_chat_presentation.py                    |   51 -
+ tests/test_claude_adapter.py                       |  126 -
+ tests/test_engagement_authority.py                 |  112 -
+ tests/test_model_stream_transport.py               |  153 -
+ tests/test_mvvs_false_positive.py                  |   16 +-
+ tests/test_report_service.py                       |   54 -
+ tests/test_runtime_contracts.py                    |   38 -
+ tests/test_terminal_completion_regressions.py      | 2967 +----------------
+ tests/test_v7_architecture.py                      |  862 -----
+ 68 files changed, 4428 insertions(+), 16754 deletions(-)
 ```
-
-### Added Highlights
-- `Bingo is a multilingual, chat-first agent for authorized security validation.`
-- `- **Chat first** — the default product is a conversation, not a technique-command console.`
-- `- **Multi-provider** — Claude, OpenAI-compatible providers, GLM, Qwen, Ollama, and custom endpoints remain supported behind one typed runtime contract.`
-- `- **Executor-owned authority** — models propose intent; Bingo owns the canonical target, scope, action identity, approval, execution, and mission phase.`
-- `- **Evidence led** — model prose is never a finding. Confirmed findings require executor-observed evidence and stable finding IDs.`
-- `- **Long-horizon but bounded** — resumable missions use action, concurrency, timeout, output, and plateau budgets.`
-- `- **Non-destructive** — destructive actions, denial of service, mass targeting, persistence, stealth/evasion, and autonomous scope expansion are outside the execution boundary.`
-- `Python 3.12 or later is required. Native Windows is not supported; use Linux, macOS, or WSL2.`
-- `From source:`
-- `cd bingo`
-- `bash install.sh`
-- `bingo`
-- `1. Select English, 한국어, or 中文.`
-- `2. Configure a model provider.`
-- `3. Describe the authorized validation goal in natural language.`
-- `4. Confirm the exact target scope before active validation begins.`
-- `Example:`
-- `'''text`
-- `Assess https://example.test for exposed application metadata.`
-- `I confirm I am authorized to test this exact host using bounded read-only requests.`
-- `The command surface contains session controls only:`
-- `| Command | Purpose |`
-- `|---|---|`
-- `| '/help' | Show help |`
-- `| '/hint <message>' | Add a hint during an active turn |`
-- `| '/retry' | Retry the previous request or failed step |`
-- `| '/load <session-file>' | Load and sanitize an existing session |`
-- `| '/report' | Generate a report from current evidence |`
-- `| '/model' | Add or switch model provider |`
-- `| '/export' | Export the conversation |`
 <!-- working-tree:end -->
-
-# Workspace Memory
-
-> Automatically records committed code changes. Newest entries appear first.
-
-<!-- commit:cf67ae5c5a6a9100e01fa5106c6e88bb3059acb9 -->
-## Code change: docs: sync project memory
-- Commit: `cf67ae5c5a6a`
-- Recorded: 2026-07-22T05:13:39+08:00
-- Committed: 2026-07-22T05:13:39+08:00
-
-### Files
-```text
-M	.bingo/project-memory.md
-```
-
-### Diff Stat
-```text
-cf67ae5c5 docs: sync project memory
- .bingo/project-memory.md | 58 +++++++++++++-----------------------------------
- 1 file changed, 16 insertions(+), 42 deletions(-)
-```
 <!-- bingo-project-memory:auto:end -->

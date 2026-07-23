@@ -22,7 +22,11 @@ from typing import Sequence
 
 DEFAULT_MEMORY_ROOT = Path.home() / ".config" / "bingo" / "memory"
 MAX_MEMORY_BYTES = 128 * 1024
-MAX_CONTEXT_BYTES = 9 * 1024
+MAX_CONTEXT_BYTES = 4 * 1024
+MAX_HIGHLIGHTS = 12
+MAX_WORKTREE_STATUS_LINES = 30
+MAX_WORKTREE_STAT_LINES = 20
+MAX_AUTO_BLOCK_BYTES = 8 * 1024
 WORKTREE_START = "<!-- working-tree:start -->"
 WORKTREE_END = "<!-- working-tree:end -->"
 BINGO_MEMORY_FILE = Path(".bingo") / "project-memory.md"
@@ -30,8 +34,6 @@ BINGO_AUTO_START = "<!-- bingo-project-memory:auto:start -->"
 BINGO_AUTO_END = "<!-- bingo-project-memory:auto:end -->"
 HIGHLIGHT_SKIP_PATHS = {
     "AGENTS.md",
-    "CLAUDE.md",
-    ".claude/settings.json",
     ".bingo/instruction.md",
     ".bingo/project-memory.md",
 }
@@ -48,6 +50,21 @@ SECRET_LINE_RE = re.compile(
 
 def _redact(value: str) -> str:
     return SECRET_LINE_RE.sub("[REDACTED]", value)
+
+
+def _limit_lines(value: str, max_lines: int) -> str:
+    lines = value.splitlines()
+    if len(lines) <= max_lines:
+        return value
+    omitted = len(lines) - max_lines
+    return "\n".join(lines[:max_lines] + [f"… {omitted} more line(s) omitted"])
+
+
+def _limit_bytes(value: str, max_bytes: int, notice: str) -> str:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+    return encoded[:max_bytes].decode("utf-8", errors="ignore").rstrip() + "\n\n" + notice
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -152,9 +169,23 @@ def _worktree_diff_args(*args: str) -> list[str]:
 
 
 def _added_highlights(patch: str) -> list[str]:
-    """Source lines are intentionally never persisted in automatic memory."""
-    del patch
-    return []
+    highlights: list[str] = []
+    current_path = ""
+    skip_file = False
+    for line in patch.splitlines():
+        if line.startswith("+++ b/"):
+            current_path = line[6:]
+            skip_file = current_path in HIGHLIGHT_SKIP_PATHS or _skip_worktree_path(current_path)
+            continue
+        if skip_file or not line.startswith("+") or line.startswith("+++"):
+            continue
+        text = line[1:].strip()
+        if not text or text.startswith(("#", "//", "*")) or SECRET_LINE_RE.search(text):
+            continue
+        highlights.append(_redact(text[:180]))
+        if len(highlights) >= MAX_HIGHLIGHTS:
+            break
+    return highlights
 
 
 def _without_worktree_snapshot(content: str) -> str:
@@ -254,7 +285,9 @@ def record_worktree_snapshot(
             _atomic_write(path, existing + "\n")
         return path if path.exists() else None
 
-    stat = _redact(_git(repo, _worktree_diff_args("--stat")))
+    stat = _limit_lines(_redact(_git(repo, _worktree_diff_args("--stat"))), MAX_WORKTREE_STAT_LINES)
+    patch = _git(repo, _worktree_diff_args("--unified=0", "--no-ext-diff"))
+    highlights = _added_highlights(patch)
     lines = [
         WORKTREE_START,
         "## Working tree snapshot (uncommitted)",
@@ -262,11 +295,14 @@ def record_worktree_snapshot(
         "",
         "### Status",
         "```text",
-        status,
+        _limit_lines(status, MAX_WORKTREE_STATUS_LINES),
         "```",
     ]
     if stat:
         lines.extend(["", "### Diff Stat", "```text", stat, "```"])
+    if highlights:
+        lines.extend(["", "### Added Highlights"])
+        lines.extend(f"- `{line.replace('`', "'")}`" for line in highlights)
     lines.extend([WORKTREE_END, ""])
 
     header = ""
@@ -282,6 +318,11 @@ def record_worktree_snapshot(
 
 def _bingo_auto_block(source_path: Path, source_content: str, repo: Path) -> str:
     content = _compact_project_memory_source(source_content) or "_No captured workspace memory yet._"
+    content = _limit_bytes(
+        content,
+        MAX_AUTO_BLOCK_BYTES,
+        "[Auto-captured workspace memory truncated; read the source MEMORY.md for full sanitized details.]",
+    )
     return (
         f"{BINGO_AUTO_START}\n"
         "## Auto-captured workspace memory\n\n"
@@ -405,17 +446,17 @@ def sync_bingo_project_memory(
 
 
 def render_hook_context(cwd: str | Path, max_bytes: int = MAX_CONTEXT_BYTES) -> str:
-    """Return bounded sanitized continuity context for Claude lifecycle hooks."""
+    """Return bounded sanitized continuity context for local lifecycle hooks."""
     path = bingo_project_memory_path(cwd)
     if not path.exists():
         return "Bingo project memory has not been captured yet."
     content = path.read_text(encoding="utf-8", errors="replace")
     content = _redact(content)
-    encoded = content.encode("utf-8")
-    if len(encoded) > max_bytes:
-        content = encoded[:max_bytes].decode("utf-8", errors="ignore")
-        content += "\n\n[Project memory truncated; read .bingo/project-memory.md for the full sanitized record.]"
-    return content
+    return _limit_bytes(
+        content,
+        max_bytes,
+        "[Project memory truncated; read .bingo/project-memory.md for the full sanitized record.]",
+    )
 
 
 def _worktree_fingerprint(repo: Path) -> str:

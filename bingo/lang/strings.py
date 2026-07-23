@@ -4098,9 +4098,9 @@ _STRINGS.update({
 
     # sec-ai-autonomous-hunt-mcp
     "ai_mcp_hunt_init": {
-        "ko": "🤖 Claude Code + MCP 자율 취약점 헌팅 시스템 초기화 중...",
-        "zh": "🤖 正在初始化Claude Code + MCP自主漏洞挖掘系统...",
-        "en": "🤖 Initializing Claude Code + MCP autonomous vulnerability hunting system...",
+        "ko": "🤖 AI agent + MCP 자율 취약점 헌팅 시스템 초기화 중...",
+        "zh": "🤖 正在初始化AI agent + MCP自主漏洞挖掘系统...",
+        "en": "🤖 Initializing AI agent + MCP autonomous vulnerability hunting system...",
     },
     "ai_mcp_hallucination_bin": {
         "ko": "⚠️  Hallucination Bin 저장 — AI 생성 취약점은 수동 검증 필수",

@@ -1277,7 +1277,7 @@ VSCode Copilot, Cursor, and similar AI-powered IDEs are vulnerable to **indirect
 
 ### 12. AI-Assisted Autonomous Vulnerability Hunting (MCP Loop) (`sec-ai-autonomous-hunt-mcp`)
 
-Claude Code + MCP tools create an autonomous vulnerability hunting loop: the agent browses target JS/API responses, extracts candidate sinks, generates payloads, tests them, discards hallucinations (via a "hallucination bin" dedup store), and accumulates confirmed findings in a knowledge graph — all without human intervention between test iterations.
+AI agent + MCP tools create an autonomous vulnerability hunting loop: the agent browses target JS/API responses, extracts candidate sinks, generates payloads, tests them, discards hallucinations (via a "hallucination bin" dedup store), and accumulates confirmed findings in a knowledge graph — all without human intervention between test iterations.
 
 **Key pattern:** MCP tool (`fetch`, `browser`) → candidate extraction → payload generation → verify → knowledge store → next candidate.
 
@@ -1313,7 +1313,7 @@ A **Use-After-Free** in Redis's replication subsystem (versions 7.0.0–7.2.4). 
 
 ### 4. AI Agent CI/CD Prompt Injection → Supply Chain (`ai-agent-ci-prompt-inject`)
 
-When AI coding agents (Claude Code, GitHub Copilot, Gemini CLI) run inside GitHub Actions and read unsanitized user input (Issue bodies, PR descriptions, commit messages), an attacker can embed **hidden instructions** to exfiltrate `$GITHUB_TOKEN`, inject backdoor code, or poison the build pipeline — all without write access to the repository.
+When AI coding agents (AI coding agents) run inside GitHub Actions and read unsanitized user input (Issue bodies, PR descriptions, commit messages), an attacker can embed **hidden instructions** to exfiltrate `$GITHUB_TOKEN`, inject backdoor code, or poison the build pipeline — all without write access to the repository.
 
 **Key risk pattern:** `${{ github.event.issue.body }}` inserted directly into an AI agent prompt.
 

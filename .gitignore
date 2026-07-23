@@ -32,9 +32,9 @@ htmlcov/
 # bingo config (contains API keys — never commit)
 *.local.json
 
-# Project memory runtime state (keep the durable sanitized mirror only)
-.bingo/*
-!.bingo/project-memory.md
+# Local workspace/runtime state
+.bingo/
+
 
 # bingo exported sessions
 bingo_chat_*.md

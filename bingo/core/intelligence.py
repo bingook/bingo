@@ -133,7 +133,7 @@ class TaskNode:
     node_id: str
     description: str
     depends_on: list[str] = field(default_factory=list)
-    status: str = "pending"   # pending / running / done / skipped
+    status: str = "pending"   # pending / active / satisfied / exhausted
     result_summary: str = ""
 
 
@@ -176,7 +176,7 @@ class TaskGraph:
 
     def ready_nodes(self) -> list[TaskNode]:
         """현재 실행 가능한 노드 반환 (의존성 충족 + pending)."""
-        done_ids = {n.node_id for n in self._nodes.values() if n.status == "done"}
+        done_ids = {n.node_id for n in self._nodes.values() if n.status == "satisfied"}
         return [
             n for n in self._nodes.values()
             if n.status == "pending" and all(d in done_ids for d in n.depends_on)
@@ -184,28 +184,77 @@ class TaskGraph:
 
     def mark_done(self, node_id: str, summary: str = "") -> None:
         if node_id in self._nodes:
-            self._nodes[node_id].status = "done"
+            self._nodes[node_id].status = "satisfied"
             self._nodes[node_id].result_summary = summary[:256]
 
     def mark_running(self, node_id: str) -> None:
         if node_id in self._nodes:
-            self._nodes[node_id].status = "running"
+            self._nodes[node_id].status = "active"
 
     def skip(self, node_id: str) -> None:
         if node_id in self._nodes:
-            self._nodes[node_id].status = "skipped"
+            self._nodes[node_id].status = "exhausted"
 
     def is_complete(self) -> bool:
         return all(
-            n.status in ("done", "skipped")
+            n.status in ("satisfied", "exhausted")
             for n in self._nodes.values()
         )
+
+    def reconcile(self, node_id: str, *, changed: bool, summary: str = "") -> None:
+        """Apply one executor observation to the node that produced it."""
+        node = self._nodes.get(node_id)
+        if node is None:
+            return
+        node.status = "satisfied" if changed else "exhausted"
+        node.result_summary = summary[:256]
+
+    def objective_satisfied(self) -> bool:
+        report = self._nodes.get("report")
+        if report is not None:
+            return report.status == "satisfied"
+        return bool(self._nodes) and all(
+            node.status in ("satisfied", "exhausted") for node in self._nodes.values()
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            node_id: {
+                "description": node.description,
+                "depends_on": list(node.depends_on),
+                "status": node.status,
+                "result_summary": node.result_summary,
+            }
+            for node_id, node in self._nodes.items()
+        }
+
+    def restore(self, data: dict | None) -> None:
+        if not isinstance(data, dict):
+            return
+        self._nodes.clear()
+        for node_id, raw in data.items():
+            if not isinstance(raw, dict):
+                continue
+            status = str(raw.get("status") or "pending")
+            if status == "done":
+                status = "satisfied"
+            elif status == "skipped":
+                status = "exhausted"
+            elif status == "running":
+                status = "active"
+            self._nodes[node_id] = TaskNode(
+                node_id=node_id,
+                description=str(raw.get("description") or node_id),
+                depends_on=list(raw.get("depends_on") or []),
+                status=status,
+                result_summary=str(raw.get("result_summary") or "")[:256],
+            )
 
     def render(self) -> str:
         """에이전트 컨텍스트에 주입할 Task Graph 요약."""
         if not self._nodes:
             return ""
-        icon = {"pending": "⬜", "running": "🔄", "done": "✅", "skipped": "⏭️"}
+        icon = {"pending": "⬜", "active": "🔄", "satisfied": "✅", "exhausted": "∅"}
         label = _nl("📋 미션 Task Graph", "📋 任务图谱", "📋 Mission Task Graph")
         lines = [label + ":"]
         for n in self._nodes.values():

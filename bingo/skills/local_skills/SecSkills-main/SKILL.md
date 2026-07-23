@@ -335,4 +335,4 @@ argument-hint: <target_url_or_ip>
 
 ---
 
-*v1.0.0 | SecSkills | 架构: CLAUDE.md (L1) / SKILL.md (L2) → references/ (L3) 36个专项文件 | 测试确认: AskUserQuestion 方向键选择*
+*v1.0.0 | SecSkills | 架构: project instructions (L1) / SKILL.md (L2) → references/ (L3) 36个专项文件 | 测试确认: AskUserQuestion 方向键选择*

@@ -1,8 +1,7 @@
 """
 Pre-tool-call Context Injection Hook — v3.3.5
 ==============================================
-Source: GeniusHu-tgty/Open-tgtylab .claude/hooks/pre-tool-call.sh (adapted for bingo)
-       LING71671/open-reverselab AGENTS.md MCP tool hook pattern
+Source: Open tool-hook context injection patterns
 
 기능:
   1. AI 응답 직전 컨텍스트 재주입 (신원고정 / 운영환경 전제 / 사고차단 신호)

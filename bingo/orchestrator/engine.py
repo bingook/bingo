@@ -255,7 +255,7 @@ class OrchestratorEngine:
         self._running = False
 
     # ── LLM 결정 호출 ─────────────────────────────────────────────────
-    def _call_decision_llm(self, prompt: str, board_ctx: str = "", chain_ctx: str = "") -> str:
+    def _call_decision_llm(self, prompt: str, board_ctx: str = "", chain_ctx: str = ""):
         """결정 전용 미니 LLM 세션 (terminal 대화와 완전 분리).
         v4.0.0: Amplifier 연동 — CoT + RAG 자동 주입, 단 자기수정은 스킵 (속도 우선)
         """
@@ -283,19 +283,39 @@ class OrchestratorEngine:
             except Exception:
                 msgs = base_msgs
 
+            from ..models.base import ModelTurnResult
             result = ""
-            # _amp_skip=True: 오케스트레이터 내부 LLM은 이중 앰플리파이어 방지
+            failure = None
+            finish_reason = ""
+            request_id = ""
+            response_id = ""
             for chunk in model.chat_stream(msgs, _amp_skip=True):
-                # ★ v3.5.15: 정지 요청 시 즉시 LLM 결정 중단
                 if self._stop_evt.is_set():
-                    return ""
+                    return ModelTurnResult(text=result, interrupted=True)
                 result += chunk.text
-                if chunk.done:
+                failure = chunk.failure or failure
+                finish_reason = chunk.finish_reason or finish_reason
+                request_id = chunk.request_id or request_id
+                response_id = chunk.response_id or response_id
+                if failure is not None or chunk.done:
                     break
-            return result
+            return ModelTurnResult(
+                text=result,
+                finish_reason=finish_reason,
+                failure=failure,
+                request_id=request_id,
+                response_id=response_id,
+            )
         except Exception as e:
+            from ..models.base import ModelTurnResult, ProviderFailure
             self._error = str(e)
-            return ""
+            return ModelTurnResult(
+                failure=ProviderFailure(
+                    kind="protocol_error",
+                    provider="orchestrator",
+                    message=str(e),
+                )
+            )
 
     # ── 결정 프롬프트 생성 ─────────────────────────────────────────────
     def _build_decision_prompt(
@@ -333,28 +353,31 @@ GOOD: "Test SQL injection at {self._target}"  (includes full target URL)
 Respond ONLY in JSON."""
 
     # ── JSON 파싱 ──────────────────────────────────────────────────────
-    def _parse_decision(self, raw: str) -> Dict[str, Any]:
-        default: Dict[str, Any] = {
-            "action": f"step {self._step}",
-            "type": "recon",
-            "reason": "",
-            "command": f"Continue vulnerability analysis of {self._target}",
-            "update_board": {},
-            "goal_achieved": False,
-            "confidence": 0.5,
-        }
+    def _parse_decision(self, raw: str) -> Dict[str, Any] | None:
         if not raw:
-            return default
-        # JSON 블록 추출
-        m = re.search(r"\{[\s\S]*\}", raw)
-        if not m:
-            return default
+            return None
+        match = re.search(r"\{[\s\S]*\}", raw)
+        if not match:
+            return None
         try:
-            d = json.loads(m.group())
-            default.update(d)
+            decision = json.loads(match.group())
         except Exception:
-            pass
-        return default
+            return None
+        if not isinstance(decision, dict):
+            return None
+        action = str(decision.get("action") or "").strip()
+        command = str(decision.get("command") or "").strip()
+        if not action or not command:
+            return None
+        return {
+            "action": action,
+            "type": str(decision.get("type") or "recon"),
+            "reason": str(decision.get("reason") or ""),
+            "command": command,
+            "update_board": decision.get("update_board") or {},
+            "goal_achieved": bool(decision.get("goal_achieved", False)),
+            "confidence": float(decision.get("confidence", 0.5)),
+        }
 
     # ── 메인 루프 ──────────────────────────────────────────────────────
     def _loop(
@@ -447,7 +470,8 @@ Respond ONLY in JSON."""
             f"  steps  : max {self._max_steps}\n"
         )
 
-        while self._step < self._max_steps and not self._stop_evt.is_set():
+        goal_done = False
+        while not self._stop_evt.is_set():
             self._step += 1
             _print(
                 f"\n[bold cyan]{_s.get('orch_ui_step', 'ORCHESTRATOR STEP {step}/{total}').format(step=self._step, total=self._max_steps)}[/bold cyan]"
@@ -460,13 +484,23 @@ Respond ONLY in JSON."""
             # 2. 결정 요청 (v4.0.0: board_ctx + chain_ctx 를 Amplifier RAG에 전달)
             _print(f"[dim]{_s.get('orch_ui_deciding', '🧠 LLM deciding...')}[/dim]")
             decision_prompt = self._build_decision_prompt(board_ctx, chain_ctx)
-            raw_decision = self._call_decision_llm(decision_prompt, board_ctx=board_ctx, chain_ctx=chain_ctx)
+            turn_result = self._call_decision_llm(
+                decision_prompt, board_ctx=board_ctx, chain_ctx=chain_ctx
+            )
+            if turn_result.failure is not None:
+                self._error = turn_result.failure.message
+                _print(f"[red]Provider failure: {turn_result.failure.kind}[/red]")
+                break
+            if turn_result.interrupted:
+                break
+            raw_decision = turn_result.text
 
-            if not raw_decision and not self._stop_evt.is_set():
-                _print(f"[yellow]{_s.get('orch_ui_no_decision', '⚠ Decision LLM returned empty — running default scan')}[/yellow]")
-
-            # 3. 파싱
+            # 3. 파싱 — invalid/empty decisions do not invent a default action
             decision = self._parse_decision(raw_decision)
+            if decision is None:
+                self._error = "decision_model_returned_no_executable_action"
+                _print(f"[yellow]No executable orchestrator action remains.[/yellow]")
+                break
             action    = decision["action"]
             step_type = decision.get("type", "recon")
             reason    = decision.get("reason", "")

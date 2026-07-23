@@ -6,14 +6,19 @@ answering about the project.
 
 Startup routine:
 
-1. Read `.bingo/project-memory.md`.
+1. Read `.bingo/project-memory.md` and `.bingo/live-checkpoint.json` when present.
 2. Run `scripts/bingo-memory-autostart.sh` from the repository root.
-3. Treat the loaded memory as project context, while preserving unrelated user
+3. If the live checkpoint reports an interrupted session, continue from its
+   current objective, unfinished actions, and latest verified event instead of
+   repeating discovery from the beginning.
+4. Treat the loaded memory as project context, while preserving unrelated user
    changes in the worktree.
 
-After file edits, formatting, tests that generate files, or other worktree
-changes, run `scripts/bingo-memory-sync.sh` from the repository root so the next
-session can continue from the current state.
+Local lifecycle hooks checkpoint every prompt, tool start/result/failure,
+compaction, stop, and session boundary. A background watcher captures other
+working-tree changes. After file edits, formatting, tests that generate files,
+or other worktree changes, run `scripts/bingo-memory-sync.sh` from the repository
+root so the next session can continue from the current state.
 
 Communication preference:
 

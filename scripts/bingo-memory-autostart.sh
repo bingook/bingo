@@ -12,17 +12,18 @@ mkdir -p "$repo_root/.bingo"
 
 "$sync_script" >/dev/null 2>>"$stderr_log" || true
 
-if [ "${BINGO_MEMORY_BACKGROUND:-0}" != "1" ]; then
-  echo "synced"
-  exit 0
-fi
-
 if [ -f "$pid_file" ]; then
   old_pid=$(cat "$pid_file" 2>/dev/null || true)
   if [ -n "$old_pid" ] && kill -0 "$old_pid" >/dev/null 2>&1; then
-    echo "$old_pid"
-    exit 0
+    old_command=$(ps -p "$old_pid" -o command= 2>/dev/null || true)
+    case "$old_command" in
+      *"$watch_script"*)
+        echo "$old_pid"
+        exit 0
+        ;;
+    esac
   fi
+  rm -f "$pid_file"
 fi
 
 nohup "$watch_script" >>"$stdout_log" 2>>"$stderr_log" &

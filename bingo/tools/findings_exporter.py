@@ -117,6 +117,8 @@ class Finding:
     confidence: str = CONF_POTENTIAL
     reason_code: str = ""
     scope_key: str = ""
+    observation_ids: list[str] = field(default_factory=list)
+    evidence_refs: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -125,6 +127,20 @@ class Finding:
         )
         d["may_claim_confirmed"] = bool(self.confirmed or self.confidence == CONF_CONFIRMED)
         return d
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "Finding" | None:
+        if not isinstance(data, dict):
+            return None
+        fields = {
+            key: value
+            for key, value in data.items()
+            if key in cls.__dataclass_fields__
+        }
+        try:
+            return cls(**fields)
+        except TypeError:
+            return None
 
 
 # ─── 패턴 탐지 규칙 ──────────────────────────────────────────────────────────
@@ -241,6 +257,8 @@ def _execution_code(code_snippet: str, execution_context: dict | None) -> str:
         )
         if structured.strip():
             return structured
+        if execution_context.get("code"):
+            return str(execution_context.get("code") or "")
     return code_snippet or ""
 
 
@@ -253,6 +271,9 @@ def _finding_scope(
     """Build a stable endpoint/parameter identity for reversible verdicts."""
     from urllib.parse import parse_qs, urlsplit
 
+    if execution_context and execution_context.get("scope_key"):
+        canonical_scope = str(execution_context["scope_key"])
+        return f"{vtype}|{canonical_scope}|canonical"
     code = _execution_code(code_snippet, execution_context)
     combined = code + "\n" + output[:1000]
     url_match = re.search(r'https?://[^\s\'"<>]+', combined, re.I)
@@ -936,7 +957,135 @@ class FindingsExporter:
         self._quarantine_sequence += 1
         return f"BINGO-Q{self._quarantine_sequence:04d}"
 
+    def to_dict(self) -> dict:
+        return {
+            "schema": 1,
+            "target": self.target,
+            "output_dir": str(self._dir),
+            "finding_sequence": self._finding_sequence,
+            "quarantine_sequence": self._quarantine_sequence,
+            "finding_hashes": sorted(self._finding_hashes),
+            "quarantine_hashes": sorted(self._quarantine_hashes),
+            "blocked_reasons": sorted(self._blocked_reasons),
+            "last_autocorrection": self.last_autocorrection,
+            "last_quarantine_reason": self.last_quarantine_reason,
+            "autocorrections": list(self.autocorrections),
+            "autocorrection_counts": dict(self.autocorrection_counts),
+            "quarantine_counts": dict(self.quarantine_counts),
+            "quarantine_revalidation_runs": self.quarantine_revalidation_runs,
+            "findings": [item.to_dict() for item in self._findings],
+            "quarantined": [item.to_dict() for item in self._quarantined],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict | None) -> "FindingsExporter":
+        if not isinstance(data, dict):
+            return cls()
+        exporter = cls(
+            target=str(data.get("target") or ""),
+            output_dir=str(data.get("output_dir") or "") or None,
+        )
+        exporter._finding_sequence = int(data.get("finding_sequence") or 0)
+        exporter._quarantine_sequence = int(data.get("quarantine_sequence") or 0)
+        exporter._finding_hashes = set(map(str, data.get("finding_hashes") or []))
+        exporter._quarantine_hashes = set(map(str, data.get("quarantine_hashes") or []))
+        exporter._blocked_reasons = set(map(str, data.get("blocked_reasons") or []))
+        exporter.last_autocorrection = str(data.get("last_autocorrection") or "")
+        exporter.last_quarantine_reason = str(data.get("last_quarantine_reason") or "")
+        exporter.autocorrections = list(map(str, data.get("autocorrections") or []))
+        exporter.autocorrection_counts = dict(data.get("autocorrection_counts") or {})
+        exporter.quarantine_counts = dict(data.get("quarantine_counts") or {})
+        exporter.quarantine_revalidation_runs = int(data.get("quarantine_revalidation_runs") or 0)
+        exporter._findings = [
+            item for item in (Finding.from_dict(raw) for raw in data.get("findings") or []) if item is not None
+        ]
+        exporter._quarantined = [
+            item for item in (Finding.from_dict(raw) for raw in data.get("quarantined") or []) if item is not None
+        ]
+        return exporter
+
     # ── 공개 API ──────────────────────────────────────────────────────────────
+
+    def process_observation(self, observation, extra_notes: str = "") -> Optional[Finding]:
+        """Promote evidence from one executor-owned observation.
+
+        Production callers must use this boundary so scope, exit status and
+        evidence provenance cannot be reconstructed from assistant prose.
+        """
+        if (
+            observation is None
+            or not getattr(observation, "completed", False)
+            or getattr(observation, "exit_code", None) not in (0, None)
+        ):
+            return None
+        context = dict(getattr(observation, "execution_context", {}) or {})
+        context.update(
+            {
+                "executed": True,
+                "observation_id": getattr(observation, "observation_id", ""),
+                "action_id": getattr(observation, "action_id", ""),
+                "target": getattr(observation, "target", ""),
+                "scope_key": getattr(observation, "scope_key", ""),
+                "source": getattr(observation, "source", "runtime"),
+                "tool_name": getattr(observation, "tool_name", ""),
+                "returncode": getattr(observation, "exit_code", None),
+                "success": bool(getattr(observation, "success", False)),
+                "output_digest": getattr(observation, "output_digest", ""),
+            }
+        )
+        arguments = getattr(observation, "arguments", {}) or {}
+        code_snippet = json.dumps(arguments, ensure_ascii=False, default=str)
+        before = {
+            item.id: (
+                item.confidence,
+                bool(item.confirmed),
+                tuple(item.observation_ids),
+            )
+            for item in self._findings
+        }
+        finding = self.process(
+            str(getattr(observation, "output", "")),
+            code_snippet=code_snippet,
+            extra_notes=extra_notes,
+            execution_context=context,
+        )
+        # A generic code runner can print arbitrary constants. Its output may
+        # create a candidate, but cannot become confirmed without a typed tool
+        # verifier or structured executor result proving the observation source.
+        source = str(getattr(observation, "source", ""))
+        tool_name = str(getattr(observation, "tool_name", ""))
+        structured_result = bool(context.get("result_extra"))
+        if (
+            finding is not None
+            and bool(getattr(finding, "confirmed", False))
+            and source == "code_block"
+            and tool_name in ("python", "bash", "code_block")
+            and not structured_result
+        ):
+            finding.confirmed = False
+            finding.confidence = CONF_POTENTIAL
+            if finding.severity == SEVERITY_CRITICAL:
+                finding.severity = SEVERITY_HIGH
+            finding.reason_code = "generic_runner_requires_typed_verifier"
+        observation_id = str(getattr(observation, "observation_id", ""))
+        output_digest = str(getattr(observation, "output_digest", ""))
+        touched = finding
+        if touched is None:
+            touched = next(
+                (
+                    item
+                    for item in self._findings
+                    if before.get(item.id)
+                    and before[item.id][:2] != (item.confidence, bool(item.confirmed))
+                ),
+                None,
+            )
+        if touched is not None and observation_id:
+            if observation_id not in touched.observation_ids:
+                touched.observation_ids.append(observation_id)
+            if output_digest and output_digest not in touched.evidence_refs:
+                touched.evidence_refs.append(output_digest)
+        return touched
 
     def process(
         self,

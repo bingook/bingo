@@ -6,6 +6,7 @@ from pathlib import Path
 from bingo.core.change_memory import (
     BINGO_AUTO_END,
     BINGO_AUTO_START,
+    MAX_AUTO_BLOCK_BYTES,
     WORKTREE_END,
     WORKTREE_START,
     _worktree_fingerprint,
@@ -274,7 +275,7 @@ def test_worktree_memory_ignores_bingo_generated_files_and_secret_lines(tmp_path
     tracked.write_text("value = 1\n", encoding="utf-8")
     subprocess.run(["git", "add", "tracked.py"], cwd=repo, check=True)
     subprocess.run(["git", "commit", "-qm", "initial"], cwd=repo, check=True)
-    (repo / ".bingo").mkdir()
+    (repo / ".bingo").mkdir(exist_ok=True)
     generated = repo / ".bingo" / "project-memory.md"
     generated.write_text("memory version 1\n", encoding="utf-8")
 
@@ -295,3 +296,33 @@ def test_worktree_memory_ignores_bingo_generated_files_and_secret_lines(tmp_path
     assert ".bingo/project-memory.md" not in content
     assert "sk-test-secret-value" not in content
     assert "`safe_value = 2`" in content
+
+
+def test_bingo_project_memory_auto_block_is_bounded(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    memory_root = repo / ".bingo" / "bingo-memory"
+    source = workspace_memory_path(repo, memory_root)
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text(
+        "# Workspace Memory\n\n"
+        f"{WORKTREE_START}\n"
+        "## Working tree snapshot (uncommitted)\n"
+        + "\n".join(f"M file_{index}.py" for index in range(500))
+        + f"\n{WORKTREE_END}\n\n"
+        "# Workspace Memory\n\n"
+        "<!-- commit:new -->\n"
+        "## Code change: latest safe change\n"
+        + ("large diff stat line\n" * 500),
+        encoding="utf-8",
+    )
+
+    project_memory = sync_bingo_project_memory(repo, memory_root)
+    content = project_memory.read_text(encoding="utf-8")
+    auto_start = content.index(BINGO_AUTO_START)
+    auto_end = content.index(BINGO_AUTO_END)
+    auto_block = content[auto_start:auto_end]
+
+    assert len(auto_block.encode("utf-8")) <= MAX_AUTO_BLOCK_BYTES + 800
+    assert "Auto-captured workspace memory truncated" in auto_block

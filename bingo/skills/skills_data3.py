@@ -2101,7 +2101,7 @@ print([r.status_code for r in results])""",
         "바이너리명이 'some-tool'인 다른 패키지를 설치. "
         "공격자는 인기 바이너리명과 같은 바이너리를 등록하여 "
         "다른 패키지명으로 배포 → 악성 스크립트 실행. "
-        "AI 에이전트(Claude Code, Copilot 등)가 도구를 npx로 자동 실행할 때 특히 위험."
+        "AI 에이전트가 도구를 npx로 자동 실행할 때 특히 위험."
     ),
     "tools": ["npm", "python3", "curl", "node"],
     "commands": [

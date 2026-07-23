@@ -58,6 +58,7 @@ downloads/
 headers.txt
 interesting_files.txt
 step*.txt
+resp_*.txt
 step*.html
 *_debug.html
 *_debug.js

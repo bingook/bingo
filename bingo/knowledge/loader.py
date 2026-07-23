@@ -3,7 +3,7 @@ bingo/knowledge/loader.py — 로컬 지식 베이스 로더
 
 읽기 우선순위:
   1순위: bingo/knowledge/base/  (프로젝트 내장, git에 포함 — GitHub 없어도 항상 사용 가능)
-  2순위: ~/.bingo/knowledge/    (사용자 추가 파일 + /cve sync 결과)
+  2순위: Bingo knowledge directory    (사용자 추가 파일 + /cve sync 결과)
 
 AI 대화 시 관련 KB 내용을 시스템 프롬프트에 동적 주입.
 카테고리 = 폴더명 (예: SQLi, XSS, SSRF, LFI, Auth, JWT, CVE, WAF …)
@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ..core.local_state import knowledge_dir
 
 # ── 경로 설정 ────────────────────────────────────────────────────────
 def _builtin_base() -> Path:
@@ -25,8 +26,8 @@ def _builtin_base() -> Path:
 
 
 def _user_kb_root() -> Path:
-    """사용자 추가 KB 경로 ~/.bingo/knowledge/ (선택적, /cve sync 결과)"""
-    d = Path.home() / ".bingo" / "knowledge"
+    """사용자 추가 KB 경로 (선택적, /cve sync 결과)"""
+    d = knowledge_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -69,7 +70,7 @@ class KBLoader:
 
     읽기 순서:
       1. bingo/knowledge/base/   — 내장 보안 지식 (GitHub 불필요)
-      2. ~/.bingo/knowledge/     — 사용자 파일 + /cve sync 결과
+      2. Bingo knowledge directory     — 사용자 파일 + /cve sync 결과
 
     사용법:
         kb = KBLoader()

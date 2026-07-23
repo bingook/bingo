@@ -1170,7 +1170,6 @@ class GnuboardSqliScanner:
 
         # Error-based
         for payload in ["'", '"', "' OR '1'='1", "' AND '1'='2"]:
-            import urllib.parse
             url = base_url + urllib.parse.quote(payload)
             try:
                 r = self.session.get(url, timeout=self.timeout)

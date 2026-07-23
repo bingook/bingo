@@ -65,7 +65,7 @@ _DEFAULT_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                "AppleWebKit/537.36 (KHTML, like Gecko) "
                "Chrome/125.0 Safari/537.36")
 
-def _sess(headers: Optional[Dict] = None) -> "requests.Session":
+def _sess(headers: Optional[Dict] = None) -> Any:
     s = _requests.Session()
     s.verify = False
     s.headers.update({"User-Agent": _DEFAULT_UA})

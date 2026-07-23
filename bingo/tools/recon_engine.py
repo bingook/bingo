@@ -89,7 +89,7 @@ class ReconEngine:
     # ── DNS 조회 ──────────────────────────────────────────────────────────────
     def resolve_ip(self, host: str) -> str | None:
         """VPN 우회 DNS 조회 — dig @8.8.8.8 사용 (v3.6.7)."""
-        import subprocess, re as _re
+        import re as _re
         for ns in ("8.8.8.8", "1.1.1.1"):
             try:
                 out = subprocess.check_output(

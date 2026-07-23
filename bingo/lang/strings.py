@@ -81,26 +81,18 @@ _STRINGS = {
     },
     # ── 명령어 ────────────────────────────────────────────────────
     "help_text": {
-        "ko": """/login <url> <id> <pw>   🔑 실제 로그인 실행 + 세션 쿠키 자동 저장
+        "ko": """/help                    도움말 표시
+/login <url> <id> <pw>   🔑 실제 로그인 실행 + 세션 쿠키 자동 저장
 /cred <id> <pw> [쿠키]  🔑 자격증명 수동 저장 (쿠키 없어도 OK)
 /session                 현재 인증 세션 확인 | /session clear 초기화
 /hint <메시지>           💬 AI 실행 도중 힌트 주입 (재실행 없이 방향 전환)
 /retry                   🔁 마지막 실패 단계만 재실행 (처음부터 재시작 불필요)
-/ctf <url>               🏁 웹 실습 환경 보안 점검 (--status / --resume=no / --headless=no)
-/scan <url>              빠른 정찰: WAF + 핑거프린트 + 민감파일
-/waf <url>               WAF 탐지 + 자동 우회 시도
 /crack [hash]            해시 크랙 — 온라인 조회 → 오프라인 크랙
-/stop                    실행 중인 크랙/스캔 중단
+/stop                    실행 중인 작업 중단
 /whitebox <경로|paste>   🔍 소스코드 화이트박스 분석 → 취약점 힌트 추출
-/agent [list|plan|priority] 🤖 취약점 전담 에이전트 관리
 /report [save|clear]     📋 Proof-by-exploitation 리포트
 /load <세션파일경로>      📂 이전 세션 불러오기 + AI 자동 재개 (경로 직접 붙여넣기도 가능)
-/tools                   도구 목록 + 자동 설치
-/tools install <이름>    특정 도구 자동 설치
-/tools install all       미설치 도구 전체 설치
 /model                   AI 모델 추가/변경
-/skill <키워드>          스킬 지식베이스 검색
-/kb                      로컬 지식베이스  /kb [list|search <kw>|show <name>|reload]
 /history                 대화 기록 보기
 /export                  대화를 .md 파일로 저장
 /config                  현재 설정 보기
@@ -108,27 +100,20 @@ _STRINGS = {
 /clear                   화면 지우기
 /quit                    종료
 
+운영 작업은 슬래시 명령 대신 일반 채팅으로 요청하세요.
 ⚡ Ctrl+C → 힌트 입력창 → 텍스트 입력 시 루프 유지 / Enter 시 중단""",
-        "zh": """/login <url> <id> <pw>   🔑 执行实际登录 + 自动保存会话 Cookie
+        "zh": """/help                    显示帮助
+/login <url> <id> <pw>   🔑 执行实际登录 + 自动保存会话 Cookie
 /cred <id> <pw> [Cookie] 🔑 手动保存凭据（无 Cookie 也可）
 /session                 查看当前认证会话 | /session clear 清除
 /hint <消息>             💬 执行中注入提示 (无需重启即可改变方向)
 /retry                   🔁 仅重试上次失败步骤 (无需从头重新启动)
-/ctf <url>               🏁 Web实验环境安全扫描 (--status / --resume=no / --headless=no)
-/scan <url>              快速侦察：WAF + 指纹识别 + 敏感文件
-/waf <url>               WAF 检测 + 自动绕过尝试
 /crack [hash]            哈希破解 — 在线查询 → 离线破解
-/stop                    停止正在运行的破解/扫描
+/stop                    停止正在运行的任务
 /whitebox <路径|paste>   🔍 白盒源码分析 → 提取漏洞提示
-/agent [list|plan|priority] 🤖 漏洞专属代理管理
 /report [save|clear]     📋 漏洞利用证明报告
 /load <会话文件路径>      📂 加载历史会话 + AI自动续接 (直接粘贴路径也可)
-/tools                   工具列表 + 自动安装
-/tools install <名称>    自动安装指定工具
-/tools install all       安装所有缺失工具
 /model                   添加/切换 AI 模型
-/skill <关键词>          搜索技能知识库
-/kb                      本地知识库  /kb [list|search <kw>|show <name>|reload]
 /history                 查看对话历史
 /export                  导出对话为 .md 文件
 /config                  查看当前配置
@@ -136,27 +121,20 @@ _STRINGS = {
 /clear                   清屏
 /quit                    退出
 
+运营类任务请直接用自然语言聊天提出。
 ⚡ Ctrl+C → 提示输入框 → 输入文字继续 / 直接回车停止""",
-        "en": """/login <url> <id> <pw>   🔑 Perform real login + auto-save session cookies
+        "en": """/help                    Show help
+/login <url> <id> <pw>   🔑 Perform real login + auto-save session cookies
 /cred <id> <pw> [cookie] 🔑 Manually store credentials (cookie optional)
 /session                 View auth session | /session clear to reset
 /hint <message>          💬 Inject hint mid-execution (redirect without restart)
 /retry                   🔁 Retry only the last failed step (no full restart)
-/ctf <url>               🏁 Web lab security scan (--status / --resume=no / --headless=no)
-/scan <url>              Quick recon: WAF + fingerprint + sensitive files
-/waf <url>               WAF detection + auto bypass attempt
 /crack [hash]            Hash crack — online lookup → offline crack
-/stop                    Stop running crack/scan
+/stop                    Stop the current task
 /whitebox <path|paste>   🔍 Whitebox source code analysis → extract attack hints
-/agent [list|plan|priority] 🤖 Vulnerability specialist agent management
 /report [save|clear]     📋 Proof-by-exploitation report
 /load <session-file>     📂 Load previous session + auto-resume AI (paste path directly too)
-/tools                   Tool list + auto-install
-/tools install <name>    Auto-install a specific tool
-/tools install all       Install all missing tools
 /model                   Add or switch AI model
-/skill <keyword>         Search skill knowledge base
-/kb                      Local knowledge base  /kb [list|search <kw>|show <name>|reload]
 /history                 View chat history
 /export                  Export chat as .md file
 /config                  View current settings
@@ -164,6 +142,7 @@ _STRINGS = {
 /clear                   Clear screen
 /quit                    Quit
 
+For operational work, ask in normal chat instead of slash commands.
 ⚡ Ctrl+C → hint prompt → type to continue loop / Enter to stop""",
     },
     "login_usage": {
@@ -213,9 +192,9 @@ _STRINGS = {
     "waf_internal":         {"ko": "내부 WAF 탐지 중...",        "zh": "内部 WAF 检测中...",       "en": "Running internal WAF detector..."},
     "waf_fingerprint":      {"ko": "핑거프린트...",              "zh": "指纹识别中...",            "en": "Fingerprinting..."},
     "waf_bypass_ok":        {"ko": "✓ 우회 성공",               "zh": "✓ 绕过成功",              "en": "✓ Bypass successful"},
-    "waf_bypass_fail":      {"ko": "우회 실패 — /waf 결과를 AI에게 물어보세요",
-                             "zh": "绕过失败 — 请将 /waf 结果发给 AI",
-                             "en": "Bypass failed — ask AI with /waf results"},
+    "waf_bypass_fail":      {"ko": "우회 실패 — 현재 결과를 채팅에 이어서 요청하세요",
+                             "zh": "绕过失败 — 请在聊天中继续请求分析当前结果",
+                             "en": "Bypass failed — continue in chat with the current results"},
     "waf_400_block_detected": {
         "ko": "⚠ WAF 400 차단 감지 — 고급 우회 기법 자동 적용 중",
         "zh": "⚠ 检测到WAF 400封锁 — 正在自动应用高级绕过技术",
@@ -477,22 +456,13 @@ _STRINGS = {
     "tools_installed":      {"ko": "설치됨",                    "zh": "已安装",                  "en": "installed"},
     "tools_all_ok":         {"ko": "모든 도구가 설치되어 있습니다.", "zh": "所有工具已安装。",       "en": "All tools are installed."},
     "tools_missing":        {"ko": "{n}개 도구 미설치.  자동 설치 옵션:", "zh": "{n} 个工具未安装。自动安装选项：", "en": "{n} tool(s) not installed. Auto-install options:"},
-    "tools_install_hint":   {"ko": "설치: /tools install <도구명>  또는  /tools install all\n  예)  /tools install nmap nuclei ffuf\n  예)  /tools install all",
-                             "zh": "安装: /tools install <名称>  或  /tools install all\n  例)  /tools install nmap nuclei ffuf\n  例)  /tools install all",
-                             "en": "Install: /tools install <name>  or  /tools install all\n  e.g.  /tools install nmap nuclei ffuf\n  e.g.  /tools install all"},
     "tools_install_all_ask":{"ko": "지금 없는 도구를 모두 설치할까요? (y/N)",
                              "zh": "立即安装所有缺失的工具吗？(y/N)",
                              "en": "Install all missing tools now? (y/N)"},
-    "tools_install_later":  {"ko": "나중에 /tools install <이름> 으로 개별 설치 가능",
-                             "zh": "稍后可用 /tools install <名称> 单独安装",
-                             "en": "Install later with /tools install <name>"},
     "tools_auto_install":   {"ko": "📦 도구 자동 설치",         "zh": "📦 工具自动安装",          "en": "📦 Auto-installing tools"},
     "tools_install_start":  {"ko": "📦 {n}개 도구 자동 설치 시작...", "zh": "📦 开始自动安装 {n} 个工具...", "en": "📦 Auto-installing {n} tool(s)..."},
     "tools_install_ok":     {"ko": "✓ {name} 설치 완료",        "zh": "✓ {name} 安装完成",       "en": "✓ {name} installed"},
     "tools_install_fail":   {"ko": "✗ {name} 설치 실패 — Python 폴백 사용", "zh": "✗ {name} 安装失败 — 使用 Python 回退", "en": "✗ {name} install failed — using Python fallback"},
-    "tools_usage_hint":     {"ko": "사용법: /tools install <도구명>  또는  /tools install all",
-                             "zh": "用法: /tools install <名称>  或  /tools install all",
-                             "en": "Usage: /tools install <name>  or  /tools install all"},
 
     # ── 세션/UI ──────────────────────────────────────────────────
     "session_saved":        {"ko": "📝 세션 자동 저장",          "zh": "📝 会话自动保存",          "en": "📝 Session auto-save"},
@@ -545,9 +515,6 @@ _STRINGS = {
     # ── 스킬 검색 ────────────────────────────────────────────────
     "skill_search_result":  {"ko": "스킬 검색",                  "zh": "技能搜索",                "en": "Skill search"},
     "skill_no_result":      {"ko": "'{kw}' 검색 결과 없음",      "zh": "'{kw}' 搜索无结果",        "en": "No results for '{kw}'"},
-    "skill_search_hint":    {"ko": "/skill <키워드>  로 검색  예) /skill sqli",
-                             "zh": "/skill <关键词> 搜索  例) /skill sqli",
-                             "en": "/skill <keyword> to search  e.g. /skill sqli"},
     "skill_module_title":   {"ko": "CyberSecurity-Skills 39 모듈", "zh": "CyberSecurity-Skills 39 模块", "en": "CyberSecurity-Skills 39 Modules"},
 
     # ── terminal.py 나머지 ────────────────────────────────────────
@@ -644,9 +611,6 @@ _STRINGS = {
                             "zh": "💡 发送 AI 消息时，此参考资料将自动注入上下文。",
                             "en": "💡 This reference is automatically injected into AI context on send."},
     "skill_local_packs":   {"ko": "📦 SecSkills 로컬 레퍼런스 팩", "zh": "📦 SecSkills 本地参考包", "en": "📦 SecSkills Local Reference Packs"},
-    "skill_search_tip":    {"ko": "💡 /skill <키워드> 로 특정 레퍼런스 검색 가능",
-                            "zh": "💡 使用 /skill <关键词> 搜索特定参考资料",
-                            "en": "💡 Use /skill <keyword> to search specific references"},
     "skill_db_label":      {"ko": "내장 DB 스킬",    "zh": "内置数据库技能",   "en": "Built-in DB skills"},
     "skill_col_refs":      {"ko": "레퍼런스 수",     "zh": "参考数量",        "en": "Refs"},
     "skill_col_main":      {"ko": "주요 레퍼런스",   "zh": "主要参考",        "en": "Main References"},
@@ -783,7 +747,7 @@ _STRINGS = {
     "sqli_size_diff_detected": {
         "ko": "⚡ 응답 크기 차이 감지 — SQLi 강제 우선 전환 (브루트포스/재탐색 중단)",
         "zh": "⚡ 检测到响应大小差异 — 强制切换SQLi优先（停止暴力破解/侦察）",
-        "en": "⚡ Response size diff detected — forcing SQLi priority (halting brute force/recon)",
+        "en": "⚡ Response size diff detected — forcing SQLi priority (halting low-signal alternatives)",
     },
     "sqli_size_force_hint": {
         "ko": "⚡ 크기 차이 기반 SQLi 강제 전환 유도 중...",
@@ -943,27 +907,6 @@ _SLASH_DESC = {
     "/history": {"ko": "대화 기록 보기",               "zh": "查看对话历史",          "en": "View chat history"},
     "/export":  {"ko": "대화 기록 파일로 저장",         "zh": "导出对话为 .md 文件",   "en": "Export chat as .md"},
     "/lang":    {"ko": "언어 변경",                    "zh": "切换语言",             "en": "Change language"},
-    "/scan":    {"ko": "빠른 레드팀 스캔  /scan <url>", "zh": "快速侦察  /scan <url>","en": "Quick recon  /scan <url>"},
-    "/waf":     {"ko": "WAF 탐지 + 자동 우회  /waf <url>","zh": "WAF检测+绕过  /waf <url>","en": "WAF detect + bypass  /waf <url>"},
-    "/crack":   {"ko": "해시 크랙  /crack [hash]  (인자 없으면 자동 추출)",
-                 "zh": "哈希破解  /crack [hash]  (省略则自动提取)",
-                 "en": "Hash crack  /crack [hash]  (auto-extract if omitted)"},
-    "/tools":   {"ko": "도구 목록 + 자동 설치  /tools [install <name>|all]",
-                 "zh": "工具列表+自动安装  /tools [install <名称>|all]",
-                 "en": "Tool list + auto-install  /tools [install <name>|all]"},
-    "/skill":           {"ko": "스킬 검색/설치  /skill <키워드>  또는  /skill install <url>",
-                        "zh": "技能搜索/安装  /skill <关键词>  或  /skill install <url>",
-                        "en": "Skill search/install  /skill <kw>  or  /skill install <url>"},
-    "/skill install":  {"ko": "스킬 설치  /skill install <github_url 또는 로컬경로>",
-                        "zh": "安装技能  /skill install <github_url 或 本地路径>",
-                        "en": "Install skill  /skill install <github_url or local_path>"},
-    "/stop":    {"ko": "자동 크랙 중단",               "zh": "停止自动破解",          "en": "Stop running crack"},
-    "/webshell":{"ko": "웹쉘 업로드 시도  /webshell <url>  (Gnuboard5/범용 GIF polyglot)",
-                 "zh": "Webshell上传  /webshell <url>  (Gnuboard5/通用GIF polyglot)",
-                 "en": "Webshell upload  /webshell <url>  (Gnuboard5/generic GIF polyglot)"},
-    "/mscan":   {"ko": "멀티 에이전트 병렬 스캔  /mscan <url>",
-                 "zh": "多智能体并发扫描  /mscan <url>",
-                 "en": "Multi-agent parallel scan  /mscan <url>"},
     "/login":   {"ko": "자격증명 등록/자동 로그인  /login <url> [user] [pass]",
                  "zh": "注册凭证/自动登录  /login <url> [user] [pass]",
                  "en": "Register creds + auto-login  /login <url> [user] [pass]"},
@@ -973,36 +916,19 @@ _SLASH_DESC = {
     "/session": {"ko": "현재 세션 정보 보기  /session [clear]",
                  "zh": "查看会话信息  /session [clear]",
                  "en": "View session info  /session [clear]"},
-    "/undo":    {"ko": "N단계 전으로 롤백  /undo [N]",
-                 "zh": "回滚N步  /undo [N]",
-                 "en": "Roll back N steps  /undo [N]"},
-    "/snapshots":{"ko": "저장된 스냅샷 목록 보기",
-                  "zh": "查看保存的快照列表",
-                  "en": "View saved snapshots"},
-    "/cost":    {"ko": "토큰 사용량 / 비용 확인",
-                 "zh": "查看 token 用量/费用",
-                 "en": "View token usage / cost"},
     "/retry":   {"ko": "마지막 요청 재시도",
                  "zh": "重试上一次请求",
                  "en": "Retry last request"},
     "/hint":    {"ko": "AI에게 힌트 주입  /hint <힌트 텍스트>",
                  "zh": "向AI注入提示  /hint <文本>",
                  "en": "Inject hint to AI  /hint <text>"},
-    "/install": {"ko": "EXE 분석 도구 설치  /install exe-deps",
-                 "zh": "安装EXE分析工具  /install exe-deps",
-                 "en": "Install EXE analysis deps  /install exe-deps"},
-    "/proxy":   {"ko": "프록시 풀 관리  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]",
-                 "zh": "代理池管理  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]",
-                 "en": "Proxy pool mgmt  /proxy [list|add|file|api|tor|rotate|test|unban|clear|off]"},
-    "/ctf":     {"ko": "🏁 웹 실습 환경 보안 점검  /ctf <url> [--status|--resume=no|--headless=no]",
-                 "zh": "🏁 Web实验环境安全扫描  /ctf <url> [--status|--resume=no|--headless=no]",
-                 "en": "🏁 Web lab security scan  /ctf <url> [--status|--resume=no|--headless=no]"},
+    "/crack":   {"ko": "해시 크랙  /crack [hash]  (인자 없으면 자동 추출)",
+                 "zh": "哈希破解  /crack [hash]  (省略则自动提取)",
+                 "en": "Hash crack  /crack [hash]  (auto-extract if omitted)"},
+    "/stop":    {"ko": "현재 작업 중단",               "zh": "停止当前任务",          "en": "Stop current task"},
     "/whitebox":{"ko": "소스코드 화이트박스 분석  /whitebox <경로> 또는 /whitebox paste",
                  "zh": "白盒源码分析  /whitebox <路径> 或 /whitebox paste",
                  "en": "Whitebox source analysis  /whitebox <path> or /whitebox paste"},
-    "/agent":   {"ko": "취약점 전담 에이전트  /agent [list|plan|priority <유형>]",
-                 "zh": "漏洞专属代理  /agent [list|plan|priority <类型>]",
-                 "en": "Vulnerability agents  /agent [list|plan|priority <type>]"},
     "/report":  {"ko": "Proof-by-exploitation 리포트  /report [save|clear]",
                  "zh": "漏洞利用证明报告  /report [save|clear]",
                  "en": "Proof-by-exploitation report  /report [save|clear]"},
@@ -1010,37 +936,6 @@ _SLASH_DESC = {
                  "zh": "加载历史会话 + AI自动续接  /load <文件路径>",
                  "en": "Load previous session + auto-resume AI  /load <file-path>"},
     "/quit":    {"ko": "종료",                        "zh": "退出",                "en": "Quit"},
-    # ── v3.4.0 신규 명령어 ────────────────────────────────────────
-    "/role":        {"ko": "역할 기반 테스트  /role [list|set <name>|info]",
-                     "zh": "角色测试模式  /role [list|set <name>|info]",
-                     "en": "Role-based testing  /role [list|set <name>|info]"},
-    "/vulns":       {"ko": "취약점 DB  /vulns [list|add|show <id>|del <id>|export]",
-                     "zh": "漏洞管理  /vulns [list|add|show <id>|del <id>|export]",
-                     "en": "Vuln database  /vulns [list|add|show <id>|del <id>|export]"},
-    "/board":       {"ko": "프로젝트 블랙보드  /board [show|set <k> <v>|del <k>|clear]",
-                     "zh": "项目黑板  /board [show|set <k> <v>|del <k>|clear]",
-                     "en": "Project blackboard  /board [show|set <k> <v>|del <k>|clear]"},
-    "/tools-ext":   {"ko": "외부 CLI 도구  /tools-ext [list|run <name>|reload]",
-                     "zh": "外部工具  /tools-ext [list|run <name>|reload]",
-                     "en": "External CLI tools  /tools-ext [list|run <name>|reload]"},
-    "/kb":          {"ko": "로컬 지식베이스  /kb [list|search <kw>|show <name>|reload]",
-                     "zh": "本地知识库  /kb [list|search <kw>|show <name>|reload]",
-                     "en": "Local knowledge base  /kb [list|search <kw>|show <name>|reload]"},
-    "/batch":       {"ko": "배치 멀티타겟  /batch [list|add <url>|run|status|clear]",
-                     "zh": "批量多目标  /batch [list|add <url>|run|status|clear]",
-                     "en": "Batch multi-target  /batch [list|add <url>|run|status|clear]"},
-    "/chain":       {"ko": "공격 체인 추적  /chain [show|add <step>|clear|export]",
-                     "zh": "攻击链追踪  /chain [show|add <step>|clear|export]",
-                     "en": "Attack chain tracker  /chain [show|add <step>|clear|export]"},
-    "/hitl":        {"ko": "인간 확인 게이트  /hitl [on|off|status|log]",
-                     "zh": "人工审批门  /hitl [on|off|status|log]",
-                     "en": "Human-in-the-loop gate  /hitl [on|off|status|log]"},
-    "/orch":        {"ko": "LLM 오케스트레이터  /orch [start <url>|stop|status|log|report]",
-                     "zh": "LLM编排器  /orch [start <url>|stop|status|log|report]",
-                     "en": "LLM orchestrator  /orch [start <url>|stop|status|log|report]"},
-    "/recon":         {"ko": "🔍 정보수집/자산수집: passive|active|full|js|nuclei|dorks",
-                       "zh": "🔍 信息/资产收集: passive|active|full|js|nuclei|dorks",
-                       "en": "🔍 Recon/asset collection: passive|active|full|js|nuclei|dorks"},
 }
 
 # ── v3.6.0: CVE/KB 메시지 (_STRINGS 에 추가 — get_strings() 반환 대상) ──────
@@ -1262,7 +1157,7 @@ _STRINGS.update({
                               "zh": "⚠️ AntSword 发送 \\x08\\x08 前缀 — 已通过 php://input 解析处理",
                               "en": "⚠️ AntSword sends \\x08\\x08 prefix — handled via php://input parsing"},
 
-    # ── /skill 명령어 UI ──────────────────────────────────────────
+    # ── 지식 검색 UI ──────────────────────────────────────────
     "skill_col_name":        {"ko": "스킬명 (SKILL_LOAD)",
                               "zh": "技能名 (SKILL_LOAD)",
                               "en": "Skill Name (SKILL_LOAD)"},
@@ -1274,9 +1169,9 @@ _STRINGS.update({
     "skill_already_builtin": {"ko": "⚡ {name} — 이미 내장됨 (설치 불필요)",
                               "zh": "⚡ {name} — 已内置（无需安装）",
                               "en": "⚡ {name} — already built-in (no install needed)"},
-    "skill_not_found_tip":   {"ko": "❌ '{name}' 스킬 없음 — /skill 로 전체 목록 확인",
-                              "zh": "❌ 未找到 '{name}' — 用 /skill 查看完整列表",
-                              "en": "❌ '{name}' not found — use /skill to list all"},
+    "skill_not_found_tip":   {"ko": "❌ '{name}' 지식 항목을 찾지 못했습니다",
+                              "zh": "❌ 未找到 '{name}' 知识项",
+                              "en": "❌ '{name}' knowledge item not found"},
 
     # ── 보고서 후 다음 단계 선택지 ────────────────────────────────
     "next_steps_after_report":  {"ko": "보고서 생성 완료 — 다음 단계를 선택하세요",
@@ -2192,8 +2087,8 @@ _STRINGS.update({
     # ── v5.1.8: sqlmap/ghauri/hydra BASH_ALLOWED 복구 ──
     "sqlmap_allowed_restored":  {
         "ko": "v5.1.8: sqlmap, ghauri, hydra, medusa, wafw00f, wfuzz, wpscan을 _BASH_ALLOWED에 추가 — curl 전환 시 누락으로 DB 덤프 불가했던 문제 수정",
-        "zh": "v5.1.8: 将sqlmap/ghauri/hydra/medusa/wafw00f/wfuzz/wpscan加入_BASH_ALLOWED — 修复curl迁移时遗漏导致无法DB dump的问题",
-        "en": "v5.1.8: Added sqlmap/ghauri/hydra/medusa/wafw00f/wfuzz/wpscan to _BASH_ALLOWED — fixed DB dump broken since curl transition"},
+        "zh": "v5.1.8: 将sqlmap, ghauri, hydra, medusa, wafw00f, wfuzz, wpscan加入_BASH_ALLOWED — 修复curl迁移时遗漏导致无法DB dump的问题",
+        "en": "v5.1.8: Added sqlmap, ghauri, hydra, medusa, wafw00f, wfuzz, wpscan to _BASH_ALLOWED — fixed DB dump broken since curl transition"},
     "sysprompt_sqlmap_allowed": {
         "ko": "v5.1.8: 시스템 프롬프트 'No sqlmap required' 삭제 → DB 덤프 시 sqlmap 적극 사용 지시",
         "zh": "v5.1.8: 删除系统提示'No sqlmap required' → 指示DB dump时主动使用sqlmap",
@@ -2437,9 +2332,9 @@ _STRINGS.update({
                                    "zh": "⚠ [SYNTAX PRECHECK #{n}] 检测到语法错误 — 自动修复失败。请检查f-string反斜杠或dict下标引号冲突。",
                                    "en": "⚠ [SYNTAX PRECHECK #{n}] SyntaxError detected — auto-fix failed. Check f-string backslash or dict subscript issues."},
     "bash_syntax_preflight_blocked": {
-        "ko": "⚠ Bash 문법 사전 검사 실패 — 실행을 차단하고 run_python 재작성을 요청합니다",
-        "zh": "⚠ Bash 语法预检失败 — 已阻止执行并请求改写为 run_python",
-        "en": "⚠ Bash syntax preflight failed — execution blocked; rewrite requested with run_python",
+        "ko": "⚠ Bash 문법 사전 검사 실패 — 실행을 차단하고 스크립트 경로 재작성을 요청합니다",
+        "zh": "⚠ Bash 语法预检失败 — 已阻止执行并请求改写为更稳定的脚本路径",
+        "en": "⚠ Bash syntax preflight failed — execution blocked; rewrite requested with a more stable script path",
     },
 
     # ── 인코딩 자동 감지 ──────────────────────────────────────────────
@@ -3537,9 +3432,9 @@ _STRINGS.update({
                                         "   格式: 每行一个代理 (例: socks5://1.2.3.4:1080 或 1.2.3.4:8080)",
                                    "en": "⚠ No valid proxies found in file: {path}\n"
                                         "   Format: one proxy per line (e.g. socks5://1.2.3.4:1080 or 1.2.3.4:8080)"},
-    "proxy_saved":               {"ko": "💾 프록시 설정 저장됨 (~/.config/bingo/proxy_pool.json)",
-                                   "zh": "💾 代理设置已保存 (~/.config/bingo/proxy_pool.json)",
-                                   "en": "💾 Proxy config saved (~/.config/bingo/proxy_pool.json)"},
+    "proxy_saved":               {"ko": "💾 프록시 설정 저장됨",
+                                   "zh": "💾 代理设置已保存",
+                                   "en": "💾 Proxy config saved"},
     "proxy_restored":            {"ko": "🔁 이전 세션 프록시 {n}개 복원됨 (/proxy list 로 확인)",
                                    "zh": "🔁 已恢复上次会话代理 {n} 个 (使用 /proxy list 查看)",
                                    "en": "🔁 Restored {n} proxies from last session (/proxy list to view)"},
@@ -4447,9 +4342,9 @@ _STRINGS.update({
         "en": "🤖 Vulnerability Specialist Agent List",
     },
     "agent_usage": {
-        "ko": "사용법: /agent [list|plan|priority <유형,유형,...>]",
-        "zh": "用法: /agent [list|plan|priority <类型,类型,...>]",
-        "en": "Usage: /agent [list|plan|priority <type,type,...>]",
+        "ko": "채팅으로 원하는 점검 방향을 말하면 자동으로 계획합니다",
+        "zh": "请在聊天中说明测试方向，Bingo 会自动规划",
+        "en": "Describe the testing direction in chat and Bingo will plan automatically",
     },
     # ── v3.2.82: Proof-by-exploitation 리포트 ──────────────────────
     "report_cleared": {
@@ -4645,9 +4540,9 @@ _STRINGS.update({
         "en": "⚠️  Could not parse conversation (not a bingo session file?)",
     },
     "load_usage": {
-        "ko": "사용법: /load <세션파일경로>\n예) /load ~/.config/bingo/sessions/session_20260629_134027.md\n\n💡 경로를 직접 붙여넣기해도 자동으로 인식됩니다",
-        "zh": "用法: /load <会话文件路径>\n例) /load ~/.config/bingo/sessions/session_20260629_134027.md\n\n💡 直接粘贴路径也会自动识别",
-        "en": "Usage: /load <session-file-path>\nEx)   /load ~/.config/bingo/sessions/session_20260629_134027.md\n\n💡 You can also paste the path directly without /load",
+        "ko": "사용법: /load <세션파일경로>\n예) /load session_20260629_134027.md\n\n💡 경로를 직접 붙여넣기해도 자동으로 인식됩니다",
+        "zh": "用法: /load <会话文件路径>\n例) /load session_20260629_134027.md\n\n💡 直接粘贴路径也会自动识别",
+        "en": "Usage: /load <session-file-path>\nEx)   /load session_20260629_134027.md\n\n💡 You can also paste the path directly without /load",
     },
     "load_auto_detected": {
         "ko": "📂 세션 파일 경로 감지됨 — 자동 로드 중...",
@@ -4849,28 +4744,9 @@ _STRINGS.update({
 
     # ── v3.3.0: CTF 항목 보안 점검 ─────────────────────────────────────────
     "ctf_usage": {
-        "ko": (
-            "사용법: /ctf <url>\n"
-            "  예) /ctf http://localhost:8888\n"
-            "      /ctf http://localhost:8888 --resume=no\n"
-            "      /ctf http://localhost:8888 --headless=no\n"
-            "      /ctf http://localhost:8888 --status\n"
-            '      /ctf http://lab.com --cookie "PHPSESSID=abc"'
-        ),
-        "zh": (
-            "用法: /ctf <url>\n"
-            "  例) /ctf http://localhost:8888\n"
-            "      /ctf http://localhost:8888 --resume=no\n"
-            "      /ctf http://localhost:8888 --headless=no\n"
-            "      /ctf http://localhost:8888 --status"
-        ),
-        "en": (
-            "Usage: /ctf <url>\n"
-            "  e.g. /ctf http://localhost:8888\n"
-            "       /ctf http://localhost:8888 --resume=no\n"
-            "       /ctf http://localhost:8888 --headless=no\n"
-            "       /ctf http://localhost:8888 --status"
-        ),
+        "ko": "운영형 실습 점검은 슬래시 명령 대신 채팅으로 목표와 범위를 요청하세요.",
+        "zh": "这类实验环境检查请直接在聊天中说明目标与范围，不再使用斜杠命令。",
+        "en": "For lab-style operational checks, describe the target and scope in chat instead of using a slash command.",
     },
     "ctf_start": {
         "ko": "🏁 웹 실습 환경 점검 시작: {url}",
@@ -4923,9 +4799,9 @@ _STRINGS.update({
         "en": "🏆 Solved: {solved}/{total} ({pct:.1f}%) | Failed: {failed} | {elapsed:.1f}s",
     },
     "ctf_state_saved": {
-        "ko": "💾 진행상황 자동 저장: ~/Desktop/dump/ctf_state/",
-        "zh": "💾 进度已自动保存: ~/Desktop/dump/ctf_state/",
-        "en": "💾 Progress auto-saved to ~/Desktop/dump/ctf_state/",
+        "ko": "💾 진행상황 자동 저장 완료",
+        "zh": "💾 进度已自动保存",
+        "en": "💾 Progress auto-saved",
     },
     "ctf_status_header": {
         "ko": "📊 웹 실습 진행상황",
@@ -5157,9 +5033,9 @@ _STRINGS.update({
         "en": "📚 Knowledge base reloaded",
     },
     "kb_usage": {
-        "ko": "사용법: /kb [list|search <키워드>|show <문서명>|reload]",
-        "zh": "用法: /kb [list|search <关键词>|show <文档名>|reload]",
-        "en": "Usage: /kb [list|search <kw>|show <name>|reload]",
+        "ko": "지식 베이스 관련 작업은 채팅으로 요청하세요.",
+        "zh": "知识库相关操作请直接在聊天中说明。",
+        "en": "Request knowledge-base work in chat instead of a slash command.",
     },
 
     # ── v3.6.0: KB 자동 주입 알림 ────────────────────────────────────
@@ -5169,9 +5045,9 @@ _STRINGS.update({
         "en": "📚 KB auto-loaded ({n} docs matched: {names})",
     },
     "kb_auto_hint": {
-        "ko": "💡 /kb search <키워드> 로 더 많은 관련 문서를 검색할 수 있습니다",
-        "zh": "💡 使用 /kb search <关键词> 可查找更多相关文档",
-        "en": "💡 Use /kb search <keyword> to find more related documents",
+        "ko": "💡 더 많은 관련 문서는 채팅으로 키워드를 요청해 검색할 수 있습니다",
+        "zh": "💡 如需更多相关文档，可直接在聊天中说明关键词进行检索",
+        "en": "💡 Ask for more related documents in chat with a keyword search request",
     },
 
     # ── v3.4.0: 공격 체인 ────────────────────────────────────────────
@@ -5515,31 +5391,31 @@ _STRINGS.update({
         "en": "(Input cancelled — type again or press Ctrl+C once more to quit)",
     },
 
-    # ── v3.5.22: Recon 모듈 — 자동 탐지 힌트 + /recon 커맨드 ─────────────────
+    # ── v3.5.22: 정보수집 모듈 — 자동 탐지 힌트 ─────────────────
     "recon_subdomain_hint": {
-        "ko": "🔍 도메인 컨텍스트 탐지 — /recon passive <domain> 으로 서브도메인/인증서 수집",
-        "zh": "🔍 检测到域名上下文 — 使用 /recon passive <domain> 收集子域名/证书",
-        "en": "🔍 Domain context detected — use /recon passive <domain> for subdomain/cert collection",
+        "ko": "🔍 도메인 컨텍스트 탐지 — 서브도메인/인증서 수집을 자동 제안합니다",
+        "zh": "🔍 检测到域名上下文 — 自动建议子域名/证书收集",
+        "en": "🔍 Domain context detected — subdomain/cert collection will be suggested automatically",
     },
     "recon_port_hint": {
-        "ko": "🗺 포트/서비스 컨텍스트 탐지 — /recon active <target> 으로 포트스캔 및 서비스 식별",
-        "zh": "🗺 检测到端口/服务上下文 — 使用 /recon active <target> 进行端口扫描",
-        "en": "🗺 Port/service context detected — use /recon active <target> for port scan & service ID",
+        "ko": "🗺 포트/서비스 컨텍스트 탐지 — 서비스 식별을 자동 제안합니다",
+        "zh": "🗺 检测到端口/服务上下文 — 自动建议服务识别",
+        "en": "🗺 Port/service context detected — service discovery will be suggested automatically",
     },
     "recon_asset_hint": {
-        "ko": "🗄 자산 수집 컨텍스트 탐지 — /recon full <domain> 으로 전체 자산 자동 수집 + P0-P3 분류",
-        "zh": "🗄 检测到资产收集上下文 — 使用 /recon full <domain> 自动收集资产并P0-P3分类",
-        "en": "🗄 Asset collection context detected — use /recon full <domain> for full recon + prioritization",
+        "ko": "🗄 자산 수집 컨텍스트 탐지 — 전체 자산 수집과 우선순위 분류를 자동 제안합니다",
+        "zh": "🗄 检测到资产收集上下文 — 自动建议资产收集和优先级分类",
+        "en": "🗄 Asset collection context detected — asset collection and prioritization will be suggested automatically",
     },
     "recon_js_hint": {
-        "ko": "📜 JS/API 컨텍스트 탐지 — /recon js <url> 로 JS 파일에서 숨겨진 엔드포인트/키 추출",
-        "zh": "📜 检测到JS/API上下文 — 使用 /recon js <url> 从JS文件提取隐藏端点/密钥",
-        "en": "📜 JS/API context detected — use /recon js <url> to extract hidden endpoints/keys from JS",
+        "ko": "📜 JS/API 컨텍스트 탐지 — 숨겨진 엔드포인트/키 분석을 자동 제안합니다",
+        "zh": "📜 检测到JS/API上下文 — 自动建议隐藏端点/密钥分析",
+        "en": "📜 JS/API context detected — hidden endpoint/key analysis will be suggested automatically",
     },
     "recon_nuclei_hint": {
-        "ko": "🧬 Nuclei 컨텍스트 탐지 — /recon nuclei <target> 으로 자동 템플릿 취약점 스캔",
-        "zh": "🧬 检测到Nuclei上下文 — 使用 /recon nuclei <target> 自动模板漏洞扫描",
-        "en": "🧬 Nuclei context detected — use /recon nuclei <target> for auto template vulnerability scan",
+        "ko": "🧬 템플릿 스캔 컨텍스트 탐지 — 자동 취약점 템플릿 점검을 제안합니다",
+        "zh": "🧬 检测到模板扫描上下文 — 自动建议漏洞模板检查",
+        "en": "🧬 Template scan context detected — vulnerability template checks will be suggested automatically",
     },
     # ── v3.6.8 FULL-UNLOCK 봉인 해제 관련 키 ─────────────────────────────
     "unlock_mode_active":       {"ko": "🔓 완전 강화 모드 활성화 — 봉인 해제됨 (v3.6.8)",
@@ -5650,34 +5526,34 @@ _STRINGS.update({
         "en": "🔍  Recon Module Suite (v3.9.0) — Info Gathering / Asset Collection",
     },
     "recon_help_passive": {
-        "ko": "  /recon passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
-        "zh": "  /recon passive <domain>   — 被动收集 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
-        "en": "  /recon passive <domain>   — Passive collection (crt.sh/BGPView/Shodan/FOFA/Dorks)",
+        "ko": "passive <domain>   — Passive 수집 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
+        "zh": "passive <domain>   — 被动收集 (crt.sh/BGPView/Shodan/FOFA/Dorks)",
+        "en": "passive <domain>   — Passive collection (crt.sh/BGPView/Shodan/FOFA/Dorks)",
     },
     "recon_help_active": {
-        "ko": "  /recon active  <target>   — Active 수집 (서브도메인 브루트/포트스캔/HTTP 프로빙)",
-        "zh": "  /recon active  <target>   — 主动收集 (子域名爆破/端口扫描/HTTP探测)",
-        "en": "  /recon active  <target>   — Active collection (subdomain brute/port scan/HTTP probe)",
+        "ko": "active  <target>   — Active 수집 (서브도메인 브루트/포트스캔/HTTP 프로빙)",
+        "zh": "active  <target>   — 主动收集 (子域名爆破/端口扫描/HTTP探测)",
+        "en": "active  <target>   — Active collection (subdomain brute/port scan/HTTP probe)",
     },
     "recon_help_full": {
-        "ko": "  /recon full    <domain>   — 전체 수행 + P0-P3 자산 우선순위 분류",
-        "zh": "  /recon full    <domain>   — 全量执行 + P0-P3资产优先级分类",
-        "en": "  /recon full    <domain>   — Full run + P0-P3 asset priority classification",
+        "ko": "full    <domain>   — 전체 수행 + P0-P3 자산 우선순위 분류",
+        "zh": "full    <domain>   — 全量执行 + P0-P3资产优先级分类",
+        "en": "full    <domain>   — Full run + P0-P3 asset priority classification",
     },
     "recon_help_js": {
-        "ko": "  /recon js      <url>      — JS 파일에서 API 엔드포인트/시크릿 추출",
-        "zh": "  /recon js      <url>      — 从JS文件提取API端点/密钥",
-        "en": "  /recon js      <url>      — Extract API endpoints/secrets from JS files",
+        "ko": "js      <url>      — JS 파일에서 API 엔드포인트/시크릿 추출",
+        "zh": "js      <url>      — 从JS文件提取API端点/密钥",
+        "en": "js      <url>      — Extract API endpoints/secrets from JS files",
     },
     "recon_help_nuclei": {
-        "ko": "  /recon nuclei  <target>   — Nuclei 템플릿 취약점 스캔",
-        "zh": "  /recon nuclei  <target>   — Nuclei模板漏洞扫描",
-        "en": "  /recon nuclei  <target>   — Nuclei template vulnerability scan",
+        "ko": "nuclei  <target>   — Nuclei 템플릿 취약점 스캔",
+        "zh": "nuclei  <target>   — Nuclei模板漏洞扫描",
+        "en": "nuclei  <target>   — Nuclei template vulnerability scan",
     },
     "recon_help_dorks": {
-        "ko": "  /recon dorks   <domain>   — Google/GitHub Dork 자동 생성",
-        "zh": "  /recon dorks   <domain>   — 自动生成Google/GitHub Dork",
-        "en": "  /recon dorks   <domain>   — Auto-generate Google/GitHub Dorks",
+        "ko": "dorks   <domain>   — Google/GitHub Dork 자동 생성",
+        "zh": "dorks   <domain>   — 自动生成Google/GitHub Dork",
+        "en": "dorks   <domain>   — Auto-generate Google/GitHub Dorks",
     },
     "recon_help_env": {
         "ko": "  환경변수(선택): SHODAN_KEY  FOFA_EMAIL  FOFA_KEY  HUNTER_KEY",
@@ -5685,20 +5561,13 @@ _STRINGS.update({
         "en": "  Env vars (optional): SHODAN_KEY  FOFA_EMAIL  FOFA_KEY  HUNTER_KEY",
     },
     "recon_unknown_sub": {
-        "ko": "알 수 없는 Recon 서브 명령. /recon 으로 도움말 확인",
-        "zh": "未知Recon子命令。输入 /recon 查看帮助",
-        "en": "Unknown Recon subcommand. Use /recon for help",
+        "ko": "알 수 없는 정보수집 요청입니다. 채팅으로 목표와 범위를 다시 말하세요",
+        "zh": "未知信息收集请求。请在聊天中重新说明目标和范围",
+        "en": "Unknown discovery request. Restate the target and scope in chat",
     },
-    # ── /tools-ext ──────────────────────────────────────────────────
     "tools_ext_no_tools": {
-        "ko": "정의된 외부 도구 없음. bingo/tools_ext/builtin/ 에 YAML 파일을 추가하세요",
-        "zh": "未定义外部工具。请在 bingo/tools_ext/builtin/ 添加 YAML 文件",
-        "en": "No external tools defined. Add YAML files to bingo/tools_ext/builtin/",
     },
     "tools_ext_run_usage": {
-        "ko": "사용법: /tools-ext run <도구명> [인자...]",
-        "zh": "用法: /tools-ext run <工具名> [参数...]",
-        "en": "Usage: /tools-ext run <tool_name> [args...]",
     },
     "tools_ext_reloaded": {
         "ko": "외부 도구 목록을 새로 불러왔습니다.",
@@ -5706,9 +5575,6 @@ _STRINGS.update({
         "en": "External tools reloaded.",
     },
     "tools_ext_usage": {
-        "ko": "사용법: /tools-ext [list|run <이름>|reload]",
-        "zh": "用法: /tools-ext [list|run <名称>|reload]",
-        "en": "Usage: /tools-ext [list|run <name>|reload]",
     },
     # v3.6.3 — 오탐 방지 규칙 관련 경고 메시지
     "sqli_warn_error_fp": {
@@ -7121,37 +6987,37 @@ _STRINGS.update({
         "en": "[v5.1.4] Time-based SQLi timing: START=$(date +%s%N) → curl → END=$(date +%s%N) → ELAPSED=$((END-START)/1000000)ms",
     },
     # ─────────────────────────────────────────────────────────────────
-    # v5.2.0 — TOOL_CALL 아키텍처 (환각 완전 차단)
+    # v5.2.0 — action runtime (환각 완전 차단)
     # ─────────────────────────────────────────────────────────────────
     "toolcall_arch_enabled": {
-        "ko": "[v5.2.0] TOOL_CALL 아키텍처 활성화 — LLM이 직접 Python 함수 호출 → bash 환각 완전 차단",
-        "zh": "[v5.2.0] TOOL_CALL 架构已启用 — LLM 直接调用 Python 函数 → 彻底消除 bash 幻觉",
-        "en": "[v5.2.0] TOOL_CALL architecture enabled — LLM calls Python functions directly → bash hallucination fully eliminated",
+        "ko": "[v5.2.0] action runtime 활성화 — LLM이 직접 Python 함수 호출 → bash 환각 완전 차단",
+        "zh": "[v5.2.0] action runtime已启用 — LLM 直接调用 Python 函数 → 彻底消除 bash 幻觉",
+        "en": "[v5.2.0] action runtime enabled — LLM calls Python functions directly → bash hallucination fully eliminated",
     },
     "toolcall_executing": {
-        "ko": "🔧 TOOL_CALL 실행 중",
-        "zh": "🔧 TOOL_CALL 执行中",
-        "en": "🔧 Executing TOOL_CALL",
+        "ko": "🔧 작업 실행 중",
+        "zh": "🔧 正在执行操作",
+        "en": "🔧 Executing action",
     },
     "toolcall_success": {
-        "ko": "✅ TOOL_CALL 성공",
-        "zh": "✅ TOOL_CALL 成功",
-        "en": "✅ TOOL_CALL succeeded",
+        "ko": "✅ 작업 성공",
+        "zh": "✅ 操作成功",
+        "en": "✅ Action succeeded",
     },
     "toolcall_failed": {
-        "ko": "⚠ TOOL_CALL 실패",
-        "zh": "⚠ TOOL_CALL 失败",
-        "en": "⚠ TOOL_CALL failed",
+        "ko": "⚠ 작업 실패",
+        "zh": "⚠ 操作失败",
+        "en": "⚠ Action failed",
     },
     "toolcall_json_error": {
-        "ko": "⛔ TOOL_CALL JSON 파싱 오류 — 형식: TOOL_CALL:{\"name\":\"함수명\",\"args\":{}}",
-        "zh": "⛔ TOOL_CALL JSON 解析错误 — 格式: TOOL_CALL:{\"name\":\"函数名\",\"args\":{}}",
-        "en": "⛔ TOOL_CALL JSON parse error — format: TOOL_CALL:{\"name\":\"func\",\"args\":{}}",
+        "ko": "⛔ 작업 JSON 파싱 오류",
+        "zh": "⛔ 操作 JSON 解析错误",
+        "en": "⛔ Action JSON parse error",
     },
     "toolcall_not_found": {
-        "ko": "⛔ TOOL_CALL 알 수 없는 함수 — TOOL_REGISTRY 에 없는 이름",
-        "zh": "⛔ TOOL_CALL 未知函数 — 不在 TOOL_REGISTRY 中",
-        "en": "⛔ TOOL_CALL unknown function — not in TOOL_REGISTRY",
+        "ko": "⛔ 알 수 없는 작업입니다",
+        "zh": "⛔ 未知操作",
+        "en": "⛔ Unknown action",
     },
     "toolcall_pentest_tools_missing": {
         "ko": "⛔ pentest_tools 모듈 로드 실패 — tools_ext/pentest_tools.py 확인 필요",
@@ -7159,24 +7025,24 @@ _STRINGS.update({
         "en": "⛔ pentest_tools module load failed — check tools_ext/pentest_tools.py",
     },
     "toolcall_result_preview": {
-        "ko": "TOOL_RESULT 미리보기 (상위 30줄)",
-        "zh": "TOOL_RESULT 预览（前30行）",
-        "en": "TOOL_RESULT preview (top 30 lines)",
+        "ko": "작업 결과 미리보기 (상위 30줄)",
+        "zh": "操作结果预览（前30行）",
+        "en": "Action result preview (top 30 lines)",
     },
     "toolcall_no_bash_needed": {
-        "ko": "✅ TOOL_CALL 처리 완료 — bash 블록 실행 불필요",
-        "zh": "✅ TOOL_CALL 处理完成 — 无需执行 bash 块",
-        "en": "✅ TOOL_CALL processed — no bash block execution needed",
+        "ko": "✅ 작업 처리 완료 — 추가 코드 블록 실행 불필요",
+        "zh": "✅ 操作处理完成 — 无需执行 bash 块",
+        "en": "✅ Action processed — no code block execution needed",
     },
     "toolcall_schema_injected": {
-        "ko": "[v5.2.0] TOOL_CALL 스키마 시스템 프롬프트에 동적 주입 완료",
-        "zh": "[v5.2.0] TOOL_CALL 架构已动态注入系统提示词",
-        "en": "[v5.2.0] TOOL_CALL schema dynamically injected into system prompt",
+        "ko": "[v5.2.0] action runtime schema injected into system prompt",
+        "zh": "[v5.2.0] action runtime已动态注入系统提示词",
+        "en": "[v5.2.0] action runtime schema injected into system prompt",
     },
     "toolcall_combined_method": {
-        "ko": "[v5.2.0] 통합 방식: LLM이 TOOL_CALL로 Python 함수 호출 → 함수 내부에서 bash/외부도구 실행 → 결과 반환",
-        "zh": "[v5.2.0] 组合方式: LLM 通过 TOOL_CALL 调用 Python 函数 → 函数内部执行 bash/外部工具 → 返回结果",
-        "en": "[v5.2.0] Combined method: LLM calls Python fn via TOOL_CALL → fn runs bash/external tools internally → returns result",
+        "ko": "[v5.2.0] 통합 방식: 런타임이 작업 실행 → 함수 내부에서 bash/외부도구 실행 → 결과 반환",
+        "zh": "[v5.2.0] 组合方式: 运行时执行操作 → 函数内部执行 bash/外部工具 → 返回结果",
+        "en": "[v5.2.0] Combined method: runtime executes actions → fn runs bash/external tools internally → returns result",
     },
 
     # ─────────────────────────────────────────────────────────────────
@@ -7203,7 +7069,7 @@ _STRINGS.update({
         "en": "[v5.2.1] Tool auto-detect — searches PATH/homebrew/go/pip all paths",
     },
     # ─────────────────────────────────────────────────────────────────
-    # v5.2.2 — bash 블록 미리보기 [/dim] 크래시 수정 + TOOL_CALL 루프 버그 수정
+    # v5.2.2 — bash 블록 미리보기 [/dim] 크래시 수정 + action loop bug 수정
     # ─────────────────────────────────────────────────────────────────
     "fix_dim_escape": {
         "ko": "[v5.2.2] bash 미리보기 [/dim] 크래시 수정 — Rich 마크업 이스케이프 적용",
@@ -7211,14 +7077,14 @@ _STRINGS.update({
         "en": "[v5.2.2] bash preview [/dim] crash fix — Rich markup escape applied",
     },
     "fix_toolcall_loop": {
-        "ko": "[v5.2.2] TOOL_CALL 루프 버그 수정 — TOOL_CALL만 있어도 bash 강제 재요청 안 함",
-        "zh": "[v5.2.2] 修复TOOL_CALL循环bug — 仅有TOOL_CALL时不再强制要求bash块",
-        "en": "[v5.2.2] TOOL_CALL loop bug fix — no forced bash re-request when only TOOL_CALL present",
+        "ko": "[v5.2.2] action loop bug 수정 — 작업만 있어도 bash 강제 재요청 안 함",
+        "zh": "[v5.2.2] 修复 action loop bug — 仅有操作时不再强制要求bash块",
+        "en": "[v5.2.2] action loop bug fix — no forced bash re-request when only action present",
     },
     "fix_toolcall_nested_json": {
-        "ko": "[v5.2.3] TOOL_CALL 중첩 JSON 파싱 버그 수정 — 비탐욕 정규식 → 괄호 카운터로 교체",
-        "zh": "[v5.2.3] 修复TOOL_CALL嵌套JSON解析bug — 用括号计数器替代非贪婪正则",
-        "en": "[v5.2.3] TOOL_CALL nested JSON parse fix — replaced non-greedy regex with brace counter",
+        "ko": "[v5.2.3] action nested JSON 파싱 버그 수정 — 비탐욕 정규식 → 괄호 카운터로 교체",
+        "zh": "[v5.2.3] 修复操作嵌套JSON解析bug — 用括号计数器替代非贪婪正则",
+        "en": "[v5.2.3] action nested JSON parse fix — replaced non-greedy regex with brace counter",
     },
     "fix_dir_fuzz_flags": {
         "ko": "[v5.2.4] dir_fuzz 수정 — ffuf 잘못된 -sf 플래그 제거 + macOS 워드리스트 자동 탐색 + 내장 미니 리스트",
@@ -7284,9 +7150,9 @@ _STRINGS.update({
         "en": "Whitebox context injection active",
     },
     "agent_priority_usage": {
-        "ko": "사용법: /agent priority sqli,xss,ssrf",
-        "zh": "用法: /agent priority sqli,xss,ssrf",
-        "en": "Usage: /agent priority sqli,xss,ssrf",
+        "ko": "채팅으로 우선순위를 말하세요. 예: SQLi와 XSS를 먼저 봐줘",
+        "zh": "请在聊天中说明优先级，例如先检查 SQLi 和 XSS",
+        "en": "Tell Bingo the priority in chat, e.g. check SQLi and XSS first",
     },
     "agent_priority_set": {
         "ko": "에이전트 우선순위 설정: ",
@@ -7404,9 +7270,6 @@ _STRINGS.update({
         "en": "Failed challenges:",
     },
     "ctf_load_error": {
-        "ko": "❌ ctf_lab_engine 로드 실패 — bingo/tools/ctf_lab_engine.py 확인",
-        "zh": "❌ ctf_lab_engine 加载失败 — 检查 bingo/tools/ctf_lab_engine.py",
-        "en": "❌ ctf_lab_engine load failed — check bingo/tools/ctf_lab_engine.py",
     },
     "ctf_check_error": {
         "ko": "❌ 웹 실습 점검 오류: {e}",
@@ -7424,24 +7287,24 @@ _STRINGS.update({
         "en": "🧬 Nuclei results:",
     },
     "scan_usage": {
-        "ko": "사용법: /scan <url>  예) /scan https://target.com",
-        "zh": "用法: /scan <url>  示例: /scan https://target.com",
-        "en": "Usage: /scan <url>  e.g. /scan https://target.com",
+        "ko": "빠른 사이트 점검은 채팅으로 타겟 URL과 원하는 범위를 설명하세요.",
+        "zh": "快速站点检查请直接在聊天中说明目标 URL 和范围。",
+        "en": "For a quick site check, describe the target URL and scope in chat.",
     },
     "mscan_usage": {
-        "ko": "사용법: /mscan <url>  예) /mscan https://target.com",
-        "zh": "用法: /mscan <url>  示例: /mscan https://target.com",
-        "en": "Usage: /mscan <url>  e.g. /mscan https://target.com",
+        "ko": "병렬 점검은 슬래시 명령 대신 채팅으로 타겟과 목표를 설명하세요.",
+        "zh": "并行检查请在聊天中说明目标与任务，而不是使用斜杠命令。",
+        "en": "For parallel scanning, describe the target and goal in chat instead of a slash command.",
     },
     "webshell_usage": {
-        "ko": "사용법: /webshell <url>  예) /webshell https://target.com",
-        "zh": "用法: /webshell <url>  示例: /webshell https://target.com",
-        "en": "Usage: /webshell <url>  e.g. /webshell https://target.com",
+        "ko": "업로드/실행 검증은 채팅으로 타겟과 목표를 설명하세요.",
+        "zh": "上传/执行验证请直接在聊天中说明目标与目标动作。",
+        "en": "For upload or execution verification, describe the target and goal in chat.",
     },
     "recon_usage": {
-        "ko": "사용법: /recon {sub} <도메인/타겟>",
-        "zh": "用法: /recon {sub} <域名/目标>",
-        "en": "Usage: /recon {sub} <domain/target>",
+        "ko": "채팅으로 정보수집 범위와 타겟을 말하세요",
+        "zh": "请在聊天中说明信息收集范围和目标",
+        "en": "Describe the discovery scope and target in chat",
     },
     "cve_removed": {
         "ko": "⚠️  /cve 명령이 제거되었습니다. CVE DB가 삭제되었습니다.",
@@ -7830,18 +7693,18 @@ _STRINGS.update({
         "ko": (
             "⛔ [SQLI_EXTRACTION_FAILURE] 반복 문자 '{char}' 감지 — "
             "커스텀 Boolean Oracle 추출 루프 오작동 (WAF가 SQL 함수 차단 또는 oracle 오보정). "
-            "커스텀 추출 루프를 즉시 중단하고 sqli_autoexploit TOOL_CALL 로 전환하라."
+            "커스텀 추출 루프를 즉시 중단하고 SQLi 자동 검증 작업 로 전환하라."
         ),
         "zh": (
             "⛔ [SQLI_EXTRACTION_FAILURE] 检测到重复字符 '{char}' — "
             "自定义 Boolean Oracle 提取循环故障 (WAF 屏蔽 SQL 函数或 Oracle 校准错误). "
-            "立即停止自定义提取循环，改用 sqli_autoexploit TOOL_CALL."
+            "立即停止自定义提取循环，改用 SQLi 자동 검증 작업."
         ),
         "en": (
             "⛔ [SQLI_EXTRACTION_FAILURE] Repeating char '{char}' detected — "
             "Custom Boolean Oracle extraction loop is malfunctioning "
             "(WAF blocking SQL functions or oracle miscalibration). "
-            "Stop all custom extraction loops immediately. Use sqli_autoexploit TOOL_CALL instead."
+            "Stop all custom extraction loops immediately. Use SQLi 자동 검증 작업 instead."
         ),
     },
     "autocorrect_runtime_pattern": {
@@ -8332,9 +8195,9 @@ _STRINGS.update({
     },
     # ── v6.2.57: terminal.py 하드코딩 한국어 다국어화 ─────────────────────────
     "tool_call_json_recovered": {
-        "ko": "⚠ TOOL_CALL JSON 자동복구 성공 ({name})",
-        "zh": "⚠ TOOL_CALL JSON 自动恢复成功 ({name})",
-        "en": "⚠ TOOL_CALL JSON auto-recovered ({name})",
+        "ko": "⚠ 작업 JSON 자동복구 성공 ({name})",
+        "zh": "⚠ 操作 JSON 自动恢复成功 ({name})",
+        "en": "⚠ Action JSON auto-recovered ({name})",
     },
     "scan_summary_prompt": {
         "ko": "위 스캔 결과를 분석하고 발견된 취약점을 요약해줘. 가장 심각한 것부터 정리하고, 다음 공격 단계를 추천해줘.",
@@ -8649,19 +8512,19 @@ _STRINGS.update({
             "🔄 [PROXY_CYCLE_NOTICE] 프록시 순환 자동 교정기 작동\n"
             "  현재 프록시({proxy})가 차단되었습니다.\n"
             "  다음 프록시({next_proxy})로 전환하여 재시도하세요:\n"
-            "  TOOL_CALL:{{\"name\":\"sqli_with_ip_rotation\",\"args\":{{\"url\":\"<URL>\",\"param\":\"<param>\",\"proxy_list\":{pool_json}}}}}"
+            "  Run SQLi validation with IP rotation for <URL> and <param> using the supplied proxy list."
         ),
         "zh": (
             "🔄 [PROXY_CYCLE_NOTICE] 代理轮换自动校正器已激活\n"
             "  当前代理({proxy})已被封锁。\n"
             "  请切换到下一个代理({next_proxy})重试:\n"
-            "  TOOL_CALL:{{\"name\":\"sqli_with_ip_rotation\",\"args\":{{\"url\":\"<URL>\",\"param\":\"<param>\",\"proxy_list\":{pool_json}}}}}"
+            "  Run SQLi validation with IP rotation for <URL> and <param> using the supplied proxy list."
         ),
         "en": (
             "🔄 [PROXY_CYCLE_NOTICE] Proxy cycle auto-corrector triggered\n"
             "  Current proxy ({proxy}) is blocked.\n"
             "  Rotate to next proxy ({next_proxy}):\n"
-            "  TOOL_CALL:{{\"name\":\"sqli_with_ip_rotation\",\"args\":{{\"url\":\"<URL>\",\"param\":\"<param>\",\"proxy_list\":{pool_json}}}}}"
+            "  Run SQLi validation with IP rotation for <URL> and <param> using the supplied proxy list."
         ),
     },
     # ── v6.2.125 루프/추출 자동교정기 ─────────────────────────────────────────
@@ -8669,19 +8532,19 @@ _STRINGS.update({
         "ko": (
             "⛔ [TILDE_LOOP_STOP] 틸드(~) 이진 추출 무한루프 감지 — 즉시 중단!\n"
             "원인: WAF가 모든 비교 쿼리 차단 → TRUE/FALSE 동일 → 항상 '~'(chr 126)으로 수렴.\n"
-            "⛔ run_python/run_bash 커스텀 이진 탐색 즉시 종료.\n"
+            "⛔ 현재 커스텀 이진 탐색 경로 즉시 종료.\n"
             "✅ Time-based 맹주입 또는 OOB DNS 또는 다른 공격면으로 전환."
         ),
         "zh": (
             "⛔ [TILDE_LOOP_STOP] 检测到波浪号(~)二分搜索无限循环 — 立即停止！\n"
             "原因：WAF拦截所有比较查询 → TRUE/FALSE相同 → 始终收敛到'~'(chr 126)。\n"
-            "⛔ 立即终止 run_python/run_bash 自定义二分搜索。\n"
+            "⛔ 立即终止当前自定义二分搜索路径。\n"
             "✅ 切换到时间盲注、OOB DNS 或其他攻击面。"
         ),
         "en": (
             "⛔ [TILDE_LOOP_STOP] Tilde (~) binary extraction infinite loop detected — STOP!\n"
             "Cause: WAF blocks all comparisons → TRUE/FALSE identical → always converges to '~' (chr 126).\n"
-            "⛔ Stop custom binary search in run_python/run_bash immediately.\n"
+            "⛔ Stop the current custom binary-search path immediately.\n"
             "✅ Switch to time-based blind injection, OOB DNS, or other attack surface."
         ),
     },

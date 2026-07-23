@@ -1,6 +1,6 @@
 """
 downloader.py — Go 바이너리 자동 다운로드 (GitHub Releases)
-~/.bingo/tools/ 에 저장, 플랫폼/아키텍처 자동 감지
+Bingo local tools directory에 저장, 플랫폼/아키텍처 자동 감지
 """
 from __future__ import annotations
 
@@ -15,7 +15,9 @@ import zipfile
 from pathlib import Path
 from typing import Callable
 
-TOOLS_DIR = Path.home() / ".bingo" / "tools"
+from ..core.local_state import tools_dir
+
+TOOLS_DIR = tools_dir()
 
 # Go 도구 GitHub Releases 정보
 GO_TOOLS: dict[str, dict] = {

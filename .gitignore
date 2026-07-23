@@ -18,6 +18,7 @@ pip-wheel-metadata/
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 .DS_Store

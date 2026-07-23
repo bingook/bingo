@@ -2,7 +2,7 @@
 bingo v3.2.71 — Target Memory (도메인별 영구 취약점 기억)
 
 같은 타겟을 재실행해도 이전 탐색 결과를 불러와 AI에게 주입.
-저장 위치: ~/.config/bingo/target_memory/<domain_hash>.json
+저장 위치: Bingo workspace target memory directory
 """
 from __future__ import annotations
 
@@ -13,8 +13,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any
 
+from .local_state import memory_dir
 
-_MEMORY_DIR = Path.home() / ".config" / "bingo" / "target_memory"
+
+_MEMORY_DIR = memory_dir() / "target_memory"
 
 
 def _domain_key(target: str) -> str:

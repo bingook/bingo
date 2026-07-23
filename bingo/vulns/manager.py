@@ -2,7 +2,7 @@
 bingo/vulns/manager.py — 취약점 관리 (SQLite CRUD)
 
 발견된 취약점을 로컬 SQLite DB에 저장·조회·통계.
-bingo 데이터 디렉토리(~/.bingo/vulns.db)를 기본 위치로 사용.
+Bingo workspace state directory를 기본 위치로 사용.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
+from ..core.local_state import workspace_state_dir
 
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
@@ -34,7 +35,7 @@ class Vuln:
 
 
 def _db_path() -> Path:
-    p = Path.home() / ".bingo" / "vulns.db"
+    p = workspace_state_dir() / "vulns.db"
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 

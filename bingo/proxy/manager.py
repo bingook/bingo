@@ -29,8 +29,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from ..core.local_state import state_dir
+
 # 세션 간 프록시 풀 저장 경로
-_PROXY_SAVE_PATH = Path.home() / ".config" / "bingo" / "proxy_pool.json"
+_PROXY_SAVE_PATH = state_dir() / "proxy_pool.json"
 
 
 # ── Tor stem import (선택적 — 없어도 동작) ────────────────────────

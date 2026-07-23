@@ -1,7 +1,7 @@
 """
 bingo v3.2.72 — Session Log Parser (세션 로그 자동 파싱 → target_memory 저장)
 
-세션 종료 시 ~/.config/bingo/sessions/session_*.md 를 자동 파싱해
+세션 종료 시 Bingo workspace session logs 를 자동 파싱해
 SQLi 포인트, 확인된 유저, 주요 엔드포인트를 target_memory에 저장.
 다음 세션 시작 시 이 정보가 AI에게 자동 주입되어 재탐색 없이 바로 공략.
 
@@ -13,8 +13,10 @@ import re
 from pathlib import Path
 from typing import NamedTuple
 
+from .local_state import session_dir
+
 # ── 세션 로그 저장 위치 ───────────────────────────────────────────
-_SESSIONS_DIR = Path.home() / ".config" / "bingo" / "sessions"
+_SESSIONS_DIR = session_dir()
 
 # ── 정규식 패턴 정의 ─────────────────────────────────────────────
 

@@ -3,7 +3,7 @@ Tool Executor — 외부 도구 실행 + 자동 설치 + Python 폴백
 
 우선순위:
   1. vendor/ 내장 (sqlmap, wafw00f)
-  2. 시스템 PATH 또는 ~/.bingo/tools/
+  2. 시스템 PATH 또는 Bingo local tools directory
   3. 자동 설치 시도 (brew/apt/pip/GitHub Releases)
   4. Python 폴백 구현 (모든 도구에 대해 순수 Python 대체)
 """
@@ -315,7 +315,7 @@ class ToolExecutor:
             if vendor_cmd:
                 return self._exec(tool, vendor_cmd + args, on_line, timeout)
 
-        # ── 2단계: 시스템 PATH 또는 ~/.bingo/tools/ ───────────────────
+        # ── 2단계: 시스템 PATH 또는 Bingo local tools directory ───────────────────
         info = ToolRegistry.probe(tool)
         if info.available and info.path:
             return self._exec(tool, [info.path] + args, on_line, timeout)

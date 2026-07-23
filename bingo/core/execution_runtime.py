@@ -30,6 +30,73 @@ class RuntimeDecision(str, Enum):
 
 
 @dataclass(frozen=True)
+class TargetIdentity:
+    raw: str
+    canonical: str
+    scheme: str = ""
+    host: str = ""
+
+    @classmethod
+    def from_target(cls, target: str) -> "TargetIdentity":
+        from urllib.parse import urlparse
+
+        raw = str(target or "").strip()
+        parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+        scheme = (parsed.scheme or "https").lower()
+        host = (parsed.netloc or parsed.path).split("/")[0].lower()
+        path = parsed.path if parsed.netloc else ""
+        canonical = f"{scheme}://{host}{path.rstrip('/')}"
+        return cls(raw=raw, canonical=canonical, scheme=scheme, host=host)
+
+    def scope_key(self, method: str = "GET", path: str = "/", param: str = "") -> str:
+        clean_path = path or "/"
+        if not clean_path.startswith("/"):
+            clean_path = "/" + clean_path
+        suffix = f":{param}" if param else ""
+        return f"{method.upper()}:{self.host}{clean_path}{suffix}"
+
+
+@dataclass(frozen=True)
+class ActionEnvelope:
+    target: TargetIdentity
+    technique: str
+    method: str = "GET"
+    path: str = "/"
+    param: str = ""
+    body: dict[str, Any] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    verifier: str = ""
+    node_id: str = "executor"
+    evidence_revision: str = "initial"
+
+    @property
+    def arguments(self) -> dict[str, Any]:
+        return {
+            "method": self.method.upper(),
+            "path": self.path,
+            "param": self.param,
+            "body": dict(self.body),
+            "headers": dict(self.headers),
+        }
+
+    @property
+    def arguments_digest(self) -> str:
+        material = json.dumps(self.arguments, sort_keys=True, ensure_ascii=False, default=str)
+        return hashlib.sha256(material.encode()).hexdigest()[:16]
+
+    def candidate(self) -> "ActionCandidate":
+        return ActionCandidate(
+            node_id=self.node_id,
+            target=self.target.canonical,
+            scope_key=self.target.scope_key(self.method, self.path, self.param),
+            technique=self.technique,
+            verifier=self.verifier,
+            arguments_digest=self.arguments_digest,
+            evidence_revision=self.evidence_revision,
+        )
+
+
+@dataclass(frozen=True)
 class ExecutionObservation:
     observation_id: str
     action_id: str

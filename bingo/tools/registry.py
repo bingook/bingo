@@ -2,7 +2,7 @@
 Tool Registry — 설치된 외부 도구를 자동 감지하고 경로를 반환
 우선순위:
   1. vendor/ 폴더 내장 버전 (sqlmap, wafw00f)
-  2. ~/.bingo/tools/ (Go 바이너리 자동 다운로드 위치)
+  2. Bingo local tools directory (Go 바이너리 자동 다운로드 위치)
   3. 시스템 PATH에 설치된 버전
   4. 없으면 설치 힌트 표시
 """
@@ -13,17 +13,19 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..core.local_state import tools_dir
+
 # bingo 패키지 루트 기준 vendor 폴더
 _VENDOR_DIR = Path(__file__).parent.parent.parent / "vendor"
 _SQLMAP_PY  = _VENDOR_DIR / "sqlmap" / "sqlmap.py"
 _WAFW00F_PY = _VENDOR_DIR / "wafw00f" / "wafw00f" / "main.py"
 
 # 자동 다운로드된 Go 바이너리 위치
-_BINGO_TOOLS_DIR = Path.home() / ".bingo" / "tools"
+_BINGO_TOOLS_DIR = tools_dir()
 
 
 def _find_binary(name: str) -> str | None:
-    """~/.bingo/tools/ → 시스템 PATH 순서로 바이너리 탐색"""
+    """Bingo local tools directory → 시스템 PATH 순서로 바이너리 탐색"""
     local = _BINGO_TOOLS_DIR / name
     if local.exists():
         return str(local)
@@ -128,7 +130,7 @@ def get_tool_cmd(name: str) -> list[str]:
 
     탐색 순서:
       1. shutil.which(name)          → 시스템 PATH
-      2. ~/.bingo/tools/<name>       → bingo 자동 다운로드 위치
+      2. Bingo local tools directory<name>       → bingo 자동 다운로드 위치
       3. ~/.local/bin/<name>         → pip install --user / manual
       4. /usr/local/bin/<name>
       5. /opt/homebrew/bin/<name>    → macOS Homebrew

@@ -8,7 +8,7 @@ bingo/knowledge/cve_sync.py — CVE / Exploit KB 추가 동기화 (선택적)
 trickest/cve    : CVE PoC 마크다운 (1999-현재)  — 추가 데이터
 bikini/exploitarium : 0-day PoC + 취약점 연구    — 추가 데이터
 
-동기화 결과는 ~/.bingo/knowledge/ 에 저장되며
+동기화 결과는 Bingo knowledge directory 에 저장되며
 KBLoader가 내장 base/ 다음 순서로 로드합니다.
 
 사용:
@@ -28,16 +28,17 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from ..core.local_state import cache_dir, knowledge_dir
 
 # ── 기본 경로 ────────────────────────────────────────────────────────
 def _kb_root() -> Path:
-    d = Path.home() / ".bingo" / "knowledge"
+    d = knowledge_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def _cache_dir() -> Path:
-    d = Path.home() / ".bingo" / ".cve_cache"
+    d = cache_dir() / "cve"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -74,7 +75,7 @@ class CVESyncer:
     """
     trickest/cve + bikini/exploitarium 동기화 관리자.
 
-    동기화 결과는 ~/.bingo/knowledge/CVE/ 와 ~/.bingo/knowledge/Exploitarium/ 에 저장.
+    동기화 결과는 Bingo knowledge directoryCVE/ 와 Bingo knowledge directoryExploitarium/ 에 저장.
     """
 
     TRICKEST_URL   = "https://github.com/trickest/cve.git"
@@ -108,7 +109,7 @@ class CVESyncer:
 
     # ── trickest/cve 동기화 ──────────────────────────────────────────
     def sync_cve(self, progress_cb=None) -> dict:
-        """trickest/cve 클론/업데이트 → ~/.bingo/knowledge/CVE/ 로 변환"""
+        """trickest/cve 클론/업데이트 → Bingo knowledge directoryCVE/ 로 변환"""
         if not self._git_available():
             return {"ok": False, "error": "git not found"}
 
@@ -161,7 +162,7 @@ class CVESyncer:
 
     # ── bikini/exploitarium 동기화 ───────────────────────────────────
     def sync_exploit(self, progress_cb=None) -> dict:
-        """exploitarium 클론/업데이트 → ~/.bingo/knowledge/Exploitarium/ 로 변환"""
+        """exploitarium 클론/업데이트 → Bingo knowledge directoryExploitarium/ 로 변환"""
         if not self._git_available():
             return {"ok": False, "error": "git not found"}
 

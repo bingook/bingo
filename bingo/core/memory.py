@@ -4,7 +4,7 @@ bingo/core/memory.py — autoDream 세션 간 메모리 시스템 (v6.2.151)
 bingo 자체 개발 세션-to-세션 영구 기억 엔진.
 
 ## 스토리지 레이아웃
-  ~/.config/bingo/memory/
+  Bingo workspace memory directory/
   ├── MEMORY.md                          # 글로벌 영구 지식
   └── {workspace_hash}/                  # blake3-like hash of cwd
       ├── MEMORY.md                      # 워크스페이스/타겟별 지식
@@ -38,10 +38,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
+from .local_state import memory_dir
+
 logger = logging.getLogger(__name__)
 
 # ── 경로 상수 ─────────────────────────────────────────────────────────────────
-_MEM_ROOT = Path.home() / ".config" / "bingo" / "memory"
+_MEM_ROOT = memory_dir()
 _GLOBAL_MEMORY = _MEM_ROOT / "MEMORY.md"
 _DB_PATH = _MEM_ROOT / "bingo_memory.db"
 

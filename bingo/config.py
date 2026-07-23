@@ -1,29 +1,12 @@
 from __future__ import annotations
 import json
-import os
-import sys
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
+from .core.local_state import config_dir
 from .models.base import ModelConfig
 
 
-def _config_dir() -> Path:
-    """OS별 설정 디렉토리 반환"""
-    if sys.platform == "win32":
-        # Windows: %APPDATA%\bingo
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        return base / "bingo"
-    elif sys.platform == "darwin":
-        # macOS: ~/Library/Application Support/bingo
-        return Path.home() / "Library" / "Application Support" / "bingo"
-    else:
-        # Linux/BSD: ~/.config/bingo
-        xdg = os.environ.get("XDG_CONFIG_HOME", "")
-        base = Path(xdg) if xdg else Path.home() / ".config"
-        return base / "bingo"
-
-
-CONFIG_DIR = _config_dir()
+CONFIG_DIR = config_dir()
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 

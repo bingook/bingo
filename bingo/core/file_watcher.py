@@ -17,6 +17,8 @@ import os, time, threading
 from pathlib import Path
 from typing import Callable
 
+from .local_state import artifact_dir
+
 
 class FileWatcher:
     """
@@ -98,7 +100,7 @@ class AgentOutputWatcher(FileWatcher):
 
     자동 감지 파일:
       - /tmp/bingo_agent/*.py 실행 결과
-      - ~/.bingo/output/*.json / *.txt
+      - Bingo artifact output *.json / *.txt
       - /tmp/bingo_findings.*
     """
 
@@ -109,7 +111,7 @@ class AgentOutputWatcher(FileWatcher):
         import tempfile
         default_dirs = [
             Path(tempfile.gettempdir()) / "bingo_agent",
-            Path.home() / ".bingo" / "output",
+            artifact_dir() / "output",
         ]
         for d in default_dirs:
             d.mkdir(parents=True, exist_ok=True)
@@ -153,7 +155,7 @@ class AgentOutputWatcher(FileWatcher):
 
     def save_finding(self, name: str, content: str) -> Path:
         """발견 사항을 파일로 저장 (자동 감지됨)."""
-        out_dir = Path.home() / ".bingo" / "output"
+        out_dir = artifact_dir() / "output"
         out_dir.mkdir(parents=True, exist_ok=True)
         ts = int(time.time())
         path = out_dir / f"{name}_{ts}.txt"

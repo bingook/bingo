@@ -3,8 +3,9 @@ bingo Agent Tools — AI 스크립트에서 import해서 바로 쓰는 빌트인
 AI가 매번 기본 HTTP/SQLi 로직을 재작성하지 않아도 됨.
 
 사용법 (AI 스크립트 맨 위에):
-    import sys, os
-    sys.path.insert(0, os.path.expanduser("~/.bingo"))
+    import sys
+    from bingo.core.local_state import tools_dir
+    sys.path.insert(0, str(tools_dir()))
     from agent_tools import T
     t = T("https://target.com/page?id=1")
 
@@ -661,12 +662,13 @@ class T:
 
 
 def install_tools():
-    """~/.bingo/ 에 모든 툴 모듈 복사 — AI 스크립트에서 import 가능하게 함."""
-    import shutil, os
+    """로컬 상태 디렉터리에 모든 툴 모듈 복사 — AI 스크립트에서 import 가능하게 함."""
+    import shutil
     from pathlib import Path
+    from bingo.core.local_state import tools_dir as bingo_tools_dir
     tools_dir = Path(__file__).parent
-    dst_dir = Path.home() / ".bingo"
-    dst_dir.mkdir(exist_ok=True)
+    dst_dir = bingo_tools_dir()
+    dst_dir.mkdir(parents=True, exist_ok=True)
 
     for module in ["agent_tools.py", "recon_tools.py", "web_tools.py", "auth_tools.py"]:
         src = tools_dir / module
@@ -690,8 +692,9 @@ def quick_scan(target_url: str, level: int = 2) -> dict:
         from agent_tools import quick_scan
         result = quick_scan("https://target.com/page?id=1")
     """
-    import sys, os
-    sys.path.insert(0, os.path.expanduser("~/.bingo"))
+    import sys
+    from bingo.core.local_state import tools_dir
+    sys.path.insert(0, str(tools_dir()))
 
     report: dict = {"target": target_url, "level": level, "findings": {}}
 

@@ -17,6 +17,7 @@ import sys, os, shutil
 from pathlib import Path
 from typing import Any
 
+from .local_state import tools_dir as bingo_tools_dir
 from .parallel_runner import ParallelRunner, Task
 
 def _get_t(key: str, default: str = "") -> str:
@@ -28,9 +29,9 @@ def _get_t(key: str, default: str = "") -> str:
 
 
 def _ensure_tools_installed() -> None:
-    """~/.bingo/ 에 모든 툴 파일 자동 설치."""
-    bingo_dir = Path.home() / ".bingo"
-    bingo_dir.mkdir(exist_ok=True)
+    """로컬 상태 디렉터리에 모든 툴 파일 자동 설치."""
+    bingo_dir = bingo_tools_dir()
+    bingo_dir.mkdir(parents=True, exist_ok=True)
     tools_dir = Path(__file__).parent.parent / "tools"
 
     for module in ["agent_tools.py", "recon_tools.py", "web_tools.py", "auth_tools.py"]:

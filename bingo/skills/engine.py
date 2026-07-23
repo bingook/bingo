@@ -70,13 +70,8 @@ SKILLS_REPO = "https://github.com/Hi-FullHouse/CyberSecurity-Skills.git"
 
 # bingo 데이터 디렉토리 (기존 config.py CONFIG_DIR와 동일 위치)
 def _skills_dir() -> Path:
-    import sys
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        return base / "bingo" / "skills"
-    elif sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "bingo" / "skills"
-    return Path.home() / ".config" / "bingo" / "skills"
+    from ..core.local_state import config_dir
+    return config_dir() / "skills"
 
 
 SKILLS_DIR = _skills_dir()

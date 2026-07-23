@@ -8,6 +8,7 @@ import re
 import time
 import random
 import urllib.parse
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Callable
 

@@ -1,10 +1,12 @@
 from bingo.core.execution_runtime import (
     ActionCandidate,
+    ActionEnvelope,
     EvidenceDelta,
     ExecutionObservation,
     MissionPhase,
     MissionRuntime,
     RuntimeDecision,
+    TargetIdentity,
     reduce_mission,
 )
 
@@ -124,3 +126,35 @@ def test_provider_failure_is_terminal_and_serializable() -> None:
     assert restored.phase == MissionPhase.FAILED_PROVIDER
     assert reduce_mission(restored) == RuntimeDecision.REPORT
     assert restored.provider_failure["status_code"] == 400
+
+
+def test_target_identity_canonicalizes_executor_owned_target() -> None:
+    identity = TargetIdentity.from_target("Example.TEST/admin/")
+
+    assert identity.raw == "Example.TEST/admin/"
+    assert identity.canonical == "https://example.test/admin"
+    assert identity.host == "example.test"
+    assert identity.scope_key("post", "login", "user") == "POST:example.test/login:user"
+
+
+def test_action_envelope_produces_stable_candidate_from_path_only_state() -> None:
+    target = TargetIdentity.from_target("https://example.test")
+    envelope = ActionEnvelope(
+        target=target,
+        technique="boolean_oracle",
+        method="GET",
+        path="/search",
+        param="q",
+        body={"q": "test"},
+        node_id="planner-proposed-path",
+        evidence_revision="rev1",
+    )
+    candidate = envelope.candidate()
+    same = envelope.candidate()
+
+    assert candidate == same
+    assert candidate.target == "https://example.test"
+    assert candidate.scope_key == "GET:example.test/search:q"
+    assert candidate.technique == "boolean_oracle"
+    assert candidate.arguments_digest == envelope.arguments_digest
+    assert candidate.evidence_revision == "rev1"

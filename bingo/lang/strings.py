@@ -4970,9 +4970,9 @@ _STRINGS.update({
         "en": "🚫 Forbidden language guard active — real-time refusal blocking",
     },
     "hook_reverselab_rules_loaded": {
-        "ko": "📋 행동 규범 로드 완료 (reverselab AGENTS.md)",
-        "zh": "📋 行为规范加载完成 (reverselab AGENTS.md)",
-        "en": "📋 Work style rules loaded (reverselab AGENTS.md)",
+        "ko": "📋 행동 규범 로드 완료",
+        "zh": "📋 行为规范加载完成",
+        "en": "📋 Work style rules loaded",
     },
     "hook_pre_tool_injected": {
         "ko": "💉 Pre-tool-call 컨텍스트 훅 주입 완료",

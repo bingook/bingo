@@ -33,7 +33,7 @@ BINGO_MEMORY_FILE = Path(".bingo") / "project-memory.md"
 BINGO_AUTO_START = "<!-- bingo-project-memory:auto:start -->"
 BINGO_AUTO_END = "<!-- bingo-project-memory:auto:end -->"
 HIGHLIGHT_SKIP_PATHS = {
-    "AGENTS.md",
+    "LOCAL_INSTRUCTIONS.md",
     ".bingo/instruction.md",
     ".bingo/project-memory.md",
 }
@@ -117,7 +117,7 @@ def workspace_memory_path(
 
 
 def bingo_project_memory_path(cwd: str | Path) -> Path:
-    """Return the project-local memory file that AGENTS.md tells Bingo to read."""
+    """Return the project-local memory file that local workspace instructions tells Bingo to read."""
     return Path(cwd).resolve() / BINGO_MEMORY_FILE
 
 
@@ -407,7 +407,7 @@ def sync_bingo_project_memory(
     """Mirror workspace memory into `.bingo/project-memory.md` for future Bingo runs.
 
     The auto block is replaced on every sync while any manual notes outside the
-    block are preserved. AGENTS.md is responsible for making future Bingo
+    block are preserved. local workspace instructions is responsible for making future Bingo
     sessions load this file.
     """
     repo = Path(cwd).resolve()

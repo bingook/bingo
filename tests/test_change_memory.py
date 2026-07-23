@@ -237,23 +237,23 @@ def test_bingo_project_memory_sync_compacts_nested_workspace_history(tmp_path: P
     assert "stale/generated/payload.txt" not in content
 
 
-def test_worktree_highlights_skip_agents_and_bingo_instruction_noise(tmp_path: Path) -> None:
+def test_worktree_highlights_skip_local_instruction_noise(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
     (repo / ".bingo").mkdir()
-    (repo / "AGENTS.md").write_text("base\n", encoding="utf-8")
+    (repo / "LOCAL_INSTRUCTIONS.md").write_text("base\n", encoding="utf-8")
     (repo / ".bingo" / "instruction.md").write_text("base\n", encoding="utf-8")
     (repo / "tracked.py").write_text("value = 1\n", encoding="utf-8")
     subprocess.run(
-        ["git", "add", "AGENTS.md", ".bingo/instruction.md", "tracked.py"],
+        ["git", "add", "LOCAL_INSTRUCTIONS.md", ".bingo/instruction.md", "tracked.py"],
         cwd=repo,
         check=True,
     )
     subprocess.run(["git", "commit", "-qm", "initial"], cwd=repo, check=True)
-    (repo / "AGENTS.md").write_text("base\nFORBIDDEN_PHRASE_TABLE\n", encoding="utf-8")
+    (repo / "LOCAL_INSTRUCTIONS.md").write_text("base\nFORBIDDEN_PHRASE_TABLE\n", encoding="utf-8")
     (repo / ".bingo" / "instruction.md").write_text("base\nPROMPT_LAYER\n", encoding="utf-8")
     (repo / "tracked.py").write_text("value = 1\nvalue = 2\n", encoding="utf-8")
 

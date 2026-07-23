@@ -12,7 +12,7 @@ bingo v6.1.0 — 직공 전용 시스템 프롬프트
 # [REMOVED v6.1.0] TGTYLAB_LAYER — 거부 우회 레이어 제거 (직공 무관)
 TGTYLAB_LAYER = ""
 REVERSELAB_RULES = r"""
-# WORK STYLE RULES (from reverselab AGENTS.md)
+# WORK STYLE RULES
 
 - 主动推进任务，不要频繁询问确认 / Proactively advance tasks, no repeated confirmations
 - 遇到明确目标时，直接制定计划并执行 / Given a clear target, plan and execute immediately

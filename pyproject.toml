@@ -80,5 +80,4 @@ exclude = [
     "*.log",
     ".github",
     "push.sh",
-    "AGENTS.md",
 ]

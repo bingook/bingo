@@ -9363,16 +9363,27 @@ class BingoTerminal:
                     fid for fid, value in _after.items()
                     if fid in _before and value[:2] != _before[fid][:2]
                 )
+                _node_id = self._task_node_for_action(
+                    _observation.tool_name, _observation.arguments
+                )
+                _coverage_tools = {
+                    "http_get", "web_tech_detect", "crawl", "dir_enum",
+                    "robots", "sitemap", "js_extract", "waf_detect",
+                    "recon", "browser_recon", "playwright_recon",
+                }
+                _coverage_changed = bool(
+                    _finding is not None
+                    or _node_id in {"recon", "crawl"}
+                    or str(_observation.tool_name).lower() in _coverage_tools
+                    or str(_observation.output or "").strip()
+                )
                 _delta = EvidenceDelta(
                     finding_ids=_new_ids,
                     promoted_ids=_promoted_ids,
-                    coverage_changed=bool(_finding is not None and not _new_ids and not _promoted_ids),
+                    coverage_changed=_coverage_changed and not (_new_ids or _promoted_ids),
                 )
                 self._mission_runtime.record_observation(_observation, _delta)
                 if getattr(self, "_intel_ready", False):
-                    _node_id = self._task_node_for_action(
-                        _observation.tool_name, _observation.arguments
-                    )
                     self._task_graph.reconcile(
                         _node_id,
                         changed=_delta.changed,

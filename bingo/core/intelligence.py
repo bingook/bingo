@@ -175,8 +175,18 @@ class TaskGraph:
             )
 
     def ready_nodes(self) -> list[TaskNode]:
-        """현재 실행 가능한 노드 반환 (의존성 충족 + pending)."""
-        done_ids = {n.node_id for n in self._nodes.values() if n.status == "satisfied"}
+        """현재 실행 가능한 노드 반환 (의존성 충족 + pending).
+
+        Exhausted prerequisites still unlock downstream work. A recon/crawl step
+        can produce no vulnerability finding while still proving enough coverage
+        to try the next semantic phase. Blocking on only `satisfied` made broad
+        missions stop after one low-signal tech-detect observation.
+        """
+        done_ids = {
+            n.node_id
+            for n in self._nodes.values()
+            if n.status in ("satisfied", "exhausted")
+        }
         return [
             n for n in self._nodes.values()
             if n.status == "pending" and all(d in done_ids for d in n.depends_on)

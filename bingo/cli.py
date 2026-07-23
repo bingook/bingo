@@ -135,7 +135,6 @@ def _run_scan_mode(target: str, cfg: BingoConfig, args: list[str], s: dict | Non
     """bingo scan <url> — 완전 자동 Red Team 모드 (인가 시스템 포함)"""
     from rich.live import Live
     from rich.spinner import Spinner
-    from rich.text import Text
     from .core.authorization import create_auth_context
     import os
 
@@ -245,7 +244,7 @@ PYPI_PACKAGE    = "bingo-ai"
 PYPI_JSON_URL   = f"https://pypi.org/pypi/{PYPI_PACKAGE}/json"
 
 
-def _detect_install_method() -> tuple[str, "Path | None"]:
+def _detect_install_method() -> tuple[str, object | None]:
     """
     설치 방법 자동 감지.
     반환값: ('git' | 'pip', git_root_or_None)
@@ -273,7 +272,7 @@ def _run_update(sl: dict, lang: str = "en") -> None:
     _labels = {
         "ko": {
             "checking":      "📡 최신 버전 확인 중...",
-            "method_git":    "📂 설치 방식: git clone — git pull 로 업데이트합니다",
+            "method_git":    "📂 설치 방식: git clone — 원격 main 기준으로 업데이트합니다",
             "method_pip":    "📦 설치 방식: pip — PyPI 에서 업데이트합니다",
             "latest":        "✅ 이미 최신 버전입니다",
             "found":         "🆕 새 버전 발견",
@@ -288,7 +287,7 @@ def _run_update(sl: dict, lang: str = "en") -> None:
         },
         "zh": {
             "checking":      "📡 正在检查最新版本...",
-            "method_git":    "📂 安装方式: git clone — 将使用 git pull 更新",
+            "method_git":    "📂 安装方式: git clone — 将同步到远程 main",
             "method_pip":    "📦 安装方式: pip — 将从 PyPI 更新",
             "latest":        "✅ 已是最新版本",
             "found":         "🆕 发现新版本",
@@ -303,7 +302,7 @@ def _run_update(sl: dict, lang: str = "en") -> None:
         },
         "en": {
             "checking":      "📡 Checking for latest version...",
-            "method_git":    "📂 Installed via git clone — updating with git pull",
+            "method_git":    "📂 Installed via git clone — syncing to remote main",
             "method_pip":    "📦 Installed via pip — updating from PyPI",
             "latest":        "✅ Already up to date",
             "found":         "🆕 New version available",
@@ -335,12 +334,29 @@ def _run_update(sl: dict, lang: str = "en") -> None:
         console.print(f"[#00d4aa]{lb['method_git']}[/]")
         console.print(f"[#00d4aa]{lb['upgrading_git']}[/]\n")
         try:
+            _status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(git_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if _status:
+                console.print(f"\n[#ff4444]{lb['fail_git']}[/]")
+                console.print(f"[#4a4a4a]  cd {git_root} && git status --short[/]")
+                console.print(f"[#4a4a4a]  commit/stash local changes, then rerun bingo --update[/]")
+                return
             subprocess.run(
-                ["git", "pull", "origin", "main"],
+                ["git", "fetch", "origin", "main"],
                 cwd=str(git_root),
                 check=True,
             )
-            # git pull 후 editable install 재실행 — 실행 파일에 최신 코드 반영
+            subprocess.run(
+                ["git", "reset", "--hard", "origin/main"],
+                cwd=str(git_root),
+                check=True,
+            )
+            # git sync 후 editable install 재실행 — 실행 파일에 최신 코드 반영
             console.print(f"[#4a4a4a]{lb['pip_install']}[/]")
             _pip_result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-e", ".", "-q"],
@@ -354,7 +370,7 @@ def _run_update(sl: dict, lang: str = "en") -> None:
             console.print(f"\n[#00ff41]{lb['done']}[/]")
         except subprocess.CalledProcessError:
             console.print(f"\n[#ff4444]{lb['fail_git']}[/]")
-            console.print(f"[#4a4a4a]  cd {git_root} && git pull origin main[/]")
+            console.print(f"[#4a4a4a]  cd {git_root} && git fetch origin main && git reset --hard origin/main[/]")
         return
 
     # ────────────────────────────────────────────────────────────────

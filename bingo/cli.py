@@ -239,7 +239,8 @@ def _run_waf_test(target: str, s: dict | None = None) -> None:
         console.print(f"[#00ff41]{s['cli_waf_none']}[/]")
 
 
-CURRENT_VERSION = "2.3.26"
+from . import __version__ as _pkg_version
+CURRENT_VERSION = _pkg_version
 PYPI_PACKAGE    = "bingo-ai"
 PYPI_JSON_URL   = f"https://pypi.org/pypi/{PYPI_PACKAGE}/json"
 
@@ -350,7 +351,43 @@ def _run_update(sl: dict, lang: str = "en") -> None:
                 ["git", "fetch", "origin", "main"],
                 cwd=str(git_root),
                 check=True,
+                capture_output=True,
             )
+            _local_hash = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(git_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            _remote_hash = subprocess.run(
+                ["git", "rev-parse", "origin/main"],
+                cwd=str(git_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if _local_hash == _remote_hash:
+                console.print(f"[#00ff41]{lb['latest']}[/] [#4a4a4a](v{CURRENT_VERSION})[/]")
+                return
+            _ahead = subprocess.run(
+                ["git", "rev-list", "--count", "HEAD..origin/main"],
+                cwd=str(git_root),
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            _behind = subprocess.run(
+                ["git", "rev-list", "--count", "origin/main..HEAD"],
+                cwd=str(git_root),
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if _behind and int(_behind) > 0:
+                console.print(
+                    f"[#ff4444]로컬에 push 안 된 커밋 {_behind}개 있음 — "
+                    f"먼저 push 하거나 stash 후 재시도[/]"
+                )
+                return
             subprocess.run(
                 ["git", "reset", "--hard", "origin/main"],
                 cwd=str(git_root),

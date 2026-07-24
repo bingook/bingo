@@ -3886,6 +3886,23 @@ class BingoTerminal:
         import re as _re
         display = _re.sub(r"SKILL_LOAD:\s*[^\n]*\n?", "", display)
 
+        # ── 대용량 반복 블록 제거 (DeepSeek 등 모델이 같은 단락 반복 생성할 때) ──
+        def _dedup_blocks(text: str, min_len: int = 200) -> str:
+            parts = _re.split(r'(\n\n+)', text)
+            seen: dict[str, int] = {}
+            out = []
+            for part in parts:
+                key = part.strip()
+                if len(key) < min_len or not key:
+                    out.append(part)
+                    continue
+                if key not in seen:
+                    seen[key] = 1
+                    out.append(part)
+                # 두 번째 이상은 버림
+            return ''.join(out)
+        display = _dedup_blocks(display)
+
         self.console.print()
 
         # ── v3.2.86: Web3/DApp 감사 JSON 감지 → Rich 패널로 교체 출력 ──
@@ -7318,7 +7335,19 @@ class BingoTerminal:
 
                 lines_out.append(_stripped)
 
-            return "\n".join(lines_out)
+            _final = "\n".join(lines_out)
+            # ── (3) sqlmap 타임아웃/재시도 자동 주입 ──────────────────────────
+            # 모델이 --timeout/--retries 빠트려도 강제 삽입 (20분+ 무한실행 방지)
+            if _re.search(r'\bsqlmap\b', _final):
+                _add: list[str] = []
+                if '--timeout' not in _final:
+                    _add.append('--timeout=30')
+                if '--retries' not in _final:
+                    _add.append('--retries=1')
+                if _add:
+                    _extra = ' ' + ' '.join(_add)
+                    _final = _re.sub(r'\bsqlmap\b', 'sqlmap' + _extra, _final, count=1)
+            return _final
 
         # v3.2.91/94: 정상 코드 실행 경로 → 연속 카운터 리셋
         self._loop_block_consecutive = 0

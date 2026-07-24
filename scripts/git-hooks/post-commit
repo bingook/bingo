@@ -1,0 +1,74 @@
+#!/bin/sh
+# bingo post-commit: record commit to workspace memory
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+python_bin=${PYTHON:-python3}
+hook="$repo_root/.claude/hooks/bingo-memory-hook.py"
+
+# Record commit to workspace MEMORY.md
+"$python_bin" - "$repo_root" <<'PYEOF' >/dev/null 2>&1 || true
+import sys, subprocess, json, time, pathlib, textwrap, re
+
+repo = pathlib.Path(sys.argv[1])
+mem_root = repo / ".bingo" / "bingo-memory"
+if not mem_root.exists():
+    sys.exit(0)
+
+def git(args):
+    r = subprocess.run(["git"] + args, cwd=str(repo), capture_output=True, text=True, timeout=8, check=False)
+    return r.stdout.strip()
+
+commit_hash = git(["rev-parse", "HEAD"])
+short = commit_hash[:12]
+subject = git(["log", "-1", "--format=%s"])
+body = git(["log", "-1", "--format=%b"]).strip()
+files = git(["diff-tree", "--no-commit-id", "-r", "--name-status", "HEAD"])
+diff_stat = git(["show", "--stat", "--no-patch", "--format=", "HEAD"])
+committed = git(["log", "-1", "--format=%cI"])
+recorded = time.strftime("%Y-%m-%dT%H:%M:%S+08:00")
+
+marker = f"<!-- commit:{commit_hash} -->"
+
+for mem_file in mem_root.rglob("MEMORY.md"):
+    content = mem_file.read_text(encoding="utf-8")
+    if marker in content:
+        sys.exit(0)  # already recorded
+
+    # Build entry
+    body_section = f"\n###    Résumé\n{body}\n" if body else ""
+    entry = f"""{marker}
+## Code change: {subject}
+- Commit: `{short}`
+- Recorded: {recorded}
+- Committed: {committed}
+{body_section}
+### Files
+```text
+{files}
+```
+
+### Diff Stat
+```text
+{diff_stat}
+```
+
+"""
+    # Prepend after header
+    if "# Workspace Memory" in content:
+        idx = content.index("# Workspace Memory")
+        insert_at = content.index("\n", idx) + 1
+        # skip blank lines
+        while insert_at < len(content) and content[insert_at] in ("\n", ">"):
+            insert_at = content.index("\n", insert_at) + 1
+        new_content = content[:insert_at] + "\n" + entry + content[insert_at:]
+    else:
+        new_content = content.rstrip() + "\n\n" + entry
+
+    mem_file.write_text(new_content, encoding="utf-8")
+    break
+PYEOF
+
+# Also trigger checkpoint update
+if [ -f "$hook" ]; then
+    echo '{"hook_event_name":"Stop"}' | "$python_bin" "$hook" >/dev/null 2>&1 || true
+fi

@@ -9242,6 +9242,10 @@ class BingoTerminal:
             _meaningful_progress = (
                 _has_new_findings
                 or (getattr(_delta, "fact_ids", ()) and len(getattr(_delta, "fact_ids", ())) > 0)
+                or bool(getattr(_delta, "promoted_ids", ()))
+                or self._has_meaningful_loop_progress(
+                    current_response if isinstance(current_response, str) else ""
+                )
             )
             if not _meaningful_progress:
                 self._dl_no_progress += 1
@@ -12419,6 +12423,12 @@ class BingoTerminal:
             r"(?:shell|RCE)\s*(?:obtained|confirmed|verified)",
             r"(?:셸|RCE)\s*(?:획득|확인)",
             r"(?:Shell|RCE)\s*(?:获取|确认)",
+            r"(?:Content-Length|size|bytes?|length)\s*[:=]?\s*\d{3,6}\b.*(?:vs|→|->|versus|!=)\s*\d{3,6}\b",
+            r"\b\d{3,6}\s*(?:bytes?|바이트|b)\b.*(?:다[르른]|differ|변화|차이|changed)",
+            r"(?:boolean|blind)\s*(?:oracle|injection|sqli)",
+            r"WAITFOR\s+DELAY.*(?:confirm|success|detected|발견|확인)",
+            r"(?:time.based|시간.기반).*(?:confirm|success|injection|확인)",
+            r"(?:response\s+size|응답\s*크기|响应.?大小)\s*(?:differ|diff|차이|다[르른]|不同)",
         )
         return any(_re_progress.search(p, text, _re_progress.IGNORECASE) for p in patterns)
 

@@ -97,6 +97,7 @@ Stack-based priority:
 - Java/Spring: target actuator endpoints, JNDI/deserialization, Spring Expression injection, auth bypass via path normalization (/..;/admin).
 - PHP/Gnuboard/WordPress: file upload bypass (polyglot, double extension, .pht/.phar), template injection, SQLi in legacy params.
 - ASP.NET: ViewState deserialization, path traversal via Unicode, IIS short filename disclosure, web.config leak.
+- IIS/ASP Classic (MSSQL): MSSQL time-based blind (WAITFOR DELAY '0:0:5'), error-based via cast/convert, stacked queries (xp_cmdshell, OPENROWSET). Test loginmode/encmode/hidden params for boolean oracle (size differential = injection point). Physical path in IIS error → try file read via SQLi. Use IIS tilde (~) short name enumeration to discover hidden files/dirs.
 
 WAF-aware escalation (if direct attack blocked):
 1. Identify WAF type from response patterns (403 body, Server header, cookie names like bigipcookie/cf_clearance).
@@ -105,6 +106,7 @@ WAF-aware escalation (if direct attack blocked):
 4. Try transport bypass: HTTP/1.0 downgrade, Connection: close, request splitting.
 5. Try origin bypass: find real IP behind WAF via DNS history, CT logs, subdomain IP comparison, email headers.
 6. If all WAF bypass fails: shift to authenticated testing (register account → test from inside) or target sibling services/subdomains.
+7. WebKnight (HTTP 999 "No Hacking"): avoid OR-based and UNION payloads entirely. Use time-based blind (WAITFOR DELAY), inline comments (/**/), hex encoding (0x..), and IIS Unicode normalization (%u0027). Rotate User-Agent per request. Test via direct IP with --host-header to bypass DNS-level blocks.
 
 Lateral expansion (if front door is hardened):
 - Enumerate subdomains (web.*, api.*, dev.*, stage.*, mail.*) and test each independently.
@@ -119,6 +121,15 @@ Speed and stealth:
 - If IP gets blocked (HTTP 000/timeout after previous success), wait 30s and retry with different path.
 - NEVER run full port scans (nmap -p1-65535 or -p1-10000) in initial recon. Use targeted ports only: -p 80,443,8080,8443,3306,22,21,25,3389,9090. Add --host-timeout 60s always.
 - Keep nmap scans short: -T4 --open --host-timeout 60s -p <specific_ports>. Full range scans are a last resort after initial recon confirms unusual services.
+
+[TOOL SYNTAX — CRITICAL RULES]
+sqlmap:
+- To bypass CDN/VPN/WAF DNS: use direct IP with --host-header. Example: sqlmap -u "http://1.2.3.4/login.asp" --host-header "target.com" --data "uid=test&passwd=test" --dbms=mssql --technique=T --delay=2
+- NEVER use --resolve (sqlmap does not support this flag).
+- When using -r (request file): create the req.txt in the SAME script block, not a separate parallel block. Example:
+  printf 'POST /login.asp HTTP/1.1\nHost: target.com\n...' > /tmp/req.txt && sqlmap -r /tmp/req.txt --batch --dbms=mssql
+- For MSSQL time-based blind behind WAF: --technique=T --time-sec=5 --tamper=space2comment,charencode --delay=3
+- For IIS/ASP behind WebKnight: --tamper=space2mssqlhash,charunicodeencode --random-agent --delay=3
 
 [CHAT-FIRST RESPONSE STYLE]
 - Explain the current hypothesis, the next meaningful check, and what evidence would confirm or refute it.

@@ -267,7 +267,7 @@ def test_repeated_inconclusive_attack_automatically_pivots(tmp_path: Path) -> No
     assert "ADAPTIVE_OFFENSE_PIVOT" in second
     assert "vector=sqli" in second
     assert "next=error" in second
-    assert "do not stop exploration" in second
+    assert "do not repeat the same request" in second
 
 
 def test_orchestrator_rejects_self_authored_evidence_and_completion() -> None:

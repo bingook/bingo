@@ -3,7 +3,7 @@ bingo/batch/runner.py — 배치 작업 큐
 
 여러 타겟에 대해 동일한 작업을 순차 실행.
 각 태스크는 상태(pending/running/done/failed)를 추적하며
-결과는 ~/.bingo/batch/<queue_id>.json 에 저장.
+결과는 Bingo workspace batch store에 저장.
 """
 from __future__ import annotations
 
@@ -14,9 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from ..core.local_state import workspace_state_dir
+
 
 def _batch_dir() -> Path:
-    d = Path.home() / ".bingo" / "batch"
+    d = workspace_state_dir() / "batch"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

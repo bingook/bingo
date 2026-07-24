@@ -9061,6 +9061,41 @@ class BingoTerminal:
                 label=f"Loop #{self._exec_loop_count} — {(self._agent_state.get('target') or '?')[:40]}",
             )
 
+            # ── Semi-auto checkpoint: pause every N loops for user confirmation ──
+            _CHECKPOINT_INTERVAL = int(os.environ.get("BINGO_CHECKPOINT_INTERVAL", "10"))
+            if self._exec_loop_count > 0 and self._exec_loop_count % _CHECKPOINT_INTERVAL == 0:
+                _ck_lang = getattr(self.config, "lang", "en")
+                _ck_header = {
+                    "ko": f"📋 {self._exec_loop_count}회 루프 완료 — 중간 보고",
+                    "zh": f"📋 {self._exec_loop_count} 次循环完成 — 中间报告",
+                    "en": f"📋 {self._exec_loop_count} loops completed — progress checkpoint",
+                }.get(_ck_lang, f"📋 Checkpoint at loop #{self._exec_loop_count}")
+                _fe = getattr(self, "_findings_exporter", None)
+                _confirmed = sum(1 for f in getattr(_fe, "findings", []) if f.confirmed) if _fe else 0
+                _potential = len(getattr(_fe, "findings", [])) if _fe else 0
+                _ck_summary = {
+                    "ko": f"  확인된 발견: {_confirmed}개 / 후보: {_potential}개 / 루프: {self._exec_loop_count}회",
+                    "zh": f"  已确认: {_confirmed} / 候选: {_potential} / 循环: {self._exec_loop_count}",
+                    "en": f"  Confirmed: {_confirmed} / Candidates: {_potential} / Loops: {self._exec_loop_count}",
+                }.get(_ck_lang, f"  Findings: {_confirmed}/{_potential}")
+                self.console.print(f"\n[{THEME['info']}]{_ck_header}[/]")
+                self.console.print(f"[{THEME['dim']}]{_ck_summary}[/]")
+                _ck_prompt = {
+                    "ko": "  계속 진행하시겠습니까? (Enter=계속 / 'stop'=중단+보고): ",
+                    "zh": "  是否继续？(Enter=继续 / 'stop'=停止并生成报告): ",
+                    "en": "  Continue? (Enter=continue / 'stop'=stop and report): ",
+                }.get(_ck_lang, "  Continue? (Enter/stop): ")
+                try:
+                    _ck_input = input(_ck_prompt).strip().lower()
+                    if _ck_input in ("stop", "s", "중단", "멈춰", "停"):
+                        self.console.print(f"[{THEME['warn']}]⏹ User requested stop — generating report.[/]")
+                        self._finalize_runtime("user_checkpoint_stop")
+                        break
+                except (KeyboardInterrupt, EOFError):
+                    self.console.print(f"\n[{THEME['warn']}]⏹ Interrupted at checkpoint — generating report.[/]")
+                    self._finalize_runtime("user_checkpoint_interrupt")
+                    break
+
             # 결과 압축 (컨텍스트 폭발 방지)
             raw_results = "\n".join(results_text)
             # /retry 를 위해 마지막 실행 결과 보존
@@ -9179,9 +9214,54 @@ class BingoTerminal:
             self._show_token_usage()
             self._exec_loop_count += 1
 
-            # Mission control is state-based. Text hashes and counters remain
-            # outside the transition path; only evidence/coverage/frontier state
-            # can select continue, pivot, or report.
+            # ── Hard loop cap: prevent runaway 100+ loops ──────────────────
+            _HARD_LOOP_CAP = int(os.environ.get("BINGO_MAX_LOOPS", "30"))
+            if self._exec_loop_count >= _HARD_LOOP_CAP:
+                _cap_lang = getattr(self.config, "lang", "en")
+                _cap_msg = {
+                    "ko": f"⛔ 루프 {_HARD_LOOP_CAP}회 도달 — 자동 중단. 결과를 보고합니다.",
+                    "zh": f"⛔ 循环已达 {_HARD_LOOP_CAP} 次 — 自动停止并生成报告。",
+                    "en": f"⛔ Loop cap ({_HARD_LOOP_CAP}) reached — auto-stopping and generating report.",
+                }.get(_cap_lang, f"⛔ Loop cap ({_HARD_LOOP_CAP}) reached.")
+                self.console.print(f"\n[{THEME['error']}]{_cap_msg}[/]")
+                self._finalize_runtime("hard_loop_cap_reached")
+                break
+
+            # ── No-progress pivot enforcement ──────────────────────────────
+            _NO_PROGRESS_PIVOT_THRESHOLD = 5
+            _NO_PROGRESS_STOP_THRESHOLD = 10
+            if not getattr(_delta, "coverage_changed", False) and not getattr(_delta, "fact_ids", ()):
+                self._dl_no_progress += 1
+            else:
+                self._dl_no_progress = 0
+
+            if self._dl_no_progress >= _NO_PROGRESS_STOP_THRESHOLD:
+                _np_lang = getattr(self.config, "lang", "en")
+                _np_msg = {
+                    "ko": f"⛔ 연속 {self._dl_no_progress}회 진전 없음 — 자동 중단. 결과를 보고합니다.",
+                    "zh": f"⛔ 连续 {self._dl_no_progress} 次无进展 — 自动停止并生成报告。",
+                    "en": f"⛔ No progress for {self._dl_no_progress} consecutive loops — auto-stopping.",
+                }.get(_np_lang, f"⛔ No progress — stopping.")
+                self.console.print(f"\n[{THEME['error']}]{_np_msg}[/]")
+                self._finalize_runtime("no_progress_stop")
+                break
+            elif self._dl_no_progress >= _NO_PROGRESS_PIVOT_THRESHOLD:
+                _pv_lang = getattr(self.config, "lang", "en")
+                _pv_msg = {
+                    "ko": f"⚠ 연속 {self._dl_no_progress}회 진전 없음 — 다른 공격 벡터로 전환합니다.",
+                    "zh": f"⚠ 连续 {self._dl_no_progress} 次无进展 — 切换攻击向量。",
+                    "en": f"⚠ No progress for {self._dl_no_progress} loops — pivoting to a different attack vector.",
+                }.get(_pv_lang, f"⚠ Pivoting due to no progress.")
+                self.console.print(f"\n[{THEME['warn']}]{_pv_msg}[/]")
+                self.history.append(Message(
+                    role="user",
+                    content=(
+                        f"[AUTO-PIVOT] The last {self._dl_no_progress} attempts produced no new evidence. "
+                        f"Immediately switch to a completely different attack vector or technique. "
+                        f"Do NOT repeat previous approaches. If no viable vector remains, produce a final report."
+                    ),
+                ))
+
             _candidate = self._current_action_candidate(current_response)
             self._mission_runtime.pending_work = (
                 self._subagent_pool.pending_count()
@@ -10472,7 +10552,8 @@ class BingoTerminal:
             f"vector={vector} previous={technique} attempts={count} next={next_name}\n"
             f"ACTION: {next_action}.\n"
             "Preserve the candidate, target, endpoint, parameter, session, headers, and controls. "
-            "Change technique now; do not repeat the same request and do not stop exploration.\n"
+            "Change technique now; do not repeat the same request. "
+            "If no viable technique remains for this vector, produce a final report instead.\n"
             "[/ADAPTIVE_OFFENSE_PIVOT]\n"
         )
 
@@ -11550,7 +11631,7 @@ class BingoTerminal:
             _safe_hints.append("deep SQLi extraction (SQLi CONFIRMED)")
         elif _fe_flags.get("has_potential_sqli") or _fe_flags.get("blocked_count"):
             _safe_hints.append(
-                "CONTINUE SQLi verification / WAF bypass (potential or blocked — DO NOT abandon)"
+                "SQLi verification / WAF bypass (potential or blocked — try a different technique if stalled)"
             )
         else:
             _safe_hints.append("re-validate boolean oracle / WAF bypass (SQLi NOT confirmed)")

@@ -149,7 +149,7 @@ This section overrides conflicting older instructions above.
 5. Use positive and negative controls. On transport errors retain the candidate and
    pivot; only a completed deterministic negative verifier may reject it.
 6. Avoid loops: after two inconclusive attempts with one technique, change payload
-   family, transport, engine, endpoint, or vulnerability class. Do not stop the mission.
+   family, transport, engine, endpoint, or vulnerability class. If no viable vector remains, produce a final report.
 7. Reports contain verified vulnerabilities only. Probable/potential candidates stay
    in the verification backlog and continue to drive attacks.
 """.strip()

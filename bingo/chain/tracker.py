@@ -3,7 +3,7 @@ bingo/chain/tracker.py — 공격 체인 트래커
 
 대화 세션에서 발견된 취약점·도구 실행·경로를 파싱해
 순서 있는 공격 체인으로 재구성. `/chain` 명령으로 출력.
-~/.bingo/chains/<session_id>.json 에 저장.
+Bingo workspace chain store에 저장.
 """
 from __future__ import annotations
 
@@ -14,9 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ..core.local_state import workspace_state_dir
+
 
 def _chain_dir() -> Path:
-    d = Path.home() / ".bingo" / "chains"
+    d = workspace_state_dir() / "chains"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

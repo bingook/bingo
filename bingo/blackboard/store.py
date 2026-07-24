@@ -2,7 +2,7 @@
 bingo/blackboard/store.py — 프로젝트 블랙보드
 
 타겟별 Facts(발견 사실·경로·자격증명 등)를 세션 간 지속 저장.
-~/.bingo/boards/<target_hash>.json 에 저장.
+Bingo workspace board store에 저장.
 AI 대화 시 시스템 프롬프트 앞에 자동 주입 가능.
 """
 from __future__ import annotations
@@ -13,9 +13,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..core.local_state import workspace_state_dir
+
 
 def _board_dir() -> Path:
-    d = Path.home() / ".bingo" / "boards"
+    d = workspace_state_dir() / "boards"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

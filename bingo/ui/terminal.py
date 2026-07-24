@@ -1613,7 +1613,7 @@ class BingoTerminal:
             self._force_tty_sane()
 
             # 5) /dev/tty 단독 읽기
-            _hint_out = self._read_hint_line_from_tty(timeout=60.0)
+            _hint_out = self._read_hint_line_from_tty(timeout=300.0)
 
             if _hint_out:
                 _hint_out = self._normalize_mid_task_hint(_hint_out)

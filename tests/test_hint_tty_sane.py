@@ -124,7 +124,7 @@ class TestHintTtySane(unittest.TestCase):
         result = BingoTerminal._prompt_mid_task_hint(obj)
 
         self.assertIsNone(result)
-        self.assertEqual(seen_timeout, [60.0])
+        self.assertEqual(seen_timeout, [300.0])
         self.assertIs(signal.getsignal(signal.SIGINT), original)
         self.assertFalse(obj._hint_input_active.is_set())
 

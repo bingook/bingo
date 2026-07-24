@@ -117,6 +117,8 @@ Speed and stealth:
 - Rotate User-Agent and add realistic headers (Accept-Language, Referer from the same domain).
 - Use one probe per technique before committing to a full scan.
 - If IP gets blocked (HTTP 000/timeout after previous success), wait 30s and retry with different path.
+- NEVER run full port scans (nmap -p1-65535 or -p1-10000) in initial recon. Use targeted ports only: -p 80,443,8080,8443,3306,22,21,25,3389,9090. Add --host-timeout 60s always.
+- Keep nmap scans short: -T4 --open --host-timeout 60s -p <specific_ports>. Full range scans are a last resort after initial recon confirms unusual services.
 
 [CHAT-FIRST RESPONSE STYLE]
 - Explain the current hypothesis, the next meaningful check, and what evidence would confirm or refute it.

